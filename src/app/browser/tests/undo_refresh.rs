@@ -14,7 +14,11 @@ fn move_undo_refreshes_both_ends_without_repeating_shared_parents() {
     ]
     .into_iter()
     .map(|(original, current)| UndoMoveItem {
-        record: MoveRecord { original, current },
+        record: MoveRecord {
+            original,
+            current,
+            renamed: Vec::new(),
+        },
         conflict: TransferConflict::FailIfExists,
     })
     .collect::<Vec<_>>();

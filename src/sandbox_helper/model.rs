@@ -5,23 +5,89 @@ use std::{collections::HashMap, fs, io::Read, path::Path};
 use crate::services::{ModelFormat, ModelPreviewStage, model_preview::*};
 
 mod embedded;
-pub(super) use embedded::thumbnail;
+mod gcode;
+
+pub(super) fn thumbnail(
+    input: &Path,
+    format: ModelFormat,
+    width: u32,
+    height: u32,
+    progress: &dyn Fn(ModelPreviewStage),
+) -> Result<Vec<u8>, String> {
+    if format == ModelFormat::Gcode {
+        gcode::thumbnail(input, width, height, progress)
+    } else {
+        embedded::thumbnail(input, format, width, height, progress)
+    }
+}
 use quick_xml::{
     Reader,
     events::{BytesStart, Event},
 };
 use resvg::tiny_skia::{Color, Pixmap};
 
+const _: () = assert!(
+    MAX_MODEL_TRIANGLES == 2_000_000,
+    "update the triangle limit message and its catalog entry"
+);
+
+// The preview pane translates this exact text, so it must not embed runtime values.
 fn triangle_limit_message() -> String {
-    format!(
-        "This model exceeds the {} million triangle preview limit. Try a lower-detail version.",
-        MAX_MODEL_TRIANGLES as f64 / 1_000_000.
-    )
+    "This model exceeds the 2 million triangle preview limit. Try a lower-detail version."
+        .to_owned()
 }
 const MULTIPART_MODEL_MESSAGE: &str = "Multipart model detected. Unable to render preview.";
+const TOO_COMPLEX_MODEL_MESSAGE: &str = "This model is too complex to draw within the preview rendering limit. Try a lower-detail version.";
+const DAMAGED_MODEL_MESSAGE: &str = "This model file is invalid or damaged.";
+const MODEL_INPUT_LIMIT_MESSAGE: &str =
+    "This model file exceeds the 128 MiB preview limit. Try a smaller or lower-detail version.";
+const VERTEX_LIMIT_MESSAGE: &str =
+    "This 3MF model exceeds the 2 million vertex preview limit. Try a lower-detail version.";
+const UNPACKED_LIMIT_MESSAGE: &str = "The unpacked 3MF model exceeds the 128 MiB preview limit.";
+const _: () = assert!(
+    MAX_MODEL_INPUT_BYTES == 128 * 1024 * 1024
+        && MAX_MODEL_VERTICES == 2_000_000
+        && MAX_MODEL_XML_BYTES == 128 * 1024 * 1024,
+    "update the model limit messages and their catalog entries"
+);
+
+/// The preview pane translates these exact texts; parse diagnostics are not actionable.
+fn user_model_message(message: String) -> String {
+    match message.as_str() {
+        "Model exceeds the input size limit" | "Model package exceeds the input size limit" => {
+            MODEL_INPUT_LIMIT_MESSAGE.to_owned()
+        }
+        MULTIPART_MODEL_MESSAGE
+        | TOO_COMPLEX_MODEL_MESSAGE
+        | VERTEX_LIMIT_MESSAGE
+        | UNPACKED_LIMIT_MESSAGE
+        | "STL contains no valid triangles"
+        | "3MF contains no printable triangles"
+        | "3MF package has no model"
+        | "Model has no visible extent"
+        | "External 3MF model references are not supported"
+        | "This FreeCAD file has no usable embedded thumbnail"
+        | "This model has no unambiguous usable embedded thumbnail"
+        | NO_GCODE_THUMBNAIL => message,
+        _ if message == triangle_limit_message() => message,
+        _ if message.ends_with(" limit exceeded")
+            || message.contains(" budget exceeded")
+            || message.contains(" preview limit")
+            || message.starts_with("Cannot allocate ") =>
+        {
+            TOO_COMPLEX_MODEL_MESSAGE.to_owned()
+        }
+        _ => DAMAGED_MODEL_MESSAGE.to_owned(),
+    }
+}
 
 type Point = [f32; 3];
 type Matrix = [f32; 12];
+
+pub(super) struct RenderedModel {
+    pub(super) png: Vec<u8>,
+    pub(super) mesh: Option<ModelMesh>,
+}
 const IDENTITY: Matrix = [1., 0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0.];
 
 #[derive(Default)]
@@ -121,10 +187,7 @@ fn triangles_3mf(xml: &[u8]) -> Result<Vec<[Point; 3]>, String> {
                 b"vertex" if current.is_some() => {
                     vertices += 1;
                     if vertices > MAX_MODEL_VERTICES {
-                        return Err(format!(
-                            "This 3MF model exceeds the {} million vertex preview limit. Try a lower-detail version.",
-                            MAX_MODEL_VERTICES as f64 / 1_000_000.
-                        ));
+                        return Err(VERTEX_LIMIT_MESSAGE.to_owned());
                     }
                     let point = [
                         number(&tag, b"x")?,
@@ -228,7 +291,7 @@ fn triangles_3mf(xml: &[u8]) -> Result<Vec<[Point; 3]>, String> {
     Ok(faces)
 }
 
-fn stl(bytes: &[u8]) -> Result<Vec<[Point; 3]>, String> {
+fn stl(bytes: &[u8]) -> Result<(Vec<[Point; 3]>, ModelEncoding), String> {
     if bytes.len() >= 84 {
         let count =
             u32::from_le_bytes(bytes[80..84].try_into().map_err(|_| "Invalid STL")?) as usize;
@@ -254,7 +317,7 @@ fn stl(bytes: &[u8]) -> Result<Vec<[Point; 3]>, String> {
                 }
                 faces.push(points);
             }
-            return Ok(faces);
+            return Ok((faces, ModelEncoding::BinaryStl));
         }
     }
     let text = std::str::from_utf8(bytes).map_err(|_| "Invalid STL")?;
@@ -295,7 +358,7 @@ fn stl(bytes: &[u8]) -> Result<Vec<[Point; 3]>, String> {
     if !points.is_empty() || faces.is_empty() {
         return Err("STL contains no valid triangles".into());
     }
-    Ok(faces)
+    Ok((faces, ModelEncoding::AsciiStl))
 }
 
 fn rgb(value: &str) -> Result<[u8; 3], String> {
@@ -308,46 +371,54 @@ fn shade(
     width: u32,
     height: u32,
     accent: [u8; 3],
-    surface: [u8; 3],
+    surface: [u8; 4],
+    view: ModelView,
     progress: &dyn Fn(ModelPreviewStage),
 ) -> Result<Vec<u8>, String> {
+    // Keep empty canvas from separating the model and its centred player controls.
+    let side = width.min(height);
+    let (width, height) = (side, side);
     progress(ModelPreviewStage::Rendering {
         triangles: faces.len(),
     });
-    let project = |face: [Point; 3]| {
-        face.map(|[x, y, z]| {
-            [
-                -0.83 * x + 0.55 * y,
-                0.35 * x + 0.53 * y + 0.77 * z,
-                -0.43 * x - 0.64 * y + 0.64 * z,
-            ]
-        })
-    };
-    let mut min = [f32::INFINITY; 2];
-    let mut max = [f32::NEG_INFINITY; 2];
+    let mut min = [f32::INFINITY; 3];
+    let mut max = [f32::NEG_INFINITY; 3];
     for face in faces {
-        let points = project(*face);
-        if points.iter().flatten().any(|value| !value.is_finite()) {
-            return Err("Invalid transformed model coordinate".into());
-        }
-        for p in points {
-            for axis in 0..2 {
+        for p in face {
+            for axis in 0..3 {
+                if !p[axis].is_finite() {
+                    return Err("Invalid transformed model coordinate".into());
+                }
                 min[axis] = min[axis].min(p[axis]);
                 max[axis] = max[axis].max(p[axis]);
             }
         }
     }
-    let extent = (max[0] - min[0]).max(max[1] - min[1]);
+    let span: Point = std::array::from_fn(|axis| max[axis] - min[axis]);
+    let center: Point = std::array::from_fn(|axis| min[axis] + span[axis] * 0.5);
+    let root_six = 6_f32.sqrt();
+    // Fit the same bounding box for all four cameras so switching never zooms.
+    let extent = ((span[0] + span[1]) * std::f32::consts::FRAC_1_SQRT_2)
+        .max((span[0] + span[1] + 2. * span[2]) / root_six);
     if !extent.is_finite() || extent <= 0. {
         return Err("Model has no visible extent".into());
     }
     let scale = (width.min(height) as f32 * 0.82) / extent;
-    let center = [
-        min[0] + (max[0] - min[0]) * 0.5,
-        min[1] + (max[1] - min[1]) * 0.5,
-    ];
+    let [sx, sy, _] = view.camera_direction();
+    let project = |face: [Point; 3]| {
+        face.map(|p| {
+            let [x, y, z] = std::array::from_fn(|axis| p[axis] - center[axis]);
+            [
+                (-sy * x + sx * y) * std::f32::consts::FRAC_1_SQRT_2,
+                (-sx * x - sy * y + 2. * z) / root_six,
+                (sx * x + sy * y + z) / 3_f32.sqrt(),
+            ]
+        })
+    };
     let mut pixmap = Pixmap::new(width, height).ok_or("Cannot allocate model preview")?;
-    pixmap.fill(Color::from_rgba8(surface[0], surface[1], surface[2], 255));
+    pixmap.fill(Color::from_rgba8(
+        surface[0], surface[1], surface[2], surface[3],
+    ));
     let mut depths = vec![f32::NEG_INFINITY; (width * height) as usize];
     let mut work = 0u64;
     for face in faces {
@@ -376,8 +447,8 @@ fn shade(
         };
         let face = points.map(|point| {
             [
-                width as f32 * 0.5 + (point[0] - center[0]) * scale,
-                height as f32 * 0.5 - (point[1] - center[1]) * scale,
+                width as f32 * 0.5 + point[0] * scale,
+                height as f32 * 0.5 - point[1] * scale,
                 point[2],
             ]
         });
@@ -412,7 +483,7 @@ fn shade(
         let (left, right, top, bottom) = (lower(0), upper(0, width), lower(1), upper(1, height));
         work += u64::from(right.saturating_sub(left)) * u64::from(bottom.saturating_sub(top));
         if work > MAX_MODEL_RASTER_WORK {
-            return Err("This model is too complex to draw within the preview rendering limit. Try a lower-detail version.".into());
+            return Err(TOO_COMPLEX_MODEL_MESSAGE.into());
         }
         for y in top..bottom {
             for x in left..right {
@@ -521,12 +592,13 @@ fn render_3mf(
     width: u32,
     height: u32,
     accent: [u8; 3],
-    surface: [u8; 3],
+    surface: [u8; 4],
+    view: ModelView,
     progress: &dyn Fn(ModelPreviewStage),
-) -> Result<Vec<u8>, String> {
+) -> Result<RenderedModel, String> {
     let mut package = embedded::Package::open(input, ModelFormat::ThreeMf)?;
     if let Some(png) = package.thumbnail(width, height, progress)? {
-        return Ok(png);
+        return Ok(RenderedModel { png, mesh: None });
     }
     if package.model_parts > 1 {
         return Err(MULTIPART_MODEL_MESSAGE.into());
@@ -534,18 +606,38 @@ fn render_3mf(
     progress(ModelPreviewStage::Reading);
     let faces = triangles_3mf(&package.model_xml()?)?;
     drop(package);
-    shade(&faces, width, height, accent, surface, progress)
+    Ok(RenderedModel {
+        png: shade(&faces, width, height, accent, surface, view, progress)?,
+        mesh: Some(ModelMesh {
+            view,
+            encoding: ModelEncoding::ThreeMf,
+            triangles: faces.len(),
+        }),
+    })
 }
 
 pub(super) fn render_reporting(
     input: &Path,
     value: &str,
     progress: &dyn Fn(ModelPreviewStage),
-) -> Result<Vec<u8>, String> {
+) -> Result<RenderedModel, String> {
+    render_model(input, value, progress).map_err(user_model_message)
+}
+
+fn render_model(
+    input: &Path,
+    value: &str,
+    progress: &dyn Fn(ModelPreviewStage),
+) -> Result<RenderedModel, String> {
     progress(ModelPreviewStage::Reading);
     let parts: Vec<_> = value.split(':').collect();
-    let [format, size, accent, surface] = parts.as_slice() else {
+    let [format, size, accent, surface, view @ ..] = parts.as_slice() else {
         return Err("Invalid model request".into());
+    };
+    let view = match view {
+        [] => ModelView::default(),
+        [view] => ModelView::from_argument(view).ok_or("Invalid model request")?,
+        _ => return Err("Invalid model request".into()),
     };
     let format = ModelFormat::from_argument(format).ok_or("Invalid model format")?;
     let (width, height) = size.split_once('x').ok_or("Invalid model size")?;
@@ -558,10 +650,18 @@ pub(super) fn render_reporting(
         .map_err(|_| "Invalid model size")?
         .clamp(16, 800);
     let accent = rgb(accent)?;
-    let surface = rgb(surface)?;
+    let surface = if *surface == "transparent" {
+        [0, 0, 0, 0]
+    } else {
+        let [r, g, b] = rgb(surface)?;
+        [r, g, b, 255]
+    };
     match format {
-        ModelFormat::FreeCad => thumbnail(input, format, width, height, progress),
-        ModelFormat::ThreeMf => render_3mf(input, width, height, accent, surface, progress),
+        ModelFormat::FreeCad | ModelFormat::Gcode => Ok(RenderedModel {
+            png: thumbnail(input, format, width, height, progress)?,
+            mesh: None,
+        }),
+        ModelFormat::ThreeMf => render_3mf(input, width, height, accent, surface, view, progress),
         ModelFormat::Stl => {
             let mut bytes = Vec::new();
             fs::File::open(input)
@@ -572,9 +672,16 @@ pub(super) fn render_reporting(
             if bytes.len() as u64 > MAX_MODEL_INPUT_BYTES {
                 return Err("Model exceeds the input size limit".into());
             }
-            let faces = stl(&bytes)?;
+            let (faces, encoding) = stl(&bytes)?;
             drop(bytes);
-            shade(&faces, width, height, accent, surface, progress)
+            Ok(RenderedModel {
+                png: shade(&faces, width, height, accent, surface, view, progress)?,
+                mesh: Some(ModelMesh {
+                    view,
+                    encoding,
+                    triangles: faces.len(),
+                }),
+            })
         }
     }
 }

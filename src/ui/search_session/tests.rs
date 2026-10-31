@@ -8,6 +8,7 @@ fn result(query: &str) -> SearchEvent {
         indexing: false,
         coverage: SearchCoverage::default(),
         has_more: false,
+        candidates: 0,
     }
 }
 
@@ -17,7 +18,7 @@ fn draining_rejects_stale_queries_and_keeps_final_event_on_disconnect() {
     sender.send(result("current")).expect("send current result");
     sender.send(result("stale")).expect("send stale result");
     drop(sender);
-    let (batch, disconnected) = drain(&receiver, "current");
+    let (batch, disconnected) = drain(&receiver, "current", false);
     assert_eq!(batch.expect("current result").query, "current");
     assert!(disconnected);
 }
@@ -28,10 +29,61 @@ fn draining_is_bounded_and_dismissed_query_never_publishes() {
     for _ in 0..9 {
         sender.send(result("current")).expect("send current result");
     }
-    assert!(drain(&receiver, "current").0.is_some());
-    assert!(drain(&receiver, "current").0.is_some());
+    assert!(drain(&receiver, "current", false).0.is_some());
+    assert!(drain(&receiver, "current", false).0.is_some());
     sender.send(result("")).expect("send empty result");
-    assert!(drain(&receiver, "").0.is_none());
+    assert!(drain(&receiver, "", false).0.is_none());
+    sender.send(result("")).expect("send empty folder listing");
+    assert!(
+        drain(&receiver, "", true).0.is_some(),
+        "a folder search lists folders for an empty query"
+    );
+}
+
+#[test]
+fn changed_search_limits_restart_the_worker_on_the_next_update() {
+    crate::test_support::gtk_test(
+        "ui::search_session::tests::changed_search_limits_restart_the_worker_on_the_next_update",
+        || {
+            let fixture = tempfile::tempdir().expect("fixture");
+            std::fs::write(fixture.path().join("alpha.txt"), "a").expect("alpha file");
+            let input = SearchInput {
+                root: fixture.path().into(),
+                show_hidden: false,
+                scope: SearchScope::Subfolders,
+                refused: Default::default(),
+                within: None,
+            };
+            let manager = crate::ui::preferences::PreferenceManager::shared();
+            manager.set_search_entry_limit(200_000);
+            let (default_limits, _) =
+                index_filter(input.root.clone(), false, true, manager.search_limits());
+            let session = SearchSession::default();
+            let deliver: Deliver = Rc::new(|_| {});
+            let shares_default_index = |session: &SearchSession| {
+                session
+                    .0
+                    .worker
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|worker| worker.handle.shares_index_with(&default_limits))
+            };
+            session.update(input.clone(), "alpha", false, deliver.clone());
+            assert!(shares_default_index(&session));
+            session.update(input.clone(), "alpha.txt", false, deliver.clone());
+            assert!(
+                shares_default_index(&session),
+                "unchanged limits keep the running worker"
+            );
+            manager.set_search_entry_limit(0);
+            session.update(input, "txt", false, deliver);
+            assert!(
+                !shares_default_index(&session),
+                "a changed limit indexes again on the next query"
+            );
+            session.cancel();
+        },
+    );
 }
 
 #[test]
@@ -45,7 +97,9 @@ fn restart_intent_cancellation_and_drop_retire_worker_delivery() {
             let input = SearchInput {
                 root: fixture.path().into(),
                 show_hidden: false,
-                recursive: true,
+                scope: SearchScope::Subfolders,
+                refused: Default::default(),
+                within: None,
             };
             let session = SearchSession::default();
             let delivered = Rc::new(RefCell::new(Vec::new()));
@@ -100,16 +154,18 @@ fn scope_change_retires_the_recursive_worker_for_the_same_query() {
             std::fs::write(fixture.path().join("alpha.txt"), "a").expect("alpha file");
             std::fs::write(fixture.path().join("nested/alpha-deep.txt"), "a")
                 .expect("nested alpha file");
-            let input = |recursive| SearchInput {
+            let input = |scope| SearchInput {
                 root: fixture.path().into(),
                 show_hidden: false,
-                recursive,
+                scope,
+                refused: Default::default(),
+                within: None,
             };
             let session = SearchSession::default();
             let delivered = Rc::new(RefCell::new(Vec::new()));
             let output = delivered.clone();
             session.update(
-                input(true),
+                input(SearchScope::Subfolders),
                 "alpha",
                 false,
                 Rc::new(move |batch| output.borrow_mut().push(batch.items.len())),
@@ -119,7 +175,7 @@ fn scope_change_retires_the_recursive_worker_for_the_same_query() {
             delivered.borrow_mut().clear();
             let output = delivered.clone();
             session.update(
-                input(false),
+                input(SearchScope::Folder),
                 "alpha",
                 false,
                 Rc::new(move |batch| output.borrow_mut().push(batch.items.len())),

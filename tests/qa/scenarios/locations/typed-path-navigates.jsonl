@@ -1,0 +1,11 @@
+{"scenario":"typed-path-navigates","modes":["columns"],"layout":"us","mutation":"location-entry","known_bug":null,"cost":{"columns":1.3},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"Ctrl+L typed folder path opens it in Columns; typed-dot-segments-resolve runs the same route with dot segments in both modes, and location_input unit tests pin parsing"}}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"location"}
+{"key":"ctrl+a"}
+{"type":"$fixture/documents"}
+{"wait":{"field":{"of":"location","text":{"ends_with":"documents"}}},"message":"the path to be typed into the address bar"}
+{"key":"Return"}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"wait":{"entry":"notes.txt","dir":"documents"},"message":"the entry 'notes.txt' in 'documents' to appear"}

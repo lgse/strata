@@ -49,6 +49,87 @@ The operations are individually scoped and document:
 
 If a maintained safe API gains this capability, this exception should be removed.
 
+### Verified Trash result
+
+Location: `src/adapters/local_operations/environment.rs::System::trash`
+
+Reason: GLib can return FALSE from `g_file_trash` without setting an error
+(GLib #4060). gio-rs asserts in debug builds that FALSE always carries an
+error, so its safe `trash()` would panic there, and in release builds it
+cannot tell that failure apart. Strata calls `g_file_trash` directly and treats
+FALSE without an error as "not moved".
+
+The file and cancellable outlive the call, and the error out-pointer starts
+null. When GLib sets it, ownership transfers to Strata, which takes it with
+`from_glib_full`; otherwise nothing is freed. The call runs only off the main
+thread. Callers re-check the item's identity afterwards, so a TRUE that moved
+nothing is caught too.
+
+### File handles
+
+Location: `src/adapters/local_operations/native_fs.rs::file_handle`
+
+Reason: on NFS and ext2/3/4 without birth times, a freed inode number goes straight to the next
+file, and only the file handle's generation tells the two apart. rustix does not wrap
+`name_to_handle_at`, so Strata calls it through `libc` with a `struct file_handle` sized for
+`MAX_HANDLE_SZ` (128 bytes), stating that size in `handle_bytes`, and a NUL-terminated name; the
+call keeps no pointer. It keeps a 64-bit digest of the handle type and bytes, not the handle.
+
+### Checked descriptor close
+
+Location: `src/adapters/local_operations/fs_ops.rs::System::close`
+
+Reason: `OwnedFd` and rustix discard close errors, but NFS, SMB and FUSE can report
+failed writes only at close. The safe wrapper consumes the owned descriptor and
+calls `libc::close` exactly once. Linux releases the descriptor even when close
+reports `EINTR`; retrying could close a descriptor another thread has since reused.
+The copy and archive regressions inject delayed close errors and require publication
+to fail without deleting originals.
+
+### Background close of enumerators and streams
+
+Location: `src/adapters/gio_close.rs::Closable::close_in_background`
+
+Reason: GLib closes an enumerator or stream still open at its last unref in place, so one
+the UI thread lets go of would close there, waiting on a dead NFS or SMB server, a stopped
+FUSE daemon or a GVfs backend. Strata starts the close with `g_file_enumerator_close_async`
+or `g_input_stream_close_async`, which run it on GLib's worker pool or, for GVfs, without
+blocking. gio-rs requires a Rust callback, which glib-rs binds to the thread that started the
+close; a close that outlives a test would then abort the next test that dispatches the default
+main context. Strata passes no callback, which GIO annotates as allowed.
+
+The object is alive for the call, and GLib holds its own reference until the close ends. The
+cancellable, callback and user data are null. The calls run only on the UI thread, and only
+when no other operation is pending on the object; `Closing` rechecks pending objects until
+then. Written streams are never closed this way, as their close reports lost data. A GVfs stream
+whose open succeeded just as it was cancelled never reaches Strata: GLib frees it, and it closes
+in place (see [Off the interface thread](filesystem-compatibility.md#off-the-interface-thread)).
+The regression test closes a probe enumerator and stream let go after and during a call, and
+requires each close to run off the UI thread.
+
+### File and folder monitors made off the UI thread
+
+Location: `src/adapters/local_files/monitors.rs::BareMonitor`
+
+Reason: GLib's inotify backend creates, cancels and delivers every file and directory monitor
+under one global lock, and creating one walks the watched path, which blocks on a mount that
+stopped answering. Strata therefore creates and cancels every monitor (open folders, the Trash,
+its own settings files, custom themes and the Omarchy theme folders) on one serial worker thread,
+which `gio::FileMonitor` (not `Send`) cannot cross without a wrapper.
+
+`BareMonitor` is the only value that moves a monitor between that worker and the UI thread, and
+it never carries a signal handler: the worker creates the monitor with no thread-default main
+context pushed, so its events reach the default main context, and sends it bare. That delivery
+is read from GLib's and GVfs's source; for a GVfs folder it was not measured (see [What a dead
+server does](filesystem-compatibility.md#what-a-dead-server-does)). The UI thread
+connects the `changed` handler, whose closure owns `Rc` state. On release the UI thread first
+disconnects that handler, removes the coalescing timeout and drops the state, and only then drops
+the bare monitor, whose `Drop` hands it to the worker for `g_file_monitor_cancel` and the final
+unref. So no closure, and no `Rc` it captured, can be freed off the UI thread; GObject reference
+counts and the cancel are thread-safe. A monitor created after its request was dropped is sent back
+to the worker the same way and never gets a handler. If the worker cannot take it, the monitor is
+leaked rather than cancelled on the UI thread.
+
 ### Browser sandbox fork boundary
 
 Location: `src/sandbox/browser/process.rs::{fork,namespaces}`

@@ -1,6 +1,52 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::ui::keys::{
+    self, Command, KeyPress, Match, SHORTCUT_MODIFIERS,
+    bindings::{
+        COPY, DOWN, END_KEY, ESCAPE_ANY, HOME_KEY, LEFT, RIGHT, SELECT_ALL, UNSELECT_ALL, UP,
+    },
+};
+
+const CLEARS_SELECTION: [&dyn Match; 9] = [
+    &ESCAPE_ANY,
+    &LEFT.ignoring(SHORTCUT_MODIFIERS),
+    &RIGHT.ignoring(SHORTCUT_MODIFIERS),
+    &UP.ignoring(SHORTCUT_MODIFIERS),
+    &DOWN.ignoring(SHORTCUT_MODIFIERS),
+    &HOME_KEY.ignoring(SHORTCUT_MODIFIERS),
+    &END_KEY.ignoring(SHORTCUT_MODIFIERS),
+    &SELECT_ALL,
+    &UNSELECT_ALL,
+];
+
+const CELL_ACTIONS: [(Command, &str); 2] = [
+    (COPY, "clipboard.copy"),
+    (SELECT_ALL, "selection.select-all"),
+];
+
+#[expect(
+    deprecated,
+    reason = "GTK exposes named theme colors through StyleContext"
+)]
+fn selection_colors(widget: &impl IsA<gtk::Widget>) -> Vec<u16> {
+    let context = widget.style_context();
+    let mut colors = Vec::new();
+    for color in [
+        context.lookup_color("strata_accent"),
+        context.lookup_color("strata_bg"),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        colors.extend([
+            (color.red() * 65535.0) as u16,
+            (color.green() * 65535.0) as u16,
+            (color.blue() * 65535.0) as u16,
+        ]);
+    }
+    colors
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Point {
@@ -33,6 +79,7 @@ pub(super) struct Selection {
     bound: RefCell<Vec<BoundCell>>,
     range: Cell<Option<Range>>,
     dragging: Cell<bool>,
+    autoscrolling: Cell<bool>,
     pointer: Cell<(f64, f64)>,
     pressed_link: RefCell<Option<(glib::WeakRef<gtk::Label>, String)>>,
 }
@@ -44,6 +91,7 @@ impl Selection {
             bound: RefCell::new(Vec::new()),
             range: Cell::new(None),
             dragging: Cell::new(false),
+            autoscrolling: Cell::new(false),
             pointer: Cell::new((0.0, 0.0)),
             pressed_link: RefCell::new(None),
         })
@@ -73,14 +121,7 @@ impl Selection {
     }
 
     fn row(&self, position: u32) -> Option<usize> {
-        let item = self
-            .table
-            .model
-            .item(position)?
-            .downcast::<glib::BoxedAnyObject>()
-            .ok()?;
-        let index = *item.borrow::<usize>();
-        Some(index)
+        self.table.model.row(position)
     }
 
     fn text(&self, point: Point) -> &str {
@@ -158,31 +199,11 @@ impl Selection {
                     };
                 }
             }
-            let mut colors = Vec::new();
-            if from < to {
-                #[expect(
-                    deprecated,
-                    reason = "GTK exposes named theme colors through StyleContext"
-                )]
-                let context = label.style_context();
-                #[expect(
-                    deprecated,
-                    reason = "GTK exposes named theme colors through StyleContext"
-                )]
-                for color in [
-                    context.lookup_color("theme_accent"),
-                    context.lookup_color("theme_bg"),
-                ]
-                .into_iter()
-                .flatten()
-                {
-                    colors.extend([
-                        (color.red() * 65535.0) as u16,
-                        (color.green() * 65535.0) as u16,
-                        (color.blue() * 65535.0) as u16,
-                    ]);
-                }
-            }
+            let colors = if from < to {
+                selection_colors(&label)
+            } else {
+                Vec::new()
+            };
             let next = (from, to, colors);
             if cell.highlight.borrow().as_ref() == Some(&next) {
                 continue;
@@ -253,6 +274,19 @@ impl Selection {
     }
 
     pub(super) fn install(self: &Rc<Self>, view: &gtk::ColumnView, scroll: &gtk::ScrolledWindow) {
+        let weak_state = Rc::downgrade(self);
+        let weak_view = view.downgrade();
+        super::super::theme::ThemeManager::shared().bind_theme_preference(
+            view,
+            move |_| weak_view.upgrade().map(|view| selection_colors(&view)),
+            move |_, _| {
+                if let Some(state) = weak_state.upgrade()
+                    && state.range.get().is_some()
+                {
+                    state.highlight();
+                }
+            },
+        );
         let outside_click = Rc::new(RefCell::new(
             None::<(glib::WeakRef<gtk::Widget>, gtk::EventControllerLegacy)>,
         ));
@@ -289,7 +323,12 @@ impl Selection {
             root.add_controller(click.clone());
             controller_for_map.replace(Some((root.downgrade(), click)));
         });
+        let weak_state = Rc::downgrade(self);
         view.connect_unmap(move |_| {
+            if let Some(state) = weak_state.upgrade() {
+                state.dragging.set(false);
+                state.pressed_link.borrow_mut().take();
+            }
             if let Some((root, click)) = outside_click.borrow_mut().take()
                 && let Some(root) = root.upgrade()
             {
@@ -301,6 +340,7 @@ impl Selection {
         drag.set_propagation_phase(gtk::PropagationPhase::Capture);
         let state = self.clone();
         let weak_view = view.downgrade();
+        let weak_scroll = scroll.downgrade();
         drag.connect_drag_begin(move |gesture, x, y| {
             let Some(view) = weak_view.upgrade() else {
                 return;
@@ -344,6 +384,9 @@ impl Selection {
             }));
             state.pointer.set((x, y));
             state.dragging.set(true);
+            if let Some(scroll) = weak_scroll.upgrade() {
+                state.start_autoscroll(&view, &scroll);
+            }
             gesture.set_state(gtk::EventSequenceState::Claimed);
         });
         let state = self.clone();
@@ -382,61 +425,50 @@ impl Selection {
         key.set_propagation_phase(gtk::PropagationPhase::Capture);
         let state = self.clone();
         let weak_view = view.downgrade();
-        key.connect_key_pressed(move |_, key, _, modifiers| {
-            if modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-                && matches!(key, gtk::gdk::Key::c | gtk::gdk::Key::C)
+        keys::on_press(&key, move |controller, press| {
+            if press.is(COPY)
                 && let (Some(text), Some(view)) = (state.copy_text(), weak_view.upgrade())
             {
                 view.clipboard().set_text(&text);
                 return glib::Propagation::Stop;
             }
-            if matches!(
-                key,
-                gtk::gdk::Key::Escape
-                    | gtk::gdk::Key::Left
-                    | gtk::gdk::Key::Right
-                    | gtk::gdk::Key::Up
-                    | gtk::gdk::Key::Down
-                    | gtk::gdk::Key::Home
-                    | gtk::gdk::Key::End
-            ) || (modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-                && matches!(key, gtk::gdk::Key::a | gtk::gdk::Key::A))
-            {
+            if press.untyped().is_any(&CLEARS_SELECTION) {
                 state.clear();
             }
-            glib::Propagation::Proceed
+            run_focused_cell_action(controller, press)
         });
         view.add_controller(key);
-        let state = self.clone();
+    }
+
+    fn start_autoscroll(self: &Rc<Self>, view: &gtk::ColumnView, scroll: &gtk::ScrolledWindow) {
+        if self.autoscrolling.replace(true) {
+            return;
+        }
+        let weak = Rc::downgrade(self);
         let weak_scroll = scroll.downgrade();
         view.add_tick_callback(move |view, _| {
-            if state.dragging.get()
-                && let Some(scroll) = weak_scroll.upgrade()
-            {
-                let (x, y) = state.pointer.get();
-                for (coordinate, extent, adjustment) in [
-                    (x, view.width(), scroll.hadjustment()),
-                    (y, view.height(), scroll.vadjustment()),
-                ] {
-                    let delta = if coordinate < 24.0 {
-                        -12.0
-                    } else if coordinate > f64::from(extent) - 24.0 {
-                        12.0
-                    } else {
-                        0.0
-                    };
-                    if delta != 0.0 {
-                        adjustment.set_value((adjustment.value() + delta).clamp(
-                            adjustment.lower(),
-                            (adjustment.upper() - adjustment.page_size()).max(adjustment.lower()),
-                        ));
-                    }
-                }
-                state.extend(view);
+            let Some(state) = weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            let Some(scroll) = weak_scroll.upgrade().filter(|_| state.dragging.get()) else {
+                state.autoscrolling.set(false);
+                return glib::ControlFlow::Break;
+            };
+            let (x, y) = state.pointer.get();
+            for (coordinate, extent, adjustment) in [
+                (x, view.width(), scroll.hadjustment()),
+                (y, view.height(), scroll.vadjustment()),
+            ] {
+                let delta = if coordinate < 24.0 {
+                    -12.0
+                } else if coordinate > f64::from(extent) - 24.0 {
+                    12.0
+                } else {
+                    0.0
+                };
+                super::super::scrolling::advance(&adjustment, delta);
             }
-            if state.range.get().is_some() {
-                state.highlight();
-            }
+            state.extend(view);
             glib::ControlFlow::Continue
         });
     }
@@ -449,6 +481,33 @@ impl Selection {
             self.highlight();
         }
     }
+}
+
+/// The focused cell's GTK bindings cannot match a key that only the layout
+/// fallback reads; left alone, it would copy the whole table or select the
+/// whole document.
+fn run_focused_cell_action(
+    controller: &gtk::EventControllerKey,
+    press: &KeyPress,
+) -> glib::Propagation {
+    let Some((_, action)) = CELL_ACTIONS
+        .iter()
+        .find(|(binding, _)| press.used_fallback() && press.is(*binding))
+    else {
+        return glib::Propagation::Proceed;
+    };
+    let Some(cell) = controller
+        .widget()
+        .and_then(|view| view.root())
+        .and_then(|root| root.focus())
+        .and_downcast::<gtk::Label>()
+    else {
+        return glib::Propagation::Proceed;
+    };
+    if let Err(error) = cell.activate_action(action, None) {
+        tracing::warn!(%error, action, "table cell action unavailable");
+    }
+    glib::Propagation::Stop
 }
 
 fn replace_highlight(label: &gtk::Label, attributes: Option<&gtk::pango::AttrList>) {

@@ -4,6 +4,7 @@ use std::{
     cell::Cell,
     collections::{HashMap, HashSet},
     rc::Rc,
+    sync::OnceLock,
     time::Duration,
 };
 
@@ -13,10 +14,62 @@ use super::{
     blur::BlurBin,
     browser::{dismiss_modal_layer, modal_layer, show_error_dialog},
     controls::modal_layout,
+    keys::{
+        self, SHORTCUT_MODIFIERS,
+        bindings::{BACKSPACE, DOWN, ESCAPE_ANY, FOCUS_NEXT, FOCUS_PREVIOUS, UP},
+    },
     recent_apps,
 };
 
-pub(super) fn categorized_apps(
+/// Inside a Flatpak sandbox GIO only sees the runtime's desktop entries, so
+/// files are handed to the host through the OpenURI portal instead.
+pub(in crate::ui) fn uses_portal() -> bool {
+    static FLATPAK: OnceLock<bool> = OnceLock::new();
+    *FLATPAK.get_or_init(|| {
+        #[cfg(not(test))]
+        crate::util::ui_thread::assert_off();
+        std::path::Path::new("/.flatpak-info").exists()
+    })
+}
+
+/// Opens each file with the host's default handler, or lets the desktop's
+/// own chooser pick one when `always_ask` is set. Files open one after
+/// another so choosers do not stack; dismissing one stops the rest.
+pub(in crate::ui) fn launch_with_portal(
+    parent: &impl IsA<gtk::Widget>,
+    files: Vec<gio::File>,
+    always_ask: bool,
+) {
+    let window = parent
+        .as_ref()
+        .root()
+        .and_downcast::<gtk::Window>()
+        .map(|window| window.downgrade());
+    let parent = parent.as_ref().downgrade();
+    glib::MainContext::default().spawn_local(async move {
+        for file in files {
+            let window = window.as_ref().and_then(glib::WeakRef::upgrade);
+            let launcher = gtk::FileLauncher::new(Some(&file));
+            launcher.set_always_ask(always_ask);
+            let Err(error) = launcher.launch_future(window.as_ref()).await else {
+                continue;
+            };
+            if !error.matches(gtk::DialogError::Dismissed)
+                && !error.matches(gio::IOErrorEnum::Cancelled)
+                && let Some(parent) = parent.upgrade()
+            {
+                show_error_dialog(
+                    &parent,
+                    &crate::i18n::tr("Unable to open file"),
+                    error.message(),
+                );
+            }
+            return;
+        }
+    });
+}
+
+fn categorized_apps(
     content_type: &str,
     requires_uris: bool,
 ) -> (Vec<gio::AppInfo>, Vec<gio::AppInfo>) {
@@ -97,11 +150,12 @@ fn app_ids(apps: &[gio::AppInfo]) -> HashSet<String> {
 // For mixed types, only promote handlers shared by every type. Single-type
 // history may also promote applications explicitly chosen from Other.
 fn split_recent(
+    history: &recent_apps::State,
     content_types: &[String],
     recommended: &mut Vec<gio::AppInfo>,
     other: &mut Vec<gio::AppInfo>,
 ) -> Vec<gio::AppInfo> {
-    let ordered = recent_apps::load().recent_ids(content_types);
+    let ordered = history.recent_ids(content_types);
     if ordered.is_empty() {
         return Vec::new();
     }
@@ -131,16 +185,51 @@ fn split_recent(
     recent
 }
 
+#[derive(Clone, Default)]
+pub(super) struct Choices {
+    recent: Vec<gio::AppInfo>,
+    recommended: Vec<gio::AppInfo>,
+    other: Vec<gio::AppInfo>,
+}
+
+impl Choices {
+    fn new(
+        history: &recent_apps::State,
+        content_types: &[String],
+        mut recommended: Vec<gio::AppInfo>,
+        mut other: Vec<gio::AppInfo>,
+    ) -> Self {
+        let recent = split_recent(history, content_types, &mut recommended, &mut other);
+        Self {
+            recent,
+            recommended,
+            other,
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.recent.is_empty() && self.recommended.is_empty() && self.other.is_empty()
+    }
+}
+
+pub(super) fn choices_for_type(
+    history: &recent_apps::State,
+    content_type: &str,
+    requires_uris: bool,
+) -> Choices {
+    let (recommended, other) = categorized_apps(content_type, requires_uris);
+    Choices::new(history, &[content_type.to_owned()], recommended, other)
+}
+
 pub(super) struct Applications {
-    pub(super) recommended: Vec<gio::AppInfo>,
-    pub(super) other: Vec<gio::AppInfo>,
+    pub(super) choices: Choices,
     pub(super) default: Option<gio::AppInfo>,
     pub(super) content_types: Vec<String>,
 }
 
 impl Applications {
     pub(super) fn unavailable_reason(&self) -> Option<&'static str> {
-        if !self.recommended.is_empty() || !self.other.is_empty() {
+        if uses_portal() || !self.choices.is_empty() {
             None
         } else if self.content_types.len() > 1 {
             Some("No application can open all selected file types")
@@ -193,11 +282,14 @@ pub(super) async fn resolve(
     if !current() {
         return None;
     }
+    let history = recent_apps::read().await.unwrap_or_default();
+    if !current() {
+        return None;
+    }
     let requires_uris = requires_uri_handlers(files);
     let (recommended, other, default) = common_applications(&content_types, requires_uris);
     Some(Ok(Applications {
-        recommended,
-        other,
+        choices: Choices::new(&history, &content_types, recommended, other),
         default,
         content_types,
     }))
@@ -228,30 +320,171 @@ pub(super) fn launch(
     content_types: &[String],
     context: Option<&impl IsA<gio::AppLaunchContext>>,
 ) -> Result<(), glib::Error> {
-    launch_with_recent_registration(app, files, content_types, context, register_recent_file)
+    launch_with_recent_registration(
+        app,
+        app,
+        files,
+        content_types,
+        context,
+        register_recent_file,
+    )
+}
+
+pub(in crate::ui) fn launch_at(
+    app: &gio::AppInfo,
+    file: &gio::File,
+    content_type: &str,
+    position: Option<std::time::Duration>,
+    context: Option<&impl IsA<gio::AppLaunchContext>>,
+) -> Result<(), glib::Error> {
+    let files = std::slice::from_ref(file);
+    let content_types = [content_type.to_owned()];
+    let timed = position
+        .and_then(|position| {
+            let exec = app.commandline()?;
+            command_line_at(&exec.to_string_lossy(), position.as_secs_f64())
+        })
+        .and_then(|command_line| {
+            let mut flags = if app.supports_uris() {
+                gio::AppInfoCreateFlags::SUPPORTS_URIS
+            } else {
+                gio::AppInfoCreateFlags::NONE
+            };
+            if app
+                .downcast_ref::<gio_unix::DesktopAppInfo>()
+                .is_some_and(|desktop| desktop.boolean("StartupNotify"))
+            {
+                flags |= gio::AppInfoCreateFlags::SUPPORTS_STARTUP_NOTIFICATION;
+            }
+            gio::AppInfo::create_from_commandline(command_line, Some(app.name().as_str()), flags)
+                .ok()
+        });
+    if let Some(timed) = timed
+        && launch_with_recent_registration(
+            app,
+            &timed,
+            files,
+            &content_types,
+            context,
+            register_recent_file,
+        )
+        .is_ok()
+    {
+        return Ok(());
+    }
+    launch(app, files, &content_types, context)
+}
+
+/// Field codes and Flatpak forwarding markers must stay unquoted and mark
+/// where the file arguments go.
+fn is_placeholder(token: &str) -> bool {
+    matches!(
+        token,
+        "%f" | "%F" | "%u" | "%U" | "%i" | "%c" | "%k" | "%d" | "%D" | "%n" | "%N" | "%v" | "%m"
+    ) || token.starts_with("@@")
+}
+
+fn basename(token: &str) -> &str {
+    token.rsplit('/').next().unwrap_or(token)
+}
+
+fn player_name(tokens: &[String]) -> Option<String> {
+    let mut command = tokens.iter().peekable();
+    let mut program = command.next()?;
+    while basename(program) == "env" {
+        program = command.find(|token| !token.contains('=') && !token.starts_with('-'))?;
+    }
+    if basename(program) == "flatpak" {
+        if let Some(name) = tokens
+            .iter()
+            .find_map(|token| token.strip_prefix("--command="))
+        {
+            return Some(basename(name).to_owned());
+        }
+        return tokens
+            .iter()
+            .skip(1)
+            .find(|token| {
+                token.contains('.')
+                    && !token.starts_with('-')
+                    && !token.contains('/')
+                    && !is_placeholder(token)
+            })
+            .cloned();
+    }
+    Some(basename(program).to_owned())
+}
+
+fn start_arguments(player: &str, seconds: f64) -> Option<Vec<String>> {
+    let seconds = format!("{seconds:.3}");
+    Some(match player {
+        "mpv" | "io.mpv.Mpv" => vec![format!("--start={seconds}")],
+        "vlc" | "cvlc" | "qvlc" | "nvlc" | "org.videolan.VLC" => {
+            vec![format!("--start-time={seconds}")]
+        }
+        "celluloid" | "io.github.celluloid_player.Celluloid" => {
+            vec![format!("--mpv-start={seconds}")]
+        }
+        "mplayer" => vec!["-ss".to_owned(), seconds],
+        _ => return None,
+    })
+}
+
+pub(super) fn command_line_at(exec: &str, seconds: f64) -> Option<String> {
+    let tokens: Vec<String> = glib::shell_parse_argv(exec)
+        .ok()?
+        .into_iter()
+        .map(|token| token.to_string_lossy().into_owned())
+        .collect();
+    let arguments = start_arguments(&player_name(&tokens)?, seconds)?;
+    let insert_at = tokens
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find(|(_, token)| is_placeholder(token) || *token == "--")
+        .map_or(tokens.len(), |(index, _)| index);
+    let mut tokens = tokens;
+    tokens.splice(insert_at..insert_at, arguments);
+    Some(
+        tokens
+            .iter()
+            .map(|token| {
+                let plain = token
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"_-./=:@%+,".contains(&byte));
+                if plain && !token.is_empty() || is_placeholder(token) {
+                    token.clone()
+                } else {
+                    glib::shell_quote(token).to_string_lossy().into_owned()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
 }
 
 fn launch_with_recent_registration(
     app: &gio::AppInfo,
+    launcher: &gio::AppInfo,
     files: &[gio::File],
     content_types: &[String],
     context: Option<&impl IsA<gio::AppLaunchContext>>,
     register_recent: impl Fn(&gio::File) -> bool + 'static,
 ) -> Result<(), glib::Error> {
     // GIO drops files without a local path when expanding %f/%F.
-    if !app.supports_uris() && requires_uri_handlers(files) {
+    if !launcher.supports_uris() && requires_uri_handlers(files) {
         return Err(glib::Error::new(
             gio::IOErrorEnum::NotSupported,
-            "This application cannot open files at this location",
+            &crate::i18n::tr("This application cannot open files at this location"),
         ));
     }
-    app.launch(files, context)?;
+    launcher.launch(files, context)?;
     if let Some(app_id) = app.id() {
         let known_ids = gio::AppInfo::all()
             .into_iter()
             .filter_map(|candidate| candidate.id().map(|id| id.to_string()))
             .collect::<HashSet<_>>();
-        recent_apps::record(content_types, app_id.as_str(), &known_ids);
+        recent_apps::record(content_types, app_id.as_str(), known_ids);
     }
     let candidates: Vec<gio::File> = files
         .iter()
@@ -289,7 +522,7 @@ fn register_recent_file(file: &gio::File) -> bool {
     let uri = file.uri();
     let added = manager.add_item(uri.as_str());
     if !added {
-        tracing::debug!(uri = %uri, "unable to record file in Recent history");
+        tracing::debug!(uri = %crate::model::diagnostic_uri(uri.as_str()), "unable to record file in Recent history");
     }
     added
 }
@@ -323,14 +556,9 @@ fn install_list_tab_navigation(
     let always = always_use.downgrade();
     let close = close.downgrade();
     let cancel = cancel.downgrade();
-    keys.connect_key_pressed(move |_, key, _, modifiers| {
-        if !matches!(key, gtk::gdk::Key::Tab | gtk::gdk::Key::ISO_Left_Tab)
-            || modifiers.intersects(
-                gtk::gdk::ModifierType::CONTROL_MASK
-                    | gtk::gdk::ModifierType::ALT_MASK
-                    | gtk::gdk::ModifierType::SUPER_MASK,
-            )
-        {
+    keys::on_press(&keys, move |_, press| {
+        let backward = press.is(FOCUS_PREVIOUS);
+        if !backward && !press.is(FOCUS_NEXT) {
             return glib::Propagation::Proceed;
         }
         let (Some(search), Some(list), Some(always), Some(close), Some(cancel)) = (
@@ -345,8 +573,6 @@ fn install_list_tab_navigation(
         let Some(focus) = list.root().and_then(|root| root.focus()) else {
             return glib::Propagation::Proceed;
         };
-        let backward = key == gtk::gdk::Key::ISO_Left_Tab
-            || modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
         let focus_selected_row = || {
             if list.is_visible() {
                 list.selected_row().is_some_and(|row| row.grab_focus())
@@ -439,7 +665,7 @@ fn create_section_header(title: &str) -> gtk::ListBoxRow {
     row.set_focusable(false);
     row.set_can_focus(false);
 
-    let label = gtk::Label::new(Some(title));
+    let label = gtk::Label::new(Some(&crate::i18n::tr(title)));
     label.add_css_class("open-with-heading");
     label.set_xalign(0.0);
     row.set_child(Some(&label));
@@ -449,9 +675,9 @@ fn create_section_header(title: &str) -> gtk::ListBoxRow {
 fn create_app_row(app: &gio::AppInfo, display: &gtk::gdk::Display) -> gtk::ListBoxRow {
     let row = gtk::ListBoxRow::new();
     row.add_css_class("open-with-row");
-    row.update_property(&[gtk::accessible::Property::Label(&app.display_name())]);
+    super::accessibility::set_label(&row, &app.display_name());
     if let Some(description) = app.description() {
-        row.update_property(&[gtk::accessible::Property::Description(&description)]);
+        super::accessibility::set_description(&row, Some(&description));
     }
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let icon = application_icon(app, display);
@@ -485,11 +711,15 @@ pub(super) fn show(
     parent: &impl IsA<gtk::Widget>,
     files: Vec<gio::File>,
     content_types: Vec<String>,
-    mut recommended_apps: Vec<gio::AppInfo>,
-    mut other_apps: Vec<gio::AppInfo>,
+    choices: Choices,
     context: OpenWithContext,
     on_close: Rc<dyn Fn()>,
 ) {
+    if uses_portal() {
+        launch_with_portal(parent, files, matches!(context, OpenWithContext::Explicit));
+        on_close();
+        return;
+    }
     let Some(window_overlay) = parent
         .root()
         .and_downcast::<gtk::Window>()
@@ -503,16 +733,16 @@ pub(super) fn show(
         root.set_blurred(true);
     }
 
-    let subtitle = if files.len() == 1 {
+    let subtitle = crate::i18n::tr(if files.len() == 1 {
         "Choose an application to open this item"
     } else {
         "Choose an application to open these items"
-    };
+    });
     let layout = modal_layout(
         crate::assets::icons::EXTERNAL_LINK,
-        "Open With",
-        subtitle,
-        "Open",
+        &crate::i18n::tr("Open With"),
+        &subtitle,
+        &crate::i18n::tr("Open"),
     );
     layout.content.add_css_class("open-with-dialog");
     layout.content.set_size_request(480, 460);
@@ -520,20 +750,22 @@ pub(super) fn show(
 
     let search_entry = gtk::SearchEntry::new();
     search_entry.add_css_class("open-with-search");
-    search_entry.set_placeholder_text(Some("Search applications…"));
+    search_entry.set_placeholder_text(Some(&crate::i18n::tr("Search applications…")));
+    super::accessibility::set_label(&search_entry, &crate::i18n::tr("Search applications…"));
     layout.body.append(&search_entry);
 
     let list = gtk::ListBox::new();
     list.add_css_class("open-with-list");
     list.set_selection_mode(gtk::SelectionMode::Single);
     list.set_activate_on_single_click(false);
-    list.update_property(&[gtk::accessible::Property::Label("Applications")]);
+    super::accessibility::set_label(&list, &crate::i18n::tr("Applications"));
 
-    let always_use = super::controls::form_check_button(if content_types.len() > 1 {
-        "Always use for these file types"
-    } else {
-        "Always use for this file type"
-    });
+    let always_use =
+        super::controls::form_check_button(&crate::i18n::tr(if content_types.len() > 1 {
+            "Always use for these file types"
+        } else {
+            "Always use for this file type"
+        }));
     always_use.set_visible(false);
     layout.actions.prepend(&always_use);
 
@@ -548,8 +780,12 @@ pub(super) fn show(
 
     let mut entries = Vec::new();
 
+    let Choices {
+        recent,
+        recommended: recommended_apps,
+        other: other_apps,
+    } = choices;
     let mut recent_heading_row = None;
-    let recent = split_recent(&content_types, &mut recommended_apps, &mut other_apps);
     if !recent.is_empty() {
         let heading = create_section_header("Recently Used");
         list.append(&heading);
@@ -643,7 +879,9 @@ pub(super) fn show(
     list_scroll.set_hscrollbar_policy(gtk::PolicyType::Never);
     layout.body.append(&list_scroll);
 
-    let empty_search = gtk::Label::new(Some("No matching applications were found."));
+    let empty_search = gtk::Label::new(Some(&crate::i18n::tr(
+        "No matching applications were found.",
+    )));
     empty_search.add_css_class("open-with-empty");
     empty_search.set_wrap(true);
     empty_search.set_xalign(0.5);
@@ -658,7 +896,7 @@ pub(super) fn show(
     if !has_apps {
         search_entry.set_visible(false);
         list_scroll.set_visible(false);
-        let empty = gtk::Label::new(Some(context.empty_message()));
+        let empty = gtk::Label::new(Some(&crate::i18n::tr(context.empty_message())));
         empty.add_css_class("open-with-empty");
         empty.set_wrap(true);
         empty.set_xalign(0.5);
@@ -673,22 +911,16 @@ pub(super) fn show(
     search_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let list_for_search = list.downgrade();
     let scroll_for_search = list_scroll.downgrade();
-    search_keys.connect_key_pressed(move |_, key, _, modifiers| {
-        if !matches!(key, gtk::gdk::Key::Down | gtk::gdk::Key::Up)
-            || modifiers.intersects(
-                gtk::gdk::ModifierType::CONTROL_MASK
-                    | gtk::gdk::ModifierType::ALT_MASK
-                    | gtk::gdk::ModifierType::SUPER_MASK
-                    | gtk::gdk::ModifierType::SHIFT_MASK,
-            )
-        {
+    keys::on_press(&search_keys, move |_, press| {
+        let down = press.is(DOWN);
+        if !down && !press.is(UP) {
             return glib::Propagation::Proceed;
         }
         if let (Some(list), Some(scroll)) = (list_for_search.upgrade(), scroll_for_search.upgrade())
             && let Some(selected) = list.selected_row()
         {
             let mut row = selected.clone();
-            let mut sibling = if key == gtk::gdk::Key::Down {
+            let mut sibling = if down {
                 selected.next_sibling()
             } else {
                 selected.prev_sibling()
@@ -701,7 +933,7 @@ pub(super) fn show(
                     row = candidate_row.clone();
                     break;
                 }
-                sibling = if key == gtk::gdk::Key::Down {
+                sibling = if down {
                     candidate.next_sibling()
                 } else {
                     candidate.prev_sibling()
@@ -726,12 +958,13 @@ pub(super) fn show(
     let list_keys = gtk::EventControllerKey::new();
     let search_for_list = search_entry.downgrade();
     let list_weak = list.downgrade();
-    list_keys.connect_key_pressed(move |_, key, _, modifiers| {
+    keys::on_press(&list_keys, move |_, press| {
         let (Some(list), Some(search)) = (list_weak.upgrade(), search_for_list.upgrade()) else {
             return glib::Propagation::Proceed;
         };
+        let press = &press.untyped();
 
-        if key == gtk::gdk::Key::Up
+        if press.is(UP.ignoring(SHORTCUT_MODIFIERS))
             && let Some(selected) = list.selected_row()
         {
             let mut prev = selected.prev_sibling();
@@ -749,13 +982,8 @@ pub(super) fn show(
             }
         }
 
-        let has_command_modifiers = modifiers.intersects(
-            gtk::gdk::ModifierType::CONTROL_MASK
-                | gtk::gdk::ModifierType::ALT_MASK
-                | gtk::gdk::ModifierType::SUPER_MASK,
-        );
-        if !has_command_modifiers && search.is_visible() {
-            if key == gtk::gdk::Key::BackSpace {
+        if search.is_visible() {
+            if press.is(BACKSPACE.ignoring(gtk::gdk::ModifierType::SHIFT_MASK)) {
                 search.grab_focus();
                 let mut text = search.text().to_string();
                 text.pop();
@@ -763,7 +991,7 @@ pub(super) fn show(
                 search.set_position(-1);
                 return glib::Propagation::Stop;
             }
-            if let Some(ch) = key.to_unicode().filter(|c| !c.is_control()) {
+            if let Some(ch) = press.text() {
                 search.grab_focus();
                 let mut text = search.text().to_string();
                 text.push(ch);
@@ -909,14 +1137,14 @@ pub(super) fn show(
                 }
             }
         }
-        let context = list.display().app_launch_context();
+        let context = crate::child_environment::launch_context(&list.display());
         if let Err(error) = launch(&entry.app, &open_files, &open_content_types, Some(&context)) {
             let detail = error.to_string();
             open_dismiss();
             let open_parent = open_parent.clone();
             glib::timeout_add_local_once(Duration::from_millis(250), move || {
                 if let Some(parent) = open_parent.upgrade() {
-                    show_error_dialog(&parent, "Unable to open file", &detail);
+                    show_error_dialog(&parent, &crate::i18n::tr("Unable to open file"), &detail);
                 }
             });
             return;
@@ -934,8 +1162,8 @@ pub(super) fn show(
     let escape_search = search_entry.downgrade();
     let escape = gtk::EventControllerKey::new();
     escape.set_propagation_phase(gtk::PropagationPhase::Capture);
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
+    keys::on_press(&escape, move |_, press| {
+        if press.is(ESCAPE_ANY) {
             if let Some(search) = escape_search.upgrade()
                 && !search.text().is_empty()
             {
@@ -956,3 +1184,6 @@ pub(super) fn show(
         search_entry.grab_focus();
     }
 }
+
+#[cfg(test)]
+mod tests;

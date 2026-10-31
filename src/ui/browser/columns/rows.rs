@@ -9,20 +9,25 @@ use crate::ui::{
     browser::{
         ViewState,
         clipboard::{
-            ClipboardMark, PreparedFileDrop, clipboard_mark, drag_actions_for_modifiers,
-            drag_icon_with_count, file_drag_content, file_drop_action, file_drop_commit,
+            ClipboardMark, PreparedFileDrop, clear_active_drag, clipboard_mark,
+            drag_actions_for_modifiers, drag_preview_icon, file_drag_content,
+            file_drag_hover_target, file_drop_action, file_drop_commit,
             locations_from_file_list_value, prepare_file_drop_target,
         },
-        collection::{ViewMap, activate_recursive_search_result, cancel_source},
+        collection::{ViewMap, activate_recursive_search_result},
         entry::{
             entry_icon, entry_responds_to_preview_click, metadata_needs_fill, model_display_name,
         },
         paths::is_trash_location,
     },
-    browser_modes::BrowserMode,
+    browser_modes::{BrowserMode, FilteredFileClick, filtered_file_click},
     modal::slide_in_down,
 };
-use crate::{model::FileEntry, services::SearchItem};
+use crate::{
+    model::{FileEntry, Location},
+    services::SearchItem,
+    ui::browser::arm_spring_load_navigation,
+};
 use gtk::{glib, prelude::*};
 use std::{
     cell::{Cell, RefCell},
@@ -42,27 +47,72 @@ fn anchor_at(state: &std::rc::Weak<ViewState>, depth: usize, map: &ViewMap, row:
     }
 }
 
+/// Filtered folders keep one-click open.
+fn filtered_click_kind(
+    state: &ViewState,
+    entry: &FileEntry,
+    recursive: bool,
+) -> Option<PendingActivationKind> {
+    let chooser = state.browser.is_chooser_mode();
+    if entry.is_directory() {
+        return Some(if recursive && chooser {
+            PendingActivationKind::ChooserSearchNavigate
+        } else if recursive {
+            PendingActivationKind::RecursiveSearch
+        } else {
+            PendingActivationKind::Mapped
+        });
+    }
+    match filtered_file_click(
+        entry,
+        chooser,
+        state.single_click_previews.get(),
+        state.columns_click_activation.get().files,
+    ) {
+        FilteredFileClick::Open if recursive => Some(PendingActivationKind::RecursiveSearch),
+        FilteredFileClick::Open => Some(PendingActivationKind::Mapped),
+        FilteredFileClick::Preview if recursive => Some(PendingActivationKind::RecursivePreview),
+        FilteredFileClick::Preview => Some(PendingActivationKind::Standard { preview: true }),
+        FilteredFileClick::Ignore => None,
+    }
+}
+
+fn open_row_in_new(state: &Rc<ViewState>, location: &Location, action: &str) {
+    let uri = crate::adapters::gio_file_for_location(location)
+        .uri()
+        .to_variant();
+    if let Err(error) = state.overlay.activate_action(action, Some(&uri)) {
+        tracing::warn!(%error, action, "open-in-new location action unavailable");
+    }
+}
+
 pub(super) struct ColumnRows {
     pub(super) factory: gtk::SignalListItemFactory,
     pub(super) bound_rows: Rc<RefCell<Vec<BoundRow>>>,
+    pub(super) scrolling: Rc<Cell<bool>>,
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each column's row factory binds to that column's own models and state"
+)]
 pub(super) fn column_rows(
     state: &Rc<ViewState>,
     depth: usize,
     map: &ViewMap,
     selection: &gtk::MultiSelection,
-    modified_selection: &Rc<Cell<bool>>,
     recursive_search_active: &Rc<Cell<bool>>,
     search_results: &Rc<RefCell<Vec<SearchItem>>>,
+    hits: &Rc<RefCell<super::ColumnHits>>,
+    enter_target: &crate::ui::enter_target::EnterTarget,
 ) -> ColumnRows {
+    let scrolling = Rc::new(Cell::new(false));
     let factory = gtk::SignalListItemFactory::new();
     let bound_rows: Rc<RefCell<Vec<BoundRow>>> = Rc::new(RefCell::new(Vec::new()));
     let rows_for_setup = bound_rows.clone();
     let search_active_for_factory = recursive_search_active.clone();
     let search_results_for_factory = search_results.clone();
     let weak_state = Rc::downgrade(state);
-    let modified_selection_for_rows = modified_selection.clone();
     let selection_for_rows = selection.clone();
     let map_for_hover = map.clone();
     factory.connect_setup(move |_, item| {
@@ -73,7 +123,6 @@ pub(super) fn column_rows(
         row.add_css_class("file-row");
         let icon = crate::ui::thumbnail::ThumbnailSlot::new(17);
         icon.add_css_class("file-icon");
-        let drag_icon = icon.clone();
         icon.set_valign(gtk::Align::Center);
         let label = gtk::Label::builder()
             .halign(gtk::Align::Fill)
@@ -83,7 +132,7 @@ pub(super) fn column_rows(
             .build();
         let rename = gtk::Entry::new();
         rename.add_css_class("inline-rename");
-        crate::ui::accessibility::set_label(&rename, "Rename");
+        crate::ui::accessibility::set_label(&rename, &crate::i18n::tr("Rename"));
         rename.set_hexpand(true);
         rename.set_width_chars(1);
         rename.set_visible(false);
@@ -118,47 +167,34 @@ pub(super) fn column_rows(
         content.append(&path);
         middle.set_child(Some(&content));
         middle.add_overlay(&size);
+        let weak_rename = rename.downgrade();
+        crate::ui::preferences::PreferenceManager::shared().bind_preference(
+            &size,
+            crate::ui::preferences::PreferenceManager::columns_show_sizes,
+            move |widget, enabled| {
+                let Some(label) = widget.downcast_ref::<gtk::Label>() else {
+                    return;
+                };
+                let editing = weak_rename
+                    .upgrade()
+                    .is_some_and(|entry| entry.upcast_ref::<gtk::Widget>().is_visible());
+                label.set_visible(enabled && !editing && !label.label().is_empty());
+            },
+        );
         let chevron = crate::assets::primary_icon(crate::assets::icons::CHEVRON_RIGHT, 15);
         chevron.add_css_class("file-chevron");
         chevron.set_valign(gtk::Align::Center);
         row.append(&icon);
         row.append(&middle);
         row.append(&chevron);
-        let motion = gtk::EventControllerMotion::new();
-        let list_item = item.downgrade();
-        let weak_state_for_enter = weak_state.clone();
-        let map_for_enter = map_for_hover.clone();
-        motion.connect_enter(move |controller, _, _| {
-            let Some(item) = list_item.upgrade() else {
-                return;
-            };
-            if let Some(state) = weak_state_for_enter.upgrade() {
-                let source_position = map_for_enter.source_position(item.position());
-                let entry =
-                    source_position.and_then(|position| state.browser.entry_at(depth, position));
-                if let Some(entry) = entry {
-                    if entry.is_directory() {
-                        if let Some(anchor) = controller.widget() {
-                            state.schedule_peek(depth, entry.location, anchor);
-                        }
-                    } else {
-                        cancel_source(&state.pending_peek);
-                        state.browser.close_peek();
-                    }
-                }
-            }
-        });
-        let weak_state_for_leave = weak_state.clone();
-        motion.connect_leave(move |_| {
-            if let Some(state) = weak_state_for_leave.upgrade() {
-                state.schedule_close_peek();
-            }
-        });
-        row.add_controller(motion);
-
         item.set_child(Some(&row));
         let pending_activation = Rc::new(RefCell::new(None::<PendingPointerActivation>));
+        let pending_activation_for_unmap = pending_activation.clone();
+        row.connect_unmap(move |_| {
+            pending_activation_for_unmap.take();
+        });
         let was_selected = Rc::new(Cell::new(false));
+        let press_origin = Rc::new(Cell::new((0.0, 0.0)));
         let mut content_drag: Option<gtk::DragSource> = None;
         if weak_state.upgrade().is_some_and(|state| state.interactive) {
             let drag = gtk::DragSource::builder()
@@ -173,8 +209,18 @@ pub(super) fn column_rows(
             let search_results_for_drag = search_results_for_factory.clone();
             let selection_for_drag = selection_for_rows.clone();
             let was_selected_for_drag = was_selected.clone();
+            let press_origin_for_drag = press_origin.clone();
             drag.connect_prepare(move |source, x, y| {
                 let prepare_row = prepare_row.upgrade()?;
+                if let Some(current) = source.current_event().and_then(|event| event.position())
+                    && !crate::ui::pointer::exceeds_drag_threshold(
+                        press_origin_for_drag.get(),
+                        current,
+                        prepare_row.settings().gtk_dnd_drag_threshold(),
+                    )
+                {
+                    return None;
+                }
                 if prepare_row
                     .pick(x, y, gtk::PickFlags::DEFAULT)
                     .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
@@ -187,42 +233,41 @@ pub(super) fn column_rows(
                 let state = weak_state_for_drag.upgrade()?;
                 let dragged_item = dragged_item.upgrade()?;
                 let position = dragged_item.position();
-                let (entry, selected) = if search_active_for_drag.get() {
+                let entries = if search_active_for_drag.get() {
                     let results = search_results_for_drag.borrow();
                     let entry =
                         crate::ui::browser::search_result_entry(results.get(position as usize)?);
-                    let selected = crate::ui::browser::collection::bitset_positions(
+                    let selected: Vec<_> = crate::ui::browser::collection::bitset_positions(
                         &selection_for_drag.selection(),
                     )
                     .into_iter()
                     .filter_map(|position| results.get(position as usize))
                     .map(crate::ui::browser::search_result_entry)
                     .collect();
-                    (entry, selected)
+                    if selected
+                        .iter()
+                        .any(|selected| selected.location == entry.location)
+                    {
+                        selected
+                    } else {
+                        vec![entry]
+                    }
                 } else {
                     let source_position = map_for_drag.source_position(position)?;
-                    (
-                        state.browser.entry_at(depth, source_position)?,
-                        state.browser.selected_entries(),
-                    )
+                    let entry = state.browser.entry_at(depth, source_position)?;
+                    if state
+                        .browser
+                        .active_selection_contains(depth, source_position)
+                    {
+                        state.browser.selected_entries()
+                    } else {
+                        vec![entry]
+                    }
                 };
-                let entries = if selected
-                    .iter()
-                    .any(|selected| selected.location == entry.location)
-                {
-                    selected
-                } else {
-                    vec![entry]
-                };
-                if let Some((texture, hot_x, hot_y)) =
-                    drag_icon_with_count(drag_icon.upcast_ref(), entries.len())
-                {
+                if let Some((texture, hot_x, hot_y)) = drag_preview_icon(&prepare_row, &entries) {
                     source.set_icon(Some(&texture), hot_x, hot_y);
-                } else {
-                    let paintable = gtk::WidgetPaintable::new(Some(&prepare_row));
-                    source.set_icon(Some(&paintable), x.round() as i32, y.round() as i32);
                 }
-                file_drag_content(&entries)
+                file_drag_content(source, &entries)
             });
             let dragged_row = row.downgrade();
             let weak_state_for_begin = weak_state.clone();
@@ -240,6 +285,7 @@ pub(super) fn column_rows(
             let dragged_row = row.downgrade();
             let weak_state_for_end = weak_state.clone();
             drag.connect_drag_end(move |_, _, _| {
+                clear_active_drag();
                 if let Some(row) = dragged_row.upgrade() {
                     row.remove_css_class("dragging");
                 }
@@ -268,49 +314,68 @@ pub(super) fn column_rows(
                 target: drop,
                 state: drop_state,
             } = prepare_file_drop_target(dest_for_row);
+            let spring_navigate: Rc<dyn Fn(Location)> = {
+                let weak_state = weak_state.clone();
+                Rc::new(move |location| {
+                    if let Some(state) = weak_state.upgrade() {
+                        state.browser.descend(depth, location);
+                    }
+                })
+            };
             let highlighted_row = row.downgrade();
             let state_for_enter = drop_state.clone();
+            let navigate_for_enter = spring_navigate.clone();
             drop.connect_enter(move |target, _, _| {
                 let action = file_drop_action(target, &state_for_enter);
+                let hovered = file_drag_hover_target(&state_for_enter, target).is_some();
                 if let Some(row) = highlighted_row.upgrade() {
-                    if action.is_empty() {
-                        row.remove_css_class("drop-destination");
-                    } else {
+                    if hovered {
                         row.add_css_class("drop-destination");
+                    } else {
+                        row.remove_css_class("drop-destination");
                     }
                 }
+                arm_spring_load_navigation(&state_for_enter, target, &navigate_for_enter);
                 action
             });
             let highlighted_row = row.downgrade();
             let state_for_motion = drop_state.clone();
+            let navigate_for_motion = spring_navigate.clone();
             drop.connect_motion(move |target, _, _| {
                 let action = file_drop_action(target, &state_for_motion);
+                let hovered = file_drag_hover_target(&state_for_motion, target).is_some();
                 if let Some(row) = highlighted_row.upgrade() {
-                    if action.is_empty() {
-                        row.remove_css_class("drop-destination");
-                    } else {
+                    if hovered {
                         row.add_css_class("drop-destination");
+                    } else {
+                        row.remove_css_class("drop-destination");
                     }
                 }
+                arm_spring_load_navigation(&state_for_motion, target, &navigate_for_motion);
                 action
             });
             let highlighted_row = row.downgrade();
             let state_for_value = drop_state.clone();
+            let navigate_for_value = spring_navigate.clone();
             drop.connect_value_notify(move |target| {
                 if target.current_drop().is_none() {
                     return;
                 }
-                let action = file_drop_action(target, &state_for_value);
+                file_drop_action(target, &state_for_value);
+                let hovered = file_drag_hover_target(&state_for_value, target).is_some();
                 if let Some(row) = highlighted_row.upgrade() {
-                    if action.is_empty() {
-                        row.remove_css_class("drop-destination");
-                    } else {
+                    if hovered {
                         row.add_css_class("drop-destination");
+                    } else {
+                        row.remove_css_class("drop-destination");
                     }
                 }
+                arm_spring_load_navigation(&state_for_value, target, &navigate_for_value);
             });
             let highlighted_row = row.downgrade();
+            let state_for_leave = drop_state.clone();
             drop.connect_leave(move |_| {
+                state_for_leave.cancel_spring_load_navigation();
                 if let Some(row) = highlighted_row.upgrade() {
                     row.remove_css_class("drop-destination");
                 }
@@ -342,6 +407,7 @@ pub(super) fn column_rows(
                 let Some(dropped_row) = dropped_row.upgrade() else {
                     return false;
                 };
+                drop_state.cancel_spring_load_navigation();
                 dropped_row.remove_css_class("drop-destination");
                 let Some(state) = weak_state_for_drop.upgrade() else {
                     return false;
@@ -353,11 +419,18 @@ pub(super) fn column_rows(
                 let Some(sources) = locations_from_file_list_value(value) else {
                     return false;
                 };
-                let commit = file_drop_commit(target, &destination, &sources, &drop_state);
                 slide_in_down(&dropped_row);
-                glib::timeout_add_local_once(Duration::from_millis(300), move || {
-                    state.commit_file_drop(destination, sources, commit);
-                });
+                file_drop_commit(
+                    target,
+                    destination,
+                    sources,
+                    &drop_state,
+                    move |destination, sources, commit| {
+                        glib::timeout_add_local_once(Duration::from_millis(300), move || {
+                            state.commit_file_drop(destination, sources, commit);
+                        });
+                    },
+                );
                 true
             });
             row.add_controller(drop);
@@ -369,7 +442,6 @@ pub(super) fn column_rows(
         selection_click.set_propagation_phase(gtk::PropagationPhase::Capture);
         let clicked_item = item.downgrade();
         let selection_for_click = selection_for_rows.clone();
-        let modified_for_click = modified_selection_for_rows.clone();
         let map_for_click = map_for_hover.clone();
         let search_active_for_click = search_active_for_factory.clone();
         let search_results_for_click = search_results_for_factory.clone();
@@ -386,7 +458,6 @@ pub(super) fn column_rows(
         let press_moved_for_press = press_moved.clone();
         let press_moved_for_update = press_moved.clone();
         let press_moved_for_release = press_moved.clone();
-        let press_origin = Rc::new(Cell::new((0.0, 0.0)));
         let press_origin_for_press = press_origin.clone();
         let press_origin_for_update = press_origin.clone();
         let rename_position = Rc::new(Cell::new(None::<usize>));
@@ -398,7 +469,12 @@ pub(super) fn column_rows(
             rename_position_for_press.set(None);
             was_selected_for_press.set(false);
             press_moved_for_press.set(false);
-            press_origin_for_press.set((x, y));
+            // Focusing a parent can scroll the row beneath a stationary pointer.
+            let press = gesture
+                .current_event()
+                .and_then(|event| event.position())
+                .unwrap_or((x, y));
+            press_origin_for_press.set(press);
             if let Some(state) = weak_state_for_click.upgrade() {
                 state.cancel_click_rename();
             }
@@ -433,7 +509,45 @@ pub(super) fn column_rows(
                 modifiers,
             );
             let preserve_group = change.preserved_group;
-            modified_for_click.set(control || shift);
+            let filtered = search_active_for_click.get() || map_for_click.has_query();
+            let source_position = map_for_click.source_position(position);
+            let (activate, location_hold) = if let Some(state) = weak_state_for_click.upgrade()
+                && let Some(entry) =
+                    source_position.and_then(|position| state.browser.entry_at(depth, position))
+            {
+                if !filtered
+                    && !control
+                    && !shift
+                    && entry.is_directory()
+                    && let Some(position) = source_position
+                {
+                    state.folder_press.replace(Some(super::FolderPress {
+                        at: std::time::Instant::now(),
+                        point: press,
+                        depth,
+                        position,
+                        location: entry.location.clone(),
+                    }));
+                }
+                let activate = !filtered
+                    && should_activate_single_click(
+                        press_count,
+                        entry.is_directory(),
+                        state.columns_click_activation.get(),
+                        control,
+                        shift,
+                    );
+                let location_hold = (!search_active_for_click.get()
+                    && entry.is_directory()
+                    && (activate || (filtered && press_count == 1 && !control && !shift)))
+                    .then(|| state.hold_tab_location());
+                if activate && let Some(hold) = &location_hold {
+                    hold.opening(depth, entry.location.clone());
+                }
+                (activate, location_hold)
+            } else {
+                (false, None)
+            };
             if !shift && let Some(anchor) = change.anchor {
                 anchor_at(&weak_state_for_click, depth, &map_for_click, anchor);
             }
@@ -456,9 +570,7 @@ pub(super) fn column_rows(
             {
                 item_widget.grab_focus();
             }
-            modified_for_click.set(false);
 
-            let filtered = search_active_for_click.get() || map_for_click.has_query();
             if filtered {
                 if press_count == 1
                     && !control
@@ -469,17 +581,10 @@ pub(super) fn column_rows(
                         search_results_for_click
                             .borrow()
                             .get(position as usize)
-                            .map(|item| {
-                                let kind = if state.browser.is_chooser_mode() {
-                                    PendingActivationKind::ChooserSearchNavigate
-                                } else {
-                                    PendingActivationKind::RecursiveSearch
-                                };
-                                (
-                                    position as usize,
-                                    crate::model::Location::local(item.path.clone()),
-                                    kind,
-                                )
+                            .and_then(|item| {
+                                let entry = crate::ui::browser::search_result_entry(item);
+                                let kind = filtered_click_kind(&state, &entry, true)?;
+                                Some((position as usize, entry.location, kind))
                             })
                     } else {
                         map_for_click
@@ -487,50 +592,30 @@ pub(super) fn column_rows(
                             .and_then(|source_position| {
                                 let entry = state.browser.entry_at(depth, source_position)?;
                                 state.browser.select(depth, source_position);
-                                if is_trash_location(&entry.location) && !entry.is_directory() {
-                                    if state.single_click_previews.get() {
-                                        return Some((
-                                            source_position,
-                                            entry.location,
-                                            PendingActivationKind::Standard { preview: true },
-                                        ));
-                                    }
-                                    return None;
-                                }
-                                Some((
-                                    source_position,
-                                    entry.location,
-                                    PendingActivationKind::Mapped,
-                                ))
+                                let kind = filtered_click_kind(&state, &entry, false)?;
+                                Some((source_position, entry.location, kind))
                             })
                     };
                     if let Some((position, location, kind)) = pending {
                         pending_activation_for_press.replace(Some(PendingPointerActivation {
                             position,
                             location,
-                            press: (x, y),
+                            press,
                             moved: false,
                             kind,
+                            location_hold,
                         }));
                     }
                 }
                 return;
             }
 
-            let source_position = map_for_click.source_position(position);
             if let (Some(state), Some(source_position)) =
                 (weak_state_for_click.upgrade(), source_position)
             {
                 let entry = state.browser.entry_at(depth, source_position);
                 if let Some(entry) = entry.as_ref() {
-                    let activate = should_activate_single_click(
-                        press_count,
-                        entry.is_directory(),
-                        state.columns_click_activation.get(),
-                        control,
-                        shift,
-                        preserve_group,
-                    ) && !state.browser.is_open_child(depth, &entry.location);
+                    let reopening = state.browser.is_open_child(depth, &entry.location);
                     let slow_click_rename = press_count == 1
                         && selected_before
                         && selected_count_before == 1
@@ -542,7 +627,7 @@ pub(super) fn column_rows(
                                 | gtk::gdk::ModifierType::META_MASK,
                         )
                         && !preserve_group
-                        && !activate
+                        && (!activate || reopening)
                         && !state.browser.is_chooser_mode()
                         && !is_trash_location(&entry.location)
                         && gesture
@@ -551,6 +636,7 @@ pub(super) fn column_rows(
                             .is_some_and(|(row, label)| {
                                 crate::ui::pointer::hits_name_label(&row, label.upcast_ref(), x, y)
                             });
+                    let activate = activate && !slow_click_rename;
                     rename_position_for_press.set(if slow_click_rename {
                         Some(source_position)
                     } else {
@@ -558,12 +644,7 @@ pub(super) fn column_rows(
                     });
                     let preview = !activate
                         && !slow_click_rename
-                        && should_preview_pointer_press(
-                            press_count,
-                            control,
-                            shift,
-                            preserve_group,
-                        )
+                        && should_preview_pointer_press(press_count, control, shift)
                         && entry_responds_to_preview_click(
                             entry,
                             state.single_click_previews.get(),
@@ -572,37 +653,51 @@ pub(super) fn column_rows(
                         pending_activation_for_press.replace(Some(PendingPointerActivation {
                             position: source_position,
                             location: entry.location.clone(),
-                            press: (x, y),
+                            press,
                             moved: false,
                             kind: PendingActivationKind::Standard { preview },
+                            location_hold,
                         }));
                     }
                 }
             }
         });
-        selection_click.connect_update(move |gesture, sequence| {
-            if let (Some(pending), Some((x, y)), Some(widget)) = (
-                pending_activation_for_motion.borrow_mut().as_mut(),
-                gesture.point(sequence),
-                gesture.widget(),
+        selection_click.connect_update(move |gesture, _| {
+            let Some((x, y)) = gesture.current_event().and_then(|event| event.position()) else {
+                return;
+            };
+            let Some(widget) = gesture.widget() else {
+                return;
+            };
+            let threshold = widget.settings().gtk_dnd_drag_threshold();
+            let cancelled_hold = pending_activation_for_motion
+                .borrow_mut()
+                .as_mut()
+                .and_then(|pending| {
+                    pending.update(x, y, threshold);
+                    if pending.moved {
+                        pending.location_hold.take()
+                    } else {
+                        None
+                    }
+                });
+            drop(cancelled_hold);
+            if crate::ui::pointer::exceeds_drag_threshold(
+                press_origin_for_update.get(),
+                (x, y),
+                threshold,
             ) {
-                pending.update(x, y, widget.settings().gtk_dnd_drag_threshold());
-            }
-            if let (Some((x, y)), Some(widget)) = (gesture.point(sequence), gesture.widget()) {
-                let origin = press_origin_for_update.get();
-                if crate::ui::pointer::exceeds_drag_threshold(
-                    origin,
-                    (x, y),
-                    widget.settings().gtk_dnd_drag_threshold(),
-                ) {
-                    press_moved_for_update.set(true);
-                }
+                press_moved_for_update.set(true);
             }
         });
         let weak_state_for_release = weak_state.clone();
         let search_results_for_release = search_results_for_factory.clone();
         selection_click.connect_released(move |gesture, count, x, y| {
             let pending = pending_activation_for_release.take();
+            let (x, y) = gesture
+                .current_event()
+                .and_then(|event| event.position())
+                .unwrap_or((x, y));
             if pending.is_none()
                 && count == 1
                 && !press_moved_for_release.get()
@@ -640,7 +735,12 @@ pub(super) fn column_rows(
                             state.browser.preview(depth, pending.position);
                         }
                     } else {
-                        state.browser.activate(depth, pending.position);
+                        let activate = || state.activate_column_entry(depth, pending.position);
+                        if let Some(hold) = pending.location_hold.take() {
+                            hold.navigate(depth, activate);
+                        } else {
+                            activate();
+                        }
                     }
                 }
                 PendingActivationKind::Mapped => {
@@ -652,7 +752,12 @@ pub(super) fn column_rows(
                         return;
                     }
                     if !state.browser.is_chooser_mode() {
-                        state.browser.activate_in_place(depth, pending.position);
+                        let activate = || state.browser.activate_in_place(depth, pending.position);
+                        if let Some(hold) = pending.location_hold.take() {
+                            hold.navigate(depth, activate);
+                        } else {
+                            activate();
+                        }
                     }
                 }
                 PendingActivationKind::ChooserSearchNavigate => {
@@ -683,6 +788,19 @@ pub(super) fn column_rows(
                         );
                     }
                 }
+                PendingActivationKind::RecursivePreview => {
+                    let Some(item) = search_results_for_release
+                        .borrow()
+                        .get(pending.position)
+                        .cloned()
+                    else {
+                        return;
+                    };
+                    let entry = crate::ui::browser::search_result_entry(&item);
+                    if pending.can_activate(&entry.location) && state.single_click_previews.get() {
+                        state.browser.request_preview(entry);
+                    }
+                }
             }
         });
         let weak_state_for_cancel = weak_state.clone();
@@ -696,17 +814,66 @@ pub(super) fn column_rows(
         if let Some(drag) = &content_drag {
             drag.group_with(&selection_click);
         }
+        crate::ui::collection_interaction::install_row_middle_click(
+            row.upcast_ref::<gtk::Widget>(),
+            item,
+            {
+                let weak_state = weak_state.clone();
+                let map = map_for_hover.clone();
+                let search_active = search_active_for_factory.clone();
+                let search_results = search_results_for_factory.clone();
+                move |position, modifiers| {
+                    let Some(state) = weak_state.upgrade() else {
+                        return;
+                    };
+                    let entry = if search_active.get() {
+                        search_results
+                            .borrow()
+                            .get(position as usize)
+                            .map(crate::ui::browser::search_result_entry)
+                    } else {
+                        map.source_position(position).and_then(|source_position| {
+                            state.browser.entry_at(depth, source_position)
+                        })
+                    };
+                    let Some(entry) = entry else {
+                        return;
+                    };
+                    let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
+                    let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+                    match crate::ui::collection_interaction::middle_click_action(
+                        entry.is_directory(),
+                        control,
+                        shift,
+                    ) {
+                        crate::ui::collection_interaction::MiddleClickAction::OpenTab => {
+                            open_row_in_new(&state, &entry.location, "win.open-tab-at");
+                        }
+                        crate::ui::collection_interaction::MiddleClickAction::OpenWindow => {
+                            open_row_in_new(&state, &entry.location, "win.open-window-at");
+                        }
+                        crate::ui::collection_interaction::MiddleClickAction::RevealParent => {
+                            if let Some(parent) = entry.location.parent() {
+                                state.reveal_locations(parent, vec![entry.location], false);
+                            }
+                        }
+                    }
+                }
+            },
+        );
         let weak_item = glib::WeakRef::new();
         weak_item.set(Some(item));
         let weak_row = glib::WeakRef::new();
         weak_row.set(Some(&row));
         let weak_rename_label = glib::WeakRef::new();
         weak_rename_label.set(Some(&label));
+        let edit = crate::ui::collection_edit::EditWidgets::new(&rename, &label);
+        crate::ui::collection_edit::register_item_edit(item, &edit);
         rows_for_setup.borrow_mut().push(BoundRow {
             item: weak_item,
             row: weak_row,
             rename_label: weak_rename_label,
-            edit: crate::ui::collection_edit::EditWidgets::new(&rename, &label),
+            edit,
             spacer,
             size,
         });
@@ -714,8 +881,10 @@ pub(super) fn column_rows(
     let map_for_bind = map.clone();
     let weak_state_for_bind = Rc::downgrade(state);
     let search_active_for_bind = recursive_search_active.clone();
+    let enter_for_bind = enter_target.clone();
     let search_results_for_bind = search_results.clone();
-    let rows_for_bind = bound_rows.clone();
+    let hits_for_bind = hits.clone();
+    let scrolling_for_bind = scrolling.clone();
     factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
@@ -779,6 +948,7 @@ pub(super) fn column_rows(
         } else {
             row.remove_css_class("filter-result");
         }
+        enter_for_bind.decorate(&row, item);
         let source_position = (!searching)
             .then(|| map_for_bind.source_position(item.position()))
             .flatten();
@@ -792,11 +962,7 @@ pub(super) fn column_rows(
         } else {
             source_position.and_then(|position| browser?.entry_at(depth, position))
         };
-        let edit = rows_for_bind
-            .borrow()
-            .iter()
-            .find(|bound| bound.item.upgrade().as_ref() == Some(item))
-            .map(|bound| bound.edit.clone());
+        let edit = crate::ui::collection_edit::item_edit(item);
         if let Some(edit) = &edit {
             if let Some(entry) = &entry {
                 edit.bind(&entry.location);
@@ -817,22 +983,31 @@ pub(super) fn column_rows(
         } else {
             label.set_opacity(1.0);
         }
-        crate::ui::browser::find::highlight_name(
-            label.upcast_ref(),
-            state
-                .as_ref()
-                .and_then(|state| state.find_highlight())
-                .as_deref(),
-        );
+        let hits = hits_for_bind.borrow();
+        let find = state.as_ref().and_then(|state| state.find_highlight());
+        if searching {
+            let hit = search_results_for_bind
+                .borrow()
+                .get(item.position() as usize)
+                .and_then(|hit| hits.ranges.get(&hit.path).cloned());
+            crate::ui::browser::find::highlight_hit_name(
+                label.upcast_ref(),
+                find.as_deref(),
+                hit.as_deref(),
+            );
+        } else {
+            crate::ui::browser::find::highlight_listing_name(
+                label.upcast_ref(),
+                find.as_deref(),
+                &map_for_bind.query(),
+            );
+        }
         let origin = entry
             .as_ref()
             .filter(|_| searching)
             .map(|entry| entry.location.display_path());
         path.set_label(origin.as_deref().unwrap_or_default());
-        path.set_visible(
-            origin.is_some()
-                && crate::ui::preferences::PreferenceManager::shared().filter_include_subfolders(),
-        );
+        path.set_visible(origin.is_some() && hits.recursive);
         row.set_widget_name(origin.as_deref().unwrap_or("file-row"));
         crate::ui::accessibility::set_description(&row, origin.as_deref());
         let active = entry.as_ref().is_some_and(|entry| {
@@ -849,6 +1024,11 @@ pub(super) fn column_rows(
                 .as_ref()
                 .map_or(ClipboardMark::None, |entry| clipboard_mark(&entry.location)),
         );
+        crate::ui::file_providers::bind(
+            &icon,
+            entry.as_ref().and_then(|e| e.location.native_path()),
+        );
+        let show_sizes = crate::ui::preferences::PreferenceManager::shared().columns_show_sizes();
         if let Some(entry) = entry.as_ref() {
             let mode_active = state
                 .as_ref()
@@ -877,9 +1057,10 @@ pub(super) fn column_rows(
             icon.set_base_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
             chevron.set_visible(entry.is_directory());
             if mode_active
+                && !scrolling_for_bind.get()
                 && let Some(state) = state.as_ref()
                 && let Some(position) = source_position
-                && metadata_needs_fill(entry)
+                && (metadata_needs_fill(entry) || (show_sizes && entry.is_directory()))
             {
                 crate::ui::thumbnail::request_metadata(
                     &icon,
@@ -888,7 +1069,7 @@ pub(super) fn column_rows(
                     depth,
                     position,
                     entry.location.clone(),
-                    false,
+                    show_sizes && entry.is_directory(),
                 );
             }
         } else {
@@ -900,30 +1081,18 @@ pub(super) fn column_rows(
         }
         let size_text = column_size_text(entry.as_ref());
         size.set_label(&size_text);
-        size.set_visible(!editing && !size_text.is_empty());
+        size.set_visible(show_sizes && !editing && !size_text.is_empty());
         crate::ui::accessibility::describe_entry(item, &label.label(), entry.as_ref());
     });
-    let rows_for_unbind = bound_rows.clone();
     factory.connect_unbind(move |_, object| {
-        let edit = rows_for_unbind
-            .borrow()
-            .iter()
-            .find(|bound| {
-                bound
-                    .item
-                    .upgrade()
-                    .as_ref()
-                    .map(|item| item.upcast_ref::<glib::Object>())
-                    == Some(object)
-            })
-            .map(|bound| bound.edit.clone());
-        if let Some(edit) = edit {
+        if let Some(edit) = crate::ui::collection_edit::item_edit(object) {
             edit.unbind();
         }
         crate::ui::thumbnail::cancel_list_item_thumbnails(object);
     });
     let rows_for_teardown = bound_rows.clone();
     factory.connect_teardown(move |_, object| {
+        crate::ui::collection_edit::forget_item_edit(object);
         rows_for_teardown.borrow_mut().retain(|bound| {
             bound
                 .item
@@ -934,5 +1103,6 @@ pub(super) fn column_rows(
     ColumnRows {
         factory,
         bound_rows,
+        scrolling,
     }
 }

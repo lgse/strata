@@ -55,3 +55,14 @@ fn modified_sequence_defers_claim_and_cancellation_retires_activation() {
         },
     );
 }
+
+#[test]
+fn middle_click_opens_directories_and_reveals_files_for_each_modifier() {
+    use MiddleClickAction::*;
+    assert_eq!(middle_click_action(true, false, false), OpenTab);
+    assert_eq!(middle_click_action(true, true, false), OpenWindow);
+    assert_eq!(middle_click_action(true, false, true), OpenWindow);
+    assert_eq!(middle_click_action(false, false, false), RevealParent);
+    assert_eq!(middle_click_action(false, true, false), RevealParent);
+    assert_eq!(middle_click_action(false, false, true), RevealParent);
+}

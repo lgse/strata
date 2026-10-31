@@ -17,6 +17,11 @@ checksum = "sha256:9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8
 url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-x86_64-unknown-linux-musl.tar.gz"
 url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/471598214"
 
+[tools."aqua:EmbarkStudios/cargo-deny"."platforms.macos-arm64"]
+checksum = "sha256:fe67d82a10d8597a3549364cb733a3f9cc1bfff9031b7ae46384a9f2a72090c3"
+url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-aarch64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/471597689"
+
 [[tools."aqua:crate-ci/typos"]]
 version = "1.50.1"
 backend = "aqua:crate-ci/typos"
@@ -32,21 +37,30 @@ checksum = "sha256:edf0545109aee6a22751d04ddecb97c45be47d3aa0409564fb895eeeace91
 url = "https://github.com/crate-ci/typos/releases/download/v1.50.1/typos-v1.50.1-x86_64-unknown-linux-musl.tar.gz"
 url_api = "https://api.github.com/repos/crate-ci/typos/releases/assets/539858793"
 
-[[tools."aqua:watchexec/cargo-watch"]]
+[tools."aqua:crate-ci/typos"."platforms.macos-arm64"]
+checksum = "sha256:2c940734b44b6e199e165278b662b7e17c68f068471a2a8a5e491ce635414ae6"
+url = "https://github.com/crate-ci/typos/releases/download/v1.50.1/typos-v1.50.1-aarch64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/crate-ci/typos/releases/assets/539861019"
+
+[[tools."github:watchexec/cargo-watch"]]
 version = "8.5.3"
-backend = "aqua:watchexec/cargo-watch"
+backend = "github:watchexec/cargo-watch"
 specifiers = ["8.5.3"]
 
-[tools."aqua:watchexec/cargo-watch"."platforms.linux-arm64"]
+[tools."github:watchexec/cargo-watch"."platforms.linux-arm64"]
 checksum = "sha512:e1d29699863de701e57568b26e5ff2b2c8c6b93ee7a3a66209228a6ee40c60ea3c2cdd7b3840071b58e18bf4cb022c09ad43b329fab5f4f8a1d196bd4985bc85"
 url = "https://github.com/watchexec/cargo-watch/releases/download/v8.5.3/cargo-watch-v8.5.3-aarch64-unknown-linux-gnu.tar.xz"
 url_api = "https://api.github.com/repos/watchexec/cargo-watch/releases/assets/196338827"
-provenance = "minisign"
 
-[tools."aqua:watchexec/cargo-watch"."platforms.linux-x64"]
+[tools."github:watchexec/cargo-watch"."platforms.linux-x64"]
 checksum = "sha512:2b6e28821aea9642d79f24290b18f58be615ff6b52da5e1536c0ad9a1eda834af713c78183a356273047cd63c43bc6ebcb372bccbecccc1e45246cffbe043320"
 url = "https://github.com/watchexec/cargo-watch/releases/download/v8.5.3/cargo-watch-v8.5.3-x86_64-unknown-linux-gnu.tar.xz"
 url_api = "https://api.github.com/repos/watchexec/cargo-watch/releases/assets/196338820"
+
+[tools."github:watchexec/cargo-watch"."platforms.macos-arm64"]
+checksum = "sha512:03ab97c14a69098b88a371bd99bf4ae9f1f16618184889d611ba469470cf1477e640ac44990c0b00b709dddabcbc405a5a30db1dd1c9b9f4d110e5b50a2e6ec2"
+url = "https://github.com/watchexec/cargo-watch/releases/download/v8.5.3/cargo-watch-v8.5.3-aarch64-apple-darwin.tar.xz"
+url_api = "https://api.github.com/repos/watchexec/cargo-watch/releases/assets/196338825"
 
 [[tools.python]]
 version = "3.14.7"
@@ -61,6 +75,11 @@ provenance = "github-attestations"
 [tools.python."platforms.linux-x64"]
 checksum = "sha256:3959f92825141e04adf44982d3a83ee57af0877e893b0796e04c1468749d9b04"
 url = "https://github.com/astral-sh/python-build-standalone/releases/download/20260901/cpython-3.14.7+20260901-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
+provenance = "github-attestations"
+
+[tools.python."platforms.macos-arm64"]
+checksum = "sha256:4632cb1a6edad9e73d3c81b6d2e69131637d995173e3e85005df14102b0592ba"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20260901/cpython-3.14.7+20260901-aarch64-apple-darwin-install_only_stripped.tar.gz"
 provenance = "github-attestations"
 
 [[tools.rust]]

@@ -90,7 +90,14 @@ fn delayed_sort_cannot_restore_stale_hidden_file_preferences() {
         show_hidden: true,
         ..pending
     });
-    browser.finish_awaited_sort(0, 1, pending);
+    browser.finish_awaited_sort(SortFill {
+        generation: 1,
+        depth: 0,
+        origin: SortOrigin::Chosen,
+        fill_request: RequestId(2),
+        directory_request: RequestId(1),
+        preferences: pending,
+    });
     assert!(browser.preferences().show_hidden);
     assert!(
         browser

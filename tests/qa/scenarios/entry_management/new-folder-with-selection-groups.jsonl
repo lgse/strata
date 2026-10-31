@@ -1,0 +1,41 @@
+{"scenario":"new-folder-with-selection-groups","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.9,"icons":1.7,"list":1.7},"quality":{"impact":4,"coverage":4,"criticality":3,"diagnostic":4,"score":49,"note":"Moves two selected files into a new folder via the selection context menu, names it and undoes it in three modes; only GUI route for New Folder with Selection, no unit test covers the grouping; undo and fs moves are its main risk"}}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"toggle button","name":"Preview panel"}},"message":"the preview panel toggle"}
+{"key":"Escape","when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":false}}}
+{"click":{"role":"toggle button","name":"Preview panel"},"when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":true}}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location editor to take focus"}
+{"key":"Escape"}
+{"wait":{"focused_pane":true},"message":"focus to return to the file listing"}
+{"select":{"entry":"readme.md","dir":"$root"}}
+{"click":{"entry":"todo.txt","dir":"$root"},"mods":["ctrl"]}
+{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the selection to become ['readme.md', 'todo.txt']"}
+{"click":{"entry":"readme.md","dir":"$root"},"button":3}
+{"wait":{"menu_items":{}},"message":"the selection context menu"}
+{"wait":{"present":{"menu_item":"New Folder with Selection"}},"message":"the menu item 'New Folder with Selection'"}
+{"settle":{"menu_item":"New Folder with Selection"}}
+{"click":{"menu_item":"New Folder with Selection"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"wait":{"field":{"of":"field","text":{"starts_with":"new folder"}}},"message":"the new folder's editor"}
+{"type":"grouped"}
+{"key":"Return"}
+{"fs":{"path":"grouped/readme.md","is":"file"},"message":"the selection moved into the named folder"}
+{"fs":{"path":"grouped/todo.txt","is":"file"},"timeout_ms":0}
+{"fs":{"path":"readme.md","exists":false},"timeout_ms":0}
+{"fs":{"path":"todo.txt","exists":false},"timeout_ms":0}
+{"wait":{"entry":"readme.md","dir":"grouped"},"message":"the entry 'readme.md' in 'grouped' to appear","modes":["columns"]}
+{"wait":{"entry":"todo.txt","dir":"grouped"},"message":"the entry 'todo.txt' in 'grouped' to appear","modes":["columns"]}
+{"wait":{"not":{"field":{}}},"message":"the rename editor to release keyboard focus"}
+{"wait":{"present":{"role":"label","name":"2 items","within":{"entry":"grouped","dir":"$root"}}},"message":"the renamed folder's row to count its two items","modes":["columns"]}
+{"click":{"entry":"grouped","dir":"$root"}}
+{"wait":{"focused_pane":"grouped"},"message":"the open folder's column to take focus","modes":["columns"]}
+{"key":"Left","modes":["columns"]}
+{"select_with_keyboard":"grouped"}
+{"key":"ctrl+z"}
+{"wait":{"all":[{"file":{"path":"$fixture/readme.md","exists":true}},{"file":{"path":"$fixture/todo.txt","exists":true}},{"file":{"path":"$fixture/grouped","exists":false}},{"file":{"path":"$fixture/new folder","exists":false}}]},"message":"the gesture undone"}
+{"fs":{"path":"readme.md","is":"file"},"timeout_ms":0,"message":"the gesture undone"}
+{"fs":{"path":"todo.txt","is":"file"},"timeout_ms":0,"message":"the gesture undone"}
+{"wait":{"entry":"readme.md","dir":"$root"},"message":"the entry 'readme.md' in '$root' to appear"}

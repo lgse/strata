@@ -1,0 +1,14 @@
+diff --git a/src/adapters/local_operations.rs b/src/adapters/local_operations.rs
+index 41b43bf8..a7270292 100644
+--- a/src/adapters/local_operations.rs
++++ b/src/adapters/local_operations.rs
+@@ -2866,6 +2866,9 @@ impl OperationProvider for LocalOperationProvider {
+                 .unwrap_or_else(|| {
+                     gio::File::for_uri(request.entry.location.uri_value().unwrap_or_default())
+                 });
++            if let Some(existing) = file.parent().map(|parent| parent.child(&request.new_name)) {
++                let _ = existing.delete(gio::Cancellable::NONE);
++            }
+             if let Some(folder) = file.parent()
+                 && let Some(message) =
+                     typed_names::refused_in(&folder, &request.new_name, false).await

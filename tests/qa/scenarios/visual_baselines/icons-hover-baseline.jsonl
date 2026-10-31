@@ -1,0 +1,9 @@
+{"scenario":"icons-hover-baseline","modes":["icons"],"prefs":{"browser_mode":"icons"},"layout":"us","mutation":null,"known_bug":null,"fixture_root":"/tmp/strata-e2e-baseline","tree":{"Applications":{},"DataGripProjects":{},"pictures":{},"readme.md":"# Fixture\n","todo.txt":"todo\n"},"images":{"portrait.png":{"width":32,"height":64,"rgb":[255,140,0]},"wide.png":{"width":64,"height":32,"rgb":[70,130,180]}},"cost":{"icons":0.6},"quality":{"impact":2,"coverage":2,"criticality":3,"diagnostic":1,"score":7,"note":"Hovered Icons tile baseline only; cosmetic pixel and baseline asserts, fixture shared with icons-view-baseline and icons-airy-view-baseline"}}
+{"move":{"point":[{"extent":{"window":true},"plus":-4},{"extent":{"window":true},"plus":-4}]}}
+{"wait":{"entries":["Applications","DataGripProjects","pictures","portrait.png","readme.md","todo.txt","wide.png"]},"message":"the fixture listing to be complete"}
+{"settle":{"pane":null}}
+{"expect":[{"present":{"role":"image","within":{"entry":"portrait.png"}}},{"present":{"role":"image","within":{"entry":"wide.png"}}}]}
+{"wait":{"all":[{"pixel":{"target":{"role":"image","within":{"entry":"portrait.png"}},"rgb":[255,140,0]}},{"pixel":{"target":{"role":"image","within":{"entry":"wide.png"}},"rgb":[70,130,180]}}]},"message":"both image shapes to finish rendering"}
+{"move":{"entry":"todo.txt"}}
+{"settle":{"pane":null}}
+{"baseline":"icons-hover"}

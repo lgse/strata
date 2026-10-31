@@ -6,11 +6,12 @@ use std::{
 };
 
 use super::{
-    BuildKind, CHECK_INTERVAL, Channel, ReleaseResponse, ReleaseSummary, UpdateCheck,
-    UpdateCheckCache, Version, archive_name, cache_is_fresh, cached_releases, check_from_cache,
-    fetch_package_update, from_cached_release, package_update_from_response, release_metadata,
+    BuildKind, CHECK_INTERVAL, Channel, DocumentBlock, NetworkError, RELEASE_LIST_MAX_PAGES,
+    RELEASE_LIST_PAGE_SIZE, ReleaseResponse, ReleaseSummary, UpdateCheck, UpdateCheckCache,
+    Version, archive_name, cache_is_fresh, cached_releases, check_from_cache, fetch_package_update,
+    from_cached_release, package_update_from_response, release_choices, release_metadata,
     release_page_url, request_error_message, request_json_conditional, select_cached_update,
-    select_update, to_cached_release, to_release_summary,
+    select_update, signed_release_pages, to_cached_release, to_release_summary,
 };
 
 fn version(tag: &str) -> Version {
@@ -167,13 +168,24 @@ fn release_metadata_carries_channel_identity_fields() {
 fn release_body_is_retained() {
     let asset = matching_asset_json("1.2.3");
     let response = release_response(&format!(
-        r###"{{"tag_name":"v1.2.3","draft":false,"prerelease":false,"assets":[{asset}],"body":"## Changes\n\n- Fast"}}"###
+        r###"{{"tag_name":"v1.2.3","draft":false,"prerelease":false,"assets":[{asset}],"body":"<!-- Release notes generated using configuration in .github/release.yml at v1.2.3 -->\n\n## Changes\n\n- Fast"}}"###
     ));
     let summary = to_release_summary(&response).expect("tag should parse");
     let release = release_metadata(&summary);
     assert_eq!(release.version, "1.2.3");
-    assert_eq!(release.notes, "## Changes\n\n- Fast");
-    assert!(!release.note_blocks.is_empty());
+    assert_eq!(
+        release.notes,
+        "<!-- Release notes generated using configuration in .github/release.yml at v1.2.3 -->\n\n## Changes\n\n- Fast"
+    );
+    assert!(
+        matches!(
+            release.note_blocks.first(),
+            Some(DocumentBlock::Heading { .. })
+        ),
+        "{:?}",
+        release.note_blocks
+    );
+    assert!(!format!("{:?}", release.note_blocks).contains("&lt;!--"));
 }
 
 #[test]
@@ -249,6 +261,117 @@ fn preview_feed_skips_drafts_unparsable_tags_and_assetless_releases() {
 }
 
 #[test]
+fn release_choices_list_only_signed_releases_with_their_install_requests() {
+    let signed = |version: &str, prerelease: bool| {
+        let archive = matching_asset_json(version);
+        format!(
+            r#"{{"tag_name":"v{version}","draft":false,"prerelease":{prerelease},"assets":[{archive},
+              {{"name":"strata-update-manifest.json","browser_download_url":"https://example.invalid/m"}},
+              {{"name":"strata-update-manifest.signatures.json","browser_download_url":"https://example.invalid/s"}}]}}"#
+        )
+    };
+    let unsigned = matching_asset_json("0.4.0");
+    let responses = release_response_list(&format!(
+        r#"[{}, {}, {{"tag_name":"v0.4.0","draft":false,"prerelease":false,"assets":[{unsigned}]}}, {}]"#,
+        signed("0.6.0-nightly.20260901", true),
+        signed("0.5.0", false),
+        signed("0.4.1", false),
+    ));
+
+    let choices = release_choices(Channel::Nightly, &responses);
+
+    let tags: Vec<_> = choices
+        .iter()
+        .map(|choice| choice.release.tag.as_str())
+        .collect();
+    assert_eq!(tags, ["v0.6.0-nightly.20260901", "v0.5.0", "v0.4.1"]);
+    let older = &choices[2];
+    assert_eq!(older.install.tag, "v0.4.1");
+    assert_eq!(older.install.asset_name, archive_name("0.4.1"));
+    assert_eq!(
+        older.install.advertised_url,
+        format!("https://example.invalid/{}", archive_name("0.4.1"))
+    );
+    assert_eq!(older.release.kind, BuildKind::Stable);
+}
+
+#[test]
+fn release_pages_stop_at_unsigned_history_short_pages_errors_or_the_page_cap() {
+    let full = RELEASE_LIST_PAGE_SIZE as usize;
+    let page = |len: usize, signed: bool| {
+        let manifests = if signed {
+            r#"{"name":"strata-update-manifest.json","browser_download_url":"https://example.invalid/m"},
+               {"name":"strata-update-manifest.signatures.json","browser_download_url":"https://example.invalid/s"}"#
+        } else {
+            ""
+        };
+        let release = format!(
+            r#"{{"tag_name":"v0.1.0","draft":false,"prerelease":false,"assets":[{manifests}]}}"#
+        );
+        release_response_list(&format!("[{}]", vec![release; len].join(",")))
+    };
+    let max_pages = RELEASE_LIST_MAX_PAGES as usize;
+    for (name, pages, expected) in [
+        (
+            "short page",
+            vec![Ok((full, true)), Ok((3, true))],
+            Ok((2, full + 3)),
+        ),
+        (
+            "unsigned history",
+            vec![Ok((full, true)), Ok((full, false))],
+            Ok((2, 2 * full)),
+        ),
+        (
+            "page cap",
+            vec![Ok((full, true)); max_pages + 1],
+            Ok((max_pages, max_pages * full)),
+        ),
+        (
+            "error",
+            vec![Ok((full, true)), Err("rate limited")],
+            Err("rate limited"),
+        ),
+    ] {
+        let mut fetched = 0;
+        let result = signed_release_pages(|number| {
+            fetched += 1;
+            assert_eq!(number as usize, fetched, "{name}");
+            pages[fetched - 1].map(|(len, signed)| page(len, signed))
+        });
+        assert_eq!(
+            result.map(|releases| (fetched, releases.len())),
+            expected,
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn preview_offers_final_release_over_an_installed_release_candidate() {
+    let final_asset = matching_asset_json("0.5.0");
+    let rc_asset = matching_asset_json("0.5.0-rc.2");
+    let responses = release_response_list(&format!(
+        r#"[
+            {{"tag_name":"v0.5.0","draft":false,"prerelease":false,"assets":[{final_asset}]}},
+            {{"tag_name":"v0.5.0-rc.2","draft":false,"prerelease":true,"assets":[{rc_asset}]}}
+        ]"#
+    ));
+    let summaries: Vec<_> = responses.iter().filter_map(to_release_summary).collect();
+    let installed = version("0.5.0-rc.2");
+    let result = select_update(Channel::Preview, &installed, &summaries);
+    match result {
+        UpdateCheck::Available { release, install } => {
+            assert_eq!(release.tag, "v0.5.0");
+            assert_eq!(install.tag, "v0.5.0");
+            assert_eq!(install.asset_name, archive_name("0.5.0"));
+            assert!(install.advertised_url.ends_with(&install.asset_name));
+        }
+        other => panic!("expected final 0.5.0 to be offered, got {other:?}"),
+    }
+}
+
+#[test]
 fn selecting_stable_on_a_prerelease_offers_the_latest_final_as_the_channel_transition() {
     let stable_asset = matching_asset_json("0.4.0");
     let response = release_response(&format!(
@@ -269,7 +392,8 @@ fn cache(channel: Channel, checked_at: u64) -> UpdateCheckCache {
         checked_at,
         etag: None,
         releases: Vec::new(),
-        error: None,
+        legacy_error: None,
+        failure: None,
     }
 }
 
@@ -360,12 +484,28 @@ fn a_cached_update_reuses_its_resolved_commit() {
 #[test]
 fn a_cached_failure_remains_a_failure() {
     let mut cache = cache(Channel::Stable, 1_000);
-    cache.error = Some("Network request failed".to_owned());
+    cache.failure = Some(NetworkError::from_ureq(&ureq::Error::Io(
+        std::io::Error::from_raw_os_error(libc::ECONNREFUSED),
+    )));
+    let restored: UpdateCheckCache =
+        toml::from_str(&toml::to_string_pretty(&cache).expect("cache should serialize"))
+            .expect("cache should deserialize");
 
+    assert!(cache_is_fresh(&restored, Channel::Stable, false, 1_000));
     assert_eq!(
-        check_from_cache(&cache, Channel::Stable, &version("v0.8.0")),
-        UpdateCheck::Failed("Network request failed".to_owned())
+        check_from_cache(&restored, Channel::Stable, &version("v0.8.0")),
+        UpdateCheck::Failed("Network request failed: The connection was refused".to_owned())
     );
+}
+
+#[test]
+fn a_failure_cached_as_translated_text_is_stale() {
+    let cache: UpdateCheckCache = toml::from_str(
+        "channel = \"stable\"\nchecked_at = 1000\nerror = \"ошибка сетевого запроса\"\n",
+    )
+    .expect("an older cache should still parse");
+
+    assert!(!cache_is_fresh(&cache, Channel::Stable, false, 1_000));
 }
 
 #[test]

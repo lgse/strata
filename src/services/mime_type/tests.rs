@@ -18,8 +18,10 @@ fn test_entry(name: &str, kind: EntryKind) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
+        recent_uri: None,
     }
 }
 
@@ -27,19 +29,19 @@ fn test_entry(name: &str, kind: EntryKind) -> FileEntry {
 fn entry_type_identifies_directories_and_broken_links() {
     let dir = test_entry("documents", EntryKind::Directory);
     assert_eq!(entry_type(&dir), EntryType::Folder);
-    assert_eq!(entry_type_description(&dir), "Folder");
+    assert_eq!(entry_type(&dir).description(), "Folder");
 
     let dir_link = test_entry("docs_link", EntryKind::DirectorySymbolicLink);
     assert_eq!(entry_type(&dir_link), EntryType::Folder);
-    assert_eq!(entry_type_description(&dir_link), "Folder");
+    assert_eq!(entry_type(&dir_link).description(), "Folder");
 
     let broken = test_entry("broken", EntryKind::SymbolicLink);
     assert_eq!(entry_type(&broken), EntryType::BrokenLink);
-    assert_eq!(entry_type_description(&broken), "Broken link");
+    assert_eq!(entry_type(&broken).description(), "Broken link");
 
     let other = test_entry("socket", EntryKind::Other);
     assert_eq!(entry_type(&other), EntryType::Other);
-    assert_eq!(entry_type_description(&other), "Other");
+    assert_eq!(entry_type(&other).description(), "Other");
 }
 
 #[test]
@@ -52,11 +54,11 @@ fn entry_type_identifies_known_and_unknown_files() {
         entry_type(&json_file),
         EntryType::Known(expected_json.clone().into())
     );
-    assert_eq!(entry_type_description(&json_file), expected_json);
+    assert_eq!(entry_type(&json_file).description(), expected_json);
 
     let unknown_file = test_entry("blob.qqqqq", EntryKind::File);
     assert_eq!(entry_type(&unknown_file), EntryType::Other);
-    assert_eq!(entry_type_description(&unknown_file), "Other");
+    assert_eq!(entry_type(&unknown_file).description(), "Other");
 }
 
 #[test]
@@ -67,6 +69,11 @@ fn mime_description_for_name_uses_shared_database() {
 
     let unknown_desc = mime_description_for_name("archive.xyzunknown");
     assert_eq!(unknown_desc, "Other");
+
+    assert_eq!(
+        mime_description_for_name("GOPR0001.GPR"),
+        gio::content_type_get_description("image/x-dcraw").as_str()
+    );
 }
 
 #[test]

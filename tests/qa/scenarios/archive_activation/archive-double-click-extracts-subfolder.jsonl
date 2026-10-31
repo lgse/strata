@@ -1,0 +1,23 @@
+{"scenario":"archive-double-click-extracts-subfolder","modes":["columns"],"prefs":{"list_file_clicks":2,"grid_file_clicks":2,"explorer_file_clicks":2},"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"zip-double-click","vars":{"fmt":"zip"}},{"id":"targz-double-click","vars":{"fmt":"tar.gz"}}],"cost":{"columns-zip-double-click":1.4,"columns-targz-double-click":1.4},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Double-click in Columns bundles a multi-root zip or tar.gz into a subfolder and selects it; archive-activation-extracts-subfolder covers List by Return"}}
+{"wait":{"focused":"archive"},"message":"keyboard focus to reach 'archive'"}
+{"fs":{"path":"activation.zip","zip":[["activated.txt",{"text":"extracted by activation\n","date_time":[2001,9,9,1,46,40],"mode":"100755"}],["nested/second.txt",{"text":"second member\n","date_time":[2001,9,9,1,46,40],"mode":"100755"}]]},"variants":["zip-double-click"]}
+{"fs":{"path":"activation.tar.gz","tar_gz":{"mode":"755","mtime":1000000000,"members":[["activated.txt","extracted by activation\n"],["nested/second.txt","second member\n"]]}},"variants":["targz-double-click"]}
+{"fs":{"path":"activated.txt","write":"pre-existing\n"}}
+{"wait":{"entry":"activated.txt"},"message":"the entry 'activated.txt' to appear"}
+{"wait":{"entry":"activation.$fmt"},"message":"the entry 'activation.$fmt' to appear"}
+{"click":{"entry":"activation.$fmt"},"count":2}
+{"fs":{"path":"activation/activated.txt","exists":true},"message":"archive activation to bundle spilled members"}
+{"wait":{"dialog":null},"message":"extraction progress dismissal"}
+{"fs":{"path":"activation/activated.txt","text":"extracted by activation\n"},"timeout_ms":0}
+{"fs":{"path":"activation/activated.txt","executable":true},"timeout_ms":0}
+{"fs":{"path":"activation/activated.txt","mtime":{"local":[2001,9,9,1,46,40]}},"timeout_ms":0,"variants":["zip-double-click"]}
+{"fs":{"path":"activation/activated.txt","mtime":1000000000},"timeout_ms":0,"variants":["targz-double-click"]}
+{"fs":{"path":"activation/nested/second.txt","text":"second member\n"},"timeout_ms":0}
+{"fs":{"path":"activated.txt","text":"pre-existing\n"},"timeout_ms":0}
+{"fs":{"path":"activation/activated (2).txt","exists":false},"timeout_ms":0}
+{"fs":{"path":"nested","exists":false},"timeout_ms":0}
+{"fs":{"path":"activation.$fmt","exists":true},"timeout_ms":0}
+{"expect":{"pane":"$root"}}
+{"wait":{"entry":"activation"},"message":"the entry 'activation' to appear"}
+{"wait":{"selected":["activation"],"dir":"$root"},"message":"the selection to become ['activation']"}
+{"wait":{"focused":"activation"},"message":"keyboard focus to reach 'activation'"}

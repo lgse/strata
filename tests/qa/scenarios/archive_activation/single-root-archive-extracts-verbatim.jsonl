@@ -1,0 +1,14 @@
+{"scenario":"single-root-archive-extracts-verbatim","modes":["columns"],"prefs":{"list_file_clicks":2,"grid_file_clicks":2,"explorer_file_clicks":2},"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"keyboard","vars":{"activation":"keyboard"}},{"id":"double-click","vars":{"activation":"double-click"}}],"cost":{"columns-keyboard":0.7,"columns-double-click":0.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"RAR single-root archive activated by Return or double-click extracts verbatim; zip logic unit-tested, sibling covers subfolder route"}}
+{"wait":{"focused":"archive"},"message":"keyboard focus to reach 'archive'"}
+{"fs":{"path":"activation.rar","from_repository":"tests/fixtures/rar/version.rar"}}
+{"wait":{"entry":"activation.rar"},"message":"the entry 'activation.rar' to appear"}
+{"select":{"entry":"todo.txt"},"variants":["keyboard"]}
+{"select_with_keyboard":"activation.rar","variants":["keyboard"]}
+{"key":"Return","variants":["keyboard"]}
+{"click":{"entry":"activation.rar"},"count":2,"variants":["double-click"]}
+{"fs":{"path":"VERSION","exists":true},"message":"single-root archive to extract verbatim"}
+{"wait":{"dialog":null},"message":"extraction progress dismissal"}
+{"fs":{"path":"VERSION","text":"unrar-0.4.0"},"timeout_ms":0}
+{"fs":{"path":"VERSION","mtime":{"local":[2015,8,7,17,21,8]}},"timeout_ms":0}
+{"fs":{"path":"activation","exists":false},"timeout_ms":0}
+{"fs":{"path":"activation.rar","exists":true},"timeout_ms":0}

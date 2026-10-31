@@ -1,0 +1,4 @@
+{"scenario":"recent-absent-from-sidebar","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.2},"quality":{"impact":2,"coverage":2,"criticality":2,"diagnostic":4,"score":9,"note":"Default startup omits Recent without backend; recent-preference-adds-no-place repeats the absence after toggling, so only startup is unique"}}
+{"expect":{"present":{"sidebar":"Home"}}}
+{"expect":{"present":{"sidebar":"Trash"}}}
+{"expect":{"absent":{"role":"button","name":"Recent"}},"message":"Recent must not be offered when the recent backend is unavailable"}

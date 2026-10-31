@@ -1,0 +1,88 @@
+{"scenario":"model-preview-reports-limits","modes":["list"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"cost":{"list":2.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Space preview of STL camera views, binary STL and 3MF mesh details, 3MF thumbnail, multipart, FreeCAD and oversized models; camera cycling is unit-tested in preview/tests/model.rs, unique part is the GUI wiring"}}
+{"fs":{"path":"sample.stl","write":"solid sample\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\nendloop\nendfacet\nendsolid\n"}}
+{"fs":{"path":"binary.stl","hex":"736f6c69640000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000803f0000000000000000000000000000803f0000000000000000000000000000803f000000000000"}}
+{"fs":{"path":"sample.3mf","zip":[["3D/3dmodel.model","geometry must not be parsed when one usable thumbnail exists"],["Metadata/thumbnail.png",{"image":{"width":32,"height":32,"rgb":[255,0,0]}}],["Metadata/invalid-thumbnail.png","invalid image"]]}}
+{"fs":{"path":"sample.3mf","rename":"model-blob"}}
+{"fs":{"path":"sample.3mf","symlink":"model-blob"}}
+{"fs":{"path":"geometry.3mf","zip":[["3D/3dmodel.model","<model><resources><object id=\"1\"><mesh><vertices><vertex x=\"0\" y=\"0\" z=\"0\"/><vertex x=\"2\" y=\"0\" z=\"0\"/><vertex x=\"0\" y=\"1\" z=\"1\"/></vertices><triangles><triangle v1=\"0\" v2=\"1\" v3=\"2\"/></triangles></mesh></object></resources><build><item objectid=\"1\"/></build></model>"]]}}
+{"wait":{"entries":{"contains":["binary.stl","geometry.3mf","sample.3mf","sample.stl"]}},"message":"model files in listing"}
+{"select":{"entry":"sample.stl"}}
+{"key":"space"}
+{"wait":{"all":[{"present":{"role":"image","name":"Model preview","within":{"preview":true}}},{"state":{"target":{"role":"image","name":"Model preview","within":{"preview":true}},"busy":false}}]},"message":"rendered STL preview"}
+{"expect":{"preview":"4 of 4 in folder"}}
+{"wait":{"present":{"role":"button","name":"Next model view","within":{"preview":true}}},"message":"the next model view button"}
+{"click":{"role":"button","name":"Next model view","within":{"preview":true}}}
+{"wait":{"all":[{"description":{"target":{"role":"image","name":"Camera position","within":{"preview":true}},"text":"Back left"}},{"state":{"target":{"role":"image","name":"Model preview","within":{"preview":true}},"busy":false}}]},"message":"STL camera view Back left to finish rendering"}
+{"expect":{"state":{"target":{"role":"button","name":"Next model view","within":{"preview":true}},"focused":true}},"message":"Next model view to keep focus"}
+{"expect":{"description":{"target":{"role":"image","name":"Camera position","within":{"preview":true}},"text":"Back left"}},"timeout_ms":0}
+{"expect":{"preview":"ASCII STL"},"timeout_ms":0}
+{"expect":{"preview":"1 triangle"},"timeout_ms":0}
+{"expect":{"preview":"4 of 4 in folder"},"timeout_ms":0}
+{"wait":{"present":{"role":"button","name":"Next model view","within":{"preview":true}}},"message":"the next model view button"}
+{"click":{"role":"button","name":"Next model view","within":{"preview":true}}}
+{"wait":{"all":[{"description":{"target":{"role":"image","name":"Camera position","within":{"preview":true}},"text":"Back right"}},{"state":{"target":{"role":"image","name":"Model preview","within":{"preview":true}},"busy":false}}]},"message":"STL camera view Back right to finish rendering"}
+{"expect":{"state":{"target":{"role":"button","name":"Next model view","within":{"preview":true}},"focused":true}},"message":"Next model view to keep focus"}
+{"expect":{"description":{"target":{"role":"image","name":"Camera position","within":{"preview":true}},"text":"Back right"}},"timeout_ms":0}
+{"expect":{"preview":"ASCII STL"},"timeout_ms":0}
+{"expect":{"preview":"1 triangle"},"timeout_ms":0}
+{"expect":{"preview":"4 of 4 in folder"},"timeout_ms":0}
+{"wait":{"present":{"role":"button","name":"Next model view","within":{"preview":true}}},"message":"the next model view button"}
+{"click":{"role":"button","name":"Next model view","within":{"preview":true}}}
+{"wait":{"all":[{"description":{"target":{"role":"image","name":"Camera position","within":{"preview":true}},"text":"Front right"}},{"state":{"target":{"role":"image","name":"Model preview","within":{"preview":true}},"busy":false}}]},"message":"STL camera view Front right to finish rendering"}
+{"expect":{"state":{"target":{"role":"button","name":"Next model view","within":{"preview":true}},"focused":true}},"message":"Next model view to keep focus"}
+{"expect":{"description":{"target":{"role":"image","name":"Camera position","within":{"preview":true}},"text":"Front right"}},"timeout_ms":0}
+{"expect":{"preview":"ASCII STL"},"timeout_ms":0}
+{"expect":{"preview":"1 triangle"},"timeout_ms":0}
+{"expect":{"preview":"4 of 4 in folder"},"timeout_ms":0}
+{"wait":{"present":{"role":"button","name":"Next model view","within":{"preview":true}}},"message":"the next model view button"}
+{"click":{"role":"button","name":"Next model view","within":{"preview":true}}}
+{"wait":{"all":[{"description":{"target":{"role":"image","name":"Camera position","within":{"preview":true}},"text":"Front left"}},{"state":{"target":{"role":"image","name":"Model preview","within":{"preview":true}},"busy":false}}]},"message":"STL camera view Front left to finish rendering"}
+{"expect":{"state":{"target":{"role":"button","name":"Next model view","within":{"preview":true}},"focused":true}},"message":"Next model view to keep focus"}
+{"expect":{"description":{"target":{"role":"image","name":"Camera position","within":{"preview":true}},"text":"Front left"}},"timeout_ms":0}
+{"expect":{"preview":"ASCII STL"},"timeout_ms":0}
+{"expect":{"preview":"1 triangle"},"timeout_ms":0}
+{"expect":{"preview":"4 of 4 in folder"},"timeout_ms":0}
+{"click":{"role":"button","name":"Close preview (Space)","within":{"preview":true}}}
+{"wait":{"preview":null},"message":"STL preview to close"}
+{"select":{"entry":"binary.stl"}}
+{"key":"space"}
+{"wait":{"all":[{"preview":"Binary STL"},{"preview":"1 triangle"}]},"message":"binary STL mesh details"}
+{"expect":{"preview":"1 of 4 in folder"},"timeout_ms":0}
+{"click":{"role":"button","name":"Close preview (Space)","within":{"preview":true}}}
+{"wait":{"preview":null},"message":"binary STL preview to close"}
+{"select":{"entry":"sample.3mf"}}
+{"key":"space"}
+{"wait":{"all":[{"present":{"role":"image","name":"Model preview","within":{"preview":true}}},{"state":{"target":{"role":"image","name":"Model preview","within":{"preview":true}},"busy":false}}]},"message":"embedded 3MF thumbnail"}
+{"expect":{"absent":{"role":"button","name":"Next model view","within":{"preview":true}}},"message":"a thumbnail preview has no camera views"}
+{"expect":{"absent":{"role":"image","name":"Camera position","within":{"preview":true}}},"timeout_ms":0}
+{"click":{"role":"button","name":"Close preview (Space)","within":{"preview":true}}}
+{"wait":{"preview":null},"message":"model preview to close"}
+{"select":{"entry":"geometry.3mf"}}
+{"key":"space"}
+{"wait":{"all":[{"present":{"role":"button","name":"Previous model view","within":{"preview":true}}},{"state":{"target":{"role":"image","name":"Model preview","within":{"preview":true}},"busy":false}}]},"message":"rendered 3MF camera controls"}
+{"click":{"role":"button","name":"Previous model view","within":{"preview":true}}}
+{"wait":{"all":[{"description":{"target":{"role":"image","name":"Camera position","within":{"preview":true}},"text":"Front right"}},{"state":{"target":{"role":"image","name":"Model preview","within":{"preview":true}},"busy":false}}]},"message":"3MF camera to wrap to the previous view"}
+{"expect":{"preview":"3MF"},"timeout_ms":0}
+{"expect":{"preview":"1 triangle"},"timeout_ms":0}
+{"expect":{"preview":"2 of 4 in folder"},"timeout_ms":0}
+{"click":{"role":"button","name":"Close preview (Space)","within":{"preview":true}}}
+{"wait":{"preview":null},"message":"geometry preview to close"}
+{"fs":{"path":"assembly.3mf","zip":[["3D/Objects/part.model","<model/>"],["3D/3dmodel.model","<model/>"]]}}
+{"wait":{"entry":"assembly.3mf"},"message":"multipart model in listing"}
+{"select":{"entry":"assembly.3mf"}}
+{"key":"space"}
+{"wait":{"preview":"Multipart model detected. Unable to render preview."},"message":"multipart model notice"}
+{"click":{"role":"button","name":"Close preview (Space)","within":{"preview":true}}}
+{"wait":{"preview":null},"message":"multipart preview to close"}
+{"fs":{"path":"missing.FCStd","zip":[["Document.xml","<Document/>"]]}}
+{"wait":{"entry":"missing.FCStd"},"message":"FreeCAD file in listing"}
+{"select":{"entry":"missing.FCStd"}}
+{"key":"space"}
+{"wait":{"preview":"This FreeCAD file has no usable embedded thumbnail"},"message":"specific sandbox error"}
+{"click":{"role":"button","name":"Close preview (Space)","within":{"preview":true}}}
+{"wait":{"preview":null},"message":"FreeCAD preview to close"}
+{"fs":{"path":"oversized.stl","truncate":134217729}}
+{"wait":{"entry":"oversized.stl"},"message":"oversized STL in listing"}
+{"select":{"entry":"oversized.stl"}}
+{"key":"space"}
+{"wait":{"preview":"128 MiB preview limit"},"message":"explicit file size limit"}

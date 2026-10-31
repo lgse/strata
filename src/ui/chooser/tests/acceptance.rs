@@ -4,7 +4,9 @@ use super::*;
 use crate::ui::browser_modes::BrowserMode;
 use std::{
     cell::RefCell,
-    path::PathBuf,
+    ffi::OsStr,
+    os::unix::ffi::OsStrExt,
+    path::{Path, PathBuf},
     rc::Rc,
     sync::{Arc, atomic::AtomicBool},
     time::{Duration, Instant},
@@ -1356,6 +1358,88 @@ fn recursive_folder_selection_navigates_without_accepting() {
 }
 
 #[test]
+fn localized_overwrite_warning_preserves_caller_labels_and_cancelled_file() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::localized_overwrite_warning_preserves_caller_labels_and_cancelled_file",
+        || {
+            fn find<T: IsA<gtk::Widget> + glib::object::IsClass>(
+                root: &gtk::Widget,
+                predicate: &impl Fn(&T) -> bool,
+            ) -> Option<T> {
+                if let Some(widget) = root.downcast_ref::<T>()
+                    && predicate(widget)
+                {
+                    return Some(widget.clone());
+                }
+                let mut child = root.first_child();
+                while let Some(widget) = child {
+                    child = widget.next_sibling();
+                    if let Some(found) = find(&widget, predicate) {
+                        return Some(found);
+                    }
+                }
+                None
+            }
+            crate::ui::prepare_portal_ui();
+            let preferences = PreferenceManager::shared();
+            preferences.set_browser_mode(BrowserMode::List);
+            rust_i18n::set_locale("fr");
+            let root = tempfile::tempdir().expect("fixture");
+            let path = root.path().join("Language");
+            std::fs::write(&path, "original contents").expect("existing destination");
+            let result = Rc::new(RefCell::new(None));
+            let received = result.clone();
+            let mut req = request(root.path().to_path_buf());
+            req.title = "Language".into();
+            req.accept_label = "Open".into();
+            req.kind = ChooserKind::SaveFile {
+                current_name: Some("Language".into()),
+            };
+            let state = build_chooser(req, Arc::new(AtomicBool::new(false)), move |value| {
+                received.replace(Some(value));
+            })
+            .expect("chooser");
+            assert_eq!(state.window.title().as_deref(), Some("Language"));
+            assert_eq!(state.accept_button.label().as_deref(), Some("Open"));
+            state.accept_button.emit_clicked();
+            let warning = "Le fichier de destination existe déjà. Continuer peut l’écraser.";
+            wait_until(|| {
+                find(state.window.upcast_ref(), &|label: &gtk::Label| {
+                    label
+                        .text()
+                        .split_whitespace()
+                        .eq(warning.split_whitespace())
+                })
+                .is_some()
+            });
+            let dialog = find(state.window.upcast_ref(), &|widget: &gtk::Box| {
+                widget.has_css_class("action-dialog")
+            })
+            .expect("overwrite dialog");
+            assert!(
+                find(dialog.upcast_ref(), &|label: &gtk::Label| label.text()
+                    == "Language")
+                .is_some()
+            );
+            find(dialog.upcast_ref(), &|button: &gtk::Button| {
+                button.label().as_deref() == Some("Annuler") && button.is_visible()
+            })
+            .expect("localized cancellation")
+            .emit_clicked();
+            assert!(
+                result.borrow().is_none(),
+                "cancelling overwrite must not accept the request"
+            );
+            assert_eq!(
+                std::fs::read_to_string(&path).expect("preserved file"),
+                "original contents"
+            );
+            state.cancel();
+        },
+    );
+}
+
+#[test]
 fn save_file_ignores_load_cursor() {
     crate::test_support::gtk_test(
         "ui::chooser::tests::acceptance::save_file_ignores_load_cursor",
@@ -1634,6 +1718,100 @@ fn save_file_with_search_results_accepts_selected_folder_without_navigating_into
 }
 
 #[test]
+fn save_file_clicking_the_selected_row_refills_the_name_in_every_view() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::save_file_clicking_the_selected_row_refills_the_name_in_every_view",
+        || {
+            crate::ui::prepare_portal_ui();
+            for mode in [BrowserMode::List, BrowserMode::Columns, BrowserMode::Icons] {
+                PreferenceManager::shared().set_browser_mode(mode);
+                let root = tempfile::tempdir().expect("fixture");
+                std::fs::write(root.path().join("existing.txt"), "existing").expect("file");
+                let mut req = request(root.path().to_path_buf());
+                req.kind = ChooserKind::SaveFile {
+                    current_name: Some("suggested.txt".into()),
+                };
+                let state =
+                    build_chooser(req, Arc::new(AtomicBool::new(false)), |_| {}).expect("chooser");
+                let browser = state.view.browser();
+                let file_label = || {
+                    descendants(&state.view.widget())
+                        .into_iter()
+                        .find(|widget| {
+                            widget.is_mapped()
+                                && (widget
+                                    .downcast_ref::<gtk::Label>()
+                                    .is_some_and(|label| label.text() == "existing.txt")
+                                    || widget.downcast_ref::<gtk::Inscription>().is_some_and(
+                                        |label| label.text().as_deref() == Some("existing.txt"),
+                                    ))
+                        })
+                };
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading && column.count == 1)
+                        && file_label().is_some()
+                });
+                let filename = state.filename.as_ref().expect("filename");
+                assert_eq!(filename.text(), "suggested.txt", "{mode:?}");
+                assert!(browser.selection_is_load_cursor(), "{mode:?}");
+
+                let click_file = || {
+                    let surface = state.view.widget();
+                    let label = file_label().expect("file label");
+                    let file_point = || {
+                        label
+                            .compute_point(&surface, &gtk::graphene::Point::new(2.0, 2.0))
+                            .expect("file position")
+                    };
+                    wait_until(|| {
+                        let point = file_point();
+                        surface.pick(
+                            f64::from(point.x()),
+                            f64::from(point.y()),
+                            gtk::PickFlags::DEFAULT,
+                        ) == Some(label.clone())
+                    });
+                    let point = file_point();
+                    let controllers = surface.observe_controllers();
+                    for index in 0..controllers.n_items() {
+                        if let Some(click) =
+                            controllers.item(index).and_downcast::<gtk::GestureClick>()
+                            && matches!(click.button(), 0 | 1)
+                            && click.propagation_phase() == gtk::PropagationPhase::Capture
+                        {
+                            click.emit_by_name::<()>(
+                                "pressed",
+                                &[&1i32, &f64::from(point.x()), &f64::from(point.y())],
+                            );
+                        }
+                    }
+                };
+                click_file();
+                wait_until(|| filename.text() == "existing.txt");
+                assert!(!browser.selection_is_load_cursor(), "{mode:?}");
+                filename.set_text("edited.txt");
+                browser.set_selection(0, &[0], Some(0));
+                while glib::MainContext::default().pending() {
+                    glib::MainContext::default().iteration(false);
+                }
+                assert_eq!(
+                    filename.text(),
+                    "edited.txt",
+                    "focus echoes must not refill: {mode:?}"
+                );
+                click_file();
+                wait_until(|| filename.text() == "existing.txt");
+                assert!(state.completion.borrow().is_some(), "{mode:?}");
+                assert!(visible_modal_layer(&state.window).is_none(), "{mode:?}");
+                state.window.close();
+            }
+        },
+    );
+}
+
+#[test]
 fn save_file_with_selected_file_saves_to_active_folder() {
     crate::test_support::gtk_test(
         "ui::chooser::tests::acceptance::save_file_with_selected_file_saves_to_active_folder",
@@ -1696,6 +1874,177 @@ fn save_file_with_selected_file_saves_to_active_folder() {
                 selected.uris()[0].to_string(),
                 gio::File::for_path(root.path().join("new_file.txt")).uri()
             );
+        },
+    );
+}
+
+struct NonUtf8SaveFixture {
+    state: Rc<ChooserState>,
+    result: Rc<RefCell<Option<ashpd::backend::Result<SelectedFiles>>>>,
+    e9: PathBuf,
+    e8: PathBuf,
+}
+
+impl NonUtf8SaveFixture {
+    fn open(root: &Path, current_name: &OsStr, e9: &Path, e8: &Path) -> Self {
+        let result = Rc::new(RefCell::new(None));
+        let received = result.clone();
+        let mut save_request = request(root.to_path_buf());
+        save_request.kind = ChooserKind::SaveFile {
+            current_name: Some(current_name.to_owned()),
+        };
+        let state = build_chooser(
+            save_request,
+            Arc::new(AtomicBool::new(false)),
+            move |value| {
+                received.replace(Some(value));
+            },
+        )
+        .expect("chooser");
+        let browser = state.view.browser();
+        wait_until(|| {
+            browser
+                .column_snapshot(0)
+                .is_some_and(|column| !column.loading && column.count == 2)
+        });
+        Self {
+            state,
+            result,
+            e9: e9.to_path_buf(),
+            e8: e8.to_path_buf(),
+        }
+    }
+
+    fn filename(&self) -> &gtk::Entry {
+        self.state.filename.as_ref().expect("filename")
+    }
+
+    // The two names render identically, so their sort order is unspecified.
+    fn select(&self, path: &Path) {
+        let browser = self.state.view.browser();
+        let position = (0..2)
+            .find(|&position| {
+                browser
+                    .entry_at(0, position)
+                    .is_some_and(|entry| entry.location.native_path() == Some(path))
+            })
+            .expect("fixture row");
+        browser.commit_selection();
+        browser.set_selection(0, &[position], Some(position));
+        wait_until(|| *self.state.filename_selection.borrow() == [Location::local(path)]);
+        assert_eq!(self.filename().text(), "caf\u{FFFD}.txt");
+    }
+
+    fn modal_button(&self, class: &str) -> gtk::Button {
+        let layer = visible_modal_layer(&self.state.window).expect("confirmation");
+        widget_with_class(&layer, class)
+            .and_downcast::<gtk::Button>()
+            .expect("confirmation button")
+    }
+
+    /// Clicks Save and confirms any Replace prompt; returns whether the prompt
+    /// appeared and the URI the request completed with.
+    fn save(&self) -> (bool, String) {
+        self.state.accept_button.emit_clicked();
+        wait_until(|| {
+            visible_modal_layer(&self.state.window).is_some() || self.result.borrow().is_some()
+        });
+        let prompted = visible_modal_layer(&self.state.window).is_some();
+        if prompted {
+            self.modal_button("action-dialog-confirm").emit_clicked();
+            wait_until(|| self.result.borrow().is_some());
+        }
+        let selected = self
+            .result
+            .borrow_mut()
+            .take()
+            .expect("result")
+            .expect("accepted");
+        assert_eq!(selected.uris().len(), 1);
+        (prompted, selected.uris()[0].to_string())
+    }
+}
+
+#[test]
+fn save_file_keeps_the_exact_bytes_of_a_filled_non_utf8_name() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::save_file_keeps_the_exact_bytes_of_a_filled_non_utf8_name",
+        || {
+            crate::ui::prepare_portal_ui();
+            PreferenceManager::shared().set_browser_mode(BrowserMode::List);
+            let root = tempfile::tempdir().expect("fixture");
+            let uri = |path: &Path| gio::File::for_path(path).uri().to_string();
+            let e9 = root.path().join(OsStr::from_bytes(b"caf\xe9.txt"));
+            let e8 = root.path().join(OsStr::from_bytes(b"caf\xe8.txt"));
+            std::fs::write(&e9, "e9").expect("e9 fixture");
+            std::fs::write(&e8, "e8").expect("e8 fixture");
+            let edited = root.path().join("caf\u{FFFD}-2.txt");
+
+            let suggested = OsStr::new("new.txt");
+            let e9_name = OsStr::from_bytes(b"caf\xe9.txt");
+            type SaveCase<'a> = (&'a str, &'a OsStr, fn(&NonUtf8SaveFixture), (bool, String));
+            let cases: [SaveCase; 6] = [
+                ("suggested name", e9_name, |_| {}, (true, uri(&e9))),
+                (
+                    "select then save",
+                    suggested,
+                    |fixture| fixture.select(&fixture.e9),
+                    (true, uri(&e9)),
+                ),
+                (
+                    "activate, cancel Replace, then save",
+                    suggested,
+                    |fixture| {
+                        fixture.state.activate_file(&Location::local(&fixture.e9));
+                        wait_until(|| visible_modal_layer(&fixture.state.window).is_some());
+                        fixture.modal_button("action-dialog-cancel").emit_clicked();
+                        wait_until(|| visible_modal_layer(&fixture.state.window).is_none());
+                        assert!(
+                            fixture.result.borrow().is_none(),
+                            "Cancel ended the request"
+                        );
+                        assert_eq!(fixture.filename().text(), "caf\u{FFFD}.txt");
+                    },
+                    (true, uri(&e9)),
+                ),
+                (
+                    "last of two colliding selections",
+                    suggested,
+                    |fixture| {
+                        fixture.select(&fixture.e9);
+                        fixture.select(&fixture.e8);
+                    },
+                    (true, uri(&e8)),
+                ),
+                (
+                    "edited name is literal text",
+                    suggested,
+                    |fixture| {
+                        fixture.select(&fixture.e9);
+                        fixture.filename().set_text("caf\u{FFFD}-2.txt");
+                    },
+                    (false, uri(&edited)),
+                ),
+                (
+                    "edited then restored name",
+                    suggested,
+                    |fixture| {
+                        fixture.select(&fixture.e9);
+                        fixture.filename().set_text("x");
+                        fixture.filename().set_text("caf\u{FFFD}.txt");
+                    },
+                    (true, uri(&e9)),
+                ),
+            ];
+            let mut outcomes = Vec::new();
+            let mut expected = Vec::new();
+            for (case, current_name, fill, expect) in cases {
+                let fixture = NonUtf8SaveFixture::open(root.path(), current_name, &e9, &e8);
+                fill(&fixture);
+                outcomes.push((case, fixture.save()));
+                expected.push((case, expect));
+            }
+            assert_eq!(outcomes, expected);
         },
     );
 }

@@ -322,3 +322,22 @@ fn mixed_parent_drop_keeps_only_the_transferable_sources_in_order() {
         vec![first, second]
     );
 }
+
+#[test]
+fn same_parent_batch_drop_filters_correctly() {
+    let parent = Location::local("/fixture/source_folder");
+    let dest_sibling = Location::local("/fixture/dest_folder");
+    let dest_child = Location::local("/fixture/source_folder/subfolder");
+
+    let file1 = Location::local("/fixture/source_folder/file1.txt");
+    let file2 = Location::local("/fixture/source_folder/file2.txt");
+    let subfolder = dest_child.clone();
+    let sources = vec![file1.clone(), subfolder.clone(), file2.clone()];
+
+    assert!(transferable_drop_sources(&parent, &sources).is_empty());
+    assert_eq!(transferable_drop_sources(&dest_sibling, &sources), sources);
+    assert_eq!(
+        transferable_drop_sources(&dest_child, &sources),
+        vec![file1, file2]
+    );
+}

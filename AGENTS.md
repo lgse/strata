@@ -29,10 +29,19 @@ Restore project skills from the committed `skills-lock.json` after cloning:
 npx skills experimental_install
 ```
 
-That installs them into `.agents/skills/`, which is gitignored. Keep
+That installs them into `.agents/skills/`, which is gitignored apart from the
+project's own skills below. Keep
 `skills-lock.json` in version control. Add or update skills with `npx skills add`
-and `npx skills update`, then commit the lockfile. Do not vendor skill files
-under `.agents/`.
+and `npx skills update`, then commit the lockfile. Do not vendor third-party
+skill files under `.agents/`.
+
+The project's own skills are the exception: `.agents/skills/qa-*` and
+`.agents/skills/pr-review` are written here and committed, each un-ignored in
+`.gitignore` and linked from `.claude/skills/`. Use `qa-scenarios` to write
+and manage QA scenarios, `qa-drive` to verify a change by driving the
+application in QA mode, `qa-quality` to score a scenario's value, and
+`pr-review` to merge main into a pull request, prune tautological tests,
+review and fix it, and watch CI until it is green.
 
 ## Git workflow
 
@@ -59,7 +68,7 @@ pass before merge.
 - **Scoped tests are the default, including after failures.** When a run has an
   isolated failure, reproduce that exact test first. After fixing it, rerun that
   test and the affected callers/regressions only. Do not rerun the entire Rust or
-  E2E suite to diagnose one failure, recover a green summary, or satisfy a generic
+  QA suite to diagnose one failure, recover a green summary, or satisfy a generic
   review/push checklist. Preserve earlier results and report the scoped rerun.
   A full rerun requires concrete evidence of broader impact under the escalation
   rule below or an explicit owner request; state that reason before launching it.
@@ -75,27 +84,26 @@ pass before merge.
   This filters test names across targets, not compilation to one target.
   The selected filter must match at least one test, including relevant views,
   callers, or preferences coverage.
-- E2E selections may use repository-relative test paths and pytest `-k`, for
-  example `./scripts/e2e.sh tests/e2e/scenarios/test_inline_renaming.py` or
-  `./scripts/e2e.sh -k 'rename and not visual'`. Confirm collection selects
-  tests with `--collect-only` when useful. `scripts/e2e.sh` is the canonical
-  pinned-container runner; `scripts/e2e-native.sh` is host-toolkit debugging
-  only and cannot replace it. `scripts/quality.sh` accepts only `all`, `fmt`,
-  `clippy`, or `test` and does not forward test filters.
-- Use full pinned `./scripts/quality.sh` phases and canonical
-  `STRATA_CONTAINER_ENGINE=podman ./scripts/e2e.sh` when impact is broad or
-  uncertain. Escalate to both for shared infrastructure, dependencies,
+- QA selections name scenarios, or `<scenario>/<run>` for one run, for
+  example `./scripts/qa.sh copy-leaves-source` or
+  `./scripts/qa.sh arrow-keys-move-focus/columns-arrows`; `qa.sh` rejects unknown
+  names and fails a selection that runs no scenario. `scripts/qa.sh` is the
+  canonical pinned-container GUI runner. `scripts/quality.sh` accepts only
+  `all`, `fmt`, `clippy`, or `test`, plus `--jobs N` and `--refresh-timings`
+  for the test phase, and does not forward test filters.
+- Use full pinned `./scripts/quality.sh` phases and a full `./scripts/qa.sh`
+  run when impact is broad or uncertain. Escalate to both for shared infrastructure, dependencies,
   build/CI/harness code, cross-cutting behavior, or uncertain coverage.
   Even after escalation, isolate individual failures with scoped tests rather
   than repeating the full run. Use `./scripts/quality.sh test` only when a full
   Rust run is justified; defer `fmt` and `clippy` to the pre-push checkpoint.
   Preserve pinned image provenance and the existing `target/quality-container`
-  and `target/e2e-container` caches.
+  and `target/qa-container` caches.
 - GUI and delegated checks must never use the desktop or an inherited session
   bus. Use private Xvfb and private D-Bus, clear inherited display variables,
-  disable accessibility bridging for Rust tests (E2E needs its private AT-SPI
-  bus), and require GTK tests to run (not silently skip). Stop if the isolated display or bus is unavailable; never fall back to
-  the user's display. See `docs/e2e-testing.md`.
+  disable accessibility bridging, and require GTK tests to run (not silently
+  skip). Stop if the isolated display or bus is unavailable; never fall back to
+  the user's display. See `docs/testing.md`.
 - Documentation-only changes need no GUI/build tests: review the complete diff,
   validate links and example filters against the scripts and existing tests, and
   run `git diff --check`. These checks do not bypass required CI checks.
@@ -107,25 +115,44 @@ pass before merge.
   across supported environments and avoid assertions that depend on
   platform-specific URI normalization or other incidental system behavior.
 
-## E2E base-image reuse
+## QA scenarios
 
-- Run `./scripts/e2e.sh` for normal local testing. It verifies and reuses the local
-  pinned base, or pulls the published base once if missing. It must not rebuild
-  images or fetch Ubuntu packages during ordinary test runs.
+- Run the `--qa` scenarios only through `./scripts/qa.sh`, and drive the app by
+  hand only through `./scripts/qa-drive.sh`, both inside the pinned container.
+  `tests/qa.rs` refuses to start without `STRATA_QA_CONTAINER=1`.
+- A host run (`STRATA_QA_HOST=1`) needs explicit owner consent for that task.
+  Record it and the skipped container run in the handoff; it is never
+  validation evidence. Do not wire the QA runner into
+  `scripts/test-headless.py`. See `docs/testing.md`.
+- `./scripts/qa.sh`, `./scripts/qa-drive.sh`, and `./scripts/qa-mutation.sh`
+  share a build cache; run them one after another, never concurrently.
+- A behaviour change updates the QA scenarios that cover it in the same change.
+  When a scenario with a `mutation` changes, or its patch in
+  `tests/qa/mutations/` stops applying, check it with
+  `./scripts/qa-mutation.sh <scenario>`.
+- Regenerate visual baselines only deliberately, with
+  `STRATA_QA_UPDATE_BASELINES=1 ./scripts/qa.sh <baseline scenario>`, and
+  review the images before committing them.
+
+## Test image reuse
+
+- `./scripts/qa.sh` and `./scripts/quality.sh` verify and reuse the local pinned
+  base built from `tests/container/`, or pull the published base once if
+  missing. They must not rebuild images or fetch distribution packages during
+  ordinary test runs.
 - Prefer rootless Podman and keep the task's isolated configuration, storage, and
   runtime directories across commands. Do not create a fresh container store for
   every invocation, prune other sessions' images, or bypass image-input checks.
 - Only when intentionally changing environment inputs, or when an unpublished
   environment must be bootstrapped, run explicitly:
-  `STRATA_CONTAINER_ENGINE=podman python3 scripts/e2e_base.py build`.
-  Run this once, then return to `./scripts/e2e.sh`. Do not habitually rebuild bases
-  as a pre-test step. Preserve `target/e2e-container` so Cargo can reuse its cache.
+  `STRATA_CONTAINER_ENGINE=podman python3 scripts/image_base.py build`.
+  Run this once, then return to `./scripts/qa.sh`. Do not habitually rebuild bases
+  as a pre-test step. Preserve `target/qa-container` so Cargo can reuse its cache.
 - Published bases are updated by the trusted-main publisher when environment
   inputs change. Application edits do not require rebuilding the base. Different
   local UID/GID values are handled by generated container account files.
-- The three-minute CI duration is a performance target, not a merge requirement.
-  Timing is informational; test failures, incomplete coverage, and invalid
-  provenance still fail CI. See `docs/e2e-testing.md`.
+- Test failures, incomplete coverage, and invalid image provenance fail CI.
+  See `docs/testing.md`.
 
 ## Private media runtime patches
 
@@ -154,9 +181,7 @@ pass before merge.
 - Use the bug report form for defects, the feature request form for enhancements, and a blank issue only when neither form fits.
 - Bug reports must include the Strata version, installation method, environment, reproduction steps, expected behavior, and any available sanitized logs. Never ask reporters to upload a core dump because it may contain secrets or private document contents.
 - Keep pull request descriptions concise: explain what changed and why, provide manual steps to exercise the feature or reproduce the fixed bug, state the expected result, and link the issue. Do not list automated checks that CI already runs.
-- Include before/after screenshots or a short video on every PR with user-visible changes. Upload sanitized captures through GitHub's PR description/comment editor and embed the resulting GitHub-hosted attachment URLs in the PR's Visual evidence section. Write `N/A` with a brief reason only for non-visual changes.
-- Never commit PR evidence, screenshots, recordings, one-off capture scripts, logs, review reports, or PR-specific test plans to the source tree. Keep captures in session-owned scratch or ignored `target/` paths. Maintained README media and executable visual-regression baselines are exceptions, not places to stash review captures.
-- `gh pr create` and `gh pr edit` can embed existing attachment URLs but do not upload local image/video attachments. If no supported authenticated upload route is available, retain the local captures, provide their exact paths and captions, and ask the owner to upload them through the GitHub editor. Explicitly mark visual evidence as pending; do not claim it is attached, substitute local file links, or commit files as a workaround. CI artifacts may supplement review but expire and are not a replacement for inline PR visuals.
+- Agents do not produce PR visual evidence: they cannot upload attachments, so screenshots and recordings taken for a PR are wasted work. Write `N/A` in the template's Visual evidence section and describe the change in words. Never commit screenshots, recordings, one-off capture scripts, logs, review reports, or PR-specific test plans to the source tree; maintained README media and executable visual-regression baselines are the only exceptions.
 - Keep lasting behavior and test guidance in maintained documentation; put task checklists, test results, and review history in the issue or PR instead.
 - Pull request titles must pass `.github/workflows/pr-title.yml`; do not bypass or weaken the Conventional Commit title check.
 
@@ -181,7 +206,7 @@ pass before merge.
   widget-tree or layout assertions.
 - Before adding a test, identify the existing coverage owner. Extend a matching
   setup or use table-driven inputs instead of duplicating default/round-trip
-  assertions or adding another E2E smoke launch. Preserve separate cases where
+  assertions or adding another QA smoke launch. Preserve separate cases where
   initial state, input route, view mode, or lifecycle exercises distinct behavior.
 - Every parameter and loop dimension must affect the exercised behavior or an
   assertion. Do not add unused axes that merely run identical cases again.
@@ -197,6 +222,38 @@ pass before merge.
 - Use `ThemeManager::bind_preference` for immediate initialization and live updates, or read the manager at action dispatch. Settings pages must only edit preferences, never initialize browser behavior.
 - Use shared control bindings rather than window-local copies or one-off broadcasts. Preserve documented chooser and window-local exceptions.
 - Extend the exhaustive saved-preferences fixture and behavioral coverage for startup before Settings opens, changes across two windows, and relevant view rebuilds. Serialization-only tests are not sufficient.
+
+## Internationalization
+
+- Every new or changed application-owned, user-facing string must be localized
+  with `rust-i18n` and added or updated in **all thirteen supported languages in the
+  same change**: English, French, Hungarian, German, Spanish, Japanese, Brazilian
+  Portuguese, Korean, Vietnamese, Italian, Russian, Simplified Chinese, and
+  Traditional Chinese. This includes labels, buttons, menus, placeholders, tooltips,
+  accessibility names/descriptions, dialogs, help text, errors, notifications,
+  and status/progress messages.
+- Follow `docs/internationalization.md` and update the matching catalogs under
+  `data/locales/`. English fallback is a runtime safeguard, not permission to leave
+  translations missing or copy English into other languages as a placeholder.
+- Translate complete messages with named placeholders and the appropriate plural
+  forms. Preserve placeholder names, markup, paths, commands, and keybindings;
+  do not assemble sentences from English-only fragments or plural suffixes.
+- Keep translation at presentation boundaries. Never translate filesystem paths,
+  filenames, protocol/action identifiers, user-authored content, or labels and
+  values supplied by another application.
+- When changing UI text or catalogs, run the catalog coverage and interpolation
+  regressions with `./scripts/test-headless.py i18n::`, plus affected behavioral
+  tests as required by the validation policy above.
+
+## Keyboard shortcuts
+
+- Read key input only through `ui::keys` (`keys::on_press`, `keys::on_release`,
+  `keys::read_event`); `clippy.toml` rejects raw key signals elsewhere.
+- Define every shortcut as a constant in the `ui::keys::bindings` catalog and
+  match it with `press.is(…)` or `press.digit_in(…)`. Never compare raw keyvals or
+  typed text to recognize a command.
+- Never type a key label by hand. F1 rows, hints, tooltips, and menus render
+  catalog bindings with `keys::label`. Follow `docs/keyboard-shortcuts.md`.
 
 ## UI controls
 
@@ -220,11 +277,14 @@ pass before merge.
 
 ## Icons
 
-- Add new interface icons only from the Lucide icon set.
-- Keep Lucide geometry intact, namespace bundled assets with `strata-`, and preserve the ISC attribution in `THIRD_PARTY_LICENSES.md`.
+- Bundled icons come from two sources, each with its own job:
+  - **Lucide** for interface icons and generic file categories (documents, pictures, archives, keys, folders). Add new interface icons only from Lucide, keep its geometry intact, and store them under `data/icons/scalable/actions/`.
+  - **Catppuccin VSCode Icons** for code, language, and config file types. Store them under `data/icons/catppuccin/`, copied unchanged from upstream's `icons/css-variables/` set, and add their filename and extension associations to the generated `src/ui/browser/entry/catppuccin.rs` by rerunning `scripts/catppuccin_icons.py <upstream checkout>` rather than editing it by hand.
+- Namespace every bundled asset with `strata-` (`strata-ctp-` for Catppuccin) and keep the Lucide ISC and Catppuccin MIT attributions in `THIRD_PARTY_LICENSES.md` current, including the upstream revision.
 - Render theme-colored bundled icons through `assets::primary_icon` / `assets::set_primary_icon`; direct icon-theme loading preserves the SVG's fallback color and will not follow live theme changes.
+- Lucide icons are tinted with the theme accent. Catppuccin icons keep their own palette by default, resolved at render time to Mocha on dark backgrounds and Latte on light ones; the **File icon colors** preference switches them to the accent. Route both behaviors through `assets`; never hardcode a flavor or bypass the preference.
 
 ## Theming
 
-- Apply semantic `@theme_*` colors to every visual state of new interface elements, including icons, text, backgrounds, borders, focus rings, selections, hover/active states, menus, and dialogs.
+- Apply semantic `@strata_*` colors to every visual state of new interface elements, including icons, text, backgrounds, borders, focus rings, selections, hover/active states, menus, and dialogs.
 - Never use static hex/RGB colors for themeable interface elements. Built-in, custom, and Omarchy themes must remain visually consistent and update live.

@@ -1,0 +1,21 @@
+{"scenario":"stl-thumbnails-render-only-valid-models","modes":["icons"],"mutation":"stl-thumbnails-live-preference","prefs":{"show_thumbnails":true},"setup":[{"fs":{"path":"stl-thumbnails","mkdir":true}},{"fs":{"path":"stl-thumbnails/a-truncated.stl","hex":"000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000"}},{"fs":{"path":"stl-thumbnails/b-oversized.stl","truncate":134217729}},{"fs":{"path":"stl-thumbnails/c-valid.stl","write":"solid sample\nvertex 0 0 0\nvertex 4 0 0\nvertex 0 2 1\nendsolid\n"}},{"fs":{"path":"stl-thumbnails/photo.png","image":{"width":320,"height":180,"rgb":[40,160,80]}}}],"cost":{"icons":1.6},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"Settings opt-in renders STL thumbnails live via the sandbox; transparency and STL refusal are unit-tested in sandbox_helper/model/tests.rs"}}
+{"click":{"entry":"stl-thumbnails"},"count":2}
+{"wait":{"directory":"stl-thumbnails"},"message":"the browser to open 'stl-thumbnails'"}
+{"wait":{"entries":{"contains":["a-truncated.stl","b-oversized.stl","c-valid.stl","photo.png"]}},"message":"the models and the photo to be listed"}
+{"fs":{"path":"stl-thumbnails/photo.png","cached_in":"$cache/thumbnails/large","is":"file"},"message":"the photo's thumbnail while STL thumbnails are off"}
+{"fs":{"path":"stl-thumbnails/c-valid.stl","cached_in":"$cache/thumbnails/large","exists":false},"timeout_ms":0,"message":"STL thumbnails to stay off by default"}
+{"activate":{"role":"button","name":"Settings"}}
+{"wait":{"present":{"role":"text","name":"Search settings"}},"message":"the settings search"}
+{"click":{"role":"text","name":"Search settings"}}
+{"type":"stl"}
+{"wait":{"present":{"role":["check box","toggle button","switch"],"name":"STL model thumbnails"}},"message":"the STL model thumbnails switch"}
+{"expect":{"state":{"target":{"role":["check box","toggle button","switch"],"name":"STL model thumbnails"},"checked":false}},"timeout_ms":0}
+{"click":{"role":["check box","toggle button","switch"],"name":"STL model thumbnails"}}
+{"wait":{"pref":{"key":"stl_thumbnails","value":true}},"message":"STL model thumbnails to be saved as on"}
+{"activate":{"role":"button","name":"Close settings"}}
+{"wait":{"absent":{"role":"text","name":"Search settings"}},"message":"settings to close"}
+{"fs":{"path":"stl-thumbnails/c-valid.stl","cached_in":"$cache/thumbnails/large","is":"file"},"message":"the valid STL to render after the refused models"}
+{"fs":{"path":"stl-thumbnails/c-valid.stl","cached_in":"$cache/thumbnails/large","alpha_range":[0,255]},"timeout_ms":0,"message":"the model to be drawn on a transparent background"}
+{"fs":{"path":"stl-thumbnails/a-truncated.stl","cached_in":"$cache/thumbnails/large","exists":false},"timeout_ms":0,"message":"no thumbnail for a truncated STL"}
+{"fs":{"path":"stl-thumbnails/b-oversized.stl","cached_in":"$cache/thumbnails/large","exists":false},"timeout_ms":0,"message":"no thumbnail for an STL over the size limit"}
+{"expect":{"entries":{"contains":["a-truncated.stl","b-oversized.stl"]}},"timeout_ms":0,"message":"refused models to stay listed"}

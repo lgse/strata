@@ -114,6 +114,10 @@ fn tenxer_z_ranks_history_and_opens_the_chosen_folder_once() {
                 "empty input lists candidates by frecency"
             );
             assert!(fixture.shortcuts.candidates_shown());
+            assert!(
+                !fixture.shortcuts.candidate_keys().contains("Tab"),
+                "Tab does nothing in jump"
+            );
             assert_eq!(fixture.shortcuts.prompt_hint().as_deref(), Some("1 of 3"));
 
             press(&fixture, Key::Down);

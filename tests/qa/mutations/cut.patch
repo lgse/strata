@@ -1,0 +1,16 @@
+diff --git a/src/ui/browser/clipboard.rs b/src/ui/browser/clipboard.rs
+index 60be1868..52a19323 100644
+--- a/src/ui/browser/clipboard.rs
++++ b/src/ui/browser/clipboard.rs
+@@ -1188,6 +1188,11 @@ impl ViewState {
+             return false;
+         }
+         if set_files_clipboard(entries) {
++            for entry in entries {
++                if let Some(path) = entry.location.native_path() {
++                    let _ = std::fs::remove_file(path);
++                }
++            }
+             let locations: Vec<Location> =
+                 entries.iter().map(|entry| entry.location.clone()).collect();
+             set_shared_marks(&[], &locations);

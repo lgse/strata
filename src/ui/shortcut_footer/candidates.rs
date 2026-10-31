@@ -10,12 +10,21 @@ use gtk::{glib, prelude::*};
 
 type ActivateListener = Rc<dyn Fn(PathBuf)>;
 
+/// Untranslated catalog keys for the legend's actions.
+#[derive(Clone, Copy, Debug, Default)]
+pub(in crate::ui) struct CandidateKeys {
+    pub(in crate::ui) enter: &'static str,
+    pub(in crate::ui) tab: Option<&'static str>,
+}
+
 pub(super) struct Candidates {
     popover: gtk::Popover,
     scroll: gtk::ScrolledWindow,
     list: gtk::ListBox,
+    keys: gtk::Label,
     paths: RefCell<Vec<PathBuf>>,
     chosen: Cell<usize>,
+    stepped: Cell<bool>,
     activated: RefCell<Option<ActivateListener>>,
 }
 
@@ -42,9 +51,6 @@ impl Candidates {
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.append(&scroll);
         let keys = gtk::Label::new(None);
-        keys.set_markup(
-            "<b>\u{2191}\u{2193}</b> Choose   <b>\u{21b5}</b> Open   <b>Esc</b> Cancel",
-        );
         keys.set_xalign(0.0);
         keys.add_css_class("path-completion-shortcuts");
         content.append(&keys);
@@ -72,8 +78,10 @@ impl Candidates {
             popover,
             scroll,
             list: list.clone(),
+            keys,
             paths: RefCell::default(),
             chosen: Cell::new(0),
+            stepped: Cell::new(false),
             activated: RefCell::default(),
         });
         let weak = Rc::downgrade(&candidates);
@@ -96,7 +104,23 @@ impl Candidates {
         self.activated.replace(Some(Rc::new(listener)));
     }
 
-    pub(super) fn set(&self, paths: Vec<PathBuf>) {
+    // Preserve explicit selection across batches, but let the default follow ranking.
+    pub(super) fn set(&self, paths: Vec<PathBuf>, keys: CandidateKeys) {
+        use crate::ui::keys::{
+            Keys,
+            bindings::{COMPLETE, DOWN, ENTER, ESCAPE, UP},
+        };
+        let mut hints = vec![(
+            Keys::Any(crate::ui::keys::shown![UP.alternate(0), DOWN.alternate(0)]),
+            "Choose",
+        )];
+        hints.extend(keys.tab.map(|tab| (Keys::One(COMPLETE.shown()), tab)));
+        hints.extend([
+            (Keys::One(ENTER.shown()), keys.enter),
+            (Keys::One(ESCAPE.shown()), "Cancel"),
+        ]);
+        self.keys
+            .set_markup(&crate::ui::shortcut_reference::legend_markup(&hints));
         while let Some(row) = self.list.first_child() {
             self.list.remove(&row);
         }
@@ -105,8 +129,15 @@ impl Candidates {
             self.list.append(&candidate_row(path, &home));
         }
         let empty = paths.is_empty();
+        let kept = self
+            .stepped
+            .get()
+            .then(|| self.chosen())
+            .flatten()
+            .and_then(|chosen| paths.iter().position(|path| *path == chosen));
+        self.stepped.set(kept.is_some());
         self.paths.replace(paths);
-        self.choose(0);
+        self.choose(kept.unwrap_or(0));
         if empty {
             self.popover.popdown();
             return;
@@ -127,7 +158,15 @@ impl Candidates {
     }
 
     pub(super) fn clear(&self) {
-        self.set(Vec::new());
+        self.set(Vec::new(), CandidateKeys::default());
+    }
+
+    pub(super) fn forget_step(&self) {
+        self.stepped.set(false);
+    }
+
+    pub(super) fn stepped(&self) -> bool {
+        self.stepped.get()
     }
 
     pub(super) fn step(&self, delta: i32) {
@@ -137,6 +176,7 @@ impl Candidates {
         }
         let count = count as i64;
         let next = (self.chosen.get() as i64 + i64::from(delta)).rem_euclid(count);
+        self.stepped.set(true);
         self.choose(next as usize);
     }
 
@@ -152,6 +192,11 @@ impl Candidates {
     #[cfg(test)]
     pub(super) fn paths(&self) -> Vec<PathBuf> {
         self.paths.borrow().clone()
+    }
+
+    #[cfg(test)]
+    pub(super) fn keys_text(&self) -> String {
+        self.keys.text().to_string()
     }
 
     #[cfg(test)]

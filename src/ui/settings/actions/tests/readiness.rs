@@ -19,17 +19,23 @@ fn find(root: &gtk::Widget, predicate: &impl Fn(&gtk::Widget) -> bool) -> Option
 
 fn status(form: &EditorForm, text: &str) {
     let context = gtk::glib::MainContext::default();
-    while context.pending() {
-        context.iteration(false);
-    }
-    assert!(
-        find(form.root.upcast_ref(), &|widget| widget.is_mapped()
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while find(form.root.upcast_ref(), &|widget| {
+        widget.is_mapped()
             && widget
                 .downcast_ref::<gtk::Label>()
-                .is_some_and(|label| label.text() == text))
-        .is_some(),
-        "missing runtime status: {text}"
-    );
+                .is_some_and(|label| label.text() == text)
+    })
+    .is_none()
+    {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "missing runtime status: {text}"
+        );
+        if !context.iteration(false) {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
 }
 
 #[test]
@@ -54,13 +60,18 @@ fn runtime_readiness_tracks_shebangs_installs_and_runtime_switches_without_execu
                 format!("#!/bin/sh\n: > '{}'\nexit 7\n", executed.display()),
             )
             .expect("fixture executable");
+            fs::set_permissions(&interpreter, fs::Permissions::from_mode(0o700))
+                .expect("executable");
+            window.present();
+            status(&form, "Python available");
+            window.set_visible(false);
             fs::set_permissions(&interpreter, fs::Permissions::from_mode(0o600))
                 .expect("not executable");
             window.present();
             status(&form, "Python not found — cannot run");
             window.set_visible(false);
             fs::set_permissions(&interpreter, fs::Permissions::from_mode(0o700))
-                .expect("executable");
+                .expect("executable again");
             window.present();
             status(&form, "Python available");
             choose(&form, "Command");

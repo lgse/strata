@@ -1,0 +1,45 @@
+{"scenario":"filter-updates-retain-state","modes":["columns","icons","list"],"layout":"us","mutation":"filter-results","known_bug":null,"tree":{"match-note.txt":"root decoy\n","alpha":{"match-note.txt":"alpha source\n"},"beta":{"match-note.txt":"beta source\n","only-match.txt":"beta source\n"},"match-note-other.md":"other match\n","destination":{},"thumb.txt":"thumbnail search companion"},"images":{"beta/thumb.png":{"width":64,"height":64,"rgb":[230,40,60]}},"cost":{"columns":2.4,"icons":2.4,"list":2.4},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Same-query updates keep pick and preview; query edits drop the pick, keep field focus and text, re-mark the top; empty-space menu"}}
+{"select":{"entry":"match-note.txt"}}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"filter"}
+{"type":"match-note"}
+{"wait":{"matches":{"count":4}},"message":"all recursive matches"}
+{"wait":{"present":{"result":"beta/match-note.txt"}},"message":"the beta result"}
+{"click":{"result":"beta/match-note.txt"},"mods":["ctrl"]}
+{"click":{"field":"filter"}}
+{"key":"space"}
+{"wait":{"preview":"beta source"},"message":"the selected preview"}
+{"move":{"result":"alpha/match-note.txt"}}
+{"settle":{"result":"alpha/match-note.txt"}}
+{"expect":{"state":{"target":{"result":"alpha/match-note.txt"},"selected":false}},"message":"hovering not to select the alpha result"}
+{"expect":{"state":{"target":{"result":"beta/match-note.txt"},"selected":true}},"message":"the beta result to stay selected"}
+{"expect":{"preview":"beta source"},"message":"the preview to stay on the beta result"}
+{"fs":{"path":"match-note-new.txt","write":"new\n"}}
+{"wait":{"present":{"result":"match-note-new.txt"}},"message":"an externally created hit for the same query"}
+{"expect":{"state":{"target":{"result":"beta/match-note.txt"},"selected":true}},"message":"the beta result to stay selected across a same-query update"}
+{"expect":{"preview":"beta source"},"message":"the preview to stay on the beta result across a same-query update"}
+{"expect":{"field":{"of":"filter","focused":true}},"message":"the filter to keep focus across a same-query update"}
+{"fs":{"path":"match-note-new.txt","remove":true}}
+{"wait":{"absent":{"result":"match-note-new.txt"}},"message":"the external hit to leave again"}
+{"expect":{"state":{"target":{"result":"beta/match-note.txt"},"selected":true}},"message":"the beta result to stay selected as a hit leaves"}
+{"key":"ctrl+a"}
+{"type":"match-note.t"}
+{"wait":{"state":{"target":{"result":"beta/match-note.txt"},"selected":false}},"message":"editing the query to drop the beta pick"}
+{"wait":{"state":{"target":{"result_row":0,"containing":"match-note"},"marked":true}},"message":"the Enter mark on the new top result"}
+{"expect":{"field":{"of":"filter","focused":true}},"message":"the filter to keep focus"}
+{"expect":{"field":{"of":"filter","text":"match-note.t"}},"message":"the filter to keep the typed query"}
+{"wait":{"not":{"preview":"beta source"}},"message":"the preview to stop showing the dropped pick"}
+{"key":"ctrl+a"}
+{"type":"match-note"}
+{"wait":{"matches":{"count":4}},"message":"the updated result count"}
+{"wait":{"state":{"target":{"result_row":0,"containing":"match-note"},"marked":true}},"message":"the Enter mark on the top result again"}
+{"expect":{"not":{"any_result_row":{"selected":true}}},"message":"no result selected after the edit"}
+{"expect":{"field":{"of":"filter","focused":true}},"message":"the filter to keep focus"}
+{"expect":{"field":{"of":"filter","text":"match-note"}},"message":"the filter to keep the typed query"}
+{"key":"space"}
+{"wait":{"field":{"of":"filter","text":"match-note "}},"message":"Space to type into the query with no result selected"}
+{"expect":{"not":{"preview":"beta source"}},"message":"Space not to preview the dropped pick"}
+{"click":{"background":true},"button":3}
+{"wait":{"menu_items":{}},"message":"the empty-space menu"}
+{"expect":[{"menu_items":{"contains":["New Folder"]}},{"menu_items":{"excludes":["Quick preview"]}}]}

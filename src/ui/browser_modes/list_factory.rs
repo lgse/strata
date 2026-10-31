@@ -29,6 +29,7 @@ pub(super) struct ListFactory {
     pub(super) depth: usize,
     pub(super) positions: PanePositions,
     pub(super) selection: gtk::MultiSelection,
+    pub(super) syncing: Rc<Cell<bool>>,
     pub(super) previews: Rc<Cell<bool>>,
     pub(super) activation: Rc<Cell<ClickActivation>>,
     pub(super) transfers: TransferHandlerSlot,
@@ -38,6 +39,7 @@ pub(super) struct ListFactory {
     pub(super) bound_items: Rc<RefCell<Vec<BoundModeItem>>>,
     pub(super) state: Option<Weak<crate::ui::browser::ViewState>>,
     pub(super) filter_query: Rc<RefCell<String>>,
+    pub(super) enter_target: Option<crate::ui::enter_target::EnterTarget>,
 }
 
 impl ListFactory {
@@ -68,6 +70,15 @@ impl ListFactory {
     }
 
     fn install_interactions(&self, item: &gtk::ListItem, row: &ListRow) {
+        super::install_folder_peek(
+            &row.widget,
+            item,
+            self.state.clone(),
+            self.browser.clone(),
+            self.positions.index.clone(),
+            self.positions.view.clone(),
+            self.depth,
+        );
         let slow_click = Rc::new(super::SlowClickRename::default());
         install_preview_click(
             &row.widget,
@@ -86,6 +97,7 @@ impl ListFactory {
             &row.widget,
             item,
             self.selection.clone(),
+            self.syncing.clone(),
             self.browser.clone(),
             self.state.clone().unwrap_or_default(),
             self.depth,
@@ -100,13 +112,7 @@ impl ListFactory {
             self.depth,
             Some((self.positions.index.clone(), self.positions.view.clone())),
             self.state.clone(),
-            (
-                Some(row.name.upcast_ref()),
-                Some(row.icon.upcast_ref()),
-                &content_click,
-                true,
-                slow_click,
-            ),
+            (&content_click, true, slow_click),
         );
     }
 
@@ -128,11 +134,13 @@ impl ListFactory {
         let Some(item) = object.downcast_ref::<gtk::ListItem>() else {
             return;
         };
-        let Some(row) = item
-            .child()
-            .and_downcast::<gtk::Box>()
-            .and_then(ListRow::from_widget)
-        else {
+        let Some(widget) = item.child().and_downcast::<gtk::Box>() else {
+            return;
+        };
+        if let Some(enter_target) = &self.enter_target {
+            enter_target.decorate(&widget, item);
+        }
+        let Some(row) = ListRow::from_widget(widget) else {
             return;
         };
         let Some(binding) = self.binding(item) else {
@@ -143,17 +151,18 @@ impl ListFactory {
         let pending_name = state
             .as_ref()
             .and_then(|state| state.pending_rename_name(&binding.entry));
-        let edit = super::bound_edit(&self.bound_items, item);
+        let edit = super::bound_edit(item);
         if let Some(edit) = &edit {
             edit.bind(&binding.entry.location);
         }
         row.bind_labels(item, &binding.entry, pending_name.as_deref());
-        crate::ui::browser::find::highlight_name(
+        crate::ui::browser::find::highlight_listing_name(
             row.name.upcast_ref(),
             state
                 .as_ref()
                 .and_then(|state| state.find_highlight())
                 .as_deref(),
+            &self.filter_query.borrow(),
         );
         if let Some(edit) = &edit {
             edit.display.set_visible(!edit.is_editing());
@@ -172,22 +181,22 @@ impl ListFactory {
     }
 }
 
-struct ListRow {
-    widget: gtk::Box,
-    name_cell: gtk::Widget,
-    icon: thumbnail::ThumbnailSlot,
-    name: gtk::Label,
-    field: gtk::Entry,
-    mode: gtk::Label,
-    size: gtk::Label,
-    kind: gtk::Label,
-    modified: gtk::Label,
+pub(super) struct ListRow {
+    pub(super) widget: gtk::Box,
+    pub(super) name_cell: gtk::Widget,
+    pub(super) icon: thumbnail::ThumbnailSlot,
+    pub(super) name: gtk::Label,
+    pub(super) field: gtk::Entry,
+    pub(super) mode: gtk::Label,
+    pub(super) size: gtk::Label,
+    pub(super) kind: gtk::Label,
+    pub(super) modified: gtk::Label,
 }
 
 impl ListRow {
-    fn from_widget(widget: gtk::Box) -> Option<Self> {
+    pub(super) fn from_widget(widget: gtk::Box) -> Option<Self> {
         let (icon, name, field, mode, size, kind, modified) = list_row_parts(&widget)?;
-        let name_cell = widget.first_child()?;
+        let name_cell = name.parent()?.upcast();
         Some(Self {
             widget,
             name_cell,
@@ -231,6 +240,7 @@ impl ListRow {
     }
 
     fn clear(&self) {
+        crate::ui::file_providers::bind(&self.icon, None);
         set_mode_mark_style(&self.widget, ClipboardMark::None);
         thumbnail::show_fallback_icon(&self.icon, crate::assets::icons::DOCUMENTS, 18);
         self.icon.set_hidden(false);
@@ -279,7 +289,7 @@ impl ListBinding {
                 self.depth,
                 position,
                 self.entry.location.clone(),
-                false,
+                self.entry.is_directory(),
             );
         }
     }

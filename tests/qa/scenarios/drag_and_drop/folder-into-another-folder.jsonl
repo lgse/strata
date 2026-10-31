@@ -1,0 +1,17 @@
+{"scenario":"folder-into-another-folder","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.3},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":4,"score":38,"note":"Folder dragged onto another folder in Columns moves its tree; file drop route shared with drag-file-onto-folder, folder-tree move only here"}}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"toggle button","name":"Preview panel"}},"message":"the preview panel toggle"}
+{"key":"Escape","when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":false}}}
+{"click":{"role":"toggle button","name":"Preview panel"},"when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":true}}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location editor to take focus"}
+{"key":"Escape"}
+{"wait":{"focused_pane":true},"message":"focus to return to the file listing"}
+{"select":{"entry":"pictures"}}
+{"wait":{"entry":"photo.txt","dir":"pictures"},"message":"the entry 'photo.txt' in 'pictures' to appear"}
+{"settle":{"entry":"pictures"}}
+{"drag":{"from":{"entry":"pictures"},"to":{"entry":"archive"}}}
+{"fs":{"path":"archive/pictures/photo.txt","exists":true},"message":"the dragged folder to arrive with its contents"}
+{"fs":{"path":"pictures","exists":false},"message":"the dragged folder to leave its source directory"}
+{"fs":{"path":"archive/pictures","names":["diagram.txt","photo.txt"]},"timeout_ms":0}

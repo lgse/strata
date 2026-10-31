@@ -1,0 +1,29 @@
+{"scenario":"global-search-reveal-visited-list","modes":["list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"list":2.5},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"Alt+Return reveal into a visited list-mode folder keeps the target selected and focused; fresh-pane reveal is global-search-reveal list shortcut variants (same route and assertions), visited history shared with global-search-activation-previews-file visited variant (Return route); unit tests pin reveal target paths only, not list selection or focus; search paths 46 commits in 90d, reveal-by-location fix 3543682c"}}
+{"fs":{"path":"$home/reveal-visited-parent","mkdir":true}}
+{"fs":{"path":"$home/reveal-visited-parent/alpha.txt","write":"alpha.txt\n"}}
+{"fs":{"path":"$home/reveal-visited-parent/zeta.txt","write":"zeta.txt\n"}}
+{"fs":{"path":"$home/reveal-visited-parent/omega-target.txt","write":"activation target preview\n"}}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"key":"ctrl+a"}
+{"type":"$home/reveal-visited-parent"}
+{"wait":{"field":{"of":"field","text":"$home/reveal-visited-parent"}},"message":"the typed folder path"}
+{"key":"Return"}
+{"wait":{"directory":"reveal-visited-parent"},"message":"the browser to be working in 'reveal-visited-parent'"}
+{"settle":{"pane":"reveal-visited-parent"}}
+{"wait":{"focused":"alpha.txt"},"message":"keyboard focus to reach 'alpha.txt'"}
+{"key":"End"}
+{"wait":{"focused":"zeta.txt"},"message":"keyboard focus to reach 'zeta.txt'"}
+{"key":"alt+Left"}
+{"wait":{"directory":"$root"},"message":"the browser to be working in '$root'"}
+{"settle":{"pane":"$root"}}
+{"key":"ctrl+k"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"type":"omega-target"}
+{"wait":{"present":{"role":"list item","name_ends_with":["/omega-target.txt"]}},"message":"global search result"}
+{"key":"alt+Return"}
+{"wait":{"directory":"reveal-visited-parent"},"message":"the browser to be working in 'reveal-visited-parent'"}
+{"settle":{"pane":"reveal-visited-parent"}}
+{"wait":{"selected":["omega-target.txt"],"dir":"reveal-visited-parent"},"message":"the selection to become ['omega-target.txt']"}
+{"wait":{"focused":"omega-target.txt"},"message":"keyboard focus to reach 'omega-target.txt'"}

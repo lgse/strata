@@ -57,7 +57,7 @@ fn frames_are_length_checked_before_allocation_and_must_be_contiguous() {
     Frame {
         tick: 0,
         pixels: vec![1; 1024],
-        samples: vec![2; AUDIO_BYTES],
+        samples: vec![2; audio_bytes(header(), 0)],
     }
     .write(&mut bytes)
     .expect("frame");
@@ -67,6 +67,7 @@ fn frames_are_length_checked_before_allocation_and_must_be_contiguous() {
         (16, 1023),
         (16, u32::MAX),
         (20, 0),
+        (20, AUDIO_BYTES as u32),
         (20, u32::MAX),
     ] {
         let mut bad = bytes[..24].to_vec();
@@ -123,7 +124,7 @@ fn full_length_seeks_and_frames_stop_at_the_source_end_without_tick_overflow() {
         Frame {
             tick: ticks - 1,
             pixels: vec![0; h.video_bytes()],
-            samples: vec![0; AUDIO_BYTES],
+            samples: vec![0; audio_bytes(h, ticks - 1)],
         }
         .write(&mut bytes)
         .expect("last frame");

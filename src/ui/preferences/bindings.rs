@@ -82,9 +82,7 @@ impl PreferenceChanges {
                 listener.active.set(false);
             }
             if let Some(listeners) = weak_listeners.upgrade() {
-                listeners.borrow_mut().retain(|candidate| {
-                    !std::rc::Weak::ptr_eq(&Rc::downgrade(candidate), &weak_listener)
-                });
+                retain_live(&listeners, |candidate| candidate.active.get());
             }
         });
         (listener.refresh)(anchor.as_ref(), manager);
@@ -108,6 +106,13 @@ impl PreferenceChanges {
         for listener in &released {
             listener.active.set(false);
         }
+    }
+
+    /// Publishes a change kept outside `Preferences`, such as folder settings,
+    /// so that a notification already running repeats for it.
+    pub(super) fn notify_unrecorded(&self, manager: &PreferenceManager) {
+        self.revision.set(self.revision.get().wrapping_add(1));
+        self.notify(manager);
     }
 
     pub(super) fn notify(&self, manager: &PreferenceManager) {
@@ -144,11 +149,32 @@ pub(in crate::ui) fn notify_live<T: Clone>(
     is_live: impl Fn(&T) -> bool,
     run: impl Fn(&T),
 ) {
-    listeners.borrow_mut().retain(|entry| is_live(entry));
+    retain_live(listeners, &is_live);
     let live = listeners.borrow().clone();
     for entry in &live {
         if is_live(entry) {
             run(entry);
+        }
+    }
+}
+
+fn retain_live<T>(listeners: &RefCell<Vec<T>>, is_live: impl Fn(&T) -> bool) {
+    // Dropping a listener can destroy another anchor and reenter this registry.
+    loop {
+        let previous = std::mem::take(&mut *listeners.borrow_mut());
+        let count = previous.len();
+        let mut kept: Vec<_> = previous
+            .into_iter()
+            .filter(|entry| is_live(entry))
+            .collect();
+        let removed = kept.len() != count;
+        {
+            let mut current = listeners.borrow_mut();
+            kept.append(&mut *current);
+            *current = kept;
+        }
+        if !removed {
+            break;
         }
     }
 }

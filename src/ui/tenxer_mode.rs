@@ -6,7 +6,7 @@ use gtk::prelude::*;
 
 use super::preferences::PreferenceManager;
 
-pub(crate) const MODE_DESCRIPTION: &str = "Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with Ctrl-Shift-M.";
+pub(crate) const MODE_DESCRIPTION: &str = "Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with %{tenxer_mode_keys}.";
 pub(crate) const UNUSED_SUBTITLE: &str = "Not used in 10xer mode.";
 pub(crate) const TAG_TEXT: &str = "10X";
 pub(crate) const TAG_NAME: &str = "10xer mode";
@@ -75,14 +75,6 @@ pub(crate) fn hide_filter_while_enabled(button: &gtk::ToggleButton, revealer: &g
     );
 }
 
-pub(crate) fn is_toggle_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
-    modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-        && modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK)
-        && !modifiers
-            .intersects(gtk::gdk::ModifierType::ALT_MASK | gtk::gdk::ModifierType::SUPER_MASK)
-        && matches!(key, gtk::gdk::Key::m | gtk::gdk::Key::M)
-}
-
 /// A pending two-key command. While armed, the next key belongs to it alone.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Chord {
@@ -92,62 +84,96 @@ pub(crate) enum Chord {
     Copy,
     Sort,
     Action,
+    Tabs,
 }
 
 impl Chord {
-    pub(crate) fn mark(self) -> &'static str {
-        match self {
-            Self::Go | Self::PreviewTop => "g-",
-            Self::Copy => "c-",
-            Self::Sort => ",-",
-            Self::Action => ";-",
-        }
+    /// The pending chord's first key, as its footer pill shows it.
+    pub(crate) fn mark(self) -> String {
+        use super::keys::{
+            Keys,
+            bindings::{ACTIONS, COPY_AS, GO, SORT_BY, TAB_CHORD},
+        };
+        let prefix = match self {
+            Self::Go | Self::PreviewTop => GO,
+            Self::Copy => COPY_AS,
+            Self::Sort => SORT_BY,
+            Self::Action => ACTIONS,
+            Self::Tabs => TAB_CHORD,
+        };
+        format!("{}-", super::keys::label(&Keys::One(prefix.shown())))
     }
 
-    pub(crate) fn options(self) -> &'static [(&'static str, &'static str)] {
+    /// The second keys and their untranslated actions. The `;` panel lists
+    /// the matching actions itself, and a file chooser leaves out the steps
+    /// it refuses.
+    pub(crate) fn options(
+        self,
+        chooser: bool,
+    ) -> Vec<(super::shortcut_reference::Mention, &'static str)> {
+        use super::{
+            keys::{Keys, Keys::One, bindings::*},
+            shortcut_reference::Mention,
+        };
+        const GO_STEPS: [(Mention, &str); 14] = [
+            (
+                Mention::Keys(One(GO_FOLLOW.shown())),
+                "Follow search result",
+            ),
+            (Mention::Keys(One(GO_HOME.shown())), "Home"),
+            (Mention::Keys(One(GO_DOWNLOADS.shown())), "Downloads"),
+            (Mention::Keys(One(GO_CONFIG.shown())), "Config"),
+            (Mention::Keys(One(GO_TRASH.shown())), "Trash"),
+            (Mention::Keys(One(GO_NETWORK.shown())), "Network"),
+            (Mention::Keys(One(GO_RECENT.shown())), "Recent"),
+            (Mention::Keys(One(GO_DOCUMENTS.shown())), "Documents"),
+            (Mention::Keys(One(GO_MUSIC.shown())), "Music"),
+            (Mention::Keys(One(GO_PICTURES.shown())), "Pictures"),
+            (Mention::Keys(One(GO_VIDEOS.shown())), "Videos"),
+            (Mention::Keys(Keys::Digits(PIN_NUMBERS.step())), "Pins"),
+            (
+                Mention::Keys(Keys::Any(crate::ui::keys::shown![GO_PIN, GO_UNPIN])),
+                "Pin / unpin folder",
+            ),
+            (Mention::Keys(One(GO_PROMPT.shown())), "Type a path"),
+        ];
+        // Choosers open only local folders and Recent, and keep pins as they are.
+        const CHOOSER_REFUSES: [Mention; 3] = [
+            Mention::Keys(One(GO_TRASH.shown())),
+            Mention::Keys(One(GO_NETWORK.shown())),
+            Mention::Keys(Keys::Any(crate::ui::keys::shown![GO_PIN, GO_UNPIN])),
+        ];
+        let step = |step: super::keys::Command| Mention::Keys(One(step.shown()));
+        let go = |first| -> Vec<_> {
+            std::iter::once((step(GO_FIRST), first))
+                .chain(GO_STEPS.iter().copied())
+                .filter(|(keys, _)| !(chooser && CHOOSER_REFUSES.contains(keys)))
+                .collect()
+        };
         match self {
-            Self::Go => &[
-                ("g", "First item"),
-                ("f", "Follow search result"),
-                ("h", "Home"),
-                ("d", "Downloads"),
-                ("c", "Config"),
-                ("t", "Trash"),
-                ("n", "Network"),
-                ("r", "Recent"),
-                ("k", "Documents"),
-                ("m", "Music"),
-                ("p", "Pictures"),
-                ("v", "Videos"),
-                ("1–9", "Pins"),
-                ("+ / -", "Pin / unpin folder"),
-                ("Space", "Type a path"),
+            Self::Go => go("First item"),
+            Self::PreviewTop => go("Top"),
+            Self::Copy => vec![
+                (step(COPY_AS_PATH), "Copy path"),
+                (step(COPY_AS_NAME), "Copy name"),
             ],
-            Self::PreviewTop => &[
-                ("g", "Top"),
-                ("f", "Follow search result"),
-                ("h", "Home"),
-                ("d", "Downloads"),
-                ("c", "Config"),
-                ("t", "Trash"),
-                ("n", "Network"),
-                ("r", "Recent"),
-                ("k", "Documents"),
-                ("p", "Pictures"),
-                ("v", "Videos"),
-                ("1–9", "Pins"),
-                ("+ / -", "Pin / unpin folder"),
-                ("Space", "Type a path"),
+            Self::Sort => vec![
+                (step(SORT_BY_NAME), "Name"),
+                (step(SORT_BY_MODIFIED), "Modified"),
+                (step(SORT_BY_SIZE), "Size"),
+                (step(SORT_BY_TYPE), "Type"),
+                (Mention::Held(gtk::gdk::ModifierType::SHIFT_MASK), "Reverse"),
             ],
-            Self::Copy => &[("c", "Copy path"), ("n", "Copy name")],
-            Self::Sort => &[
-                ("a", "Name"),
-                ("m", "Modified"),
-                ("s", "Size"),
-                ("e", "Type"),
-                ("Shift", "Reverse"),
+            Self::Action => Vec::new(),
+            Self::Tabs => vec![
+                (step(TAB_CHORD_NEW), "New tab"),
+                (step(TAB_CHORD_CLOSE), "Close tab"),
+                (step(TAB_CHORD_PREVIOUS), "Previous tab"),
+                (
+                    Mention::Keys(Keys::Digits(TAB_CHORD_NUMBERS.step())),
+                    "Select tab",
+                ),
             ],
-            Self::Action => &[],
         }
     }
 }
@@ -169,10 +195,15 @@ pub(crate) enum Prompt {
 }
 
 impl Prompt {
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::Find => "/",
-            Self::FindBackward => "?",
+    /// The find labels are keycaps; the others are translated.
+    pub(crate) fn label(self) -> String {
+        use super::keys::{
+            Keys,
+            bindings::{FIND, FIND_BACKWARD},
+        };
+        let label = match self {
+            Self::Find => return super::keys::label(&Keys::One(FIND.shown())),
+            Self::FindBackward => return super::keys::label(&Keys::One(FIND_BACKWARD.shown())),
             Self::Filter => "filter:",
             Self::Search => "search:",
             Self::Go => "go \u{203a}",
@@ -183,14 +214,15 @@ impl Prompt {
             Self::MoveTo => "move to \u{203a}",
             Self::CopyTo => "copy to \u{203a}",
             Self::ExtractTo => "extract to \u{203a}",
-        }
+        };
+        crate::i18n::tr(label)
     }
 
     pub(crate) fn picks_history(self) -> bool {
         matches!(self, Self::Jump | Self::Recent)
     }
 
-    pub(crate) fn completes_folders(self) -> bool {
+    pub(crate) fn picks_folder(self) -> bool {
         matches!(
             self,
             Self::Go | Self::MoveTo | Self::CopyTo | Self::ExtractTo

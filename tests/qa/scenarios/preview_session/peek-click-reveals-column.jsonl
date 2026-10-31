@@ -1,0 +1,39 @@
+{"scenario":"peek-click-reveals-column","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"a.txt":"root preview\n","z.rar":"unsupported fixture\n","Alpha":{"a.txt":"alpha preview\n","Beta":{"Gamma":{"Delta":{"a.txt":"delta preview\n"}}}}},"images":{"image.png":{"width":80,"height":40,"rgb":[0,128,0]}},"cost":{"columns":2.1},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Clicking folder-peek reveal buttons focuses the revealed column without activating rows; only click route to peek, geometry adds nothing"}}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"toggle button","name":"Preview panel"}},"message":"the session preview toggle"}
+{"expect":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":true}}}
+{"click":{"role":"toggle button","name":"Preview panel"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"note":"number","expr":{"of":{"pane":null},"get":"x"},"as":"browser_left"}
+{"select":{"entry":"Alpha"}}
+{"wait":{"directory":"Alpha"},"message":"the browser to be working in 'Alpha'"}
+{"settle":{"pane":"Alpha"}}
+{"select":{"entry":"Beta"}}
+{"wait":{"directory":"Beta"},"message":"the browser to be working in 'Beta'"}
+{"settle":{"pane":"Beta"}}
+{"select":{"entry":"Gamma"}}
+{"wait":{"directory":"Gamma"},"message":"the browser to be working in 'Gamma'"}
+{"settle":{"pane":"Gamma"}}
+{"select":{"entry":"Delta"}}
+{"wait":{"directory":"Delta"},"message":"the browser to be working in 'Delta'"}
+{"settle":{"pane":"Delta"}}
+{"note":"number","expr":{"count":{"description":"Columns view","rendered":false}},"as":"before"}
+{"wait":{"present":{"role":"button","name":"Reveal Alpha column"}},"message":"a clickable parent-column peek"}
+{"remember":{"role":"button","name":"Reveal Alpha column"},"as":"peek"}
+{"expect":{"presented":{"role":"label","name":"Alpha","within":{"pane":"Alpha"}}}}
+{"click":{"point":[{"of":{"remembered":"peek"}},{"of":{"role":"label","name":"Alpha","within":{"pane":"Alpha"}}}]},"count":2}
+{"wait":{"focused":"Beta"},"message":"focus in the revealed parent"}
+{"expect":{"compare":{"left":{"count":{"description":"Columns view","rendered":false}},"op":"==","right":"$before"}}}
+{"wait":{"compare":{"left":{"of":{"pane":"Alpha"},"get":"x"},"op":">=","right":{"of":{"sidebar":"Home"},"get":"x"}}},"message":"the entire focused parent"}
+{"wait":{"present":{"role":"button","name":"Reveal Delta column"}},"message":"a clickable right-hand column peek"}
+{"click":{"role":"button","name":"Reveal Delta column"}}
+{"wait":{"compare":{"left":{"of":{"pane":"Delta"},"get":"right"},"op":"<=","right":{"of":{"window":true},"get":"width"}}},"message":"the revealed child column"}
+{"expect":{"compare":{"left":{"count":{"description":"Columns view","rendered":false}},"op":"==","right":"$before"}}}
+{"wait":{"present":{"role":"button","name":"Reveal Alpha column"}},"message":"the parent peek again"}
+{"click":{"role":"button","name":"Reveal Alpha column"}}
+{"wait":{"focused":"Beta"},"message":"the parent to receive focus"}
+{"select":{"entry":"a.txt","dir":"Alpha"}}
+{"key":"space"}
+{"wait":{"preview":"alpha preview"},"message":"the focused parent's preview"}
+{"wait":{"all":[{"compare":{"left":{"of":{"pane":"Alpha"},"get":"x"},"op":">=","right":"$browser_left"}},{"compare":{"left":{"of":{"pane":"Alpha"},"get":"right"},"op":"<=","right":{"of":{"preview":true},"get":"x"}}}]},"message":"the focused parent, not the rightmost column, to remain visible"}
+{"expect":{"compare":{"left":{"count":{"description":"Columns view","rendered":false}},"op":"==","right":"$before"}}}

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::acceptance::{request, wait_until};
+use super::acceptance::{request, visible_collection_selection, wait_until};
 use super::*;
 use crate::ui::browser_modes::BrowserMode;
 use gtk::gdk::{Key, ModifierType};
@@ -85,6 +85,20 @@ impl Chooser {
             .emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers])
     }
 
+    fn press_reference(&self, key: Key) -> bool {
+        let panel = widget_with_class(self.state.window.upcast_ref(), "shortcut-reference-panel")
+            .expect("reference panel");
+        let controllers = panel.observe_controllers();
+        (0..controllers.n_items())
+            .find_map(|index| {
+                controllers
+                    .item(index)
+                    .and_downcast::<gtk::EventControllerKey>()
+            })
+            .expect("reference key controller")
+            .emit_by_name::<bool>("key-pressed", &[&key, &0u32, &ModifierType::empty()])
+    }
+
     fn focus_files(&self) {
         self.state.view.browser().focus_active();
         wait_until(|| self.state.view.item_view_has_focus());
@@ -118,6 +132,26 @@ impl Chooser {
             .and_downcast::<gtk::Label>()
             .map(|label| label.text().to_string())
             .unwrap_or_default()
+    }
+
+    fn chord_panel(&self) -> Vec<String> {
+        let mut labels = Vec::new();
+        let panel = widget_with_class(self.state.window.upcast_ref(), "shortcut-chord-popover");
+        let mut pending: Vec<_> = panel
+            .filter(|panel| panel.is_visible())
+            .into_iter()
+            .collect();
+        while let Some(widget) = pending.pop() {
+            if let Some(label) = widget.downcast_ref::<gtk::Label>() {
+                labels.push(label.text().to_string());
+            }
+            let mut child = widget.first_child();
+            while let Some(current) = child {
+                child = current.next_sibling();
+                pending.push(current);
+            }
+        }
+        labels
     }
 
     fn prompt(&self) -> gtk::Entry {
@@ -186,24 +220,17 @@ impl Drop for Chooser {
     }
 }
 
-fn widget_with_class(widget: &gtk::Widget, class: &str) -> Option<gtk::Widget> {
-    if widget.has_css_class(class) {
-        return Some(widget.clone());
-    }
-    let mut child = widget.first_child();
-    while let Some(current) = child {
-        if let Some(found) = widget_with_class(&current, class) {
-            return Some(found);
-        }
-        child = current.next_sibling();
-    }
-    None
-}
-
 fn single_file() -> ChooserKind {
     ChooserKind::Open {
         directory: false,
         multiple: false,
+    }
+}
+
+fn multiple_files() -> ChooserKind {
+    ChooserKind::Open {
+        directory: false,
+        multiple: true,
     }
 }
 
@@ -275,13 +302,9 @@ fn multiple_requests_fill_with_space_and_choose_the_fill() {
     crate::test_support::gtk_test(
         "ui::chooser::tests::keyboard::multiple_requests_fill_with_space_and_choose_the_fill",
         || {
-            let multiple = || ChooserKind::Open {
-                directory: false,
-                multiple: true,
-            };
             let tree = ["a.txt", "b.txt", "c.txt"];
 
-            let chooser = Chooser::open(multiple(), BrowserMode::List, &tree);
+            let chooser = Chooser::open(multiple_files(), BrowserMode::List, &tree);
             chooser.focus_files();
             chooser.move_to("a.txt");
             chooser.press(Key::space);
@@ -294,7 +317,7 @@ fn multiple_requests_fill_with_space_and_choose_the_fill() {
             );
             drop(chooser);
 
-            let chooser = Chooser::open(multiple(), BrowserMode::List, &tree);
+            let chooser = Chooser::open(multiple_files(), BrowserMode::List, &tree);
             chooser.focus_files();
             chooser.move_to("c.txt");
             assert!(chooser.press(Key::Return));
@@ -388,6 +411,15 @@ fn chooser_refuses_commands_its_request_does_not_allow() {
             assert_eq!(chooser.cursor_name().as_deref(), Some("a.txt"));
 
             chooser.press(Key::g);
+            wait_until(|| chooser.chord_panel().iter().any(|label| label == "Recent"));
+            let panel = chooser.chord_panel();
+            assert!(panel.iter().any(|label| label == "Pins"), "{panel:?}");
+            for refused in ["Trash", "Network", "Pin / unpin folder"] {
+                assert!(
+                    !panel.iter().any(|label| label == refused),
+                    "the g panel offers {refused}: {panel:?}"
+                );
+            }
             chooser.press(Key::t);
             assert_eq!(chooser.feedback(), "Only local folders can be opened here");
             chooser.press(Key::g);
@@ -406,6 +438,69 @@ fn chooser_refuses_commands_its_request_does_not_allow() {
                 );
             }
             assert!(chooser.open_request());
+        },
+    );
+}
+
+/// An Escape alternate cancels the request like Escape, and Escape still does
+/// when the table leaves it out.
+#[test]
+fn dialogs_dismiss_on_escape_alternate() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::dialogs_dismiss_on_escape_alternate",
+        || {
+            use crate::ui::keys::{Binding, Keymap, Map, bindings::ESCAPE, use_keymap};
+            let alternate = vec![Binding::ctrl(Key::bracketleft)];
+            let _keymap = use_keymap(
+                Keymap::defaults()
+                    .with(Map::Default, ESCAPE, alternate.clone())
+                    .with(Map::Tenxer, ESCAPE, alternate),
+            );
+            for tenxer in [false, true] {
+                for (key, modifiers) in [
+                    (Key::bracketleft, ModifierType::CONTROL_MASK),
+                    (Key::Escape, ModifierType::empty()),
+                ] {
+                    let chooser =
+                        Chooser::open_with(single_file(), BrowserMode::List, &["a.txt"], tenxer);
+                    chooser.focus_files();
+                    assert!(chooser.press_with(key, modifiers));
+                    assert!(chooser.cancelled(), "{key:?} tenxer={tenxer}");
+                }
+            }
+        },
+    );
+}
+
+/// A modified Down alternate moves the cursor as Down does, though Ctrl is held.
+#[test]
+fn modified_arrow_alternate_moves_the_cursor() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::modified_arrow_alternate_moves_the_cursor",
+        || {
+            use crate::ui::keys::{Binding, Keymap, Map, bindings::DOWN, use_keymap};
+            let keymap =
+                [Map::Default, Map::Tenxer]
+                    .into_iter()
+                    .fold(Keymap::defaults(), |keymap, map| {
+                        let mut bindings = DOWN.defaults(map).to_vec();
+                        bindings.push(Binding::ctrl(Key::j));
+                        keymap.with(map, DOWN, bindings)
+                    });
+            let _keymap = use_keymap(keymap);
+            for tenxer in [false, true] {
+                let chooser = Chooser::open_with(
+                    single_file(),
+                    BrowserMode::List,
+                    &["a.txt", "b.txt"],
+                    tenxer,
+                );
+                chooser.focus_files();
+                chooser.press(Key::Home);
+                wait_until(|| chooser.cursor_name().as_deref() == Some("a.txt"));
+                assert!(chooser.press_with(Key::j, ModifierType::CONTROL_MASK));
+                wait_until(|| chooser.cursor_name().as_deref() == Some("b.txt"));
+            }
         },
     );
 }
@@ -458,6 +553,49 @@ fn escape_dismisses_one_interaction_before_cancelling_and_the_toggle_keeps_the_r
             chooser.press(Key::Escape);
             assert!(chooser.cancelled());
             assert_eq!(chooser.responses.get(), 1);
+        },
+    );
+}
+
+#[test]
+fn chooser_shortcuts_stay_off_while_the_reference_stays_open_outside_tenxer() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::chooser_shortcuts_stay_off_while_the_reference_stays_open_outside_tenxer",
+        || {
+            let chooser = Chooser::open(single_file(), BrowserMode::List, &["a.txt", "folder/"]);
+            chooser.focus_files();
+            assert!(chooser.press(Key::F1));
+            wait_until(|| chooser.reference_search_focused());
+            PreferenceManager::shared().set_tenxer_mode(false);
+            wait_until(|| !chooser.footer_visible());
+            assert!(chooser.reference_visible());
+            let browser = chooser.state.view.browser();
+            let location = browser.active_location();
+            let (none, control, alt) = (
+                ModifierType::empty(),
+                ModifierType::CONTROL_MASK,
+                ModifierType::ALT_MASK,
+            );
+            for (key, modifiers) in [
+                (Key::F5, none),
+                (Key::h, control),
+                (Key::period, control),
+                (Key::_2, control),
+                (Key::Up, alt),
+                (Key::Left, alt),
+                (Key::Home, alt),
+            ] {
+                assert!(
+                    !chooser.press_with(key, modifiers),
+                    "{modifiers:?}+{key:?} acted behind the reference"
+                );
+            }
+            assert_eq!(chooser.state.view.view_mode(), BrowserMode::List);
+            assert_eq!(browser.active_location(), location);
+            assert!(!chooser.press(Key::Escape), "the chooser took Esc");
+            assert!(chooser.press_reference(Key::Escape));
+            assert!(!chooser.reference_visible());
+            assert!(chooser.open_request(), "Esc cancelled the request");
         },
     );
 }
@@ -645,9 +783,40 @@ fn save_name_and_location_do_not_dispatch_listing_shortcuts() {
                     assert!(!chooser.state.view.filter_has_focus());
                     assert!(chooser.open_request());
                 }
+                // Ctrl+A on a Russian-only keymap reaches the field's own select-all.
+                entry.select_region(0, 0);
+                assert!(chooser.keys.emit_by_name::<bool>(
+                    "key-pressed",
+                    &[&Key::Cyrillic_ef, &38u32, &ModifierType::CONTROL_MASK],
+                ));
+                assert_eq!(
+                    entry.selection_bounds(),
+                    Some((0, entry.text().chars().count() as i32))
+                );
+                assert!(has_focus());
                 assert!(chooser.press(Key::Escape));
                 assert!(chooser.state.view.item_view_has_focus());
             }
+        },
+    );
+}
+
+#[test]
+fn save_file_initial_name_selection_stops_before_the_dot() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::save_file_initial_name_selection_stops_before_the_dot",
+        || {
+            let chooser = Chooser::open_with(
+                ChooserKind::SaveFile {
+                    current_name: Some("report.draft.pdf".into()),
+                },
+                BrowserMode::List,
+                &[],
+                false,
+            );
+            while gtk::glib::MainContext::default().iteration(false) {}
+            let name = chooser.state.filename.clone().expect("name field");
+            assert_eq!(name.selection_bounds(), Some((0, 12)));
         },
     );
 }
@@ -737,6 +906,292 @@ fn footer_create_and_rename_keep_the_request_open() {
             wait_until(|| chooser.root.path().join("made").is_dir());
             assert!(chooser.open_request());
             assert!(!chooser.root.path().join("draft.txt").exists());
+        },
+    );
+}
+
+#[test]
+fn default_map_enter_returns_the_whole_fill_in_every_view() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::default_map_enter_returns_the_whole_fill_in_every_view",
+        || {
+            let shift_down = |chooser: &Chooser| {
+                chooser.press_with(Key::Down, ModifierType::SHIFT_MASK);
+            };
+            let select_all = |chooser: &Chooser| {
+                chooser.press_with(Key::a, ModifierType::CONTROL_MASK);
+            };
+            let native_first_and_last = |chooser: &Chooser| {
+                let browser = chooser.state.view.browser();
+                browser.commit_selection();
+                let selection = visible_collection_selection(&chooser.state.view.widget())
+                    .expect("visible browser collection");
+                selection.select_item(0, true);
+                selection.select_item(2, false);
+                wait_until(|| browser.selected_entries().len() == 2);
+            };
+            type EnterCase<'a> = (BrowserMode, &'a dyn Fn(&Chooser), &'a [&'a str]);
+            let cases: [EnterCase; 3] = [
+                (BrowserMode::Columns, &shift_down, &["a.txt", "b.txt"]),
+                (BrowserMode::List, &select_all, &["a.txt", "b.txt", "c.txt"]),
+                (
+                    BrowserMode::Icons,
+                    &native_first_and_last,
+                    &["a.txt", "c.txt"],
+                ),
+            ];
+            for (mode, fill, expected) in cases {
+                let chooser =
+                    Chooser::open_with(multiple_files(), mode, &["a.txt", "b.txt", "c.txt"], false);
+                chooser.focus_files();
+                fill(&chooser);
+                assert!(chooser.open_request(), "{mode:?} filling chose a file");
+
+                assert!(chooser.press(Key::Return), "{mode:?}");
+                let mut chosen = chooser.chosen();
+                chosen.sort();
+                let expected = expected
+                    .iter()
+                    .map(|name| chooser.uri(name))
+                    .collect::<Vec<_>>();
+                assert_eq!(chosen, expected, "{mode:?}");
+                chooser.press(Key::Return);
+                chooser.press(Key::Escape);
+                assert_eq!(chooser.responses.get(), 1, "{mode:?} responded twice");
+            }
+        },
+    );
+}
+
+#[test]
+fn default_map_enter_returns_only_the_files_of_a_fill_with_a_folder() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::default_map_enter_returns_only_the_files_of_a_fill_with_a_folder",
+        || {
+            let chooser = Chooser::open_with(
+                multiple_files(),
+                BrowserMode::List,
+                &["a.txt", "b.txt", "sub/"],
+                false,
+            );
+            chooser.focus_files();
+            chooser.press_with(Key::a, ModifierType::CONTROL_MASK);
+            assert_eq!(chooser.state.view.browser().selected_entries().len(), 3);
+            assert_eq!(chooser.cursor_name().as_deref(), Some("b.txt"));
+
+            assert!(chooser.press(Key::Return));
+            let mut chosen = chooser.chosen();
+            chosen.sort();
+            assert_eq!(chosen, [chooser.uri("a.txt"), chooser.uri("b.txt")]);
+        },
+    );
+}
+
+/// The portal process loads the settings file when its chooser opens, keymap
+/// overrides included.
+#[test]
+fn saved_overrides_reach_the_chooser_dispatcher() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::saved_overrides_reach_the_chooser_dispatcher",
+        || {
+            let settings = crate::ui::preferences::config_directory().join("settings.toml");
+            std::fs::create_dir_all(settings.parent().expect("settings directory"))
+                .expect("settings directory");
+            std::fs::write(
+                &settings,
+                "[keymap.default]\ntoggle_hidden_files = [\"<Control><Alt>h\"]\nparent_folder = [\"<Control>e\"]\n",
+            )
+            .expect("saved override");
+            let chooser = Chooser::open_with(single_file(), BrowserMode::List, &["a.txt"], false);
+            chooser.focus_files();
+            let browser = chooser.state.view.browser();
+            let hidden = browser.preferences().show_hidden;
+            chooser.press_with(Key::h, ModifierType::CONTROL_MASK);
+            assert_eq!(
+                browser.preferences().show_hidden,
+                hidden,
+                "Ctrl+H is unbound"
+            );
+            assert!(
+                chooser.press_with(Key::h, ModifierType::CONTROL_MASK | ModifierType::ALT_MASK)
+            );
+            assert_eq!(browser.preferences().show_hidden, !hidden);
+            let parent = Location::local(
+                chooser
+                    .root
+                    .path()
+                    .parent()
+                    .expect("fixture parent")
+                    .to_path_buf(),
+            );
+            assert!(chooser.press_with(Key::e, ModifierType::CONTROL_MASK));
+            wait_until(|| browser.active_location().as_ref() == Some(&parent));
+        },
+    );
+}
+
+#[test]
+fn default_map_enter_keeps_single_selection_and_folder_navigation() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::default_map_enter_keeps_single_selection_and_folder_navigation",
+        || {
+            let chooser = Chooser::open_with(
+                single_file(),
+                BrowserMode::List,
+                &["alpha.txt", "beta.txt"],
+                false,
+            );
+            chooser.focus_files();
+            assert!(chooser.press(Key::Return));
+            assert_eq!(chooser.chosen(), [chooser.uri("alpha.txt")]);
+            assert_eq!(chooser.responses.get(), 1);
+            drop(chooser);
+
+            let chooser = Chooser::open_with(
+                multiple_files(),
+                BrowserMode::Columns,
+                &["alpha.txt", "folder/", "folder/inner.txt"],
+                false,
+            );
+            chooser.focus_files();
+            chooser.press(Key::Down);
+            chooser.press_with(Key::Up, ModifierType::SHIFT_MASK);
+            let browser = chooser.state.view.browser();
+            assert_eq!(browser.selected_entries().len(), 2);
+            assert_eq!(chooser.cursor_name().as_deref(), Some("folder"));
+            assert!(chooser.press(Key::Return));
+            let folder = Location::local(chooser.root.path().join("folder"));
+            wait_until(|| browser.active_location().as_ref() == Some(&folder));
+            assert!(chooser.open_request(), "Enter on a folder chose the fill");
+        },
+    );
+}
+
+/// The 10xer stage and the chooser's own first keys read before the folder
+/// accept, so `conflicts::check` must refuse an accept key either takes. Rows
+/// are driven like the window's in `keyboard_dispatch::keymap_conflicts`.
+#[test]
+fn folder_accept_order_matches_the_conflict_check() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::folder_accept_order_matches_the_conflict_check",
+        || {
+            use crate::ui::keys::{
+                Binding, Keymap, Map,
+                bindings::CHOOSE_FOLDER,
+                conflicts::{Policy, Severity, check},
+                use_keymap,
+            };
+            let open = || {
+                let folders = ChooserKind::Open {
+                    directory: true,
+                    multiple: false,
+                };
+                let chooser = Chooser::open(folders, BrowserMode::List, &["alpha/", "beta/"]);
+                chooser.focus_files();
+                chooser
+            };
+            let press = |chooser: &Chooser,
+                         binding: Binding,
+                         owner: Option<fn(&Chooser) -> bool>| {
+                chooser.press_with(binding.key(), binding.modifiers());
+                let owned = || owner.is_some_and(|owner| owner(chooser));
+                let deadline = std::time::Instant::now() + std::time::Duration::from_millis(300);
+                while chooser.responses.get() == 0
+                    && !owned()
+                    && std::time::Instant::now() < deadline
+                {
+                    glib::MainContext::default().iteration(false);
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+                (chooser.responses.get() > 0, owned())
+            };
+            let shipped = CHOOSE_FOLDER.defaults(Map::Tenxer)[0];
+            assert_eq!(press(&open(), shipped, None), (true, false));
+            let edits_location: fn(&Chooser) -> bool =
+                |chooser| chooser.state.view.location_has_focus();
+            for (key, owner) in [
+                // The chooser's handler reads location first.
+                ("<Control>l", Some(edits_location)),
+                // The 10xer stage pages first.
+                ("<Control>u", None),
+                // The focused 10xer listing keeps typed keys.
+                ("e", None),
+            ] {
+                let binding = Binding::parse(key).expect("accelerator");
+                let mut entry = CHOOSE_FOLDER.defaults(Map::Tenxer).to_vec();
+                entry.push(binding);
+                let keymap = Keymap::defaults().with(Map::Tenxer, CHOOSE_FOLDER, entry);
+                let findings = check(
+                    &keymap,
+                    Map::Tenxer,
+                    CHOOSE_FOLDER,
+                    binding,
+                    Policy::default(),
+                );
+                let error = findings
+                    .iter()
+                    .any(|finding| finding.severity == Severity::Error);
+                let chooser = open();
+                let (fired, owned) = {
+                    let _keymap = use_keymap(keymap);
+                    press(&chooser, binding, owner)
+                };
+                if owner.is_some() && !owned {
+                    assert!(
+                        press(&open(), binding, owner).1,
+                        "{key}: the owner kept no key"
+                    );
+                }
+                assert_eq!(
+                    error,
+                    !fired || owner.is_some(),
+                    "{key}: fired={fired}, findings={findings:?}"
+                );
+            }
+        },
+    );
+}
+
+#[test]
+fn enter_in_the_filter_field_chooses_the_top_result_in_every_view() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::enter_in_the_filter_field_chooses_the_top_result_in_every_view",
+        || {
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                let chooser = Chooser::open_with(
+                    single_file(),
+                    mode,
+                    &["notes.txt", "notes-old.txt", "other.txt"],
+                    false,
+                );
+                chooser.focus_files();
+                assert!(
+                    chooser.press_with(Key::f, ModifierType::CONTROL_MASK),
+                    "{mode:?}"
+                );
+                let field = gtk::prelude::RootExt::focus(&chooser.state.window)
+                    .and_then(|focus| focus.ancestor(gtk::Entry::static_type()))
+                    .and_downcast::<gtk::Entry>()
+                    .expect("filter field");
+                field.set_text("notes");
+                wait_until(|| chooser.state.view.filter_result_names().len() == 2);
+                let top = chooser.state.view.filter_result_names()[0].clone();
+                let controllers = field.observe_controllers();
+                let handled = (0..controllers.n_items())
+                    .filter_map(|index| {
+                        controllers
+                            .item(index)
+                            .and_downcast::<gtk::EventControllerKey>()
+                    })
+                    .any(|keys| {
+                        keys.emit_by_name::<bool>(
+                            "key-pressed",
+                            &[&Key::Return, &0u32, &ModifierType::empty()],
+                        )
+                    });
+                assert!(handled, "{mode:?}: Enter in the field was not handled");
+                assert_eq!(chooser.chosen(), [chooser.uri(&top)], "{mode:?}");
+            }
         },
     );
 }

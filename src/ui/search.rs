@@ -11,8 +11,13 @@ use std::{
 
 use gtk::{gdk, glib, prelude::*};
 
+use super::keys::{
+    self,
+    bindings::{DOWN, ENTER_ANY_SHIFT, ESCAPE_ANY, OPEN_CONTAINING_FOLDER, UP},
+};
 use crate::services::{
-    NavigationHistory, SearchCoverage, SearchEvent, SearchHandle, SearchItem, index_trees,
+    NavigationHistory, SearchCoverage, SearchEvent, SearchHandle, SearchItem,
+    index_trees_with_exclusions,
 };
 
 const MAX_RESULT_UPDATES_PER_FRAME: usize = 8;
@@ -25,6 +30,7 @@ pub struct SearchDialog {
 struct SearchState {
     // Keep the shared provider alive when this dialog is hosted without a browser window.
     _themes: Rc<super::theme::ThemeManager>,
+    preferences: Rc<super::preferences::PreferenceManager>,
     layer: gtk::Box,
     field: gtk::Entry,
     indexing_spinner: gtk::Spinner,
@@ -47,6 +53,8 @@ struct SearchState {
     reveal: Rc<dyn Fn(SearchItem)>,
     context_menu: RefCell<Option<gtk::Popover>>,
     dismiss: Rc<dyn Fn()>,
+    /// Cleared when a result is chosen, so focus follows the browser, not the opener.
+    focus_restore: Rc<Cell<bool>>,
 }
 
 impl SearchDialog {
@@ -60,6 +68,7 @@ impl SearchDialog {
         dismiss: Rc<dyn Fn()>,
     ) -> Self {
         let themes = super::theme::ThemeManager::shared();
+        let preferences = super::preferences::PreferenceManager::shared();
         let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
         layer.add_css_class("search-backdrop");
         layer.add_css_class("app-modal-layer");
@@ -85,22 +94,31 @@ impl SearchDialog {
             20,
         ));
         let field = gtk::Entry::builder()
-            .placeholder_text("Search files and folders…")
+            .placeholder_text(crate::i18n::tr("Search files and folders…"))
             .hexpand(true)
             .build();
         field.add_css_class("search-field");
+        crate::ui::accessibility::set_label(&field, &crate::i18n::tr("Search files and folders…"));
         search_bar.append(&field);
         let indexing_spinner = gtk::Spinner::new();
         indexing_spinner.add_css_class("search-indexing-spinner");
-        crate::ui::accessibility::set_description(&indexing_spinner, Some("Indexing files…"));
+        crate::ui::accessibility::set_description(
+            &indexing_spinner,
+            Some(&crate::i18n::tr("Indexing files…")),
+        );
         indexing_spinner.set_valign(gtk::Align::Center);
         indexing_spinner.set_visible(false);
         search_bar.append(&indexing_spinner);
         panel.append(&search_bar);
 
-        let status = gtk::Label::new(Some("Type to search Home and mounted local drives"));
+        let status = gtk::Label::new(Some(&crate::i18n::tr(
+            "Type to search Home and mounted local drives",
+        )));
         status.add_css_class("search-status");
         status.set_wrap(true);
+        status.set_justify(gtk::Justification::Center);
+        status.set_halign(gtk::Align::Center);
+        status.set_valign(gtk::Align::Center);
 
         let list = gtk::ListBox::new();
         list.add_css_class("search-results");
@@ -129,14 +147,30 @@ impl SearchDialog {
 
         let footer = gtk::Box::new(gtk::Orientation::Horizontal, 18);
         footer.add_css_class("search-footer");
-        let navigation = gtk::Label::new(Some("↑↓  navigate"));
+        // Key hints shorten in narrow windows so "Partial results" stays visible.
+        let hint_label = |text: &str| {
+            let label = gtk::Label::new(Some(text));
+            label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            label
+        };
+        let followed_hint = |message: &'static str, keys: keys::Keys| {
+            let label = hint_label("");
+            super::shortcut_reference::follow_keys(&label, move |label| {
+                label.set_text(&super::shortcut_reference::with_keys(message, keys));
+            });
+            label
+        };
+        let navigation = followed_hint(
+            "%{keys}  navigate",
+            keys::Keys::Any(crate::ui::keys::shown![UP.alternate(0), DOWN.alternate(0)]),
+        );
         let open = gtk::Box::new(gtk::Orientation::Horizontal, 5);
         open.set_valign(gtk::Align::Center);
         open.append(&crate::assets::primary_icon(
             crate::assets::icons::CORNER_DOWN_LEFT,
             13,
         ));
-        open.append(&gtk::Label::new(Some("open")));
+        open.append(&hint_label(&crate::i18n::tr("open")));
         navigation.add_css_class("search-hint");
         open.add_css_class("search-hint");
         footer.append(&navigation);
@@ -147,7 +181,10 @@ impl SearchDialog {
             crate::assets::icons::FOLDER_OPEN,
             13,
         ));
-        reveal_hint.append(&gtk::Label::new(Some("Alt+Enter  open containing folder")));
+        reveal_hint.append(&followed_hint(
+            "%{keys}  open containing folder",
+            keys::Keys::One(OPEN_CONTAINING_FOLDER.shown()),
+        ));
         reveal_hint.add_css_class("search-hint");
         footer.append(&reveal_hint);
         let truncated_hint = gtk::Box::new(gtk::Orientation::Horizontal, 4);
@@ -155,7 +192,7 @@ impl SearchDialog {
             crate::assets::icons::TRIANGLE_ALERT,
             14,
         ));
-        truncated_hint.append(&gtk::Label::new(Some("Partial results")));
+        truncated_hint.append(&gtk::Label::new(Some(&crate::i18n::tr("Partial results"))));
         truncated_hint.add_css_class("search-hint");
         truncated_hint.add_css_class("search-hint-warning");
         truncated_hint.set_hexpand(true);
@@ -165,8 +202,10 @@ impl SearchDialog {
         panel.append(&footer);
         super::modal::layout::install(&layer, &panel);
 
+        let focus_restore = super::modal::remember_persistent_modal_focus(layer.upcast_ref());
         let state = Rc::new(SearchState {
             _themes: themes,
+            preferences,
             layer,
             field,
             indexing_spinner,
@@ -189,12 +228,21 @@ impl SearchDialog {
             reveal,
             context_menu: RefCell::new(None),
             dismiss,
+            focus_restore,
         });
 
         let changed = Rc::downgrade(&state);
         state.field.connect_changed(move |field| {
             if let Some(state) = changed.upgrade() {
                 begin_query(&state, &field.text());
+            }
+        });
+        // Enter reaches the field only after an input method commits and passes
+        // it back; otherwise the key handler below opens the result.
+        let entered = Rc::downgrade(&state);
+        state.field.connect_activate(move |_| {
+            if let Some(state) = entered.upgrade() {
+                activate_selected(&state);
             }
         });
         let activated = Rc::downgrade(&state);
@@ -206,19 +254,17 @@ impl SearchDialog {
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         let keyed = Rc::downgrade(&state);
-        keys.connect_key_pressed(move |_, key, _, modifiers| {
+        keys::on_press(&keys, move |_, press| {
             let Some(state) = keyed.upgrade() else {
                 return glib::Propagation::Proceed;
             };
             record_interaction(&state);
-            if key == gdk::Key::Escape {
+            let press = &press.untyped();
+            if press.is(ESCAPE_ANY) {
                 hide(&state);
                 return glib::Propagation::Stop;
             }
-            if matches!(key, gdk::Key::Return | gdk::Key::KP_Enter)
-                && modifiers & gtk::accelerator_get_default_mod_mask()
-                    == gdk::ModifierType::ALT_MASK
-            {
+            if press.is(OPEN_CONTAINING_FOLDER) {
                 if let Some(item) = state.list.selected_row().and_then(|row| {
                     state
                         .visible_results
@@ -230,20 +276,11 @@ impl SearchDialog {
                 }
                 return glib::Propagation::Stop;
             }
-            if modifiers.intersects(
-                gdk::ModifierType::CONTROL_MASK
-                    | gdk::ModifierType::ALT_MASK
-                    | gdk::ModifierType::SUPER_MASK,
-            ) {
-                return glib::Propagation::Proceed;
-            }
-            if matches!(key, gdk::Key::Down | gdk::Key::Up)
-                && !modifiers.contains(gdk::ModifierType::SHIFT_MASK)
-            {
-                move_selection(&state, if key == gdk::Key::Down { 1 } else { -1 });
+            if press.is_any(&[DOWN, UP]) {
+                move_selection(&state, if press.is(DOWN) { 1 } else { -1 });
                 return glib::Propagation::Stop;
             }
-            if matches!(key, gdk::Key::Return | gdk::Key::KP_Enter) && activate_selected(&state) {
+            if press.is(ENTER_ANY_SHIFT) && activate_selected(&state) {
                 return glib::Propagation::Stop;
             }
             glib::Propagation::Proceed
@@ -316,7 +353,7 @@ impl SearchDialog {
         self.state.history.borrow_mut().take();
         self.state
             .field
-            .set_placeholder_text(Some("Search files and folders…"));
+            .set_placeholder_text(Some(&crate::i18n::tr("Search files and folders…")));
         let locations = roots
             .iter()
             .map(|root| root.display().to_string())
@@ -324,8 +361,9 @@ impl SearchDialog {
             .join("\n");
         crate::ui::accessibility::set_description(
             &self.state.field,
-            Some(&format!(
-                "Search locations:\n{locations}\nRemote shares are not included."
+            Some(&rust_i18n::t!(
+                "Search locations:\n%{locations}\nRemote shares are not included.",
+                locations = locations
             )),
         );
         self.state.field.set_sensitive(!roots.is_empty());
@@ -333,9 +371,9 @@ impl SearchDialog {
         self.state.results.set_visible_child_name("status");
         self.state.field.set_text("");
         self.state.status.set_visible(true);
-        self.state
-            .status
-            .set_text("Type to search Home and mounted local drives");
+        self.state.status.set_text(&crate::i18n::tr(
+            "Type to search Home and mounted local drives",
+        ));
         self.state.truncated_hint.set_visible(false);
         self.state.indexing_spinner.set_visible(true);
         self.state.indexing_spinner.start();
@@ -346,13 +384,16 @@ impl SearchDialog {
         if roots.is_empty() {
             self.state
                 .status
-                .set_text("No local search locations available.");
+                .set_text(&crate::i18n::tr("No local search locations available."));
             self.state.indexing_spinner.stop();
             self.state.indexing_spinner.set_visible(false);
             self.state.layer.grab_focus();
             return;
         }
-        let (handle, receiver) = index_trees(roots, show_hidden);
+        let exclusions = self.state.preferences.search_exclusions();
+        let limits = self.state.preferences.search_limits();
+        let (handle, receiver) =
+            index_trees_with_exclusions(roots, show_hidden, exclusions, limits);
         self.state.search.replace(Some(handle));
         let weak = Rc::downgrade(&self.state);
         let _poll = glib::timeout_add_local(Duration::from_millis(16), move || {
@@ -386,11 +427,7 @@ impl SearchDialog {
                     state.indexing_spinner.set_visible(false);
                 }
                 if query == state.field.text().trim() {
-                    crate::ui::accessibility::set_description(
-                        &state.truncated_hint,
-                        Some(&coverage.message()),
-                    );
-                    state.truncated_hint.set_visible(coverage.is_partial());
+                    show_coverage(&state.truncated_hint, coverage);
                 }
                 if !query.is_empty() && query == state.field.text().trim() {
                     render_results(&state, items, indexing, coverage);
@@ -406,10 +443,10 @@ impl SearchDialog {
         self.state.history.replace(Some(history));
         self.state
             .field
-            .set_placeholder_text(Some("Jump to a folder…"));
+            .set_placeholder_text(Some(&crate::i18n::tr("Jump to a folder…")));
         crate::ui::accessibility::set_description(
             &self.state.field,
-            Some("Folders previously visited in Strata"),
+            Some(&crate::i18n::tr("Folders previously visited in Strata")),
         );
         self.state.field.set_sensitive(true);
         clear_results(&self.state);
@@ -449,11 +486,11 @@ fn begin_query(state: &Rc<SearchState>, query: &str) {
         clear_results(state);
         state.results.set_visible_child_name("status");
         state.status.set_text(
-            "Type to search Home and mounted local drives\nFuzzy matching · try a name or path fragment",
+            &crate::i18n::tr("Type to search Home and mounted local drives\nFuzzy matching · try a name or path fragment"),
         );
     } else if state.visible_results.borrow().is_empty() {
         state.results.set_visible_child_name("status");
-        state.status.set_text("Searching…");
+        state.status.set_text(&crate::i18n::tr("Searching…"));
     }
     if let Some(search) = state.search.borrow().as_ref() {
         search.query(query);
@@ -542,8 +579,7 @@ fn render_results(
     let query_empty = query.is_empty();
     state.rendered_query.replace(query);
     let has_results = !state.visible_results.borrow().is_empty();
-    crate::ui::accessibility::set_description(&state.truncated_hint, Some(&coverage.message()));
-    state.truncated_hint.set_visible(coverage.is_partial());
+    show_coverage(&state.truncated_hint, coverage);
     state
         .results
         .set_visible_child_name(if has_results { "results" } else { "status" });
@@ -580,7 +616,7 @@ fn render_results(
         } else {
             "No matching files or folders"
         };
-        state.status.set_text(message);
+        state.status.set_text(&crate::i18n::tr(message));
     }
 
     if results_changed
@@ -641,7 +677,7 @@ fn result_row(state: &Rc<SearchState>, item: &SearchItem) -> gtk::ListBoxRow {
     let fallback = if item.is_directory {
         crate::assets::icons::FOLDER
     } else {
-        crate::assets::icons::DOCUMENTS
+        crate::ui::browser::icon_for_name(&item.name)
     };
     super::thumbnail::show_customized_icon(&icon, &item.path, fallback, 19);
     content.append(&icon);
@@ -721,6 +757,7 @@ fn close_result_menu(state: &SearchState) {
 }
 
 fn reveal_result(state: &SearchState, item: SearchItem) {
+    skip_focus_restore(state);
     let reveal = state.reveal.clone();
     hide_then(state, move || reveal(item));
 }
@@ -756,20 +793,20 @@ fn refresh_visible_thumbnails(state: &SearchState) {
             else {
                 continue;
             };
+            let fallback = if item.is_directory {
+                crate::assets::icons::FOLDER
+            } else {
+                crate::ui::browser::icon_for_name(&item.name)
+            };
             if visible && requested.insert(item.path.clone()) {
-                changes.push((image, Some(item.path.clone()), item.is_directory));
+                changes.push((image, Some(item.path.clone()), fallback));
             } else if !visible && requested.remove(&item.path) {
-                changes.push((image, None, item.is_directory));
+                changes.push((image, None, fallback));
             }
         }
         changes
     };
-    for (image, path, is_directory) in changes {
-        let fallback = if is_directory {
-            crate::assets::icons::FOLDER
-        } else {
-            crate::assets::icons::DOCUMENTS
-        };
+    for (image, path, fallback) in changes {
         if let Some(path) = path {
             super::thumbnail::set_thumbnail_or_icon_for_path(&image, &path, fallback, 19, 32);
         } else {
@@ -853,8 +890,13 @@ fn activate_position(state: &Rc<SearchState>, position: i32) {
     else {
         return;
     };
+    skip_focus_restore(state);
     hide(state);
     (state.activate)(item);
+}
+
+fn skip_focus_restore(state: &SearchState) {
+    state.focus_restore.set(false);
 }
 
 fn hide(state: &SearchState) {
@@ -899,6 +941,14 @@ fn clear_results(state: &SearchState) {
         state.list.remove(&child);
     }
     state.reconciling_results.set(false);
+}
+
+/// The hint names why results are partial and, for limit stops, where to raise the limits.
+fn show_coverage(hint: &gtk::Box, coverage: SearchCoverage) {
+    let message = coverage.is_partial().then(|| coverage.message());
+    crate::ui::accessibility::set_description(hint, message.as_deref());
+    hint.set_tooltip_text(message.as_deref());
+    hint.set_visible(message.is_some());
 }
 
 #[cfg(test)]

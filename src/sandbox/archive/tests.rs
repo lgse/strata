@@ -12,22 +12,30 @@ fn fixture_stream(build: impl FnOnce(&mut Vec<u8>)) -> Cursor<Vec<u8>> {
 
 #[test]
 fn drive_dispatches_directory_and_file_members_in_archive_order() {
+    let directory = wire::WireMetadata {
+        mode: Some(0o40_755),
+        modified: None,
+    };
+    let file = wire::WireMetadata {
+        mode: None,
+        modified: Some(wire::WireTime::FileTime(130_830_000_680_000_000)),
+    };
     let reader = fixture_stream(|bytes| {
-        wire::write_directory(bytes, "photos").expect("fixture stream");
-        wire::write_file_header(bytes, "notes.txt", 5).expect("fixture stream");
+        wire::write_directory(bytes, "photos", directory).expect("fixture stream");
+        wire::write_file_header(bytes, "notes.txt", 5, file).expect("fixture stream");
         wire::write_chunk(bytes, b"hello").expect("fixture stream");
         wire::write_file_ok(bytes).expect("fixture stream");
         wire::write_end(bytes).expect("fixture stream");
     });
 
     let mut seen = Vec::new();
-    drive(reader, |name, member| {
+    drive(reader, |name, member, metadata| {
         match member {
-            Member::Directory => seen.push((name.to_owned(), None)),
+            Member::Directory => seen.push((name.to_owned(), None, metadata)),
             Member::File { size, body } => {
                 let mut content = Vec::new();
                 body.read_to_end(&mut content).expect("fixture stream");
-                seen.push((name.to_owned(), Some((size, content))));
+                seen.push((name.to_owned(), Some((size, content)), metadata));
             }
         }
         Ok(())
@@ -37,72 +45,92 @@ fn drive_dispatches_directory_and_file_members_in_archive_order() {
     assert_eq!(
         seen,
         vec![
-            ("photos".to_owned(), None),
-            ("notes.txt".to_owned(), Some((5, b"hello".to_vec()))),
+            ("photos".to_owned(), None, directory),
+            ("notes.txt".to_owned(), Some((5, b"hello".to_vec())), file),
         ]
     );
 }
 
 #[test]
 fn drive_propagates_a_top_level_error_record_and_stops() {
-    let reader = fixture_stream(|bytes| {
-        wire::write_error(bytes, "Unable to open RAR archive").expect("fixture stream");
-    });
-    let mut calls = 0;
-    let error = drive(reader, |_, _| {
-        calls += 1;
-        Ok(())
-    })
-    .expect_err("an error record must fail the stream");
-    assert_eq!(error, "Unable to open RAR archive");
-    assert_eq!(calls, 0, "no member callback runs after a top-level error");
+    for failure in [
+        wire::Failure::from("Unable to open RAR archive"),
+        wire::Failure::new(
+            wire::FailureKind::IncorrectPassword,
+            "The password may be incorrect.",
+        ),
+    ] {
+        let reader = fixture_stream(|bytes| {
+            wire::write_error(bytes, &failure).expect("fixture stream");
+        });
+        let mut calls = 0;
+        let error = drive(reader, |_, _, _| {
+            calls += 1;
+            Ok(())
+        })
+        .expect_err("an error record must fail the stream");
+        assert_eq!(error, failure);
+        assert_eq!(calls, 0, "no member callback runs after a top-level error");
+    }
 }
 
 #[test]
 fn drive_propagates_a_file_trailer_failure_and_stops_before_end() {
-    let reader = fixture_stream(|bytes| {
-        wire::write_file_header(bytes, "broken.bin", 3).expect("fixture stream");
-        wire::write_chunk(bytes, b"abc").expect("fixture stream");
-        wire::write_file_failed(bytes, "CRC mismatch").expect("fixture stream");
-        wire::write_end(bytes).expect("fixture stream");
-    });
-    let mut calls = 0;
-    let error = drive(reader, |_, _| {
-        calls += 1;
-        Ok(())
-    })
-    .expect_err("a failed trailer must fail the stream");
-    assert_eq!(error, "CRC mismatch");
-    assert_eq!(calls, 1, "the file member callback still runs once");
+    for failure in [
+        wire::Failure::from("CRC mismatch"),
+        wire::Failure::new(
+            wire::FailureKind::PasswordRequired,
+            "A password is required to extract this archive.",
+        ),
+    ] {
+        let reader = fixture_stream(|bytes| {
+            wire::write_file_header(bytes, "broken.bin", 3, wire::WireMetadata::default())
+                .expect("fixture stream");
+            wire::write_chunk(bytes, b"abc").expect("fixture stream");
+            wire::write_file_failed(bytes, &failure).expect("fixture stream");
+            wire::write_end(bytes).expect("fixture stream");
+        });
+        let mut calls = 0;
+        let error = drive(reader, |_, _, _| {
+            calls += 1;
+            Ok(())
+        })
+        .expect_err("a failed trailer must fail the stream");
+        assert_eq!(error, failure);
+        assert_eq!(calls, 1, "the file member callback still runs once");
+    }
 }
 
 #[test]
 fn drive_stops_immediately_when_on_member_fails() {
     let reader = fixture_stream(|bytes| {
-        wire::write_directory(bytes, "first").expect("fixture stream");
-        wire::write_directory(bytes, "second").expect("fixture stream");
+        wire::write_directory(bytes, "first", wire::WireMetadata::default())
+            .expect("fixture stream");
+        wire::write_directory(bytes, "second", wire::WireMetadata::default())
+            .expect("fixture stream");
         wire::write_end(bytes).expect("fixture stream");
     });
     let mut calls = 0;
-    let error = drive(reader, |name, _| {
+    let error = drive(reader, |name, _, _| {
         calls += 1;
         Err(format!("rejected {name}"))
     })
     .expect_err("an on_member failure must stop the stream");
-    assert_eq!(error, "rejected first");
+    assert_eq!(error, wire::Failure::from("rejected first"));
     assert_eq!(calls, 1, "drive must not continue to the next record");
 }
 
 #[test]
 fn drive_drains_a_body_the_callback_left_unread_before_the_trailer() {
     let reader = fixture_stream(|bytes| {
-        wire::write_file_header(bytes, "big.bin", 5).expect("fixture stream");
+        wire::write_file_header(bytes, "big.bin", 5, wire::WireMetadata::default())
+            .expect("fixture stream");
         wire::write_chunk(bytes, b"hello").expect("fixture stream");
         wire::write_file_ok(bytes).expect("fixture stream");
         wire::write_end(bytes).expect("fixture stream");
     });
     let mut seen_end = false;
-    drive(reader, |_, member| {
+    drive(reader, |_, member, _| {
         if let Member::File { body, .. } = member {
             let mut first_byte = [0u8; 1];
             body.read_exact(&mut first_byte).expect("fixture stream");
@@ -133,7 +161,7 @@ fn rar_extraction_command_binds_the_archive_read_only_with_no_output_directory()
     assert!(joined.contains("--unshare-all"));
     assert!(joined.contains("--ro-bind /home/alice/Downloads/untrusted.rar /input.rar"));
     assert!(joined.contains("--ro-bind /tmp/strata /app/strata"));
-    let prlimit = option_env!("STRATA_SANDBOX_PRLIMIT").unwrap_or("/usr/bin/prlimit");
+    let prlimit = super::runtime::current().prlimit.as_str();
     let arguments: Vec<_> = command.get_args().collect();
     assert!(arguments.windows(2).any(|args| args == ["--", prlimit]));
     assert!(joined.contains("--fsize=0"));

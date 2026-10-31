@@ -10,8 +10,11 @@ use gtk::{gdk, gio, glib, prelude::*};
 use crate::{
     assets::icons,
     ui::{
-        controls::segmented_control,
-        preferences::{InterfaceRenderer, PreferenceManager, TextSize},
+        controls::{number_stepper, segmented_control},
+        preferences::{
+            CornerRoundness, FileIconColors, InterfaceRenderer, OmarchyVariant, PreferenceManager,
+            TextSize,
+        },
         theme::{Theme, ThemeManager, ThemeTokens},
     },
 };
@@ -23,11 +26,15 @@ use super::{
 };
 
 mod editor;
+#[cfg(test)]
+mod tests;
 use editor::theme_editor;
 
 pub(super) struct ThemePage {
     pub(super) widget: gtk::Widget,
     pub(super) flows: Vec<(gtk::FlowBox, u32)>,
+    /// Discards an unsaved theme preview when Settings closes.
+    pub(super) dismiss: Rc<dyn Fn()>,
 }
 
 pub(super) fn theme_page(
@@ -39,6 +46,7 @@ pub(super) fn theme_page(
 
     let system = super::settings_group(&content, "THEME");
     let follow = append_follow_omarchy_option(&system, &themes);
+    append_omarchy_variant_option(&system, &preferences, &themes);
     let current = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     current.set_valign(gtk::Align::Center);
     current.set_halign(gtk::Align::Start);
@@ -68,11 +76,11 @@ pub(super) fn theme_page(
             current.append(&name);
             if let Some(description) = weak_description.upgrade() {
                 description.set_visible(true);
-                description.set_text(if following {
+                description.set_text(&crate::i18n::tr(if following {
                     "Managed by Omarchy. Turn off Follow Omarchy to pick a theme manually."
                 } else {
                     "Choose a theme from the library below."
-                });
+                }));
             }
         },
     );
@@ -92,7 +100,7 @@ pub(super) fn theme_page(
         catalog.clear,
         catalog.appearance_buttons,
     );
-    let editor_fields = append_custom_theme_editor(&catalog.container, &custom, &themes);
+    let (editor_fields, dismiss) = append_custom_theme_editor(&catalog.container, &custom, &themes);
     themes.bind_theme_preference(
         &library,
         ThemeManager::follows_omarchy,
@@ -114,11 +122,14 @@ pub(super) fn theme_page(
     renderer.set_hexpand(true);
     renderer.set_halign(gtk::Align::Fill);
     renderer_controls.append(&renderer);
-    let restart = gtk::Button::with_label("Restart now");
+    let restart = gtk::Button::with_label(&crate::i18n::tr("Restart now"));
     restart.set_hexpand(true);
     restart.set_halign(gtk::Align::Fill);
     restart.add_css_class("settings-action-button");
-    crate::ui::accessibility::set_label(&restart, "Restart to apply interface renderer");
+    crate::ui::accessibility::set_label(
+        &restart,
+        &crate::i18n::tr("Restart to apply interface renderer"),
+    );
     preferences.bind_preference(
         &restart,
         PreferenceManager::interface_renderer_restart_required,
@@ -139,6 +150,8 @@ pub(super) fn theme_page(
     rendering.append(&renderer_row);
 
     append_text_size_option(&content, &preferences);
+    append_corner_roundness_option(&content, &preferences);
+    append_file_icon_colors_option(&content, &preferences);
     let effects = super::settings_group(&content, "EFFECTS");
     let (row, toggle) = super::settings_option(
         "Element glow",
@@ -176,6 +189,7 @@ pub(super) fn theme_page(
     ThemePage {
         widget: scroller,
         flows: vec![(catalog.packaged, 1), (custom, 1), (editor_fields, 4)],
+        dismiss,
     }
 }
 
@@ -250,11 +264,13 @@ fn append_custom_theme_editor(
     content: &gtk::Box,
     custom: &gtk::FlowBox,
     themes: &Rc<ThemeManager>,
-) -> gtk::FlowBox {
+) -> (gtk::FlowBox, Rc<dyn Fn()>) {
     let add = add_theme_card_button();
     let footer = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     footer.add_css_class("theme-library-footer");
-    let location = gtk::Label::new(Some("Custom themes live in ~/.config/strata/themes"));
+    let location = gtk::Label::new(Some(&crate::i18n::tr(
+        "Custom themes live in ~/.config/strata/themes",
+    )));
     location.set_xalign(0.0);
     location.set_hexpand(true);
     location.set_wrap(true);
@@ -262,12 +278,12 @@ fn append_custom_theme_editor(
     footer.append(&add);
     content.append(&footer);
     bind_new_custom_themes(custom, themes);
-    let (editor, editor_fields) = theme_editor(themes.clone());
-    editor.set_reveal_child(false);
-    content.append(&editor);
-    let shown_editor = editor.clone();
-    add.connect_clicked(move |_| shown_editor.set_reveal_child(true));
-    editor_fields
+    let editor = theme_editor(themes.clone());
+    editor.revealer.set_reveal_child(false);
+    content.append(&editor.revealer);
+    let reveal = editor.reveal;
+    add.connect_clicked(move |_| reveal());
+    (editor.fields, editor.dismiss)
 }
 
 fn append_follow_omarchy_option(content: &gtk::Box, themes: &Rc<ThemeManager>) -> gtk::Switch {
@@ -285,26 +301,94 @@ fn append_follow_omarchy_option(content: &gtk::Box, themes: &Rc<ThemeManager>) -
     follow
 }
 
+fn append_file_icon_colors_option(content: &gtk::Box, preferences: &Rc<PreferenceManager>) {
+    let group = super::settings_group(content, "FILE ICONS");
+    let choice = super::bindings::choice_menu(
+        preferences,
+        "File icon colors",
+        &[
+            ("Brand colors", FileIconColors::Brand),
+            ("Theme colors", FileIconColors::Theme),
+        ],
+        PreferenceManager::file_icon_colors,
+        PreferenceManager::set_file_icon_colors,
+    );
+    group.append(&super::control_row(
+        "File icon colors",
+        "Brand colors use each file type's own palette; theme colors use the accent.",
+        &choice,
+    ));
+    let (row, toggle) = super::settings_option(
+        "Show thumbnails",
+        "Show thumbnails instead of file-type icons. The preview panel stays available.",
+        preferences.show_thumbnails(),
+    );
+    bind_switch(
+        preferences,
+        &toggle,
+        PreferenceManager::show_thumbnails,
+        PreferenceManager::set_show_thumbnails,
+    );
+    group.append(&row);
+    let (row, toggle) = super::settings_option(
+        "STL model thumbnails",
+        "Render local STL models as file thumbnails, one at a time. Requires Show thumbnails.",
+        preferences.stl_thumbnails(),
+    );
+    bind_switch(
+        preferences,
+        &toggle,
+        PreferenceManager::stl_thumbnails,
+        PreferenceManager::set_stl_thumbnails,
+    );
+    group.append(&row);
+}
+
+fn append_omarchy_variant_option(
+    content: &gtk::Box,
+    preferences: &Rc<PreferenceManager>,
+    themes: &Rc<ThemeManager>,
+) {
+    let choice = super::bindings::choice_menu(
+        preferences,
+        "Omarchy variant",
+        &[
+            ("Lighter", OmarchyVariant::Lighter),
+            ("Darker", OmarchyVariant::Darker),
+            ("Contrast", OmarchyVariant::Contrast),
+        ],
+        PreferenceManager::omarchy_variant,
+        PreferenceManager::set_omarchy_variant,
+    );
+    let row = super::control_row(
+        "Omarchy variant",
+        "Lighter or darker file columns, or stronger contrast. Keeps following your system theme.",
+        &choice,
+    );
+    super::indent_row(&row);
+    themes.bind_theme_preference(
+        &row,
+        |manager| (manager.is_omarchy_available(), manager.follows_omarchy()),
+        |widget, (available, following)| {
+            super::search::set_available(widget, available);
+            widget.set_sensitive(following);
+        },
+    );
+    content.append(&row);
+}
+
 fn append_text_size_option(content: &gtk::Box, preferences: &Rc<PreferenceManager>) {
     let group = super::settings_group(content, "TEXT");
-    let text_size_control =
-        gtk::SpinButton::with_range(f64::from(TextSize::MIN), f64::from(TextSize::MAX), 1.0);
-    text_size_control.set_numeric(true);
-    text_size_control.set_width_chars(3);
-    text_size_control.set_alignment(0.5);
-    // Keep GTK's native spin actions, with decrement before the numeric entry.
-    let mut child = text_size_control.first_child();
-    while let Some(widget) = child {
-        child = widget.next_sibling();
-        if widget.has_css_class("down") {
-            widget.insert_before(&text_size_control, text_size_control.first_child().as_ref());
-            break;
-        }
-    }
-    text_size_control.set_update_policy(gtk::SpinButtonUpdatePolicy::IfValid);
-    text_size_control.add_css_class("form-control");
-    text_size_control.add_css_class("text-size-control");
-    crate::ui::accessibility::set_label(&text_size_control, "Text size in pixels");
+    group.append(&super::control_row(
+        "Interface font",
+        "The typeface for menus, file lists, and dialogs. File previews keep a monospace font.",
+        &interface_font_choice(preferences),
+    ));
+    let text_size_control = number_stepper(TextSize::MIN, TextSize::MAX, 1);
+    crate::ui::accessibility::set_label(
+        &text_size_control,
+        &crate::i18n::tr("Text size in pixels"),
+    );
     bind_number(
         preferences,
         &text_size_control,
@@ -321,12 +405,12 @@ fn append_text_size_option(content: &gtk::Box, preferences: &Rc<PreferenceManage
     super::search::tag(&text_size_row, "Text size");
     let text_size_copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
     text_size_copy.set_hexpand(true);
-    let text_size_title = gtk::Label::new(Some("Text size"));
+    let text_size_title = gtk::Label::new(Some(&crate::i18n::tr("Text size")));
     text_size_title.set_xalign(0.0);
     text_size_title.add_css_class("settings-option-title");
-    let text_size_description = gtk::Label::new(Some(
+    let text_size_description = gtk::Label::new(Some(&crate::i18n::tr(
         "Logical pixels, 8–48. Display scaling applies on top.",
-    ));
+    )));
     text_size_description.set_xalign(0.0);
     text_size_description.set_wrap(true);
     text_size_description.set_wrap_mode(gtk::pango::WrapMode::WordChar);
@@ -337,22 +421,306 @@ fn append_text_size_option(content: &gtk::Box, preferences: &Rc<PreferenceManage
     keys.set_halign(gtk::Align::Start);
     keys.set_hexpand(false);
     keys.set_valign(gtk::Align::Center);
-    for key in ["Ctrl", "+", "/", "−", "/", "0"] {
-        let label = gtk::Label::new(Some(key));
-        label.add_css_class("settings-nowrap");
-        label.add_css_class(if key == "/" {
-            "keycap-separator"
-        } else {
-            "settings-keycap"
-        });
-        keys.append(&label);
-    }
+    crate::ui::shortcut_reference::follow_keys(&keys, |keys| {
+        use crate::ui::keys::{
+            self as shortcuts, Binding, Keys,
+            bindings::{TEXT_LARGER, TEXT_RESET, TEXT_SMALLER},
+        };
+        while let Some(child) = keys.first_child() {
+            child.unparent();
+        }
+        let keycap = |text: &str, class| {
+            let label = gtk::Label::new(Some(text));
+            label.add_css_class("settings-nowrap");
+            label.add_css_class(class);
+            keys.append(&label);
+        };
+        let bindings: Vec<Binding> = [TEXT_LARGER, TEXT_SMALLER, TEXT_RESET]
+            .into_iter()
+            .filter_map(|command| command.primary())
+            .collect();
+        // Shared modifiers, as the shipped bindings have, are shown once.
+        let shared = bindings
+            .first()
+            .map(|first| first.modifiers())
+            .filter(|modifiers| {
+                !modifiers.is_empty()
+                    && bindings
+                        .iter()
+                        .all(|binding| binding.modifiers() == *modifiers)
+            });
+        if let Some(modifiers) = shared {
+            keycap(&shortcuts::modifiers_label(modifiers), "settings-keycap");
+        }
+        for (index, binding) in bindings.into_iter().enumerate() {
+            if index > 0 {
+                keycap("/", "keycap-separator");
+            }
+            let shown = if shared.is_some() {
+                Binding::plain(binding.key())
+            } else {
+                binding
+            };
+            keycap(
+                &shortcuts::label(&Keys::One(shown.shown())),
+                "settings-keycap",
+            );
+        }
+    });
     description.append(&keys);
     text_size_copy.append(&text_size_title);
     text_size_copy.append(&description);
     text_size_row.append(&text_size_copy);
     text_size_row.append(&controls);
     group.append(&text_size_row);
+}
+
+/// Lists installed families when first opened. Names use the interface font:
+/// loading each family to preview it stalls opening and scrolling.
+fn interface_font_choice(preferences: &Rc<PreferenceManager>) -> gtk::MenuButton {
+    // An empty string stands for Default.
+    let families = gtk::StringList::new(&[]);
+    let query: Rc<RefCell<String>> = Rc::default();
+    let filter = {
+        let query = query.clone();
+        gtk::CustomFilter::new(move |item| {
+            let query = query.borrow();
+            item.downcast_ref::<gtk::StringObject>()
+                .is_some_and(|family| {
+                    font_label(&family.string())
+                        .to_lowercase()
+                        .contains(query.as_str())
+                })
+        })
+    };
+    let filtered = gtk::FilterListModel::new(Some(families.clone()), Some(filter.clone()));
+    let rows: Rc<RefCell<Vec<glib::WeakRef<gtk::ListItem>>>> = Rc::default();
+    let factory = gtk::SignalListItemFactory::new();
+    {
+        let rows = rows.clone();
+        factory.connect_setup(move |_, item| {
+            let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
+                return;
+            };
+            let label = gtk::Label::new(None);
+            label.set_xalign(0.0);
+            label.set_hexpand(true);
+            label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            let check = crate::assets::primary_icon(icons::CHECK, 16);
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+            row.append(&label);
+            row.append(&check);
+            item.set_child(Some(&row));
+            rows.borrow_mut().push(item.downgrade());
+        });
+    }
+    {
+        let preferences = preferences.clone();
+        factory.connect_bind(move |_, item| {
+            let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
+                return;
+            };
+            let Some(family) = item.item().and_downcast::<gtk::StringObject>() else {
+                return;
+            };
+            let family = family.string();
+            let Some(row) = item.child() else {
+                return;
+            };
+            let (Some(label), Some(check)) = (
+                row.first_child().and_downcast::<gtk::Label>(),
+                row.last_child(),
+            ) else {
+                return;
+            };
+            label.set_text(&font_label(&family));
+            check.set_visible(is_chosen_font(&preferences, &family));
+        });
+    }
+    let list = gtk::ListView::new(
+        Some(gtk::NoSelection::new(Some(filtered.clone()))),
+        Some(factory),
+    );
+    list.set_single_click_activate(true);
+    list.add_css_class("column-menu");
+    list.add_css_class("font-choice-list");
+    crate::ui::accessibility::set_label(&list, &crate::i18n::tr("Interface font"));
+    let scroll = gtk::ScrolledWindow::builder()
+        .child(&list)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .propagate_natural_height(true)
+        .max_content_height(320)
+        .min_content_width(240)
+        .build();
+    scroll.add_css_class("context-menu-scroll");
+    let search = crate::ui::controls::form_entry();
+    search.set_placeholder_text(Some(&crate::i18n::tr("Search fonts")));
+    crate::ui::accessibility::set_label(&search, &crate::i18n::tr("Search fonts"));
+    let empty = gtk::Label::new(Some(&crate::i18n::tr("No fonts match")));
+    empty.add_css_class("settings-option-description");
+    empty.set_visible(false);
+    let body = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    body.append(&search);
+    body.append(&scroll);
+    body.append(&empty);
+    let popover = gtk::Popover::builder()
+        .child(&body)
+        .has_arrow(false)
+        .build();
+    popover.add_css_class("column-popover");
+    let button = gtk::MenuButton::builder()
+        .popover(&popover)
+        .always_show_arrow(true)
+        .valign(gtk::Align::Center)
+        .build();
+    button.add_css_class("form-control");
+    button.add_css_class("settings-choice");
+    crate::ui::accessibility::set_label(&button, &crate::i18n::tr("Interface font"));
+    preferences.bind_preference(
+        &button,
+        PreferenceManager::interface_font,
+        |widget, family| {
+            if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
+                super::bindings::show_choice_value(
+                    button,
+                    &family.unwrap_or_else(|| crate::i18n::tr("Default")),
+                );
+            }
+        },
+    );
+    {
+        let rows = rows.clone();
+        let weak_preferences = Rc::downgrade(preferences);
+        preferences.bind_preference(&list, PreferenceManager::interface_font, move |_, _| {
+            let Some(preferences) = weak_preferences.upgrade() else {
+                return;
+            };
+            rows.borrow_mut().retain(|item| {
+                let Some(item) = item.upgrade() else {
+                    return false;
+                };
+                let family = item
+                    .item()
+                    .and_downcast::<gtk::StringObject>()
+                    .map(|family| family.string());
+                if let Some(check) = item.child().and_then(|row| row.last_child()) {
+                    check.set_visible(
+                        family.is_some_and(|family| is_chosen_font(&preferences, &family)),
+                    );
+                }
+                true
+            });
+        });
+    }
+    {
+        let empty = empty.downgrade();
+        let scroll = scroll.downgrade();
+        let filtered = filtered.clone();
+        search.connect_changed(move |search| {
+            query.replace(search.text().trim().to_lowercase());
+            filter.changed(gtk::FilterChange::Different);
+            let any = filtered.n_items() > 0;
+            if let (Some(empty), Some(scroll)) = (empty.upgrade(), scroll.upgrade()) {
+                empty.set_visible(!any);
+                scroll.set_visible(any);
+            }
+        });
+    }
+    {
+        let preferences = preferences.clone();
+        let weak_button = button.downgrade();
+        list.connect_activate(move |list, position| {
+            let Some(family) = list
+                .model()
+                .and_then(|model| model.item(position))
+                .and_downcast::<gtk::StringObject>()
+            else {
+                return;
+            };
+            let family = family.string();
+            preferences.set_interface_font((!family.is_empty()).then(|| family.to_string()));
+            if let Some(button) = weak_button.upgrade() {
+                button.popdown();
+            }
+        });
+    }
+    popover.connect_show(move |popover| {
+        if families.n_items() == 0 {
+            let names = std::iter::once(String::new())
+                .chain(installed_font_families(popover))
+                .collect::<Vec<_>>();
+            families.splice(0, 0, &names.iter().map(String::as_str).collect::<Vec<_>>());
+        }
+        search.set_text("");
+        search.grab_focus();
+    });
+    button
+}
+
+fn font_label(family: &str) -> String {
+    if family.is_empty() {
+        crate::i18n::tr("Default")
+    } else {
+        family.to_owned()
+    }
+}
+
+fn is_chosen_font(preferences: &PreferenceManager, family: &str) -> bool {
+    preferences.interface_font().as_deref().unwrap_or_default() == family
+}
+
+fn installed_font_families(widget: &impl IsA<gtk::Widget>) -> impl Iterator<Item = String> {
+    let mut families = widget
+        .pango_context()
+        .list_families()
+        .iter()
+        .map(|family| family.name().to_string())
+        .collect::<Vec<_>>();
+    families.sort_by_cached_key(|family| family.to_lowercase());
+    families.dedup();
+    families.into_iter()
+}
+
+fn append_corner_roundness_option(content: &gtk::Box, preferences: &Rc<PreferenceManager>) {
+    let group = super::settings_group(content, "SHAPE");
+    let control = number_stepper(
+        CornerRoundness::MIN,
+        CornerRoundness::MAX,
+        CornerRoundness::STEP,
+    );
+    crate::ui::accessibility::set_label(&control, &crate::i18n::tr("Corner roundness in percent"));
+    bind_number(
+        preferences,
+        &control,
+        |manager| f64::from(manager.corner_roundness().percent()),
+        |manager, value| manager.set_corner_roundness(CornerRoundness::new(value as u32)),
+    );
+    control.set_halign(gtk::Align::Start);
+    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    controls.set_valign(gtk::Align::Center);
+    controls.append(&control);
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    row.add_css_class("settings-option");
+    row.add_css_class("settings-text-size-row");
+    super::search::tag(&row, "Corner roundness");
+    let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    copy.set_hexpand(true);
+    let title = gtk::Label::new(Some(&crate::i18n::tr("Corner roundness")));
+    title.set_xalign(0.0);
+    title.add_css_class("settings-option-title");
+    let description = gtk::Label::new(Some(&crate::i18n::tr(
+        "Percent of the default corner radius, 0–200. 0 squares every corner.",
+    )));
+    description.set_xalign(0.0);
+    description.set_wrap(true);
+    description.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    description.add_css_class("settings-option-description");
+    copy.append(&title);
+    copy.append(&description);
+    row.append(&copy);
+    row.append(&controls);
+    group.append(&row);
 }
 
 fn theme_grid() -> gtk::FlowBox {
@@ -435,7 +803,7 @@ fn add_theme_card_button() -> gtk::Button {
     add_content.set_halign(gtk::Align::Center);
     add_content.set_valign(gtk::Align::Center);
     let plus = crate::assets::primary_icon(icons::PLUS, 16);
-    let add_label = gtk::Label::new(Some("Add theme"));
+    let add_label = gtk::Label::new(Some(&crate::i18n::tr("Add theme")));
     add_label.set_wrap(true);
     add_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     add_content.append(&plus);
@@ -530,12 +898,15 @@ fn append_theme_card(
     label.set_xalign(0.0);
     label.set_hexpand(true);
     label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    label.set_wrap(true);
+    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    label.set_lines(2);
     content.append(&label);
-    let kind = gtk::Label::new(Some(if theme_is_light(&theme.tokens) {
+    let kind = gtk::Label::new(Some(&crate::i18n::tr(if theme_is_light(&theme.tokens) {
         "LIGHT"
     } else {
         "DARK"
-    }));
+    })));
     kind.add_css_class("theme-kind");
     let metadata = gtk::Box::new(gtk::Orientation::Horizontal, 16);
     metadata.append(&kind);

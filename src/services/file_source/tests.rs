@@ -1,9 +1,87 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    LocationValidationError, UriCredentials, backend_unavailable_message, sanitize_uri_credentials,
-    validate_uri_credentials,
+    LocationValidationError, UriCredentials, backend_unavailable_message, error_detail_in,
+    io_error_message, sanitize_uri_credentials, validate_uri_credentials,
 };
+
+#[test]
+fn error_details_continue_in_lower_case_only_where_the_language_does() {
+    for (locale, reason, expected) in [
+        ("fr", "Délai dépassé", "délai dépassé"),
+        ("ru", "Доступ запрещён", "доступ запрещён"),
+        ("hu", "Hozzáférés megtagadva", "hozzáférés megtagadva"),
+        (
+            "vi",
+            "Quyền truy cập bị từ chối",
+            "quyền truy cập bị từ chối",
+        ),
+        ("pt-BR", "HTTP 404", "HTTP 404"),
+        ("de", "Zugriff verweigert", "Zugriff verweigert"),
+        ("en", "Permission denied", "Permission denied"),
+    ] {
+        assert_eq!(error_detail_in(locale, reason.to_owned()), expected);
+    }
+}
+
+#[test]
+fn io_errors_without_a_stable_kind_or_known_reason_get_catalog_text() {
+    for (errno, expected) in [
+        (libc::ELOOP, "There are too many levels of symbolic links"),
+        (libc::ENXIO, "The device is not available"),
+        (libc::ENOTCONN, "The location is no longer connected"),
+        (libc::ETXTBSY, "The file is running and cannot be changed"),
+        (libc::EPROTO, "An unexpected system error occurred"),
+    ] {
+        let error = std::io::Error::from_raw_os_error(errno);
+        assert_eq!(io_error_message(&error), expected);
+    }
+    let custom = std::io::Error::new(std::io::ErrorKind::InvalidData, "broken stream");
+    assert_eq!(io_error_message(&custom), "broken stream");
+}
+
+#[test]
+fn untyped_gio_failures_use_localized_catalog_text_instead_of_backend_details() {
+    crate::test_support::gtk_test(
+        "services::file_source::tests::untyped_gio_failures_use_localized_catalog_text_instead_of_backend_details",
+        || {
+            rust_i18n::set_locale("fr");
+            let raw = "Failed to open sftp://alice:secret@host/private?token=hidden";
+            for kind in [
+                gtk::gio::IOErrorEnum::Failed,
+                gtk::gio::IOErrorEnum::InvalidArgument,
+            ] {
+                let error = gtk::glib::Error::new(kind, raw);
+                assert_eq!(
+                    super::gio_backend_error_message(&error),
+                    crate::i18n::tr(super::UNEXPECTED_SYSTEM_ERROR)
+                );
+                assert_eq!(
+                    super::gio_error_message(&error),
+                    raw,
+                    "application-owned operation errors must retain their detail"
+                );
+            }
+            let denied = gtk::glib::Error::new(gtk::gio::IOErrorEnum::PermissionDenied, raw);
+            assert_eq!(super::gio_error_message(&denied), "Permission refusée");
+            assert_eq!(
+                super::gio_backend_error_message(&denied),
+                "Permission refusée"
+            );
+            let refused = "Failed to mount Windows share: Permission denied";
+            let refused = gtk::glib::Error::new(gtk::gio::IOErrorEnum::Failed, refused);
+            assert_eq!(
+                super::gio_backend_error_message(&refused),
+                "Permission refusée",
+                "untyped SMB credential rejections keep their reason"
+            );
+            assert_eq!(
+                super::gio_error_message(&refused),
+                "Failed to mount Windows share: Permission denied"
+            );
+        },
+    );
+}
 
 #[test]
 fn embedded_uri_credentials_are_rejected() {
@@ -30,16 +108,30 @@ fn embedded_uri_credentials_are_rejected() {
 
 #[test]
 fn embedded_uri_credentials_are_separated_from_the_sanitized_uri() {
-    for uri in [
-        "smb://user:secret@host/share",
-        "smb://user%3Asecret@host/share",
-        "smb://user;password=secret@host/share",
-        "smb://user%3Bpassword=secret@host/share",
+    for (uri, sanitized) in [
+        ("smb://user:secret@host/share", "smb://user@host/share"),
+        ("smb://user%3Asecret@host/share", "smb://user@host/share"),
+        (
+            "smb://user;password=secret@host/share",
+            "smb://user@host/share",
+        ),
+        (
+            "smb://user%3Bpassword=secret@host/share",
+            "smb://user@host/share",
+        ),
+        (
+            "sftp://user%3Asecret@host/caf%E9%20x.txt",
+            "sftp://user@host/caf%E9%20x.txt",
+        ),
+        (
+            "smb://user:secret@host/a%2Fb?x=%FF#f",
+            "smb://user@host/a%2Fb?x=%FF#f",
+        ),
     ] {
         assert_eq!(
             sanitize_uri_credentials(uri),
             Ok((
-                "smb://user@host/share".to_owned(),
+                sanitized.to_owned(),
                 Some(UriCredentials {
                     username: "user".to_owned(),
                     password: "secret".to_owned(),
@@ -57,11 +149,28 @@ fn credential_free_uris_are_accepted() {
         "smb://user@host/share",
         "sftp://user@host:2222/path",
         "network:///",
+        "sftp://host/share/%FF",
     ] {
         assert_eq!(
             validate_uri_credentials(uri),
-            Ok(()),
+            Ok(uri.to_owned()),
             "{uri:?} should be safe"
+        );
+    }
+}
+
+#[test]
+fn sanitized_uris_keep_gio_percent_encoding() {
+    for (uri, sanitized) in [
+        ("trash:///caf%E9.txt", "trash:///caf%E9.txt"),
+        ("sftp://host/share/a%2Fb", "sftp://host/share/a%2Fb"),
+        ("smb://host/caf%C3%A9", "smb://host/caf%C3%A9"),
+        ("smb://host/my share", "smb://host/my%20share"),
+    ] {
+        assert_eq!(
+            sanitize_uri_credentials(uri),
+            Ok((sanitized.to_owned(), None)),
+            "{uri:?}"
         );
     }
 }

@@ -1,0 +1,5 @@
+{"scenario":"sorting-by-size","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.5},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Size chosen from sort-field menu reorders files; comparator unit-tested in app/browser/tests/staging.rs, only the menu route is GUI-only"}}
+{"click":{"header":"Choose sort field"}}
+{"wait":{"present":{"role":"radio menu item","name":"Size"}},"message":"the Size sort option"}
+{"click":{"role":"radio menu item","name":"Size"}}
+{"wait":{"entries":{"ends_with":["todo.txt","readme.md"]},"dir":"$root"},"message":"the files to be ordered by size"}

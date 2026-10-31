@@ -3,6 +3,8 @@
 use gtk::{glib, prelude::*};
 use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
+use crate::ui::keys::{self, bindings::ESCAPE_ANY};
+
 struct Target {
     id: &'static str,
     page: &'static str,
@@ -11,6 +13,18 @@ struct Target {
 }
 
 const TARGETS: &[Target] = &[
+    Target {
+        id: "units",
+        page: "general",
+        title: "Units",
+        aliases: "metric imperial kilometres miles metres feet distance elevation route gpx fit kml",
+    },
+    Target {
+        id: "language",
+        page: "general",
+        title: "Language",
+        aliases: "locale translation auto detect restart English Français Deutsch Español 日本語 Português 한국어 Tiếng Việt Italiano Magyar Hungarian Русский 简体中文",
+    },
     Target {
         id: "custom-actions",
         page: "actions",
@@ -42,6 +56,12 @@ const TARGETS: &[Target] = &[
         aliases: "startup launch home folder reset",
     },
     Target {
+        id: "restore-tabs",
+        page: "general",
+        title: "Restore open tabs",
+        aliases: "startup launch session reopen tabs",
+    },
+    Target {
         id: "peeking",
         page: "general",
         title: "Folder peeking",
@@ -60,10 +80,22 @@ const TARGETS: &[Target] = &[
         aliases: "browsing video audio gif playback paused sound",
     },
     Target {
+        id: "render-documents",
+        page: "general",
+        title: "Render documents by default",
+        aliases: "browsing preview markdown md html rendered source view",
+    },
+    Target {
         id: "arrow-scope",
         page: "general",
         title: "Keep arrows in file list",
         aliases: "browsing keyboard navigation focus sidebar toolbar",
+    },
+    Target {
+        id: "columns-sizes",
+        page: "general",
+        title: "Show sizes in Columns view",
+        aliases: "columns miller size sizes folders count counts items metadata filenames",
     },
     Target {
         id: "columns-mirror",
@@ -72,10 +104,34 @@ const TARGETS: &[Target] = &[
         aliases: "browsing columns keyboard selection next pane folders",
     },
     Target {
+        id: "tenxer",
+        page: "general",
+        title: "10xer mode",
+        aliases: "browsing keyboard modal prompts footer commands experimental",
+    },
+    Target {
         id: "hints",
         page: "general",
-        title: "Show F1 Shortcuts button",
+        title: "Show %{reference_keys} Shortcuts button",
         aliases: "browsing keyboard keybindings hints shortcuts reference help footer",
+    },
+    Target {
+        id: "folder-views",
+        page: "general",
+        title: "Remember sort and icon size per folder",
+        aliases: "browsing per folder sort order thumbnail size view state",
+    },
+    Target {
+        id: "default-sort",
+        page: "general",
+        title: "Default sort",
+        aliases: "browsing sort order name size modified type ascending descending",
+    },
+    Target {
+        id: "forget-folder-views",
+        page: "general",
+        title: "Forget all folder settings",
+        aliases: "browsing reset clear per folder sort thumbnail size",
     },
     Target {
         id: "type-search",
@@ -94,6 +150,24 @@ const TARGETS: &[Target] = &[
         page: "general",
         title: "Open search results directly",
         aliases: "launch files quick preview",
+    },
+    Target {
+        id: "search-time-limit",
+        page: "general",
+        title: "Search time limit",
+        aliases: "search filter indexing walk timeout seconds minutes slow network mount partial results",
+    },
+    Target {
+        id: "search-entry-limit",
+        page: "general",
+        title: "Search entry limit",
+        aliases: "search filter indexing walk maximum files folders entries memory partial results",
+    },
+    Target {
+        id: "search-exclusions",
+        page: "general",
+        title: "Global search exclusions",
+        aliases: "search filter exclusions exclude folders directories ignore venv prune",
     },
     Target {
         id: "sidebar-places",
@@ -120,16 +194,34 @@ const TARGETS: &[Target] = &[
         aliases: "file transfers drag drop destination navigate reveal copy move",
     },
     Target {
-        id: "refresh",
+        id: "watch-network-folders",
         page: "general",
-        title: "Auto-refresh folder",
-        aliases: "performance timer reload network share monitors",
+        title: "Watch network folders",
+        aliases: "performance network share nfs smb sftp remote changes check refresh reload monitor",
     },
     Target {
         id: "video",
         page: "general",
         title: "Hardware-accelerated video previews",
         aliases: "performance gpu thumbnails decoding backend automatic va api vulkan software",
+    },
+    Target {
+        id: "window-minimize",
+        page: "general",
+        title: "Show minimize button",
+        aliases: "window buttons header top bar titlebar controls hide",
+    },
+    Target {
+        id: "window-maximize",
+        page: "general",
+        title: "Show maximize button",
+        aliases: "window buttons header top bar titlebar controls restore hide",
+    },
+    Target {
+        id: "window-close",
+        page: "general",
+        title: "Show close button",
+        aliases: "window buttons header top bar titlebar controls hide",
     },
     Target {
         id: "desktop",
@@ -150,6 +242,12 @@ const TARGETS: &[Target] = &[
         aliases: "appearance system theme quattro",
     },
     Target {
+        id: "omarchy-variant",
+        page: "theme",
+        title: "Omarchy variant",
+        aliases: "appearance system theme quattro palette original normal darker dark high contrast brightness",
+    },
+    Target {
         id: "current-theme",
         page: "theme",
         title: "Current theme",
@@ -162,6 +260,12 @@ const TARGETS: &[Target] = &[
         aliases: "appearance colors custom themes add edit light dark",
     },
     Target {
+        id: "interface-font",
+        page: "theme",
+        title: "Interface font",
+        aliases: "appearance font typeface family typography",
+    },
+    Target {
         id: "text",
         page: "theme",
         title: "Text size",
@@ -172,6 +276,30 @@ const TARGETS: &[Target] = &[
         page: "general",
         title: "Modified date format",
         aliases: "date time format relative iso 8601 long absolute modified timestamp clock appearance",
+    },
+    Target {
+        id: "roundness",
+        page: "theme",
+        title: "Corner roundness",
+        aliases: "appearance corners radius rounded square shape borders",
+    },
+    Target {
+        id: "show-thumbnails",
+        page: "theme",
+        title: "Show thumbnails",
+        aliases: "appearance images pictures photos videos documents thumbnails icons previews disable",
+    },
+    Target {
+        id: "stl-thumbnails",
+        page: "theme",
+        title: "STL model thumbnails",
+        aliases: "appearance 3d stl models printing mesh rendered thumbnails icons",
+    },
+    Target {
+        id: "file-icon-colors",
+        page: "theme",
+        title: "File icon colors",
+        aliases: "appearance file type icons brand palette accent theme monochrome catppuccin",
     },
     Target {
         id: "glow",
@@ -210,10 +338,28 @@ const TARGETS: &[Target] = &[
         aliases: "stable preview nightly builds",
     },
     Target {
+        id: "release",
+        page: "updates",
+        title: "Install a specific release",
+        aliases: "rollback roll back downgrade older previous version choose pick",
+    },
+    Target {
         id: "notes",
         page: "updates",
         title: "Release notes",
         aliases: "what new changes changelog",
+    },
+    Target {
+        id: "integrations",
+        page: "integrations",
+        title: "Integrations",
+        aliases: "add-ons addons plugins extensions providers catalog install kde connect localsend nextcloud dropbox cloud devices phone",
+    },
+    Target {
+        id: "diagnostics",
+        page: "diagnostics",
+        title: "Run diagnostics",
+        aliases: "troubleshoot troubleshooting problems health check dependencies missing packages report bug sandbox bubblewrap ffmpeg gstreamer gvfs sftp smb udisks portal",
     },
     Target {
         id: "version",
@@ -245,12 +391,25 @@ const TARGETS: &[Target] = &[
         title: "License",
         aliases: "links mit copyright",
     },
+    Target {
+        id: KEYBOARD_SHORTCUTS,
+        page: "keyboard",
+        title: "Keyboard shortcuts",
+        aliases: "keymap keybindings hotkeys accelerators rebind remap keys 10xer default reset",
+    },
 ];
+
+const KEYBOARD_SHORTCUTS: &str = "keyboard-shortcuts";
 
 pub(super) fn tag(widget: &impl IsA<gtk::Widget>, title: &str) {
     if let Some(target) = TARGETS.iter().find(|target| target.title == title) {
         widget.set_widget_name(&format!("settings-search-{}", target.id));
     }
+}
+
+/// Registers a row that [`super::keyboard::search_targets`] lists by `id`.
+pub(super) fn tag_id(widget: &impl IsA<gtk::Widget>, id: &str) {
+    widget.set_widget_name(&format!("settings-search-{id}"));
 }
 
 pub(super) fn set_available(widget: &impl IsA<gtk::Widget>, available: bool) {
@@ -282,11 +441,28 @@ fn distance(a: &str, b: &str) -> usize {
     previous[b.len()]
 }
 
+/// Kana and Han ideographs.
+fn is_unspaced_script(character: char) -> bool {
+    matches!(
+        character,
+        '\u{3040}'..='\u{30ff}'
+            | '\u{3400}'..='\u{4dbf}'
+            | '\u{4e00}'..='\u{9fff}'
+            | '\u{f900}'..='\u{faff}'
+            | '\u{20000}'..='\u{3134f}'
+    )
+}
+
 fn word_score(query: &str, word: &str) -> Option<i32> {
     if query == word {
         Some(80)
     } else if word.starts_with(query) {
         Some(60)
+    } else if query.chars().count() >= 2
+        && query.chars().any(is_unspaced_script)
+        && word.contains(query)
+    {
+        Some(40)
     } else if query.chars().count() >= 4
         && distance(query, word) <= if query.chars().count() >= 6 { 2 } else { 1 }
     {
@@ -297,12 +473,38 @@ fn word_score(query: &str, word: &str) -> Option<i32> {
 }
 
 fn score(query: &str, target: &Target) -> Option<i32> {
-    let title = normalized(target.title);
-    let aliases = normalized(&format!("{} {} settings", target.aliases, target.page));
+    score_text(
+        query,
+        target.title,
+        target.page,
+        &format!("{} {}", target.aliases, localized_keywords(target)),
+    )
+}
+
+fn score_text(query: &str, title: &str, page: &str, aliases: &str) -> Option<i32> {
+    let (source_title, localized_title) = if title.is_empty() {
+        (String::new(), String::new())
+    } else {
+        (
+            normalized(&super::translated_in("en", title)),
+            normalized(&super::translated(title)),
+        )
+    };
+    let title = format!("{source_title} {localized_title}");
+    // Chinese and Japanese queries run across the spaces titles put around Latin words.
+    let joined_title = localized_title.split_whitespace().collect::<String>();
+    let aliases = normalized(&format!(
+        "{} {} {} settings {}",
+        aliases,
+        page,
+        page_title(page).map(crate::i18n::tr).unwrap_or_default(),
+        crate::i18n::tr("Settings"),
+    ));
     let mut total = 0;
     for query_word in query.split_whitespace() {
         let title_score = title
             .split_whitespace()
+            .chain([joined_title.as_str()])
             .filter_map(|word| word_score(query_word, word))
             .max();
         let alias_score = aliases
@@ -313,9 +515,11 @@ fn score(query: &str, target: &Target) -> Option<i32> {
     }
     Some(
         total
-            + if title == query {
+            + if source_title.is_empty() {
+                0
+            } else if source_title == query || localized_title == query {
                 1000
-            } else if title.contains(query) {
+            } else if source_title.contains(query) || localized_title.contains(query) {
                 200
             } else {
                 0
@@ -323,9 +527,27 @@ fn score(query: &str, target: &Target) -> Option<i32> {
     )
 }
 
+/// Semantic keys; a missing entry adds nothing, since the English aliases are always searched.
+fn localized_keywords(target: &Target) -> String {
+    let key = format!("settings_keywords.{}", target.id);
+    let keywords = crate::i18n::tr(&key);
+    if keywords == key {
+        String::new()
+    } else {
+        keywords
+    }
+}
+
+fn page_title(page: &str) -> Option<&'static str> {
+    super::NAVIGATION
+        .iter()
+        .find(|entry| entry.page == page)
+        .map(|entry| entry.label)
+}
+
 #[derive(Default)]
 pub(super) struct Matches {
-    ids: HashSet<&'static str>,
+    ids: HashSet<String>,
     pages: HashSet<&'static str>,
     best_page: Option<&'static str>,
 }
@@ -336,13 +558,35 @@ fn find_matches(query: &str) -> Matches {
     }
     let mut result = Matches::default();
     let mut best = -1;
-    for target in TARGETS {
+    for target in TARGETS
+        .iter()
+        .filter(|target| super::page_shown(target.page))
+    {
         if let Some(score) = score(query, target) {
-            result.ids.insert(target.id);
+            result.ids.insert(target.id.to_owned());
             result.pages.insert(target.page);
             if score > best {
                 best = score;
                 result.best_page = Some(target.page);
+            }
+        }
+    }
+    // A query for the page itself lists every row; otherwise action names
+    // score as aliases, so a setting keeps a query it ties.
+    let whole_page = result.ids.contains(KEYBOARD_SHORTCUTS);
+    for target in super::keyboard::search_targets() {
+        let aliases = format!("{} {}", target.names, target.aliases);
+        let scored = score_text(query, "", super::keyboard::PAGE, &aliases);
+        if whole_page || scored.is_some() {
+            result.ids.insert(target.id);
+        }
+        if let Some(score) = scored {
+            // Keeps the table switch shown, since a row may match only in the hidden table.
+            result.ids.insert(KEYBOARD_SHORTCUTS.to_owned());
+            result.pages.insert(super::keyboard::PAGE);
+            if score > best {
+                best = score;
+                result.best_page = Some(super::keyboard::PAGE);
             }
         }
     }
@@ -367,7 +611,7 @@ fn children(widget: &gtk::Widget) -> Vec<gtk::Widget> {
 
 fn filter_tree(widget: &gtk::Widget, matches: Option<&Matches>) -> Option<bool> {
     if let Some(id) = widget.widget_name().strip_prefix("settings-search-")
-        && TARGETS.iter().any(|target| target.id == id)
+        && (TARGETS.iter().any(|target| target.id == id) || super::keyboard::is_target(id))
     {
         let visible = !widget.has_css_class("settings-search-unavailable")
             && matches.is_none_or(|matches| matches.ids.contains(id));
@@ -386,7 +630,9 @@ fn filter_tree(widget: &gtk::Widget, matches: Option<&Matches>) -> Option<bool> 
     if widget.has_css_class("settings-group") {
         widget.set_visible(visible);
     }
-    if widget.has_css_class("settings-preferences") {
+    if widget.has_css_class("settings-preferences")
+        || widget.has_css_class("settings-search-section")
+    {
         for (index, child) in children.iter().enumerate() {
             if child.has_css_class("settings-search-page-empty") {
                 child.set_visible(matches.is_some() && !visible);
@@ -422,7 +668,7 @@ pub(super) fn append(navigation: &gtk::Box) -> Search {
     field.add_css_class("settings-global-search");
     entry.add_css_class("settings-global-search-entry");
     entry.set_width_chars(1);
-    crate::ui::accessibility::set_label(&entry, "Search settings");
+    crate::ui::accessibility::set_label(&entry, &crate::i18n::tr("Search settings"));
     navigation.append(&field);
     let (popup_field, popup_entry, popup_clear) = super::search_field("Search settings");
     popup_field.set_size_request(260, -1);
@@ -437,13 +683,13 @@ pub(super) fn append(navigation: &gtk::Box) -> Search {
         crate::assets::icons::SEARCH,
         18,
     )));
-    compact.set_tooltip_text(Some("Search settings"));
-    crate::ui::accessibility::set_label(&compact, "Search settings");
+    compact.set_tooltip_text(Some(&crate::i18n::tr("Search settings")));
+    crate::ui::accessibility::set_label(&compact, &crate::i18n::tr("Search settings"));
     compact.set_popover(Some(&popover));
     compact.add_css_class("settings-global-search-compact");
     compact.set_visible(false);
     navigation.append(&compact);
-    crate::ui::accessibility::set_label(&popup_entry, "Search settings");
+    crate::ui::accessibility::set_label(&popup_entry, &crate::i18n::tr("Search settings"));
     entry
         .bind_property("text", &popup_entry, "text")
         .bidirectional()
@@ -455,8 +701,8 @@ pub(super) fn append(navigation: &gtk::Box) -> Search {
         });
         let keys = gtk::EventControllerKey::new();
         let field = source.downgrade();
-        keys.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape
+        keys::on_press(&keys, move |_, press| {
+            if press.is(ESCAPE_ANY)
                 && let Some(field) = field.upgrade()
                 && !field.text().is_empty()
             {
@@ -519,9 +765,9 @@ impl Search {
         &self,
         stack: &gtk::Stack,
         title: &gtk::Label,
-        buttons: &Rc<RefCell<Vec<gtk::Button>>>,
+        buttons: &Rc<RefCell<Vec<(gtk::Button, &'static str)>>>,
     ) {
-        let empty = gtk::Label::new(Some("No settings match your search."));
+        let empty = gtk::Label::new(Some(&crate::i18n::tr("No settings match your search.")));
         empty.set_wrap(true);
         empty.add_css_class("settings-option-description");
         stack.add_named(&empty, Some("settings-search-empty"));
@@ -530,17 +776,7 @@ impl Search {
         let buttons = buttons
             .borrow()
             .iter()
-            .map(|button| {
-                (
-                    button.downgrade(),
-                    match button.widget_name().as_str() {
-                        "General" => "general",
-                        "Appearance" => "theme",
-                        "Updates" => "updates",
-                        _ => "about",
-                    },
-                )
-            })
+            .map(|(button, page)| (button.downgrade(), *page))
             .collect::<Vec<_>>();
         let state = self.state.clone();
         self.entry
@@ -575,7 +811,7 @@ impl Search {
                 if no_matches {
                     stack.set_visible_child_name("settings-search-empty");
                     if let Some(title) = title.upgrade() {
-                        title.set_text("Search results");
+                        title.set_text(&crate::i18n::tr("Search results"));
                     }
                 } else if let Some(destination) = destination {
                     for (button, page) in &buttons {

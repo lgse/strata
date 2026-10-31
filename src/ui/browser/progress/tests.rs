@@ -2,6 +2,8 @@
 
 use super::{transfer_progress_status, transfer_rate_status};
 
+mod minimization;
+
 #[test]
 fn transfer_status_tracks_completed_files_and_live_bytes() {
     let (percent, bytes, items, fraction) = transfer_progress_status(
@@ -48,6 +50,7 @@ fn live_transfer_updates_the_visible_dialog_and_device_flush() {
                 Rc::new(crate::adapters::LocalFileSource),
                 crate::ui::browser::PeekBehavior::default(),
             );
+            let progress_state = view.state.file_progress();
             let overlay = view.overlay();
             let window = gtk::Window::builder().child(&overlay).build();
             window.present();
@@ -58,14 +61,16 @@ fn live_transfer_updates_the_visible_dialog_and_device_flush() {
                 "Cancelling will not undo completed changes",
                 Rc::new(|| {}),
             );
-            view.state
+            progress_state
                 .transfer_current_file
                 .replace(Some("archive.tar".into()));
-            view.state.transfer_rate_bytes_per_second.set(Some(2_000.0));
+            progress_state
+                .transfer_rate_bytes_per_second
+                .set(Some(2_000.0));
             view.state
                 .update_transfer_progress(3, 5, Some(21), 2_000, Some(10_000));
             {
-                let progress = view.state.file_progress_view.borrow();
+                let progress = progress_state.file_progress_view.borrow();
                 let progress = progress.as_ref().expect("visible progress dialog");
                 assert_eq!(progress.transfer_percent.text(), "20%");
                 assert_eq!(progress.transfer_bytes.text(), "2 kB / 10 kB");
@@ -79,7 +84,7 @@ fn live_transfer_updates_the_visible_dialog_and_device_flush() {
             }
             view.state.show_device_flush_status();
             assert_eq!(
-                view.state
+                progress_state
                     .file_progress_view
                     .borrow()
                     .as_ref()
@@ -95,9 +100,65 @@ fn live_transfer_updates_the_visible_dialog_and_device_flush() {
 }
 
 #[test]
-fn stalled_cancellation_can_return_to_browser_without_claiming_the_drive_is_safe() {
+fn completion_callbacks_wait_for_the_progress_modal_to_leave() {
     crate::test_support::gtk_test(
-        "ui::browser::progress::tests::stalled_cancellation_can_return_to_browser_without_claiming_the_drive_is_safe",
+        "ui::browser::progress::tests::completion_callbacks_wait_for_the_progress_modal_to_leave",
+        || {
+            use gtk::prelude::*;
+            use std::{cell::RefCell, rc::Rc, time::Duration};
+
+            crate::ui::prepare_portal_ui();
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let window = gtk::Window::builder().child(&view.overlay()).build();
+            window.present();
+            view.state.show_file_operation_progress(
+                16,
+                crate::assets::icons::COPY,
+                "Copying items",
+                "Cancelling will not undo completed changes",
+                Rc::new(|| {}),
+            );
+            let layer = view
+                .state
+                .file_progress()
+                .file_progress_view
+                .borrow()
+                .as_ref()
+                .expect("visible progress dialog")
+                .layer
+                .borrow()
+                .as_ref()
+                .expect("modal progress layer")
+                .clone();
+            let completions = Rc::new(RefCell::new(Vec::new()));
+            for index in 0..2 {
+                let completions = completions.clone();
+                let layer = layer.clone();
+                view.state.dismiss_file_operation_progress_then(move || {
+                    completions
+                        .borrow_mut()
+                        .push((index, layer.parent().is_none()));
+                });
+            }
+            let context = glib::MainContext::default();
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            while completions.borrow().len() < 2 && std::time::Instant::now() < deadline {
+                while context.iteration(false) {}
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            assert_eq!(completions.borrow().as_slice(), [(0, true), (1, true)]);
+            window.close();
+        },
+    );
+}
+
+#[test]
+fn stalled_cancellation_keeps_the_dock_cancellable_only_once() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::stalled_cancellation_keeps_the_dock_cancellable_only_once",
         || {
             use gtk::prelude::*;
             use std::{cell::Cell, rc::Rc};
@@ -109,10 +170,12 @@ fn stalled_cancellation_can_return_to_browser_without_claiming_the_drive_is_safe
             );
             let window = gtk::Window::builder().child(&view.overlay()).build();
             window.present();
+            let progress_state = view.state.file_progress();
             let cancellations = Rc::new(Cell::new(0));
             let count = cancellations.clone();
             let on_cancel: Rc<dyn Fn()> = Rc::new(move || count.set(count.get() + 1));
-            view.state.show_file_operation_progress(
+            progress_state.dock_only.set(true);
+            progress_state.show_file_operation_progress(
                 16,
                 crate::assets::icons::COPY,
                 "Copying items",
@@ -121,39 +184,34 @@ fn stalled_cancellation_can_return_to_browser_without_claiming_the_drive_is_safe
             );
             view.state
                 .update_transfer_progress(0, 0, Some(4), 100, Some(1_000));
-            view.state.request_transfer_cancel(&on_cancel);
-            view.state.request_transfer_cancel(&on_cancel);
+            progress_state.request_transfer_cancel(&on_cancel);
+            progress_state.request_transfer_cancel(&on_cancel);
             assert_eq!(cancellations.get(), 1);
             {
-                let progress = view.state.file_progress_view.borrow();
+                let progress = progress_state.file_progress_view.borrow();
                 let progress = progress.as_ref().expect("visible transfer");
                 assert_eq!(progress.title.text(), "Cancelling transfer…");
                 assert!(!progress.cancel.is_sensitive());
             }
-            view.state.transfer_cancel_timed_out.set(true);
-            view.state.apply_transfer_cancel_status();
+            progress_state.transfer_cancel_timed_out.set(true);
+            progress_state.apply_transfer_cancel_status();
             {
-                let progress = view.state.file_progress_view.borrow();
+                let progress = progress_state.file_progress_view.borrow();
                 let progress = progress.as_ref().expect("stalled transfer");
                 assert_eq!(progress.title.text(), "Device not responding");
                 assert!(progress.subtitle.text().contains("do not unplug"));
-                assert_eq!(
-                    progress.cancel.label().as_deref(),
-                    Some("Return to browser")
-                );
-                assert!(progress.cancel.is_sensitive());
+                assert!(!progress.cancel.is_sensitive());
+                let card = progress.compact.as_ref().expect("docked stalled transfer");
+                assert!(!card.cancel.is_sensitive());
+                assert!(card.info.text().contains("Do not unplug"));
+                card.cancel.emit_clicked();
             }
-            view.state.hide_stalled_transfer_progress();
-            assert!(view.state.file_progress_view.borrow().is_none());
-            assert!(view.state.transfer_cancel_requested.get());
-            assert!(view.state.transfer_warning_banner.borrow().is_some());
-            view.state
-                .handle(&crate::app::BrowserEvent::TransferCancellationPending);
-            assert!(view.state.transfer_warning_banner.borrow().is_some());
-            assert!(view.state.transfer_cancel_requested.get());
+            assert_eq!(cancellations.get(), 1);
+            assert!(progress_state.file_progress_view.borrow().is_some());
+            assert!(progress_state.transfer_cancel_requested.get());
+            assert!(crate::ui::window::visible_modal_layer(&window).is_none());
             view.state.dismiss_file_operation_progress();
-            assert!(view.state.transfer_warning_banner.borrow().is_none());
-            assert!(!view.state.transfer_cancel_requested.get());
+            assert!(!progress_state.transfer_cancel_requested.get());
             window.close();
         },
     );
@@ -170,5 +228,141 @@ fn transfer_status_handles_empty_files_and_unknown_totals() {
 
     let (_, bytes, items, _) = transfer_progress_status(0, 1, 0, None, 0, None, None);
     assert_eq!(bytes, "0 B");
-    assert_eq!(items, "0 of 1 items");
+    assert_eq!(items, "0 of 1 item");
+}
+
+fn present_progress(view: &crate::ui::browser::BrowserView, window: &gtk::Window) {
+    view.state.show_file_operation_progress(
+        16,
+        crate::assets::icons::COPY,
+        "Extracting archive",
+        "Cancelling will not undo completed changes",
+        std::rc::Rc::new(|| {}),
+    );
+    assert!(
+        crate::ui::window::visible_modal_layer(window).is_some(),
+        "sixteen items present the progress modal immediately"
+    );
+}
+
+fn pump_until(condition: impl Fn() -> bool) {
+    let context = glib::MainContext::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while !condition() && std::time::Instant::now() < deadline {
+        while context.iteration(false) {}
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+fn focused_label(window: &gtk::Window) -> Option<String> {
+    use gtk::prelude::*;
+    gtk::prelude::RootExt::focus(window)
+        .and_downcast::<gtk::Button>()
+        .and_then(|button| button.label())
+        .map(|label| label.to_string())
+}
+
+#[test]
+fn progress_modal_returns_focus_to_the_listing_when_dismissed() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::progress_modal_returns_focus_to_the_listing_when_dismissed",
+        || {
+            use gtk::prelude::*;
+            use std::rc::Rc;
+
+            crate::ui::prepare_portal_ui();
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let overlay = view.overlay();
+            let controls = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            controls.set_halign(gtk::Align::Start);
+            controls.set_valign(gtk::Align::Start);
+            let origin = gtk::Button::with_label("Origin");
+            let listing = gtk::Button::with_label("Listing");
+            controls.append(&origin);
+            controls.append(&listing);
+            overlay.add_overlay(&controls);
+            let window = gtk::Window::builder().child(&overlay).build();
+            let fallback = listing.clone();
+            crate::ui::modal::set_modal_focus_fallback(
+                &window,
+                Rc::new(move || {
+                    fallback.grab_focus();
+                }),
+            );
+            window.present();
+            assert!(origin.grab_focus());
+            present_progress(&view, &window);
+            assert_ne!(focused_label(&window).as_deref(), Some("Origin"));
+            view.state.dismiss_file_operation_progress();
+            pump_until(|| crate::ui::window::visible_modal_layer(&window).is_none());
+            assert!(crate::ui::window::visible_modal_layer(&window).is_none());
+            assert_eq!(focused_label(&window).as_deref(), Some("Listing"));
+            window.close();
+        },
+    );
+}
+
+#[test]
+fn a_dialog_opened_after_progress_keeps_focus_in_columns() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::a_dialog_opened_after_progress_keeps_focus_in_columns",
+        || {
+            use gtk::prelude::*;
+            use std::rc::Rc;
+
+            crate::ui::prepare_portal_ui();
+            let directory = tempfile::tempdir().expect("progress folder");
+            for name in ["a.txt", "b.txt"] {
+                std::fs::write(directory.path().join(name), b"progress").expect("fixture file");
+            }
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            view.set_view_mode(crate::ui::browser_modes::BrowserMode::Columns);
+            let window = gtk::Window::builder()
+                .child(&view.overlay())
+                .default_width(900)
+                .default_height(600)
+                .build();
+            view.set_as_modal_focus_fallback(&window);
+            window.present();
+            view.navigate_location(crate::model::Location::local(directory.path()));
+            pump_until(|| {
+                view.browser()
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
+            });
+            view.browser().select(0, 0);
+            view.focus_file_view();
+            pump_until(|| view.item_view_has_focus());
+            assert!(view.item_view_has_focus(), "the column holds focus");
+            // Deferred cursor work from loading and focusing must not land mid-dismissal.
+            let settle = std::time::Instant::now() + std::time::Duration::from_millis(300);
+            pump_until(|| std::time::Instant::now() >= settle);
+
+            present_progress(&view, &window);
+            let error_parent = view.overlay();
+            view.state.dismiss_file_operation_progress_then(move || {
+                crate::ui::modal::show_error_dialog(
+                    &error_parent,
+                    "Unable to complete operation",
+                    "The archive is damaged",
+                );
+            });
+            pump_until(|| focused_label(&window).as_deref() == Some("Close"));
+            let settle = std::time::Instant::now() + std::time::Duration::from_millis(300);
+            pump_until(|| std::time::Instant::now() >= settle);
+            assert_eq!(
+                focused_label(&window).as_deref(),
+                Some("Close"),
+                "the error dialog keeps focus, found {:?}",
+                gtk::prelude::RootExt::focus(&window).map(|focus| focus.type_().name())
+            );
+            window.close();
+        },
+    );
 }

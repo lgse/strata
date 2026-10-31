@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use super::*;
 use crate::ui::{
     browser::{ClipboardMark, CreateRefusal, clipboard_mark},
+    shortcut_footer::CandidateKeys,
     tenxer_mode::Prompt,
 };
 
@@ -121,16 +122,6 @@ fn leave_folder(fixture: &KeyboardFixture) {
     let browser = fixture.view.browser();
     plain(fixture, Key::h);
     wait_until(|| browser.active_depth() == Some(0));
-    focus_files(fixture);
-}
-
-fn open_empty_folder(fixture: &KeyboardFixture) {
-    let empty = fixture._directory.path().join("empty");
-    std::fs::create_dir(&empty).expect("empty folder");
-    let browser = fixture.view.browser();
-    browser.navigate(Location::local(&empty));
-    wait_until(|| browser.active_location() == Some(Location::local(&empty)));
-    wait_loaded(&browser, 0);
     focus_files(fixture);
 }
 
@@ -305,7 +296,7 @@ fn tenxer_paste_focuses_the_preferred_conflict_choice() {
             enter_folder(&fixture, "dest");
             plain(&fixture, Key::p);
             wait_until(|| modal_visible(&fixture.overlay));
-            wait_focused_button(&fixture, "Replace");
+            wait_focused_button(&fixture, "Keep Both");
             close_modal(&fixture);
             assert!(directory.join("b.txt").exists(), "cancel keeps the source");
             assert_eq!(contents(&destination.join("b.txt")), "existing");
@@ -377,20 +368,26 @@ fn tenxer_delete_confirms_trash_and_permanent_deletion() {
                 move_to_named(&fixture, &browser, "b.txt");
                 assert!(fixture.press(key, modifiers));
                 wait_until(|| modal_visible(&fixture.overlay));
-                let cancel = wait_focused_button(&fixture, "Cancel");
+                wait_until(|| {
+                    widget_with_class(fixture.overlay.upcast_ref(), "action-dialog-confirm")
+                        .is_some_and(|confirm| confirm.is_sensitive() && confirm.has_focus())
+                });
                 pump(300);
-                assert_eq!(
-                    focused_button(&fixture).and_then(|button| button.label()),
-                    Some("Cancel".into()),
-                    "the size summary must not move focus to Permanently delete"
+                assert!(
+                    widget_with_class(fixture.overlay.upcast_ref(), "action-dialog-confirm")
+                        .is_some_and(|confirm| confirm.has_focus()),
+                    "the size summary must keep focus on Permanently delete"
                 );
-                cancel.emit_clicked();
+                assert!(modal_key(&fixture, Key::Escape));
                 wait_until(|| !modal_visible(&fixture.overlay));
                 assert!(directory.join("b.txt").exists(), "{key:?} cancel keeps it");
             }
             move_to_named(&fixture, &browser, "b.txt");
             shifted(&fixture, Key::D);
-            wait_focused_button(&fixture, "Cancel");
+            wait_until(|| {
+                widget_with_class(fixture.overlay.upcast_ref(), "action-dialog-confirm")
+                    .is_some_and(|confirm| confirm.is_sensitive() && confirm.has_focus())
+            });
             assert!(!modal_key(&fixture, Key::d));
             pump(200);
             assert!(
@@ -403,9 +400,9 @@ fn tenxer_delete_confirms_trash_and_permanent_deletion() {
             shifted(&fixture, Key::D);
             wait_until(|| {
                 widget_with_class(fixture.overlay.upcast_ref(), "action-dialog-confirm")
-                    .is_some_and(|confirm| confirm.is_sensitive())
+                    .is_some_and(|confirm| confirm.is_sensitive() && confirm.has_focus())
             });
-            assert!(click_class(&fixture.overlay, "action-dialog-confirm"));
+            assert!(modal_key(&fixture, Key::Return));
             wait_until(|| !directory.join("b.txt").exists());
             assert_eq!(directory_names(&directory), ["a.txt", "c.txt"]);
 
@@ -413,6 +410,159 @@ fn tenxer_delete_confirms_trash_and_permanent_deletion() {
             plain(&fixture, Key::d);
             assert_eq!(feedback(&fixture), "Nothing to delete");
             assert!(!modal_visible(&fixture.overlay));
+        },
+    );
+}
+
+#[test]
+fn columns_shift_delete_deletes_the_cursor_when_the_fill_is_empty() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_commands::columns_shift_delete_deletes_the_cursor_when_the_fill_is_empty",
+        || {
+            let fixture = KeyboardFixture::new();
+            let directory = fixture._directory.path().to_path_buf();
+            let browser = fixture.view.browser();
+
+            browser.select_first_on_load(0);
+            browser.reload_active();
+            wait_until(|| browser.selection_is_load_cursor());
+            browser.place_cursor(0, 2, None);
+            assert_eq!(focused_name(&browser), "c.txt");
+            focus_files(&fixture);
+
+            assert!(fixture.press(Key::Delete, ModifierType::SHIFT_MASK));
+            wait_until(|| modal_visible(&fixture.overlay));
+            wait_until(|| {
+                widget_with_class(fixture.overlay.upcast_ref(), "action-dialog-confirm")
+                    .is_some_and(|confirm| confirm.is_sensitive())
+            });
+            assert!(click_class(&fixture.overlay, "action-dialog-confirm"));
+            wait_until(|| !directory.join("c.txt").exists());
+            assert_eq!(directory_names(&directory), ["a.txt", "b.txt"]);
+        },
+    );
+}
+
+#[test]
+fn columns_shift_delete_targets_the_open_folder_when_the_child_selects_nothing() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_commands::columns_shift_delete_targets_the_open_folder_when_the_child_selects_nothing",
+        || {
+            let fixture = KeyboardFixture::new();
+            let directory = fixture._directory.path().to_path_buf();
+            std::fs::create_dir(directory.join("folder")).expect("fixture folder");
+            let browser = fixture.view.browser();
+            browser.refresh_all();
+            wait_until(|| rendered_name(&fixture.view.widget(), "folder"));
+
+            let count = browser.column_snapshot(0).expect("column").count;
+            let folder_position = browser
+                .with_entries(0, 0..count, |entries| {
+                    entries
+                        .iter()
+                        .position(|entry| entry.display_name == "folder")
+                })
+                .flatten()
+                .expect("folder is listed");
+            browser.activate(0, folder_position);
+            wait_loaded(&browser, 1);
+            focus_files(&fixture);
+
+            assert!(fixture.press(Key::Delete, ModifierType::SHIFT_MASK));
+            wait_until(|| modal_visible(&fixture.overlay));
+            wait_until(|| {
+                widget_with_class(fixture.overlay.upcast_ref(), "action-dialog-confirm")
+                    .is_some_and(|confirm| confirm.is_sensitive())
+            });
+            assert!(click_class(&fixture.overlay, "action-dialog-confirm"));
+            wait_until(|| !directory.join("folder").exists());
+            assert_eq!(directory_names(&directory), ["a.txt", "b.txt", "c.txt"]);
+        },
+    );
+}
+
+#[test]
+fn tenxer_delete_targets_the_open_folder_when_the_child_selects_nothing() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_commands::tenxer_delete_targets_the_open_folder_when_the_child_selects_nothing",
+        || {
+            let fixture = KeyboardFixture::new();
+            enable_tenxer(&fixture);
+            let directory = fixture._directory.path().to_path_buf();
+            std::fs::create_dir(directory.join("folder")).expect("fixture folder");
+            let browser = fixture.view.browser();
+            browser.refresh_all();
+            wait_until(|| rendered_name(&fixture.view.widget(), "folder"));
+
+            let count = browser.column_snapshot(0).expect("column").count;
+            let folder_position = browser
+                .with_entries(0, 0..count, |entries| {
+                    entries
+                        .iter()
+                        .position(|entry| entry.display_name == "folder")
+                })
+                .flatten()
+                .expect("folder is listed");
+            browser.activate(0, folder_position);
+            wait_loaded(&browser, 1);
+            focus_files(&fixture);
+
+            plain(&fixture, Key::d);
+            wait_until(|| modal_visible(&fixture.overlay));
+            wait_until(|| {
+                widget_with_class(fixture.overlay.upcast_ref(), "action-dialog-confirm")
+                    .is_some_and(|confirm| confirm.is_sensitive() && confirm.has_focus())
+            });
+            assert!(click_class(&fixture.overlay, "action-dialog-confirm"));
+            wait_until(|| !directory.join("folder").exists());
+            assert_eq!(directory_names(&directory), ["a.txt", "b.txt", "c.txt"]);
+        },
+    );
+}
+
+#[test]
+fn tenxer_delete_with_no_search_or_filter_hits_preserves_the_open_folder() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_commands::tenxer_delete_with_no_search_or_filter_hits_preserves_the_open_folder",
+        || {
+            let fixture = KeyboardFixture::new();
+            enable_tenxer(&fixture);
+            let directory = fixture._directory.path().to_path_buf();
+            let folder = directory.join("folder");
+            std::fs::create_dir(&folder).expect("fixture folder");
+            let browser = fixture.view.browser();
+            browser.refresh_all();
+            wait_until(|| rendered_name(&fixture.view.widget(), "folder"));
+            enter_folder(&fixture, "folder");
+
+            for search in [false, true] {
+                if search {
+                    fixture.view.commit_listing_search("no-match");
+                } else {
+                    fixture.view.commit_listing_filter("no-match");
+                }
+                wait_until(|| fixture.view.selected_search_results() == Some(Vec::new()));
+                focus_files(&fixture);
+                for (key, modifiers) in [
+                    (Key::d, ModifierType::empty()),
+                    (Key::D, ModifierType::SHIFT_MASK),
+                ] {
+                    assert!(fixture.press(key, modifiers));
+                    assert_eq!(feedback(&fixture), "Nothing to delete");
+                    assert!(!modal_visible(&fixture.overlay));
+                    assert!(folder.is_dir());
+                    assert_eq!(
+                        directory_names(&directory),
+                        ["a.txt", "b.txt", "c.txt", "folder"]
+                    );
+                }
+                if search {
+                    assert!(fixture.view.dismiss_listing_search());
+                } else {
+                    assert!(fixture.view.clear_listing_filter());
+                }
+                focus_files(&fixture);
+            }
         },
     );
 }
@@ -439,7 +589,7 @@ fn tenxer_create_prompt_makes_exact_files_and_folders() {
 
             for name in ["new.txt", "  spaced  ", "日本語 ✓"] {
                 submit(name);
-                assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
+                wait_until(|| fixture.shortcuts.open_prompt_kind().is_none());
                 wait_until(|| directory.join(name).is_file());
                 assert_eq!(contents(&directory.join(name)), "");
             }
@@ -449,14 +599,18 @@ fn tenxer_create_prompt_makes_exact_files_and_folders() {
             std::fs::write(directory.join("new.txt"), "keep").expect("existing contents");
             std::os::unix::fs::symlink(directory.join("missing"), directory.join("link"))
                 .expect("dangling link");
-            for name in ["new.txt", "folder/", "folder", "link", "link/"] {
+            let too_long = "x".repeat(300);
+            let refusals = ["new.txt", "folder/", "folder", "link", "link/"]
+                .map(|name| {
+                    let bare = name.trim_end_matches('/');
+                    (name, format!("\u{201c}{bare}\u{201d} already exists"))
+                })
+                .into_iter()
+                .chain([(too_long.as_str(), "The name is too long".to_owned())]);
+            for (name, hint) in refusals {
                 submit(name);
-                let bare = name.trim_end_matches('/');
+                wait_until(|| fixture.shortcuts.prompt_hint().as_ref() == Some(&hint));
                 assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(Prompt::Create));
-                assert_eq!(
-                    fixture.shortcuts.prompt_hint(),
-                    Some(format!("\u{201c}{bare}\u{201d} already exists"))
-                );
                 assert_eq!(
                     fixture.shortcuts.prompt_text(),
                     name,
@@ -497,8 +651,8 @@ fn tenxer_create_prompt_makes_exact_files_and_folders() {
                 assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
             }
             assert_eq!(
-                fixture.view.create_typed_entry("nul\0name"),
-                Err(CreateRefusal::Invalid(
+                fixture.view.prepare_typed_entry("nul\0name").err(),
+                Some(CreateRefusal::Invalid(
                     "Names cannot contain NUL characters"
                 ))
             );
@@ -600,6 +754,138 @@ fn ctrl_alt_n_groups_selected_items_into_a_named_folder() {
 }
 
 #[test]
+fn ctrl_alt_n_with_no_selection_creates_plain_new_folder() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_commands::ctrl_alt_n_with_no_selection_creates_plain_new_folder",
+        || {
+            let fixture = KeyboardFixture::new();
+            let directory = fixture._directory.path().to_path_buf();
+            let browser = fixture.view.browser();
+
+            browser.clear_active_selection();
+            assert_eq!(browser.selected_count(), 0);
+            focus_files(&fixture);
+            assert!(fixture.press(Key::n, ModifierType::CONTROL_MASK | ModifierType::ALT_MASK));
+            wait_until(|| directory.join("new folder").is_dir());
+            wait_until(|| fixture.view.rename_is_active());
+            assert_eq!(
+                directory_names(&directory.join("new folder")),
+                Vec::<String>::new()
+            );
+            assert!(directory.join("a.txt").is_file());
+            assert!(directory.join("b.txt").is_file());
+            assert!(directory.join("c.txt").is_file());
+            plain(&fixture, Key::Escape);
+
+            let sub = directory.join("sub");
+            std::fs::create_dir(&sub).expect("sub directory");
+            std::fs::write(sub.join("x.txt"), b"x").expect("file");
+            std::fs::write(sub.join("y.txt"), b"y").expect("file");
+            browser.navigate(Location::local(&sub));
+            wait_until(|| browser.active_location() == Some(Location::local(&sub)));
+            wait_loaded(&browser, 0);
+            focus_files(&fixture);
+            wait_until(|| browser.selection_is_load_cursor());
+            assert!(fixture.press(Key::n, ModifierType::CONTROL_MASK | ModifierType::ALT_MASK));
+            wait_until(|| sub.join("new folder").is_dir());
+            wait_until(|| fixture.view.rename_is_active());
+            assert_eq!(
+                directory_names(&sub.join("new folder")),
+                Vec::<String>::new()
+            );
+            assert!(sub.join("x.txt").is_file());
+            assert!(sub.join("y.txt").is_file());
+            plain(&fixture, Key::Escape);
+        },
+    );
+}
+
+#[test]
+fn undo_and_redo_run_only_on_their_exact_chords() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_commands::undo_and_redo_run_only_on_their_exact_chords",
+        || {
+            let fixture = KeyboardFixture::new();
+            PreferenceManager::shared().set_type_to_search(false);
+            let directory = fixture._directory.path().to_path_buf();
+            let browser = fixture.view.browser();
+            let none = ModifierType::empty();
+            let control = ModifierType::CONTROL_MASK;
+            let shift = ModifierType::SHIFT_MASK;
+            let alt = ModifierType::ALT_MASK;
+            let renamed = || {
+                directory.join("renamed.txt").exists()
+                    && !directory.join("a.txt").exists()
+                    && browser.pending_undo_rename().is_some()
+            };
+            let restored = || {
+                directory.join("a.txt").exists()
+                    && !directory.join("renamed.txt").exists()
+                    && browser.pending_redo_rename().is_some()
+            };
+            focus_files(&fixture);
+            assert!(fixture.view.begin_rename());
+            let field = fixture.view.active_rename_field().expect("rename field");
+            field.set_text("renamed.txt");
+            field.emit_activate();
+            wait_until(renamed);
+
+            focus_files(&fixture);
+            assert!(fixture.press(Key::F1, none));
+            wait_until(|| fixture.shortcuts.reference_is_open());
+            assert!(
+                !fixture.press(Key::z, control),
+                "the F1 search takes Ctrl+Z"
+            );
+            pump(100);
+            assert!(
+                renamed(),
+                "Ctrl+Z in the F1 search must not undo the rename"
+            );
+            assert!(fixture.press(Key::Escape, none));
+            wait_until(|| !fixture.shortcuts.reference_is_open());
+
+            for (key, modifiers) in [
+                (Key::z, none),
+                (Key::z, control | shift),
+                (Key::z, control | alt),
+                (Key::z, control | ModifierType::SUPER_MASK),
+            ] {
+                focus_files(&fixture);
+                fixture.press(key, modifiers);
+                pump(100);
+                assert!(renamed(), "{modifiers:?}+{key:?} must not undo");
+            }
+            focus_files(&fixture);
+            assert!(fixture.press(Key::z, control));
+            wait_until(restored);
+
+            for (key, modifiers) in [
+                (Key::z, none),
+                (Key::z, shift),
+                (Key::z, control),
+                (Key::z, control | shift | alt),
+                (Key::y, control | shift),
+                (Key::y, control | alt),
+            ] {
+                focus_files(&fixture);
+                fixture.press(key, modifiers);
+                pump(100);
+                assert!(restored(), "{modifiers:?}+{key:?} must not redo");
+            }
+            for (key, modifiers) in [(Key::Z, control | shift), (Key::y, control)] {
+                focus_files(&fixture);
+                assert!(fixture.press(key, modifiers), "{modifiers:?}+{key:?}");
+                wait_until(renamed);
+                focus_files(&fixture);
+                assert!(fixture.press(Key::z, control));
+                wait_until(restored);
+            }
+        },
+    );
+}
+
+#[test]
 fn abandoned_group_naming_keeps_a_later_rename_separate() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::file_commands::abandoned_group_naming_keeps_a_later_rename_separate",
@@ -674,15 +960,17 @@ fn abandoned_group_naming_keeps_a_later_rename_separate() {
 }
 
 #[test]
-fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
+fn tenxer_move_and_copy_prompts_send_targets_to_a_picked_folder() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::file_commands::tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder",
+        "ui::window::tests::keyboard_dispatch::file_commands::tenxer_move_and_copy_prompts_send_targets_to_a_picked_folder",
         || {
             let fixture = KeyboardFixture::new();
             let directory = fixture._directory.path().to_path_buf();
             let destination = directory.join("dest");
-            std::fs::create_dir_all(destination.join("inner")).expect("destination");
-            std::fs::create_dir(directory.join("other")).expect("sibling destination");
+            let inner = destination.join("inner");
+            let other = directory.join("other");
+            std::fs::create_dir_all(&inner).expect("destination");
+            std::fs::create_dir(&other).expect("sibling destination");
             fixture.view.refresh();
             wait_until(|| rendered_name(&fixture.view.widget(), "dest"));
             enable_tenxer(&fixture);
@@ -694,19 +982,25 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
                 assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(kind));
                 assert_eq!(fixture.shortcuts.prompt_label().as_deref(), Some(label));
             };
-            let submit = |text: &str| {
+            let listed = |text: &str, expected: &[&Path]| {
+                fixture.shortcuts.prompt().set_text(text);
+                wait_until(|| fixture.shortcuts.candidates() == expected);
+                assert!(fixture.shortcuts.candidates_shown(), "{text:?}");
+            };
+            let hint = || fixture.shortcuts.prompt_hint();
+            let refused = |text: &str, expected: &str| {
                 fixture.shortcuts.prompt().set_text(text);
                 plain(&fixture, Key::Return);
-                wait_until(|| {
-                    fixture.shortcuts.open_prompt_kind().is_none()
-                        || fixture.shortcuts.prompt_hint().is_some()
-                });
+                wait_until(|| hint().as_deref() == Some(expected));
+                assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(Prompt::MoveTo));
             };
 
             fill_b_and_c(&fixture);
             open(Key::C, Prompt::CopyTo, "copy to \u{203a}");
-            submit("dest");
-            assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
+            listed("dest", &[&destination, &inner]);
+            assert_eq!(hint().as_deref(), Some("1 of 2"));
+            plain(&fixture, Key::Return);
+            wait_until(|| fixture.shortcuts.open_prompt_kind().is_none());
             wait_until(|| directory_names(&destination) == ["b.txt", "c.txt", "inner"]);
             assert!(directory.join("b.txt").exists() && directory.join("c.txt").exists());
             assert_eq!(browser.active_location(), origin, "copying stays put");
@@ -714,13 +1008,10 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
             browser.clear_active_selection();
             move_to_named(&fixture, &browser, "a.txt");
             open(Key::M, Prompt::MoveTo, "move to \u{203a}");
-            fixture.shortcuts.prompt().set_text("dest/in");
-            plain(&fixture, Key::Tab);
-            wait_until(|| fixture.shortcuts.prompt_text() == "dest/inner/");
+            listed("dest in", &[&inner]);
             plain(&fixture, Key::Return);
-            wait_until(|| {
-                destination.join("inner/a.txt").exists() && !directory.join("a.txt").exists()
-            });
+            wait_until(|| inner.join("a.txt").exists() && !directory.join("a.txt").exists());
+            assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
             assert_eq!(browser.active_location(), origin, "moving stays put");
             wait_until(|| focused_name(&browser) == "b.txt");
             assert!(
@@ -730,45 +1021,63 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
             plain(&fixture, Key::j);
             assert_eq!(focused_name(&browser), "c.txt");
             assert!(fill_names(&browser).is_empty());
+
             browser.clear_active_selection();
             move_to_named(&fixture, &browser, "b.txt");
-            for (text, hint) in [
-                ("nowhere", "No such folder"),
-                ("c.txt", "Not a folder"),
+            open(Key::M, Prompt::MoveTo, "move to \u{203a}");
+            plain(&fixture, Key::Return);
+            assert_eq!(
+                fixture.shortcuts.open_prompt_kind(),
+                None,
+                "empty Enter closes"
+            );
+            for (text, expected) in [
+                ("nowhere", "No matching folders"),
                 ("smb://host/share", "Only local folders can be chosen"),
                 ("~someone/x", "Only ~ and ~/ are supported"),
-                (".", "Already in this folder"),
+                ("./", "Already in this folder"),
+                ("./c.txt/", "Not a folder"),
+                ("./nowhere/", "No such folder"),
             ] {
                 open(Key::M, Prompt::MoveTo, "move to \u{203a}");
                 plain(&fixture, Key::Down);
                 assert_eq!(focused_name(&browser), "b.txt", "the target is fixed");
-                submit(text);
-                assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(Prompt::MoveTo));
-                assert_eq!(fixture.shortcuts.prompt_hint().as_deref(), Some(hint));
+                refused(text, expected);
                 plain(&fixture, Key::Escape);
                 assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
             }
             assert!(directory.join("b.txt").exists(), "refusals move nothing");
 
+            open(Key::M, Prompt::MoveTo, "move to \u{203a}");
+            fixture.shortcuts.prompt().set_text("./");
+            wait_until(|| {
+                let mut found = fixture.shortcuts.candidates();
+                found.sort();
+                found == [destination.clone(), inner.clone(), other.clone()]
+            });
+            plain(&fixture, Key::Escape);
+
             move_to_named(&fixture, &browser, "dest");
             open(Key::M, Prompt::MoveTo, "move to \u{203a}");
-            submit("dest/inner");
-            assert_eq!(
-                fixture.shortcuts.prompt_hint().as_deref(),
-                Some("Can\u{2019}t put a folder inside itself")
+            fixture.shortcuts.prompt().set_text("inner");
+            wait_until(|| hint().as_deref() == Some("No matching folders"));
+            assert!(
+                fixture.shortcuts.candidates().is_empty(),
+                "a folder is never offered inside itself"
             );
+            refused("./dest/inner/", "Can\u{2019}t put a folder inside itself");
             plain(&fixture, Key::Escape);
             open(Key::C, Prompt::CopyTo, "copy to \u{203a}");
-            submit("dest/../other");
-            wait_until(|| directory.join("other/dest/inner/a.txt").exists());
-            assert!(
-                destination.join("inner/a.txt").exists(),
-                "copy preserves the source"
-            );
+            listed("./dest/../other/", &[&other]);
+            plain(&fixture, Key::Return);
+            wait_until(|| other.join("dest/inner/a.txt").exists());
+            assert!(inner.join("a.txt").exists(), "copy preserves the source");
 
             move_to_named(&fixture, &browser, "b.txt");
             open(Key::C, Prompt::CopyTo, "copy to \u{203a}");
-            submit(&destination.to_string_lossy());
+            let typed = format!("{}/", destination.display());
+            listed(&typed, &[&destination, &inner]);
+            plain(&fixture, Key::Return);
             wait_until(|| modal_visible(&fixture.overlay));
             wait_focused_button(&fixture, "Keep Both");
             close_modal(&fixture);
@@ -776,35 +1085,60 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
 
             move_to_named(&fixture, &browser, "c.txt");
             open(Key::M, Prompt::MoveTo, "move to \u{203a}");
-            fixture.shortcuts.prompt().set_text("other");
-            plain(&fixture, Key::Return);
-            plain(&fixture, Key::Tab);
-            wait_until(|| fixture.shortcuts.prompt_text() == "other/");
-            pump(200);
-            assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(Prompt::MoveTo));
-            assert!(
-                directory.join("c.txt").exists(),
-                "completion requires a fresh submission"
-            );
-            assert!(!directory.join("other/c.txt").exists());
-            plain(&fixture, Key::Escape);
-
-            open(Key::M, Prompt::MoveTo, "move to \u{203a}");
-            fixture.shortcuts.prompt().set_text("dest/inner");
-            plain(&fixture, Key::Return);
-            plain(&fixture, Key::Escape);
-            open(Key::M, Prompt::MoveTo, "move to \u{203a}");
-            submit("nowhere");
+            fixture.shortcuts.prompt().set_text("inner");
+            wait_until(|| fixture.shortcuts.candidates().len() == 2);
+            let mut found = fixture.shortcuts.candidates();
+            found.sort();
+            assert_eq!(found, [inner.clone(), other.join("dest/inner")]);
+            for (key, position) in [
+                (Key::Up, "2 of 2"),
+                (Key::Down, "1 of 2"),
+                (Key::Down, "2 of 2"),
+            ] {
+                plain(&fixture, key);
+                assert_eq!(hint().as_deref(), Some(position), "{key:?}");
+            }
+            assert_eq!(focused_name(&browser), "c.txt", "stepping keeps the cursor");
+            let chosen = fixture.shortcuts.candidates()[1].clone();
+            let later = fixture.shortcuts.candidates();
+            fixture
+                .shortcuts
+                .show_candidates(later, CandidateKeys::default());
             assert_eq!(
-                fixture.shortcuts.prompt_hint().as_deref(),
-                Some("No such folder")
+                fixture.shortcuts.chosen_candidate().as_ref(),
+                Some(&chosen),
+                "results that arrive later keep the stepped choice"
             );
+            let relative = chosen.strip_prefix(&directory).expect("candidate below");
+            plain(&fixture, Key::Tab);
+            assert_eq!(
+                fixture.shortcuts.prompt_text(),
+                format!("./{}/", relative.display()),
+                "Tab writes the chosen folder into the prompt"
+            );
+            assert!(directory.join("c.txt").exists(), "Tab never sends");
+            wait_until(|| fixture.shortcuts.candidates() == [chosen.clone()]);
+            plain(&fixture, Key::Return);
+            wait_until(|| chosen.join("c.txt").exists() && !directory.join("c.txt").exists());
+
+            move_to_named(&fixture, &browser, "b.txt");
+            open(Key::M, Prompt::MoveTo, "move to \u{203a}");
+            listed("^other$", &[&other]);
+            plain(&fixture, Key::Return);
+            plain(&fixture, Key::Escape);
+            pump(200);
             assert!(
-                directory.join("c.txt").exists(),
+                directory.join("b.txt").exists(),
                 "cancelled validation must not move"
             );
-            assert!(!destination.join("inner/c.txt").exists());
-            plain(&fixture, Key::Escape);
+            assert!(!other.join("b.txt").exists());
+
+            open(Key::C, Prompt::CopyTo, "copy to \u{203a}");
+            listed("^other$", &[&other]);
+            fixture.shortcuts.click_candidate(0);
+            wait_until(|| other.join("b.txt").exists());
+            assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
+            assert!(directory.join("b.txt").exists());
 
             open_empty_folder(&fixture);
             for (key, message) in [(Key::M, "Nothing to move"), (Key::C, "Nothing to copy")] {
@@ -861,8 +1195,13 @@ fn tenxer_action_chord_compresses_and_extracts_archives() {
             .expect("fixture archive");
             let destination = directory.join("dest");
             std::fs::create_dir(&destination).expect("destination");
+            std::fs::create_dir(directory.join("nested.zip"))
+                .expect("folder named like an archive");
             fixture.view.refresh();
-            wait_until(|| rendered_name(&fixture.view.widget(), "bundle.tar"));
+            wait_until(|| {
+                rendered_name(&fixture.view.widget(), "bundle.tar")
+                    && rendered_name(&fixture.view.widget(), "nested.zip")
+            });
             enable_tenxer(&fixture);
             let browser = fixture.view.browser();
             let origin = browser.active_location();
@@ -880,6 +1219,13 @@ fn tenxer_action_chord_compresses_and_extracts_archives() {
             wait_until(|| modal_visible(&fixture.overlay));
             close_modal(&fixture);
             assert_eq!(directory_names(&destination), Vec::<String>::new());
+
+            move_to_named(&fixture, &browser, "nested.zip");
+            action(Key::e, ModifierType::empty());
+            assert_eq!(feedback(&fixture), "Not an archive");
+            action(Key::E, ModifierType::SHIFT_MASK);
+            assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
+            assert_eq!(feedback(&fixture), "Not an archive");
 
             move_to_named(&fixture, &browser, "bundle.tar");
             action(Key::e, ModifierType::empty());
@@ -900,9 +1246,16 @@ fn tenxer_action_chord_compresses_and_extracts_archives() {
                 Some("extract to \u{203a}")
             );
             fixture.shortcuts.prompt().set_text("missing");
+            wait_until(|| {
+                fixture.shortcuts.prompt_hint().as_deref() == Some("No matching folders")
+            });
             plain(&fixture, Key::Return);
-            wait_until(|| fixture.shortcuts.prompt_hint().as_deref() == Some("No such folder"));
+            assert_eq!(
+                fixture.shortcuts.prompt_hint().as_deref(),
+                Some("No matching folders")
+            );
             fixture.shortcuts.prompt().set_text("dest");
+            wait_until(|| fixture.shortcuts.candidates() == [destination.clone()]);
             plain(&fixture, Key::Return);
             wait_until(|| std::fs::read_to_string(destination.join("notes.txt")).is_ok());
             assert_eq!(contents(&destination.join("notes.txt")), "notes");
@@ -930,6 +1283,328 @@ fn tenxer_action_chord_compresses_and_extracts_archives() {
                 action(key, ModifierType::empty());
                 assert_eq!(feedback(&fixture), message, "; {key:?}");
             }
+        },
+    );
+}
+
+/// Local browsing whose listings report that Trash is unsupported, like a
+/// tmpfs, or, when `read_only`, a folder the user cannot delete from either.
+struct TrashlessLocal {
+    read_only: bool,
+}
+
+impl crate::services::FileSource for TrashlessLocal {
+    fn allows_entry(&self, entry: &crate::model::FileEntry) -> bool {
+        crate::adapters::LocalFileSource.allows_entry(entry)
+    }
+
+    fn validate_location(
+        &self,
+        location: &Location,
+    ) -> Result<(), crate::services::LocationValidationError> {
+        crate::adapters::LocalFileSource.validate_location(location)
+    }
+
+    fn validate_location_async(
+        &self,
+        location: Location,
+        emit: Rc<dyn Fn(Result<(), crate::services::LocationValidationError>)>,
+    ) -> crate::services::LoadHandle {
+        crate::adapters::LocalFileSource.validate_location_async(location, emit)
+    }
+
+    fn enumerate(
+        &self,
+        request: crate::services::DirectoryRequest,
+        emit: Rc<dyn Fn(crate::services::DirectoryEvent)>,
+    ) -> crate::services::LoadHandle {
+        let read_only = self.read_only;
+        crate::adapters::LocalFileSource.enumerate(
+            request,
+            Rc::new(move |event| {
+                emit(match event {
+                    crate::services::DirectoryEvent::Finished {
+                        request_id,
+                        truncated,
+                        can_delete,
+                        ..
+                    } => crate::services::DirectoryEvent::Finished {
+                        request_id,
+                        truncated,
+                        can_trash: Some(false),
+                        can_delete: if read_only { Some(false) } else { can_delete },
+                    },
+                    event => event,
+                })
+            }),
+        )
+    }
+
+    fn supports_metadata_fill(&self, location: &Location) -> bool {
+        crate::adapters::LocalFileSource.supports_metadata_fill(location)
+    }
+
+    fn fill_metadata(
+        &self,
+        request: crate::services::MetadataRequest,
+        emit: Rc<dyn Fn(crate::services::DirectoryEvent)>,
+    ) -> crate::services::LoadHandle {
+        crate::adapters::LocalFileSource.fill_metadata(request, emit)
+    }
+
+    fn start_watch(
+        &self,
+        location: Location,
+        include_hidden: bool,
+        notify: Rc<dyn Fn(crate::services::DirectoryChange)>,
+        report: Rc<dyn Fn(crate::services::Watching)>,
+    ) -> crate::services::LoadHandle {
+        crate::adapters::LocalFileSource.start_watch(location, include_hidden, notify, report)
+    }
+}
+
+fn modal_text_contains(fixture: &KeyboardFixture, text: &str) -> bool {
+    fn contains(widget: &gtk::Widget, text: &str) -> bool {
+        widget.downcast_ref::<gtk::Label>().is_some_and(|label| {
+            label
+                .text()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .contains(text)
+        }) || {
+            let mut child = widget.first_child();
+            let mut found = false;
+            while let Some(current) = child {
+                if contains(&current, text) {
+                    found = true;
+                    break;
+                }
+                child = current.next_sibling();
+            }
+            found
+        }
+    }
+    widget_with_class(fixture.overlay.upcast_ref(), "app-modal-layer")
+        .is_some_and(|layer| contains(&layer, text))
+}
+
+#[test]
+fn delete_without_trash_support_confirms_permanently_with_cancel_focused() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_commands::delete_without_trash_support_confirms_permanently_with_cancel_focused",
+        || {
+            // `read_only`: the folder refuses deletion too, so a missing Trash
+            // is not the whole story and the trash attempt reports the error.
+            for (read_only, tenxer, key) in [
+                (false, false, Key::Delete),
+                (false, true, Key::d),
+                (false, true, Key::Delete),
+                (true, false, Key::Delete),
+            ] {
+                let held = Rc::new(crate::test_support::operations::HeldOperations::default());
+                let provider = held.clone();
+                let fixture = KeyboardFixture::with_parts(Rc::new(TextPreview), move || {
+                    let view = BrowserView::new(
+                        Rc::new(TrashlessLocal { read_only }),
+                        crate::ui::browser::PeekBehavior::default(),
+                    );
+                    view.set_operation_provider(provider);
+                    view
+                });
+                let directory = fixture._directory.path().to_path_buf();
+                let browser = fixture.view.browser();
+                assert_eq!(
+                    (browser.can_trash_at(0), browser.can_delete_at(0)),
+                    (Some(false), Some(!read_only)),
+                    "precondition"
+                );
+                if tenxer {
+                    enable_tenxer(&fixture);
+                }
+                focus_files(&fixture);
+                move_to_named(&fixture, &browser, "a.txt");
+                plain(&fixture, key);
+                pump(100);
+                if read_only {
+                    let id = browser.last_started_operation().expect("trash attempt");
+                    assert_eq!(
+                        (
+                            held.delete_requests.borrow().as_slice(),
+                            modal_visible(&fixture.overlay)
+                        ),
+                        ([(id, false, 1)].as_slice(), false),
+                        "a read-only folder keeps the trash attempt: (delete requests, dialog open)"
+                    );
+                    continue;
+                }
+                assert_eq!(
+                    (
+                        held.delete_requests.borrow().len(),
+                        modal_visible(&fixture.overlay),
+                        modal_text_contains(&fixture, "Move to Trash"),
+                        modal_text_contains(&fixture, "doesn't support Trash"),
+                    ),
+                    (0, true, false, true),
+                    "{:?} (tenxer: {tenxer}): (delete requests started, dialog open, \
+                     is the Move to Trash dialog, explains missing Trash)",
+                    key.name()
+                );
+                wait_focused_button(&fixture, "Cancel");
+                pump(300);
+                assert_eq!(
+                    focused_button(&fixture).and_then(|button| button.label()),
+                    Some("Cancel".into()),
+                    "the size summary must not move focus to Permanently delete"
+                );
+                if tenxer {
+                    modal_key(&fixture, Key::d);
+                    pump(100);
+                    assert!(modal_visible(&fixture.overlay), "d never confirms it");
+                    assert!(held.delete_requests.borrow().is_empty());
+                }
+                assert!(modal_key(&fixture, Key::Return));
+                wait_until(|| !modal_visible(&fixture.overlay));
+                assert!(directory.join("a.txt").exists(), "Enter cancels");
+                assert!(held.delete_requests.borrow().is_empty());
+
+                focus_files(&fixture);
+                move_to_named(&fixture, &browser, "a.txt");
+                plain(&fixture, key);
+                wait_until(|| {
+                    widget_with_class(fixture.overlay.upcast_ref(), "action-dialog-confirm")
+                        .is_some_and(|confirm| confirm.is_sensitive())
+                });
+                assert!(click_class(&fixture.overlay, "action-dialog-confirm"));
+                wait_until(|| !held.delete_requests.borrow().is_empty());
+                let (id, permanent, count) = held.delete_requests.borrow_mut().remove(0);
+                assert_eq!(
+                    (permanent, count),
+                    (true, 1),
+                    "{key:?} confirms permanently"
+                );
+                held.emit(
+                    id,
+                    crate::services::OperationEvent::Deleted {
+                        request_id: id,
+                        locations: vec![Location::local(directory.join("a.txt"))],
+                    },
+                );
+                wait_until(|| !modal_visible(&fixture.overlay));
+            }
+        },
+    );
+}
+
+/// GIO reports Trash on most FUSE roots; a refusal the adapter recorded
+/// overrides that until the user reloads.
+#[test]
+fn a_mount_that_refused_trash_confirms_up_front_until_reload() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_commands::a_mount_that_refused_trash_confirms_up_front_until_reload",
+        || {
+            let held = Rc::new(crate::test_support::operations::HeldOperations::default());
+            let provider = held.clone();
+            let fixture = KeyboardFixture::with_parts(Rc::new(TextPreview), move || {
+                let view = BrowserView::new(
+                    Rc::new(crate::adapters::LocalFileSource),
+                    crate::ui::browser::PeekBehavior::default(),
+                );
+                view.set_operation_provider(provider);
+                view
+            });
+            let directory = fixture._directory.path().to_path_buf();
+            let browser = fixture.view.browser();
+            assert_eq!(
+                browser.can_trash_at(0),
+                Some(true),
+                "precondition: home Trash"
+            );
+
+            // The folder probe resolves symlinks before looking up the mount.
+            let mount_point = std::fs::canonicalize(&directory).expect("fixture");
+            let mount_point = mount_point.to_str().expect("UTF-8 fixture path");
+            crate::adapters::set_mountinfo_for_isolated_test(Some(format!(
+                "1 0 8:1 / / rw - ext4 /dev/root rw\n\
+                 900 1 0:90 / {mount_point} rw - fuse.sshfs remote:/share rw\n"
+            )));
+            let explains_this_mount = |fixture: &KeyboardFixture| {
+                (
+                    modal_text_contains(fixture, "Delete 1 item without Trash?"),
+                    modal_text_contains(fixture, "This location doesn't support Trash."),
+                    modal_text_contains(
+                        fixture,
+                        &format!("Trash isn't available on {mount_point} (fuse.sshfs)."),
+                    ),
+                    modal_text_contains(fixture, "depends on the storage provider"),
+                )
+            };
+
+            focus_files(&fixture);
+            move_to_named(&fixture, &browser, "a.txt");
+            plain(&fixture, Key::Delete);
+            wait_until(|| !held.delete_requests.borrow().is_empty());
+            let (id, permanent, _) = held.delete_requests.borrow()[0];
+            assert!(!permanent, "the first Delete tries Trash");
+            // The adapter records the refusal before it reports the failure.
+            crate::adapters::trash_support::record_unsupported(
+                crate::adapters::mount_watch::latest()
+                    .mount_for(&directory)
+                    .expect("fixture mount"),
+                crate::adapters::trash_support::UnsupportedReason::FuseRefused,
+            );
+            held.emit(
+                id,
+                crate::services::OperationEvent::CompletedWithErrors {
+                    request_id: id,
+                    deleted_locations: Vec::new(),
+                    retryable_locations: vec![Location::local(directory.join("a.txt"))],
+                    has_non_retryable_failures: false,
+                    message: "a.txt: This location doesn't support Trash.".into(),
+                },
+            );
+            wait_focused_button(&fixture, "Cancel");
+            assert_eq!(
+                explains_this_mount(&fixture),
+                (true, true, true, true),
+                "after the failed attempt: (no-Trash title, explanation, mount reason, provider reach)"
+            );
+            assert!(modal_key(&fixture, Key::Return));
+            wait_until(|| !modal_visible(&fixture.overlay));
+            wait_until(|| browser.can_trash_at(0) == Some(false));
+
+            focus_files(&fixture);
+            move_to_named(&fixture, &browser, "a.txt");
+            plain(&fixture, Key::Delete);
+            wait_focused_button(&fixture, "Cancel");
+            assert_eq!(
+                (
+                    held.delete_requests.borrow().len(),
+                    explains_this_mount(&fixture)
+                ),
+                (1, (true, true, true, true)),
+                "the next Delete confirms up front: (delete requests, explanation)"
+            );
+            assert!(modal_key(&fixture, Key::Return));
+            wait_until(|| !modal_visible(&fixture.overlay));
+            assert!(directory.join("a.txt").exists(), "Enter cancels");
+
+            focus_files(&fixture);
+            plain(&fixture, Key::F5);
+            wait_until(|| browser.can_trash_at(0) == Some(true));
+            assert!(
+                crate::adapters::trash_support::unsupported_reason_for(&directory).is_none(),
+                "Reload forgets the refusal"
+            );
+            move_to_named(&fixture, &browser, "a.txt");
+            plain(&fixture, Key::Delete);
+            wait_until(|| held.delete_requests.borrow().len() == 2);
+            let (_, permanent, count) = held.delete_requests.borrow()[1];
+            assert_eq!(
+                (permanent, count, modal_visible(&fixture.overlay)),
+                (false, 1, false),
+                "Delete tries Trash again after Reload"
+            );
         },
     );
 }

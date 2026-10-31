@@ -12,6 +12,9 @@ mod imp {
     pub struct MenuOption {
         #[property(get, set)]
         menu_description: RefCell<String>,
+        /// The hint's binding as a menu `accel` string, empty without one.
+        #[property(get, set)]
+        accelerator: RefCell<String>,
     }
 
     #[glib::object_subclass]

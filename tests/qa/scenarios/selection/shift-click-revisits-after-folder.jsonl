@@ -1,0 +1,26 @@
+{"scenario":"shift-click-revisits-after-folder","modes":["columns"],"prefs":{"single_click_previews":false,"sort_key":"modified","sort_direction":"descending"},"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"name","vars":{"target":"name"}},{"id":"row-space","vars":{"target":"row-space"}}],"cost":{"columns-name":1.1,"columns-row-space":1.1},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Shift-click range from an opened folder to a file; parent-pane-anchors-first-entry shares only the parent-pane anchor, not the range"}}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"toggle button","name":"Preview panel"}},"message":"the preview panel toggle"}
+{"key":"Escape","when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":false}}}
+{"click":{"role":"toggle button","name":"Preview panel"},"when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":true}}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location editor to take focus"}
+{"key":"Escape"}
+{"wait":{"focused_pane":true},"message":"focus to return to the file listing"}
+{"wait":{"entry":"todo.txt","dir":"$root"},"message":"the entry 'todo.txt' in '$root' to appear"}
+{"click":{"entry":"todo.txt","part":"label","dir":"$root"},"at":[4,"50%"],"variants":["name"]}
+{"click":{"entry":"todo.txt","part":"label","dir":"$root"},"at":[-2,"50%"],"variants":["row-space"]}
+{"wait":{"selected":["todo.txt"],"dir":"$root"},"message":"the selection to become ['todo.txt']"}
+{"wait":{"entry":"documents","dir":"$root"},"message":"the entry 'documents' in '$root' to appear"}
+{"click":{"entry":"documents","part":"label","dir":"$root"},"at":[4,"50%"],"variants":["name"]}
+{"click":{"entry":"documents","part":"label","dir":"$root"},"at":[-2,"50%"],"variants":["row-space"]}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"wait":{"selected":[],"dir":"documents"},"message":"the selection to become []"}
+{"wait":{"entry":"todo.txt","dir":"$root"},"message":"the entry 'todo.txt' in '$root' to appear"}
+{"click":{"entry":"todo.txt","part":"label","dir":"$root"},"mods":["shift"],"at":[4,"50%"],"variants":["name"]}
+{"click":{"entry":"todo.txt","part":"label","dir":"$root"},"mods":["shift"],"at":[-2,"50%"],"variants":["row-space"]}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'","variants":["name"]}
+{"note":"entries","dir":"$root","from":"documents","through":"todo.txt","as":"range"}
+{"wait":{"selected":"$range","dir":"$root"},"message":"the selection to become $range"}

@@ -55,6 +55,76 @@ fn navigation_boundary_blocks_trusted_routes_without_loading_outside_locations()
     assert_eq!(browser.active_location(), Some(root));
 }
 
+type Validation = (Location, Rc<dyn Fn(Result<(), LocationValidationError>)>);
+
+#[derive(Default)]
+struct WorkerValidation {
+    pending: RefCell<Vec<Validation>>,
+}
+
+impl WorkerValidation {
+    fn answer(&self, location: &Location, result: Result<(), LocationValidationError>) {
+        let pending = self.pending.take();
+        let (_, emit) = pending
+            .into_iter()
+            .find(|(validated, _)| validated == location)
+            .expect("a pending validation");
+        emit(result);
+    }
+}
+
+impl FileSource for WorkerValidation {
+    fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
+        panic!("{location:?} was validated on the caller's thread")
+    }
+
+    fn validate_location_async(
+        &self,
+        location: Location,
+        emit: Rc<dyn Fn(Result<(), LocationValidationError>)>,
+    ) -> LoadHandle {
+        self.pending.borrow_mut().push((location, emit));
+        LoadHandle::new(|| {})
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        emit(DirectoryEvent::Finished {
+            request_id: request.id,
+            truncated: false,
+            can_trash: None,
+            can_delete: None,
+        });
+        LoadHandle::new(|| {})
+    }
+}
+
+#[test]
+fn local_folders_are_validated_off_the_caller_and_a_shown_child_is_not_validated() {
+    let source = Rc::new(WorkerValidation::default());
+    let browser = Browser::new(source.clone());
+    let (root, child, shown) = (
+        Location::local("/fixture"),
+        Location::local("/fixture/child"),
+        Location::local("/fixture/child/shown"),
+    );
+    browser.navigate(root.clone());
+
+    browser.descend(0, child.clone());
+    assert_eq!(browser.location_at(1), None, "waits for the answer");
+    source.answer(&child, Ok(()));
+    assert_eq!(browser.location_at(1), Some(child.clone()));
+
+    browser.show_child(1, shown.clone());
+    assert!(source.pending.borrow().is_empty());
+    assert_eq!(browser.location_at(2), Some(shown));
+
+    let typed = Location::local("/elsewhere");
+    assert_eq!(browser.navigate_input("/elsewhere"), Ok(()));
+    assert_eq!(browser.active_location(), Some(child));
+    source.answer(&typed, Ok(()));
+    assert_eq!(browser.active_location(), Some(typed));
+}
+
 #[test]
 fn column_snapshots_preserve_load_errors() {
     let browser = Browser::new(Rc::new(RetryFileSource {
@@ -317,9 +387,37 @@ fn activating_an_open_list_item_closes_its_child_column() {
         events
             .borrow()
             .iter()
-            .any(|event| matches!(event, BrowserEvent::ColumnsTruncated { len: 1 }))
+            .any(|event| matches!(event, BrowserEvent::ColumnsTruncated { len: 1, .. }))
     );
     assert_eq!(browser.active_depth(), Some(0));
+}
+
+#[test]
+fn activating_an_open_folder_focuses_its_column_without_closing_it() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    browser.navigate(Location::local("/fixture"));
+    browser.activate(0, 0);
+    browser.set_active_column(0);
+    events.borrow_mut().clear();
+
+    browser.activate(0, 0);
+
+    assert!(!events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::ColumnsTruncated { .. } | BrowserEvent::ColumnAdded { .. }
+    )));
+    assert_eq!(browser.active_depth(), Some(1));
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::FocusChanged {
+            depth: 1,
+            position: None,
+            ..
+        }
+    )));
 }
 
 #[test]
@@ -446,7 +544,8 @@ fn keyboard_selection_and_activation_descend_without_the_ui() {
         event,
         BrowserEvent::FocusChanged {
             depth: 0,
-            position: Some(0)
+            position: Some(0),
+            ..
         }
     )));
     assert!(
@@ -464,7 +563,8 @@ fn keyboard_selection_and_activation_descend_without_the_ui() {
         event,
         BrowserEvent::FocusChanged {
             depth: 1,
-            position: Some(0)
+            position: Some(0),
+            ..
         }
     )));
     assert!(!events.borrow().iter().any(|event| matches!(
@@ -506,7 +606,11 @@ fn escape_closes_a_peek_before_clearing_selection_and_closing_the_deepest_column
     assert_eq!(browser.active_location(), location);
     assert!(events.borrow().iter().any(|event| matches!(
         event,
-        BrowserEvent::SelectionSetChanged { depth: 1, positions, .. } if positions.is_empty()
+        BrowserEvent::SelectionSetChanged {
+            depth: 1,
+            selection: SelectionUpdate::Positions(positions),
+            ..
+        } if positions.is_empty()
     )));
 
     events.borrow_mut().clear();
@@ -515,7 +619,7 @@ fn escape_closes_a_peek_before_clearing_selection_and_closing_the_deepest_column
         events
             .borrow()
             .iter()
-            .any(|event| matches!(event, BrowserEvent::ColumnsTruncated { len: 1 }))
+            .any(|event| matches!(event, BrowserEvent::ColumnsTruncated { len: 1, .. }))
     );
 }
 
@@ -561,8 +665,10 @@ fn preview_and_open_are_distinct_file_actions() {
 
     assert!(events.borrow().iter().any(|event| matches!(
         event,
-        BrowserEvent::PreviewRequested { entry }
-            if entry.location == Location::local("/fixture/example.conf")
+        BrowserEvent::PreviewRequested {
+            entry,
+            automatic: false
+        } if entry.location == Location::local("/fixture/example.conf")
     )));
     events.borrow_mut().clear();
 
@@ -573,4 +679,343 @@ fn preview_and_open_are_distinct_file_actions() {
         BrowserEvent::OpenRequested { location }
             if location == &Location::local("/fixture/example.conf")
     )));
+}
+
+#[test]
+fn previewing_a_file_in_a_parent_column_closes_deeper_columns_before_requesting() {
+    let browser = Browser::new(Rc::new(OpenChildBesideFileSource));
+    browser.navigate(Location::local("/fixture"));
+    browser.select(0, 0);
+    browser.enter_focused_directory();
+    assert_eq!(browser.active_depth(), Some(1));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    browser.preview(0, 1);
+
+    assert!(browser.location_at(1).is_none());
+    assert_eq!(browser.active_depth(), Some(0));
+    let events = events.borrow();
+    let focused_file = events.iter().rposition(|event| {
+        matches!(
+            event,
+            BrowserEvent::FocusChanged {
+                depth: 0,
+                position: Some(1),
+                ..
+            }
+        )
+    });
+    let requested = events.iter().position(|event| {
+        matches!(
+            event,
+            BrowserEvent::PreviewRequested {
+                entry,
+                automatic: false
+            } if entry.location == Location::local("/fixture/example.conf")
+        )
+    });
+    assert!(
+        focused_file
+            .zip(requested)
+            .is_some_and(|(focus, request)| focus < request),
+        "the closed column must report the file's focus before the preview request"
+    );
+}
+
+#[derive(Default)]
+struct FolderTree {
+    listings: RefCell<HashMap<Location, Vec<FileEntry>>>,
+}
+
+impl FolderTree {
+    fn with(folders: &[(&str, &[&str])]) -> Self {
+        let tree = Self::default();
+        for (directory, children) in folders {
+            tree.list(directory, children);
+        }
+        tree
+    }
+
+    fn list(&self, directory: &str, children: &[&str]) {
+        let entries = children
+            .iter()
+            .map(|name| FileEntry {
+                kind: EntryKind::Directory,
+                ..super::location_input::listing_file(
+                    tree_location(&format!("{directory}/{name}")),
+                    name,
+                    name.starts_with('.'),
+                )
+            })
+            .collect();
+        self.listings
+            .borrow_mut()
+            .insert(tree_location(directory), entries);
+    }
+}
+
+/// Paths with a scheme are remote, which load in batches instead of a sorted snapshot.
+fn tree_location(path: &str) -> Location {
+    if path.contains("://") {
+        Location::uri(path)
+    } else {
+        Location::local(path)
+    }
+}
+
+impl FileSource for FolderTree {
+    fn validate_location(&self, _: &Location) -> Result<(), LocationValidationError> {
+        Ok(())
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        let entries = self
+            .listings
+            .borrow()
+            .get(&request.location)
+            .cloned()
+            .unwrap_or_default();
+        emit(DirectoryEvent::Batch {
+            request_id: request.id,
+            entries,
+        });
+        emit(DirectoryEvent::Finished {
+            request_id: request.id,
+            truncated: false,
+            can_trash: None,
+            can_delete: None,
+        });
+        LoadHandle::new(|| {})
+    }
+}
+
+fn folder_browser(
+    tree: FolderTree,
+) -> (Rc<Browser>, Rc<RefCell<Vec<BrowserEvent>>>, Rc<FolderTree>) {
+    let tree = Rc::new(tree);
+    let browser = Browser::new(tree.clone());
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    (browser, events, tree)
+}
+
+fn focused_location(browser: &Browser) -> Option<Location> {
+    browser.focused_entry().map(|entry| entry.location)
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Return {
+    Back,
+    Parent,
+    Forward,
+    Ancestor,
+}
+
+#[test]
+fn returning_to_an_ancestor_selects_the_folder_you_came_from() {
+    let folders: &[(&str, &[&str])] = &[
+        ("/fx", &["aa", "docs"]),
+        ("/fx/docs", &["a1", "b2", "c3", "sub"]),
+        ("/fx/docs/b2", &["inner"]),
+        ("/fx/docs/sub", &["leaf"]),
+    ];
+    let single = |browser: &Rc<Browser>| {
+        browser.navigate(Location::local("/fx/docs"));
+        browser.navigate(Location::local("/fx/docs/b2"));
+        (0usize, Location::local("/fx/docs/b2"))
+    };
+    let nested = |browser: &Rc<Browser>| {
+        browser.navigate(Location::local("/fx"));
+        browser.descend(0, Location::local("/fx/docs"));
+        browser.descend(1, Location::local("/fx/docs/sub"));
+        (1usize, Location::local("/fx/docs/sub"))
+    };
+    let mut failures = Vec::new();
+    for (shape, enter) in [
+        (
+            "single column",
+            &single as &dyn Fn(&Rc<Browser>) -> (usize, Location),
+        ),
+        ("nested", &nested),
+    ] {
+        for route in [
+            Return::Back,
+            Return::Parent,
+            Return::Forward,
+            Return::Ancestor,
+        ] {
+            let (browser, events, _) = folder_browser(FolderTree::with(folders));
+            let (entered_depth, child) = enter(&browser);
+            let destination = child.parent().expect("parent");
+            if matches!(route, Return::Forward) {
+                browser.parent();
+                browser.back();
+                assert_eq!(browser.active_location(), Some(child.clone()));
+            }
+            events.borrow_mut().clear();
+            match route {
+                Return::Back => browser.back(),
+                Return::Parent => browser.parent(),
+                Return::Forward => browser.forward(),
+                Return::Ancestor => browser.navigate_to_ancestor(destination.clone()),
+            }
+            // A breadcrumb opens the ancestor as the only column.
+            let depth = match route {
+                Return::Ancestor => 0,
+                _ => entered_depth,
+            };
+            pump_until(|| {
+                browser
+                    .column_snapshot(depth)
+                    .is_some_and(|snapshot| !snapshot.loading)
+            });
+
+            let case = format!("{shape}, {route:?}");
+            assert_eq!(browser.active_location(), Some(destination), "{case}");
+            let focused = focused_location(&browser);
+            let selected = super::location_input::selected_locations(&browser);
+            if focused.as_ref() != Some(&child) || selected != [child.clone()] {
+                failures.push(format!(
+                    "{case}: cursor {focused:?} and selection {selected:?}, not {child:?}"
+                ));
+            }
+            if events.borrow().iter().any(|event| {
+                matches!(
+                    event,
+                    BrowserEvent::ColumnAdded { depth: added, .. } if *added == depth + 1
+                )
+            }) {
+                failures.push(format!("{case}: the child column reopened"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn returning_to_a_non_ancestor_keeps_the_first_entry() {
+    let (browser, ..) = folder_browser(FolderTree::with(&[
+        ("/a", &["a1", "a2"]),
+        ("/b", &["b1", "b2"]),
+    ]));
+    browser.navigate(Location::local("/a"));
+    browser.navigate(Location::local("/b"));
+
+    browser.back();
+
+    assert_eq!(browser.active_location(), Some(Location::local("/a")));
+    assert_eq!(focused_location(&browser), Some(Location::local("/a/a1")));
+    assert_eq!(
+        super::location_input::selected_locations(&browser),
+        vec![Location::local("/a/a1")]
+    );
+}
+
+#[test]
+fn a_missing_or_hidden_came_from_child_falls_back_quietly() {
+    for (root, child, docs_after_leaving) in [
+        ("", "b2", &["a1", "c3"][..]),
+        ("", ".b2", &["a1", ".b2", "c3"][..]),
+        ("smb://host", "b2", &["a1", "c3"][..]),
+    ] {
+        let docs = format!("{root}/docs");
+        let (browser, events, tree) = folder_browser(FolderTree::with(&[
+            (&docs, &["a1", "b2", ".b2", "c3"]),
+            (&format!("{docs}/b2"), &["inner"]),
+            (&format!("{docs}/.b2"), &["inner"]),
+        ]));
+        browser.navigate(tree_location(&docs));
+        pump_until(|| {
+            browser
+                .column_snapshot(0)
+                .is_some_and(|snapshot| !snapshot.loading)
+        });
+        browser.navigate(tree_location(&format!("{docs}/{child}")));
+        pump_until(|| {
+            browser
+                .column_snapshot(0)
+                .is_some_and(|snapshot| !snapshot.loading)
+        });
+        tree.list(&docs, docs_after_leaving);
+        events.borrow_mut().clear();
+
+        browser.back();
+        pump_until(|| {
+            browser
+                .column_snapshot(0)
+                .is_some_and(|snapshot| !snapshot.loading)
+        });
+        let case = format!("{docs}, {child}");
+        let first = tree_location(&format!("{docs}/a1"));
+        assert_eq!(
+            browser.active_location(),
+            Some(tree_location(&docs)),
+            "{case}"
+        );
+        assert_eq!(focused_location(&browser), Some(first.clone()), "{case}");
+        assert_eq!(
+            super::location_input::selected_locations(&browser),
+            vec![first],
+            "{case}"
+        );
+        assert!(
+            !browser.preferences().show_hidden,
+            "{case}: hidden files stay hidden"
+        );
+        let cursor = browser.focused_item().map(|(_, position, _)| position);
+        let events = events.borrow();
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, BrowserEvent::LocationRevealFailed { .. })),
+            "{case}: no reveal failure is reported"
+        );
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                BrowserEvent::SelectionSetChanged { depth: 0, focused, .. }
+                    if Some(*focused) == cursor
+            )),
+            "{case}: the fallback selection is published"
+        );
+    }
+}
+
+#[test]
+fn a_remote_reload_announces_the_neighbour_cursor_of_an_inactive_column() {
+    let (browser, events, tree) = folder_browser(FolderTree::with(&[
+        ("smb://host/docs", &["a1", "b2", "c3"]),
+        ("smb://host/docs/b2", &["x", "y", "z"]),
+    ]));
+    let loaded = |depth: usize| {
+        browser
+            .column_snapshot(depth)
+            .is_some_and(|snapshot| !snapshot.loading)
+    };
+    browser.navigate(tree_location("smb://host/docs"));
+    pump_until(|| loaded(0));
+    browser.show_child(0, tree_location("smb://host/docs/b2"));
+    pump_until(|| loaded(1));
+    browser.set_selection(1, &[], Some(1));
+    browser.set_active_column(0);
+    tree.list("smb://host/docs/b2", &["x", "z"]);
+    events.borrow_mut().clear();
+
+    browser.refresh_all();
+    pump_until(|| loaded(0) && loaded(1));
+
+    assert!(
+        events.borrow().iter().any(|event| matches!(
+            event,
+            BrowserEvent::SelectionSetChanged {
+                depth: 1,
+                focused: 1,
+                ..
+            }
+        )),
+        "the child column's cursor moves to z and is published"
+    );
 }

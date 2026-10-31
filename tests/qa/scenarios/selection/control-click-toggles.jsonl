@@ -1,0 +1,15 @@
+{"scenario":"control-click-toggles","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.0,"icons":0.9,"list":0.9},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Ctrl-click removes an entry from selection in every mode; add path in modifier-click-focuses-target, toggle logic unit-tested"}}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"toggle button","name":"Preview panel"}},"message":"the preview panel toggle"}
+{"key":"Escape","when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":false}}}
+{"click":{"role":"toggle button","name":"Preview panel"},"when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":true}}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location editor to take focus"}
+{"key":"Escape"}
+{"wait":{"focused_pane":true},"message":"focus to return to the file listing"}
+{"select":{"entry":"archive","dir":"$root"}}
+{"click":{"entry":"pictures","dir":"$root"},"mods":["ctrl"]}
+{"wait":{"selected":["archive","pictures"],"dir":"$root"},"message":"a control-click to add one entry"}
+{"click":{"entry":"archive","dir":"$root"},"mods":["ctrl"]}
+{"wait":{"selected":["pictures"],"dir":"$root"},"message":"a second control-click to remove that entry again"}

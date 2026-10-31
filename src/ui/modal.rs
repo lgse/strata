@@ -3,7 +3,9 @@
 use crate::ui::blur::BlurBin;
 use crate::ui::controls::{
     ModalTone, focus_button, message_dialog_description, message_dialog_layout,
+    stack_actions_when_constrained,
 };
+use crate::ui::keys::{self, bindings::ESCAPE_ANY};
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
@@ -18,45 +20,322 @@ mod tests;
 struct ModalFocusOrigin {
     widget: Option<glib::WeakRef<gtk::Widget>>,
     restore: RefCell<Option<Rc<dyn Fn()>>>,
+    /// False when the first dialog of a chain changes the listing; dialogs chained on
+    /// it inherit that and return focus through the window fallback too.
+    allow_widget: bool,
 }
 
-type FocusOrigins = Vec<(glib::WeakRef<gtk::Box>, Rc<ModalFocusOrigin>)>;
+#[derive(Default)]
+struct LayerFocus {
+    /// The focused widget when the layer was added. A layer closed while another
+    /// modal stays open returns focus here if it lies inside that modal.
+    opener: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
+    /// Where the layer was added; a removed layer no longer knows its window.
+    host: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
+    /// Whether the window showed focus rings when the dismissal began.
+    focus_visible: Cell<bool>,
+}
+
+type FocusOrigins = Vec<(glib::WeakRef<gtk::Widget>, Rc<ModalFocusOrigin>)>;
+type FocusFallbacks = Vec<(glib::WeakRef<gtk::Window>, Rc<dyn Fn()>)>;
+type LayerFocusEntries = Vec<(glib::WeakRef<gtk::Widget>, Rc<LayerFocus>)>;
 
 thread_local! {
     static MODAL_FOCUS_ORIGINS: RefCell<FocusOrigins> = const { RefCell::new(Vec::new()) };
+    static MODAL_FOCUS_FALLBACKS: RefCell<FocusFallbacks> = const { RefCell::new(Vec::new()) };
+    static LAYER_FOCUS: RefCell<LayerFocusEntries> = const { RefCell::new(Vec::new()) };
 }
 
-pub(super) fn remember_modal_focus(layer: &gtk::Box, overlay: &gtk::Overlay) -> Rc<Cell<bool>> {
-    let window = overlay.root().and_downcast::<gtk::Window>();
-    let previous = window
+fn layer_focus(layer: &gtk::Widget) -> Rc<LayerFocus> {
+    let existing = LAYER_FOCUS.with(|entries| {
+        let mut entries = entries.borrow_mut();
+        entries.retain(|(candidate, _)| candidate.upgrade().is_some());
+        entries
+            .iter()
+            .find(|(candidate, _)| {
+                candidate
+                    .upgrade()
+                    .is_some_and(|candidate| candidate == *layer)
+            })
+            .map(|(_, focus)| focus.clone())
+    });
+    if let Some(focus) = existing {
+        return focus;
+    }
+    let focus = Rc::new(LayerFocus::default());
+    let tracked = focus.clone();
+    layer.connect_sensitive_notify(move |layer| {
+        // A dismissal makes the layer insensitive while its control has focus. GTK
+        // then drops focus and, on the key release, hides focus rings, so the
+        // window's ring state is captured before that.
+        if layer.is_sensitive() {
+            tracked.focus_visible.set(false);
+        } else if layer.has_css_class("dismissing")
+            && let Some(window) = layer.root().and_downcast::<gtk::Window>()
+        {
+            tracked.focus_visible.set(window.gets_focus_visible());
+        }
+    });
+    LAYER_FOCUS.with(|entries| {
+        entries
+            .borrow_mut()
+            .push((layer.downgrade(), focus.clone()));
+    });
+    focus
+}
+
+/// Shows focus rings again after a keyboard dismissal hid them, once focus is back.
+fn rearm_focus_ring(window: &gtk::Window, layer: &LayerFocus) {
+    if layer.focus_visible.get() && gtk::prelude::RootExt::focus(window).is_some() {
+        window.set_focus_visible(true);
+    }
+}
+
+/// Returns focus to the opener of a layer closed over `under`, a modal that stays
+/// open, unless something inside `under` already took focus. Without a usable opener,
+/// such as a row the dialog's action re-rendered, `under`'s first focusable control
+/// takes it. The window's restore order applies only once no modal is left.
+fn restore_focus_under(window: &gtk::Window, under: &gtk::Widget, layer: &LayerFocus) {
+    let live = gtk::prelude::RootExt::focus(window)
+        .is_some_and(|focus| focus.is_mapped() && focus != *under);
+    if live {
+        return;
+    }
+    let opener = layer
+        .opener
+        .borrow()
         .as_ref()
-        .and_then(crate::ui::window::visible_modal_layer);
-    let origin = MODAL_FOCUS_ORIGINS.with(|origins| {
+        .and_then(glib::WeakRef::upgrade)
+        .filter(|opener| {
+            (opener == under || opener.is_ancestor(under))
+                && shown_or_revealing(opener)
+                && opener.is_sensitive()
+        });
+    let moved = match opener {
+        Some(opener) => opener.grab_focus(),
+        None => focus_first_control(under),
+    };
+    if moved {
+        rearm_focus_ring(window, layer);
+    }
+}
+
+fn focus_first_control(root: &gtk::Widget) -> bool {
+    let mut child = root.first_child();
+    while let Some(widget) = child {
+        if widget.is_visible() && widget.is_sensitive() {
+            if widget.is_focusable() && widget.is_mapped() && widget.grab_focus() {
+                return true;
+            }
+            if focus_first_control(&widget) {
+                return true;
+            }
+        }
+        child = widget.next_sibling();
+    }
+    false
+}
+
+pub(in crate::ui) fn is_closing_layer(widget: &gtk::Widget) -> bool {
+    widget.has_css_class("app-modal-layer") && widget.has_css_class("dismissing")
+}
+
+/// The focused widget when a layer opens. A layer opened while another closes, such
+/// as an error after a confirmation, finds focus gone or inside the closing layer,
+/// so it takes over the closing layer's opener instead.
+fn layer_opener(host: &gtk::Widget, window: &gtk::Window) -> Option<glib::WeakRef<gtk::Widget>> {
+    let focus = gtk::prelude::RootExt::focus(window);
+    let closing = match &focus {
+        Some(focus) => {
+            let mut current = Some(focus.clone());
+            while let Some(widget) = current.as_ref().filter(|widget| !is_closing_layer(widget)) {
+                current = widget.parent();
+            }
+            current
+        }
+        None => {
+            let mut child = host.first_child();
+            while let Some(widget) = child.as_ref().filter(|widget| !is_closing_layer(widget)) {
+                child = widget.next_sibling();
+            }
+            child
+        }
+    };
+    match closing {
+        Some(closing) => layer_focus(&closing).opener.borrow().clone(),
+        None => focus.map(|focus| focus.downgrade()),
+    }
+}
+
+/// Tracks the opener of a layer that is added and removed, and returns focus to it
+/// when the layer closes over another modal.
+fn track_removed_layer(layer: &gtk::Widget) {
+    let focus = layer_focus(layer);
+    layer.connect_parent_notify(move |layer| {
+        if let Some(parent) = layer.parent() {
+            let opener = parent
+                .root()
+                .and_downcast::<gtk::Window>()
+                .and_then(|window| layer_opener(&parent, &window));
+            focus.opener.replace(opener);
+            focus.host.replace(Some(parent.downgrade()));
+            return;
+        }
+        if !layer.has_css_class("dismissing") {
+            return;
+        }
+        let Some(window) = focus
+            .host
+            .borrow()
+            .as_ref()
+            .and_then(glib::WeakRef::upgrade)
+            .and_then(|host| host.root())
+            .and_downcast::<gtk::Window>()
+        else {
+            return;
+        };
+        if let Some(under) = crate::ui::window::visible_modal_layer(&window) {
+            restore_focus_under(&window, &under, &focus);
+        }
+    });
+}
+
+/// Sets where focus goes when a dismissed overlay leaves `window` without a
+/// focused widget, normally the browser's file view.
+pub(crate) fn set_modal_focus_fallback(window: &gtk::Window, fallback: Rc<dyn Fn()>) {
+    MODAL_FOCUS_FALLBACKS.with(|fallbacks| {
+        let mut fallbacks = fallbacks.borrow_mut();
+        fallbacks.retain(|(candidate, _)| {
+            candidate
+                .upgrade()
+                .is_some_and(|candidate| candidate != *window)
+        });
+        fallbacks.push((window.downgrade(), fallback));
+    });
+}
+
+fn modal_focus_fallback(window: &gtk::Window) -> Option<Rc<dyn Fn()>> {
+    MODAL_FOCUS_FALLBACKS.with(|fallbacks| {
+        let mut fallbacks = fallbacks.borrow_mut();
+        fallbacks.retain(|(candidate, _)| candidate.upgrade().is_some());
+        fallbacks
+            .iter()
+            .find(|(candidate, _)| {
+                candidate
+                    .upgrade()
+                    .is_some_and(|candidate| candidate == *window)
+            })
+            .map(|(_, fallback)| fallback.clone())
+    })
+}
+
+/// Records the window focus for `layer`, or the browser origin of the modal it is chained on.
+fn register_focus_origin(
+    layer: &gtk::Widget,
+    window: Option<&gtk::Window>,
+    allow_widget: bool,
+) -> Rc<ModalFocusOrigin> {
+    let previous = window.and_then(crate::ui::window::visible_modal_layer);
+    MODAL_FOCUS_ORIGINS.with(|origins| {
         let mut origins = origins.borrow_mut();
         origins.retain(|(layer, _)| layer.upgrade().is_some());
         // Chained dialogs inherit the browser origin, not the preceding modal's focus.
-        let origin = if let Some(previous) = previous {
-            origins.iter().find_map(|(layer, origin)| {
-                layer
-                    .upgrade()
-                    .filter(|layer| layer.upcast_ref::<gtk::Widget>() == &previous)
-                    .map(|_| origin.clone())
+        let origin = previous
+            .and_then(|previous| {
+                origins.iter().find_map(|(layer, origin)| {
+                    layer
+                        .upgrade()
+                        .filter(|layer| *layer == previous)
+                        .map(|_| origin.clone())
+                })
             })
-        } else {
-            None
-        }
-        .unwrap_or_else(|| {
-            Rc::new(ModalFocusOrigin {
-                widget: window
-                    .as_ref()
-                    .and_then(gtk::prelude::RootExt::focus)
-                    .map(|focus| focus.downgrade()),
-                restore: RefCell::new(None),
-            })
-        });
+            .unwrap_or_else(|| {
+                Rc::new(ModalFocusOrigin {
+                    widget: window
+                        .and_then(gtk::prelude::RootExt::focus)
+                        .map(|focus| focus.downgrade()),
+                    restore: RefCell::new(None),
+                    allow_widget,
+                })
+            });
         origins.push((layer.downgrade(), origin.clone()));
         origin
+    })
+}
+
+fn forget_focus_origin(layer: &gtk::Widget) {
+    MODAL_FOCUS_ORIGINS.with(|origins| {
+        origins.borrow_mut().retain(|(candidate, _)| {
+            candidate
+                .upgrade()
+                .is_some_and(|candidate| candidate != *layer)
+        });
     });
+}
+
+/// Priority: focus taken meanwhile, explicit restore, on-screen origin, window fallback.
+fn restore_modal_focus(window: &gtk::Window, origin: &ModalFocusOrigin, allow_origin: bool) {
+    if gtk::prelude::RootExt::focus(window).is_some_and(|focus| focus.is_mapped()) {
+        return;
+    }
+    let restore = origin.restore.borrow().clone();
+    if let Some(restore) = restore {
+        restore();
+        return;
+    }
+    if allow_origin
+        && origin.allow_widget
+        && let Some(widget) = origin.widget.as_ref().and_then(glib::WeakRef::upgrade)
+        && shown_or_revealing(&widget)
+        && widget.is_sensitive()
+        && widget.root().as_ref() == Some(window.upcast_ref())
+        && widget.grab_focus()
+    {
+        return;
+    }
+    if let Some(fallback) = modal_focus_fallback(window) {
+        fallback();
+    }
+}
+
+/// Whether `widget` is on screen or is mapped by the next frame: an opening revealer,
+/// such as a just-shown filter field's, maps its child only on its first animation
+/// tick, which a slow paint can delay until after an overlay opened over it closes.
+fn shown_or_revealing(widget: &gtk::Widget) -> bool {
+    let mut current = widget.clone();
+    while !current.is_mapped() {
+        let Some(parent) = current.parent() else {
+            return false;
+        };
+        let revealing = parent
+            .downcast_ref::<gtk::Revealer>()
+            .is_some_and(gtk::Revealer::reveals_child);
+        if !current.is_visible() || !(current.is_child_visible() || revealing) {
+            return false;
+        }
+        current = parent;
+    }
+    true
+}
+
+pub(super) fn remember_modal_focus(layer: &gtk::Box, overlay: &gtk::Overlay) -> Rc<Cell<bool>> {
+    remember_removed_modal_focus(layer, overlay, true)
+}
+
+/// [`remember_modal_focus`] for dialogs whose work changes the listing, such as
+/// file-operation progress: closing it hands focus to the browser cursor through the
+/// window fallback, never to the row widget that was focused when it opened.
+pub(super) fn remember_modal_focus_for_listing(layer: &gtk::Box, overlay: &gtk::Overlay) {
+    remember_removed_modal_focus(layer, overlay, false);
+}
+
+fn remember_removed_modal_focus(
+    layer: &gtk::Box,
+    overlay: &gtk::Overlay,
+    allow_origin: bool,
+) -> Rc<Cell<bool>> {
+    let window = overlay.root().and_downcast::<gtk::Window>();
+    let origin = register_focus_origin(layer.upcast_ref(), window.as_ref(), allow_origin);
     let overlay = overlay.downgrade();
     let restore = Rc::new(Cell::new(true));
     let restore_on_close = restore.clone();
@@ -64,13 +343,7 @@ pub(super) fn remember_modal_focus(layer: &gtk::Box, overlay: &gtk::Overlay) -> 
         if layer.parent().is_some() {
             return;
         }
-        MODAL_FOCUS_ORIGINS.with(|origins| {
-            origins.borrow_mut().retain(|(candidate, _)| {
-                candidate
-                    .upgrade()
-                    .is_some_and(|candidate| candidate != *layer)
-            });
-        });
+        forget_focus_origin(layer.upcast_ref());
         if !layer.has_css_class("dismissing") || !restore_on_close.get() {
             return;
         }
@@ -85,15 +358,44 @@ pub(super) fn remember_modal_focus(layer: &gtk::Box, overlay: &gtk::Overlay) -> 
         if crate::ui::window::visible_modal_layer(&window).is_some() {
             return;
         }
-        let restore = origin.restore.borrow().clone();
-        if let Some(restore) = restore {
-            restore();
-        } else if let Some(origin) = origin.widget.as_ref().and_then(glib::WeakRef::upgrade)
-            && origin.is_mapped()
-            && origin.root().as_ref() == Some(window.upcast_ref())
-        {
-            origin.grab_focus();
+        restore_modal_focus(&window, &origin, allow_origin);
+        rearm_focus_ring(&window, &layer_focus(layer.upcast_ref()));
+    });
+    restore
+}
+
+/// [`remember_modal_focus`] for layers hidden with `set_visible(false)` rather than
+/// removed, such as Settings and the search palettes. The origin is captured each
+/// time the layer becomes visible and restored when a `dismissing` hide completes.
+/// The returned flag is re-armed on every show; clear it to skip the origin and
+/// fall back to the browser (an activation that already moved focus keeps it).
+pub(crate) fn remember_persistent_modal_focus(layer: &gtk::Widget) -> Rc<Cell<bool>> {
+    let focus = layer_focus(layer);
+    let restore = Rc::new(Cell::new(true));
+    let shown: RefCell<Option<Rc<ModalFocusOrigin>>> = RefCell::new(None);
+    let restore_on_hide = restore.clone();
+    layer.connect_visible_notify(move |layer| {
+        let window = layer.root().and_downcast::<gtk::Window>();
+        if layer.is_visible() {
+            restore_on_hide.set(true);
+            forget_focus_origin(layer);
+            shown.replace(Some(register_focus_origin(layer, window.as_ref(), true)));
+            return;
         }
+        let Some(origin) = shown.take() else {
+            return;
+        };
+        forget_focus_origin(layer);
+        let Some(window) = window else {
+            return;
+        };
+        if !layer.has_css_class("dismissing")
+            || crate::ui::window::visible_modal_layer(&window).is_some()
+        {
+            return;
+        }
+        restore_modal_focus(&window, &origin, restore_on_hide.get());
+        rearm_focus_ring(&window, &focus);
     });
     restore
 }
@@ -103,7 +405,7 @@ pub(super) fn set_modal_focus_restore(layer: &gtk::Widget, restore: Rc<dyn Fn()>
         if let Some((_, origin)) = origins.borrow().iter().find(|(candidate, _)| {
             candidate
                 .upgrade()
-                .is_some_and(|candidate| candidate.upcast_ref::<gtk::Widget>() == layer)
+                .is_some_and(|candidate| candidate == *layer)
         }) {
             origin.restore.replace(Some(restore));
         }
@@ -116,16 +418,21 @@ pub(super) struct ModalHost {
 }
 
 impl ModalHost {
-    pub(super) fn blurred_for(parent: &impl IsA<gtk::Widget>) -> Option<Self> {
+    pub(super) fn for_widget(parent: &impl IsA<gtk::Widget>) -> Option<Self> {
         let overlay = window_overlay(parent)?;
         let blurred_root = overlay.child().and_downcast::<BlurBin>();
-        if let Some(root) = blurred_root.as_ref() {
-            root.set_blurred(true);
-        }
         Some(Self {
             overlay,
             blurred_root,
         })
+    }
+
+    pub(super) fn blurred_for(parent: &impl IsA<gtk::Widget>) -> Option<Self> {
+        let host = Self::for_widget(parent)?;
+        if let Some(root) = host.blurred_root.as_ref() {
+            root.set_blurred(true);
+        }
+        Some(host)
     }
 }
 
@@ -137,15 +444,31 @@ pub(super) fn window_overlay(parent: &impl IsA<gtk::Widget>) -> Option<gtk::Over
         .and_downcast::<gtk::Overlay>()
 }
 
-#[expect(
-    deprecated,
-    reason = "GTK 4.12 deprecated translate_coordinates and allocation without a replacement for click-in-bounds checks"
-)]
 pub(super) fn modal_layer(
     content: &impl IsA<gtk::Widget>,
     overlay: &gtk::Overlay,
     root: Option<BlurBin>,
     block_dismiss: Option<Rc<dyn Fn() -> bool>>,
+) -> gtk::Box {
+    let overlay = overlay.clone();
+    modal_layer_with_backdrop(
+        content,
+        Rc::new(move |layer: &gtk::Box| {
+            if block_dismiss.as_ref().is_some_and(|block| block()) {
+                return;
+            }
+            dismiss_modal_layer(layer, &overlay, root.as_ref());
+        }),
+    )
+}
+
+#[expect(
+    deprecated,
+    reason = "GTK 4.12 deprecated translate_coordinates and allocation without a replacement for click-in-bounds checks"
+)]
+pub(super) fn modal_layer_with_backdrop(
+    content: &impl IsA<gtk::Widget>,
+    on_backdrop: Rc<dyn Fn(&gtk::Box)>,
 ) -> gtk::Box {
     let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
     layer.add_css_class("app-modal-layer");
@@ -161,15 +484,7 @@ pub(super) fn modal_layer(
     let weak_layer = layer.downgrade();
     let weak_viewport = viewport.downgrade();
     let weak_content = content.as_ref().downgrade();
-    let overlay = overlay.clone();
-    let root = root.clone();
-    let block = block_dismiss.clone();
     click.connect_pressed(move |_, _, x, y| {
-        if let Some(block) = block.as_ref()
-            && block()
-        {
-            return;
-        }
         let Some(layer) = weak_layer.upgrade() else {
             return;
         };
@@ -191,13 +506,30 @@ pub(super) fn modal_layer(
                 })
         });
         if !on_dialog {
-            dismiss_modal_layer(&layer, &overlay, root.as_ref());
+            on_backdrop(&layer);
         }
     });
     layer.add_controller(click);
     crate::ui::focus_navigation::install(&layer);
+    track_removed_layer(layer.upcast_ref());
     animate_in(&layer);
     layer
+}
+
+pub(super) fn close_on_escape(
+    widget: &impl IsA<gtk::Widget>,
+    close: impl Fn() + 'static,
+) -> gtk::EventControllerKey {
+    let escape = gtk::EventControllerKey::new();
+    keys::on_press(&escape, move |_, press| {
+        if !press.is(ESCAPE_ANY) {
+            return glib::Propagation::Proceed;
+        }
+        close();
+        glib::Propagation::Stop
+    });
+    widget.add_controller(escape.clone());
+    escape
 }
 
 pub(super) fn submit_on_enter(fields: &impl IsA<gtk::Widget>, confirm: &gtk::Button) {
@@ -308,8 +640,54 @@ fn overlay_has_modal_layer(overlay: &gtk::Overlay) -> bool {
     false
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MessageKind {
+    Error,
+    PartialFailure,
+    Information,
+}
+
 pub(super) fn show_error_dialog(parent: &impl IsA<gtk::Widget>, message: &str, detail: &str) {
     show_error_dialog_after_close(parent, message, detail, Rc::new(|| {}));
+}
+
+/// Reports an operation that finished while some items failed.
+pub(super) fn show_partial_failure_dialog(parent: &impl IsA<gtk::Widget>, detail: &str) {
+    show_message_dialog(
+        parent,
+        &crate::i18n::tr("Completed with errors"),
+        None,
+        detail,
+        MessageKind::PartialFailure,
+        Rc::new(|| {}),
+    );
+}
+
+pub(super) fn show_information_dialog(parent: &impl IsA<gtk::Widget>, message: &str, detail: &str) {
+    show_message_dialog(
+        parent,
+        message,
+        None,
+        detail,
+        MessageKind::Information,
+        Rc::new(|| {}),
+    );
+}
+
+pub(super) fn show_information_dialog_with_summary(
+    parent: &impl IsA<gtk::Widget>,
+    message: &str,
+    summary: &str,
+    detail: &str,
+) {
+    show_message_dialog(
+        parent,
+        message,
+        Some(summary),
+        detail,
+        MessageKind::Information,
+        Rc::new(|| {}),
+    );
 }
 
 pub(super) fn show_error_dialog_after_close(
@@ -318,6 +696,37 @@ pub(super) fn show_error_dialog_after_close(
     detail: &str,
     on_close: Rc<dyn Fn()>,
 ) {
+    show_message_dialog(parent, message, None, detail, MessageKind::Error, on_close);
+}
+
+/// [`show_error_dialog_after_close`] with `summary` under the title in place of
+/// the generic "The operation could not be completed".
+pub(super) fn show_error_dialog_with_summary(
+    parent: &impl IsA<gtk::Widget>,
+    message: &str,
+    summary: &str,
+    detail: &str,
+    on_close: Rc<dyn Fn()>,
+) {
+    show_message_dialog(
+        parent,
+        message,
+        Some(summary),
+        detail,
+        MessageKind::Error,
+        on_close,
+    );
+}
+
+fn show_message_dialog(
+    parent: &impl IsA<gtk::Widget>,
+    message: &str,
+    summary: Option<&str>,
+    detail: &str,
+    kind: MessageKind,
+    on_close: Rc<dyn Fn()>,
+) {
+    let error = kind != MessageKind::Information;
     let Some(ModalHost {
         overlay: window_overlay,
         blurred_root,
@@ -341,15 +750,28 @@ pub(super) fn show_error_dialog_after_close(
     };
 
     let layout = message_dialog_layout(
-        crate::assets::icons::X,
-        message,
-        if message == "Completed with errors" {
-            "Some items could not be processed"
+        if error {
+            crate::assets::icons::X
         } else {
-            "The operation could not be completed"
+            crate::assets::icons::INFO
         },
-        "Close",
-        ModalTone::Danger,
+        message,
+        &summary.map_or_else(
+            || {
+                crate::i18n::tr(match kind {
+                    MessageKind::Information => "Reported by the file provider",
+                    MessageKind::PartialFailure => "Some items could not be processed",
+                    MessageKind::Error => "The operation could not be completed",
+                })
+            },
+            str::to_owned,
+        ),
+        &crate::i18n::tr("Close"),
+        if error {
+            ModalTone::Danger
+        } else {
+            ModalTone::Accent
+        },
     );
     layout.cancel.set_visible(false);
     let explanation = message_dialog_description(detail);
@@ -379,28 +801,71 @@ pub(super) fn show_error_dialog_after_close(
     close.connect_clicked(move |_| clicked_dismiss());
     let icon_dismiss = dismiss.clone();
     close_icon.connect_clicked(move |_| icon_dismiss());
-    let escape = gtk::EventControllerKey::new();
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
-            dismiss();
-            glib::Propagation::Stop
-        } else {
-            glib::Propagation::Proceed
-        }
-    });
-    layer.add_controller(escape);
+    close_on_escape(&layer, move || dismiss());
     close.grab_focus();
 }
 
-/// Like [`show_error_dialog`], but for a `Completed with errors` delete
-/// result where every failure was caused by the destination not supporting
-/// Trash (issue #179): rather than a dead-end "Done" button, this offers an
-/// actionable "Delete Permanently" button that invokes `on_retry` -- the
-/// caller's job is to re-run the delete for just the retryable entries,
-/// e.g. via `show_delete_confirmation(retryable_entries)`.
+/// An error dialog that also offers one way past the error, such as opening the
+/// location as administrator.
+pub(super) fn show_error_dialog_with_action(
+    parent: &impl IsA<gtk::Widget>,
+    message: &str,
+    detail: &str,
+    action: (&str, &str),
+    on_action: Rc<dyn Fn()>,
+) {
+    let Some(ModalHost {
+        overlay: window_overlay,
+        blurred_root,
+    }) = ModalHost::blurred_for(parent)
+    else {
+        return;
+    };
+    let (icon, label) = action;
+    let layout = message_dialog_layout(
+        icon,
+        message,
+        &crate::i18n::tr("The operation could not be completed"),
+        label,
+        ModalTone::Accent,
+    );
+    layout.cancel.set_label(&crate::i18n::tr("Close"));
+    stack_actions_when_constrained(&layout);
+    let explanation = message_dialog_description(detail);
+    explanation.set_selectable(true);
+    layout.body.append(&explanation);
+
+    let layer = modal_layer(&layout.content, &window_overlay, blurred_root.clone(), None);
+    remember_modal_focus(&layer, &window_overlay);
+    window_overlay.add_overlay(&layer);
+    let dismissed = Rc::new(Cell::new(false));
+    let dismiss_layer = layer.clone();
+    let dismiss_overlay = window_overlay.clone();
+    let dismiss = Rc::new(move || {
+        if dismissed.replace(true) {
+            return;
+        }
+        dismiss_modal_layer(&dismiss_layer, &dismiss_overlay, blurred_root.as_ref());
+    });
+    let cancel_dismiss = dismiss.clone();
+    layout.cancel.connect_clicked(move |_| cancel_dismiss());
+    let icon_dismiss = dismiss.clone();
+    layout.close.connect_clicked(move |_| icon_dismiss());
+    let confirm_dismiss = dismiss.clone();
+    layout.confirm.connect_clicked(move |_| {
+        confirm_dismiss();
+        on_action();
+    });
+    close_on_escape(&layer, move || dismiss());
+    focus_button(&layout.confirm);
+}
+
+/// For a delete that completed with errors, some of them Trash-unsupported: offers
+/// Delete Permanently for those entries via `on_retry` (#179).
 pub(super) fn show_delete_error_dialog(
     parent: &impl IsA<gtk::Widget>,
     detail: &str,
+    retry_label: &str,
     on_retry: Rc<dyn Fn()>,
 ) {
     let Some(ModalHost {
@@ -413,12 +878,12 @@ pub(super) fn show_delete_error_dialog(
 
     let layout = message_dialog_layout(
         crate::assets::icons::X,
-        "Completed with errors",
-        "Some items could not be processed",
-        "Delete Permanently",
+        &crate::i18n::tr("Completed with errors"),
+        &crate::i18n::tr("Some items could not be processed"),
+        retry_label,
         ModalTone::Danger,
     );
-    layout.cancel.set_label("Done");
+    layout.cancel.set_label(&crate::i18n::tr("Done"));
     let explanation = message_dialog_description(detail);
     explanation.set_selectable(true);
     layout.body.append(&explanation);
@@ -452,16 +917,6 @@ pub(super) fn show_delete_error_dialog(
         confirm_dismiss();
         on_retry();
     });
-    let escape = gtk::EventControllerKey::new();
-    let escape_dismiss = dismiss.clone();
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
-            escape_dismiss();
-            glib::Propagation::Stop
-        } else {
-            glib::Propagation::Proceed
-        }
-    });
-    layer.add_controller(escape);
+    close_on_escape(&layer, move || dismiss());
     focus_button(&confirm);
 }

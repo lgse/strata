@@ -32,12 +32,28 @@ pub struct ManagedInstall {
     #[serde(default)]
     aur_helpers: Vec<String>,
     alternate_package: Option<String>,
+    #[serde(skip)]
+    installed_aur_helper: OnceLock<Option<String>>,
 }
+
+static DETECTED: OnceLock<InstallSource> = OnceLock::new();
 
 impl InstallSource {
     pub fn detect() -> &'static Self {
-        static DETECTED: OnceLock<InstallSource> = OnceLock::new();
-        DETECTED.get_or_init(|| Self::from_marker_path(marker_path()))
+        DETECTED.get_or_init(|| {
+            #[cfg(not(test))]
+            crate::util::ui_thread::assert_off();
+            Self::from_marker_path(marker_path())
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn seed_for_test(marker: &str) {
+        let managed = toml::from_str::<ManagedInstall>(marker).expect("install marker");
+        assert!(
+            DETECTED.set(Self::Managed(managed.normalized())).is_ok(),
+            "the install source was already detected"
+        );
     }
 
     fn from_marker_path(marker: Option<PathBuf>) -> Self {
@@ -77,8 +93,10 @@ impl InstallSource {
 }
 
 impl ManagedInstall {
-    pub fn manager(&self) -> &str {
-        self.manager.as_deref().unwrap_or(UNNAMED_MANAGER)
+    pub fn manager(&self) -> String {
+        self.manager
+            .clone()
+            .unwrap_or_else(|| crate::i18n::tr(UNNAMED_MANAGER))
     }
 
     pub fn package(&self) -> Option<&str> {
@@ -95,17 +113,37 @@ impl ManagedInstall {
 
     pub fn ownership_summary(&self) -> String {
         match self.package() {
-            Some(package) => format!("Installed by {} as {package}.", self.manager()),
-            None => format!("Installed by {}.", self.manager()),
+            Some(package) => rust_i18n::t!(
+                "Installed by %{manager} as %{package}.",
+                manager = self.manager(),
+                package = package
+            )
+            .into_owned(),
+            None => {
+                rust_i18n::t!("Installed by %{manager}.", manager = self.manager()).into_owned()
+            }
         }
     }
 
     pub fn update_instruction(&self) -> String {
-        self.update_instruction_with(on_path)
+        self.update_instruction_with(|helper| self.is_installed_aur_helper(helper))
     }
 
     pub(crate) fn aur_update_target(&self) -> Option<(&str, &str)> {
-        self.aur_update_target_with(on_path)
+        self.aur_update_target_with(|helper| self.is_installed_aur_helper(helper))
+    }
+
+    pub(crate) fn find_installed_aur_helper(&self) {
+        self.installed_aur_helper.get_or_init(|| {
+            self.aur_helpers
+                .iter()
+                .find(|helper| on_path(helper))
+                .cloned()
+        });
+    }
+
+    fn is_installed_aur_helper(&self, helper: &str) -> bool {
+        self.installed_aur_helper.get().and_then(Option::as_deref) == Some(helper)
     }
 
     fn aur_update_target_with(&self, available: impl Fn(&str) -> bool) -> Option<(&str, &str)> {
@@ -116,17 +154,27 @@ impl ManagedInstall {
 
     fn update_instruction_with(&self, available: impl Fn(&str) -> bool + Copy) -> String {
         if let Some(command) = self.update_command.as_deref() {
-            return format!("Update Strata with: {command}");
+            return rust_i18n::t!("Update Strata with: %{command}", command = command).into_owned();
         }
         if let Some((helper, package)) = self.aur_update_target_with(available) {
-            return format!("Update Strata with: {helper} -Syu {package}");
+            return rust_i18n::t!(
+                "Update Strata with: %{command}",
+                command = format!("{helper} -Syu {package}")
+            )
+            .into_owned();
         }
         if let (Some(helper), Some(package)) = (self.aur_helpers.first(), self.package()) {
-            return format!(
-                "Update Strata with an AUR helper, for example: {helper} -Syu {package}"
-            );
+            return rust_i18n::t!(
+                "Update Strata with an AUR helper, for example: %{command}",
+                command = format!("{helper} -Syu {package}")
+            )
+            .into_owned();
         }
-        format!("Update Strata through {}.", self.manager())
+        rust_i18n::t!(
+            "Update Strata through %{manager}.",
+            manager = self.manager()
+        )
+        .into_owned()
     }
 
     pub fn tracked_channel(&self) -> Option<Channel> {
@@ -140,9 +188,13 @@ impl ManagedInstall {
 
     pub fn alternate_instruction(&self) -> Option<String> {
         let alternate = self.alternate_package()?;
-        Some(format!(
-            "Other release channels are published as {alternate}."
-        ))
+        Some(
+            rust_i18n::t!(
+                "Other release channels are published as %{package}.",
+                package = alternate
+            )
+            .into_owned(),
+        )
     }
 
     fn normalized(self) -> Self {
@@ -161,6 +213,7 @@ impl ManagedInstall {
                 .filter(|helper| !helper.trim().is_empty())
                 .collect(),
             alternate_package: present(self.alternate_package),
+            installed_aur_helper: self.installed_aur_helper,
         }
     }
 }
@@ -193,6 +246,7 @@ fn marker_path() -> Option<PathBuf> {
 }
 
 fn on_path(program: &str) -> bool {
+    crate::util::ui_thread::assert_off();
     let Some(path) = std::env::var_os("PATH") else {
         return false;
     };
@@ -211,10 +265,9 @@ fn marker_path_for_executable(executable: &Path) -> Option<PathBuf> {
 pub(crate) fn ensure_self_managed(source: &InstallSource) -> Result<(), String> {
     match source.managed() {
         None => Ok(()),
-        Some(managed) => Err(format!(
-            "{} {}",
-            managed.ownership_summary(),
-            managed.update_instruction()
+        Some(managed) => Err(crate::i18n::join_sentences(
+            &managed.ownership_summary(),
+            &managed.update_instruction(),
         )),
     }
 }

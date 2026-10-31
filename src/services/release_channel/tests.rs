@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use super::{Channel, ReleaseSummary, Version, best_update, is_eligible, rollback_target};
+use super::{
+    Channel, ReleaseSummary, Version, best_update, installable_releases, is_eligible,
+    rollback_target,
+};
 
 fn parse(tag: &str) -> Version {
     Version::parse(tag).unwrap_or_else(|| panic!("expected {tag} to parse"))
@@ -262,6 +265,53 @@ fn rollback_target_ignores_installed_version() {
     ];
     let result = rollback_target(&releases);
     assert_eq!(result.map(|r| r.tag.as_str()), Some("v0.4.0"));
+}
+
+#[test]
+fn installable_releases_follow_the_channel_newest_first_including_older_ones() {
+    let prerelease = |tag| ReleaseSummary {
+        prerelease: true,
+        ..release(tag)
+    };
+    let releases = [
+        release("v0.4.0"),
+        prerelease("v0.5.0-nightly.20260901"),
+        release("v0.5.0"),
+        prerelease("v0.5.0-rc.1"),
+        prerelease("v0.5.0-beta.1"),
+        ReleaseSummary {
+            draft: true,
+            ..release("v0.6.0")
+        },
+        ReleaseSummary {
+            download_url: None,
+            ..release("v0.5.1")
+        },
+        release("0.4.0"),
+    ];
+    for (channel, expected) in [
+        (Channel::Stable, &["v0.5.0", "v0.4.0"][..]),
+        (
+            Channel::Preview,
+            &["v0.5.0", "v0.5.0-rc.1", "v0.5.0-beta.1", "v0.4.0"][..],
+        ),
+        (
+            Channel::Nightly,
+            &[
+                "v0.5.0",
+                "v0.5.0-rc.1",
+                "v0.5.0-beta.1",
+                "v0.5.0-nightly.20260901",
+                "v0.4.0",
+            ][..],
+        ),
+    ] {
+        let tags: Vec<_> = installable_releases(channel, &releases)
+            .into_iter()
+            .map(|release| release.tag.as_str())
+            .collect();
+        assert_eq!(tags, expected, "{channel:?}");
+    }
 }
 
 #[test]

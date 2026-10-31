@@ -4,7 +4,7 @@ use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
 use super::{
     PdfTextLayer, pdf_apply_ranges, pdf_desired_ranges, pdf_drop_unselected_layer,
-    pdf_selected_text, pdf_shortcut_modifiers,
+    pdf_selected_text,
 };
 
 fn layer(text: &str) -> Arc<PdfTextLayer> {
@@ -102,14 +102,4 @@ fn select_all_replaces_stale_unbound_ranges() {
         .collect();
     pdf_apply_ranges(&ranges, &layers, &HashMap::new(), desired);
     assert!(!ranges.borrow().contains_key(&4));
-}
-
-#[test]
-fn pdf_shortcuts_ignore_latch_bits_but_reject_shift_and_alt() {
-    use gtk::gdk::ModifierType as M;
-    assert!(pdf_shortcut_modifiers(M::CONTROL_MASK));
-    assert!(pdf_shortcut_modifiers(M::CONTROL_MASK | M::LOCK_MASK));
-    assert!(!pdf_shortcut_modifiers(M::empty()));
-    assert!(!pdf_shortcut_modifiers(M::CONTROL_MASK | M::SHIFT_MASK));
-    assert!(!pdf_shortcut_modifiers(M::CONTROL_MASK | M::ALT_MASK));
 }

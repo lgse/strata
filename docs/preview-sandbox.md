@@ -9,11 +9,39 @@ FHS, `/run/wrappers/bin`, `/nix/store`, or `/gnu/store`.
 
 ## Packaging non-FHS runtimes
 
-Packagers can set these optional environment variables **when compiling Strata**.
-They are embedded in the executable; setting them when launching Strata has no
-effect and does not override the sandbox's cleared environment.
+Two kinds of configuration cover packages whose runtime does not live under
+`/usr`: where the host finds bubblewrap and the other helpers it runs directly,
+and which runtime tree and helper paths the sandbox binds and runs inside.
 
-| Build-time variable | Default | Purpose |
+### Host helper directories
+
+`STRATA_TRUSTED_COMMAND_PATH` is a colon-separated list of additional directories
+in which the host looks for helpers such as `bwrap`, `xdg-mime`, and the
+provider runtimes. It is read **only when compiling Strata**, so a package can
+point it at the `bin` directories of its runtime closure without requiring users
+to install those tools into a system profile:
+
+```sh
+STRATA_TRUSTED_COMMAND_PATH='/nix/store/<bubblewrap>/bin:/nix/store/<xdg-utils>/bin' \
+cargo build --release --locked
+```
+
+The fixed system directories are always searched first, so `/run/wrappers/bin`
+and the system profiles keep priority over configured directories. Every entry
+must be an absolute directory; the build fails on empty or relative entries. At
+run time a configured directory is searched only when it canonicalizes under one
+of the trust roots above, and the helper found there must still canonicalize
+under a trust root. The user's `PATH` and home directory are never consulted,
+and a required helper that cannot be found in a trusted directory still fails
+closed.
+
+### Sandbox runtime paths
+
+These variables select the runtime tree and helper paths inside the sandbox.
+Each one is resolved in this order: a value set **when launching Strata**, then
+a value embedded **when compiling Strata**, then the default.
+
+| Variable | Default | Purpose |
 | --- | --- | --- |
 | `STRATA_SANDBOX_PATH` | `/usr/bin` | Colon-separated helper binary directories inside the sandbox |
 | `STRATA_SANDBOX_ROOT` | `/usr` | System runtime tree, bound read-only at the same absolute path |
@@ -30,6 +58,17 @@ STRATA_SANDBOX_GDK_PIXBUF_MODULE_FILE='/nix/store/<pixbuf-loaders>/lib/gdk-pixbu
 cargo build --release --locked
 ```
 
+A prebuilt release can be configured the same way at launch, once its ELF
+dependencies are available and bubblewrap is installed in a trusted system
+directory:
+
+```sh
+STRATA_SANDBOX_PATH='/nix/store/<ffmpeg>/bin:/nix/store/<imagemagick>/bin' \
+STRATA_SANDBOX_ROOT='/nix/store' \
+STRATA_SANDBOX_PRLIMIT='/nix/store/<util-linux>/bin/prlimit' \
+strata
+```
+
 Replace the illustrative store paths with package dependency paths and include
 all required helper binary directories. The root replaces `/usr`, rather than
 adding another mount. The launcher, helpers, loaders cache, and its referenced
@@ -37,6 +76,13 @@ modules and runtime dependencies must be reachable within the sandbox mounts.
 Use only trusted, admin-managed runtime trees: binding `/` or a user-data tree
 would expose private files to untrusted decoders. Values are taken literally;
 leave variables unset to use defaults, rather than setting empty values.
+
+Launch-time values are validated before use. Every path must be absolute and
+free of `..` components, and a launch-time `STRATA_SANDBOX_ROOT` must be `/usr`,
+`/nix/store`, or `/gnu/store`, or a directory inside one of them. A value
+that fails validation is logged and ignored, and the embedded or default value
+stays in effect. The launch-time variables are read by the host only; the
+sandbox still starts with a cleared environment.
 
 These settings apply to one-shot, pooled browser, media, and RAR extraction
 sandboxes. They do not change host-side trusted bubblewrap lookup, namespace
@@ -59,6 +105,9 @@ isolation, resource limits, or the other narrow optional runtime mounts.
 - Local DOCX previews run `docx-rs` in the same helper under the same 20 MiB input
   limit. Only a validated, bounded JSON payload of generated HTML returns, and the
   application reparses it with the existing bounded HTML parser.
+- Local ODT and OTT previews stream `content.xml` and `styles.xml` through
+  `quick-xml` in the same helper under the same 20 MiB input limit, and return the
+  same validated HTML payload as DOCX.
 - Local [Markdown, bounded HTML, RTF, CSV, and TSV previews](document-previews.md) are parsed
   in-process by pure-Rust parsers that receive only the bounded source string and
   cannot initiate filesystem access, network access, JavaScript execution, or
@@ -69,26 +118,112 @@ isolation, resource limits, or the other narrow optional runtime mounts.
   and user equations are passed as data, not evaluated as JavaScript;
   SVG resource resolution is disabled and only validated PNG output returns.
 
+## Password-protected PDFs
+
+Quick Preview shows **Preview unavailable** with **This PDF is password
+protected.** when Poppler reports that opening the document requires a password.
+An **Open** button under the message hands the file to the default PDF reader,
+where it can be unlocked; Strata does not prompt for, store, or submit PDF
+passwords or create an unlocked copy. The file chooser, which never opens files
+externally, shows the explanation alone. PDFs that open without a password, including owner-restricted
+PDFs with an empty user password, still preview normally. Other rendering failures
+keep their existing error behavior.
+
+The helper identifies protection through Poppler's typed `Encrypted` error and
+returns a structured code through the existing bounded private error output.
+Locked PDF thumbnails remain passwordless and fall back to the file icon.
+
 ## Local 3D model previews
 
-Quick Preview accepts STL, 3MF and FreeCAD (`.FCStd`) files. STL and single-part
-3MF geometry use a fixed-angle software render; FreeCAD uses its saved image.
+Quick Preview accepts STL, 3MF, FreeCAD (`.FCStd`), and G-code (`.gcode`, `.gco`,
+and binary `.bgcode`) files. STL and single-part
+3MF geometry use a software render with four diagonal camera views looking down
+at the model; FreeCAD and G-code use an embedded image. Rendered
+meshes show media-style previous/next controls around a circular camera-position
+indicator, with stable centring and scale. Its dot sweeps around the circle to the
+selected corner, respecting the reduced-motion and system animation settings.
+Next moves clockwise; Previous moves anticlockwise.
+The indicator is a top-down map: a hollow circle marks the model at the centre,
+and the camera dot sits on the outer circumference. Camera directions are shared
+with the renderer: +X is right, −Y is front, and +Z is up. The initial front-left
+camera therefore appears at the lower left; front-right is lower right,
+back-right upper right and back-left upper left. These names follow the model's
+coordinate axes.
+View names are exposed to assistive technology; the visible controls use the
+orbit diagram without a text caption.
+The model and controls form one vertically centred block using the shared media
+layout. Geometry renders on a square canvas, avoiding unused space from the pane's
+aspect ratio. Above the badges, the filename and its position among model files
+in the current sorted or filtered listing use the same styling as video previews.
+Above the camera controls, media-style badges show the mesh encoding (binary STL,
+ASCII STL or 3MF) and the rendered triangle count. These details come from the
+existing parse/render pass and remain part of the cached preview. Thumbnail-only
+previews do not parse geometry for badges. Dimensions and units are not shown.
+The first loading view already shows the filename, listing position and file
+format. The triangle count appears once parsing reports it, and the camera
+controls become active when the first mesh image is ready. A spinner in the
+preview header beside the open button is the only loading indicator, for both
+the first load and later view changes; its accessible label follows the loading
+stage. While another view renders, the last image dims. Failed view changes
+retain that image with a visible error so the controls can retry. Completed
+embedded-image previews have no camera controls and are never replaced with
+geometry for view selection.
 A 3MF package with exactly one usable embedded PNG uses that image, even if other
 candidates are corrupt or its geometry spans multiple model parts. Two usable
 images are ambiguous: Quick Preview tries geometry, while browser thumbnailing
 leaves the normal file icon. Multipart geometry is not rendered.
 
-Browser thumbnails extract embedded images only, through the **existing browser
+G-code uses the slicer thumbnail in the file header. Text files store PNG, JPEG,
+or QOI images as base64 comments (`; thumbnail begin`, including the `_PNG`,
+`_JPG`, and `_QOI` forms). Binary `.bgcode` stores the same images in thumbnail
+blocks. Several sizes are normal, unlike two usable PNG images in a 3MF package; Quick
+Preview shows the largest image that decodes. There is no toolpath render.
+A text file with no usable thumbnail keeps the ordinary text preview. A binary
+file with none reports “This G-code file has no usable embedded thumbnail”.
+Remote G-code is not staged for a thumbnail and keeps the text preview.
+
+The reader does not scan the toolpath. Text is read only until the first command,
+and only through `MAX_GCODE_HEADER_BYTES` (2 MiB), plus the rest of a thumbnail
+block that has already started. That block still cannot exceed one 4 MiB image.
+Binary files seek through metadata and stop at the first G-code block. Thumbnail
+blocks are uncompressed; a compressed thumbnail block is skipped. G-code is not
+subject to the 128 MiB model input cap.
+
+3MF, FreeCAD, and G-code browser thumbnails extract embedded images only, through the **existing browser
 worker pool** and its normal cache, cancellation and slow-job admission. There is
-no geometry fallback, new pool or thumbnail job for STL. The decoder does not read
-model XML when selecting an embedded image. Missing or unusable images leave the
+no geometry fallback or new pool. The 3MF decoder does not read
+model XML when selecting an embedded image. G-code thumbnails are shown whenever
+**Show thumbnails** is enabled and do not use the STL model thumbnails setting.
+Missing or unusable images leave the
 file icon, with the existing failure cache preventing immediate retries.
 
-Heavy Quick Previews (models, PDFs, workbooks and DOCX) share one process-wide
+Local STL browser thumbnails are a separate opt-in under **Settings → Appearance
+→ File icons → STL model thumbnails**; **Show thumbnails** must also be enabled.
+They reuse the software model renderer in a one-shot sandbox at 256×256, with a
+fixed camera, neutral model colors and a transparent background for the shared
+freedesktop thumbnail cache. The existing
+browser queue admits at most one such render across all windows in the process,
+within its general worker limit, and cancels obsolete requests normally. This
+does not create a reusable worker pool or raise any model/sandbox limits. An
+interactive Quick Preview may run concurrently; it does not share this background
+STL slot. Disabling the option hides cached STL thumbnails as well as preventing
+new renders. It does not delete PNG thumbnails already stored in
+`$XDG_CACHE_HOME/thumbnails/large`; other freedesktop clients may still display them.
+Cancellation or the wall deadline sends SIGKILL and releases the background STL
+worker and admission slot without waiting for the helper to be reaped. A detached
+waiter keeps its private output and file-operation hold alive until reaping and
+namespace cleanup finish. A killed helper stuck in kernel I/O can therefore
+overlap a later render until the kernel allows it to exit. Interactive Quick Preview
+retains its existing wait-for-exit policy. Failed models retain the file icon and normal retry backoff.
+
+Heavy Quick Previews (models, PDFs, workbooks, DOCX and ODT) share one process-wide
 permit and use one-shot sandboxes. Cancellation retains that permit until the
 helper exits. Format is carried explicitly across the sandbox boundary, including
 for symlinks; the UI supplies the render palette. Geometry PNG cache keys include
-format, size and palette, and open model previews reload on palette changes.
+format, size, palette and camera view. Open model previews reload on palette
+changes while retaining the selected camera; another file starts from the default
+front-left view. The helper reports whether its PNG came from a mesh or an
+embedded thumbnail, and mesh results must identify the requested camera view.
 
 Input, package and geometry limits are centralized in
 `src/services/model_preview.rs`. These are compile-time constants, not Settings
@@ -96,7 +231,8 @@ options or environment variables:
 
 | Constant | Limit | Applies to |
 | --- | --- | --- |
-| `MAX_MODEL_INPUT_BYTES` | 128 MiB (134,217,728 bytes) | Input file, including embedded-thumbnail requests |
+| `MAX_MODEL_INPUT_BYTES` | 128 MiB (134,217,728 bytes) | STL, 3MF, and FreeCAD input, including embedded-thumbnail requests |
+| `MAX_GCODE_HEADER_BYTES` | 2 MiB | Text G-code scanned before the first command. A thumbnail block already started may continue past it |
 | `MAX_MODEL_XML_BYTES` | 128 MiB, independently of compressed file size | Unpacked 3MF model XML |
 | `MAX_3MF_ARCHIVE_ENTRIES` | 256 | All ZIP entries in a 3MF package |
 | `MAX_FREECAD_ARCHIVE_ENTRIES` | 4096 | All ZIP entries in a FreeCAD package |
@@ -129,8 +265,67 @@ Embedded-image limits live in `src/sandbox_helper/model/embedded.rs`: at most 16
 candidates, 4 MiB per candidate, 16 MiB total candidate bytes read and 16 megapixels
 (16×1024×1024 pixels) total admitted to decoding. Oversized/invalid images are not
 usable; exhausting a total inspection budget fails the operation rather than
-assuming uninspected candidates are invalid. Only bounded PNG results return to
+assuming uninspected candidates are invalid. G-code reuses these limits. Only bounded PNG results return to
 GTK. Thumbnail output remains at most 256×256, in the image's original colors.
+
+## Offline route previews
+
+Quick Preview accepts local GPX, FIT and KML files, including file symlinks.
+The one-shot `preview-route` helper parses and draws the route without network,
+map tiles or external resources. The drawer and file chooser use the shared media
+layout, folder-position caption, filename header and compact format/distance badges.
+A duration badge shows elapsed time between the earliest and latest recorded
+timestamps, including pauses, when at least two distinct timestamps are available.
+An elevation line is shown against cumulative distance when a connected pair has
+recorded altitude;
+otherwise that section is omitted. The shared media play/pause shortcuts animate
+route and elevation markers over 15 seconds at a steady distance-based pace.
+Hovering either graph pauses playback and synchronizes both markers; playback
+resumes only on an explicit play action. When route passes overlap or nearly
+overlap, hovering prefers the pass nearest the current distance among hits within
+two screen pixels of the closest line. Seeking uses the media shortcuts too.
+The timer stops when the preview is hidden, closed or replaced. The elevation
+header shows the current marker height during playback, hovering and seeking,
+when altitude is available. Playback uses calculated ground distance between GPS
+points, not screen length or recorded timestamps.
+
+The helper prepares a single projected trace with cumulative distance, segment
+boundaries and optional elevation coordinates. Both PNG images are drawn from this
+trace, and the same samples drive hover and playback in the UI. The plot owns
+coordinate transforms, picking and marker drawing; the player owns position and
+the playback timer. Host validation requires the PNG dimensions to match the
+trace’s coordinate space (800×600 for the route, 800×70 for elevation).
+Units follow the saved **Settings → General → Units** preference; the preview
+has no separate unit selector. Distances use kilometres or miles; elevation uses
+metres or feet.
+Changing units updates labels in place without interrupting playback.
+
+GPX tracks, route points and isolated waypoints preserve segment boundaries.
+FIT uses `fitparser` with checksum validation, bounded sequence decoding and
+streamed records; invalid GPS fixes and timer/session boundaries break the route.
+Enhanced altitude takes precedence over legacy altitude. KML supports Points,
+LineStrings and `gx:Track`, including these inside MultiGeometry/MultiTrack.
+Polygon outlines, KMZ, NetworkLinks and external assets are not rendered. KML
+altitude contributes to the profile only with explicit `absolute` altitude mode;
+terrain-relative and default clamped altitude need terrain data unavailable here.
+
+Missing altitude stays missing, including within a segment; zero and negative
+altitudes remain valid. Distance never bridges disconnected segments. Longitude
+wrapping keeps local date-line crossings together, with Web Mercator latitude
+clamped at approximately 85 degrees for the drawing. Display thinning does not
+change distance or altitude statistics. Distances use a spherical Earth model.
+
+The helper caps input at 32 MiB, aggregate valid points at 250,000, XML nesting
+at 64 and FIT objects at 1,000,000. Existing CPU, address-space, timeout,
+cancellation and shared heavy-preview permit limits still apply. Output is bounded
+JSON containing an 800×600 route PNG, an optional 800×70 elevation PNG and small
+numeric metadata, plus at most 250,000 projected drawing positions with cumulative
+distances, optional elevation heights and segment boundaries for interaction.
+The host validates PNG dimensions, sample counts, finite drawing bounds, monotonic
+distances, segment boundaries and profile consistency before presentation.
+Geographic coordinates and original document data stay in the sandbox.
+Route previews use the existing memory cache with format and palette identity;
+visible previews reload on theme changes. No browser thumbnail job is added.
 
 ## Browser worker pool
 
@@ -177,7 +372,13 @@ operations; unknown syscalls, alternate ABIs, and newer mutation interfaces fail
 closed. All setup completes before parsing a file. On systems without Landlock
 ABI 3, the pool retains the original one-shot read-only-bind bubblewrap path,
 with the same concurrency budget; it never silently decodes without protection.
-No GPU, network, desktop display, or session bus is available to these workers.
+GDK Pixbuf's glycin loaders cannot start their own bubblewrap sandbox inside a
+job, because Landlock blocks its namespace setup, so they run directly under the
+job's protections. The seccomp filter permits the loopback-interface lookup that
+glycin's probe needs to detect this, and the persistent worker sets
+`GLYCIN_DISABLE_SANDBOX` so newer glycin releases skip the probe. One-shot
+sandboxes keep glycin's own sandbox. No GPU, network, desktop display, or session
+bus is available to these workers.
 Fork/namespace setup is confined to a checked single-threaded helper boundary;
 see [the unsafe-code policy](unsafe-code.md#browser-sandbox-fork-boundary).
 
@@ -298,7 +499,7 @@ the input, including cancellation and decoder-error paths; no compressed input
 is handed to an in-process media parser.
 
 Remote PDFs, animated GIFs, audio, and other video formats remain unsupported:
-copy them locally first. In particular, remote PDF rendering/printing needs a shared document
+copy them locally first. In particular, remote PDF rendering needs a shared document
 snapshot before it can safely request multiple pages without repeated downloads.
 Supported still-image formats continue to depend on installed sandbox decoder tools;
 HEIC/HEIF can use ImageMagick with libheif inside the image sandbox.
@@ -329,10 +530,14 @@ finishing that folder's enumeration before it publishes entries.
 ## Media metadata
 
 File Properties shows available source-media details: image
-resolution; audio/video duration and overall bitrate; video codec and frame rate;
-and audio codec, sample rate, and channel count. These describe the original file,
-not the preview's scaled frames or resampled audio. Attached album artwork is not
-reported as a video track, and still images do not show synthetic video timing.
+resolution; audio/video duration and overall bitrate; video codec, frame rate and
+HDR system; audio codec, sample rate, and channel count; and subtitle track and
+chapter counts. The probe also returns the pixel format, colour transfer,
+channel layout, chapter times with sanitized titles (at most 200) and subtitle
+languages (at most 64 tracks) for the video preview's badges. These describe
+the original file, not the preview's scaled frames or resampled audio. Attached
+album artwork is not reported as a video track, and still images do not show
+synthetic video timing.
 For ordinary images and audio/video, missing individual fields are omitted; an
 unsuccessful inspection shows `Media: Unavailable` without blocking the other
 file information.
@@ -340,11 +545,13 @@ file information.
 Properties uses an asynchronous inspector. Only regular files with a
 local source are inspected; remote files are not downloaded for metadata. The
 inspector runs `ffprobe` inside the existing software-only bubblewrap sandbox,
-with a four-second probe timeout and a 64 KiB JSON limit. Image information can
+with a four-second probe timeout and a 256 KiB JSON limit. Image information can
 fall back to GDK Pixbuf inside that same sandbox. The enclosing helper retains
 the existing memory, CPU, and wall-time limits and receives no GPU access. Media
 sandboxes expose only the optional BLAS/LAPACK runtime alternatives for supported
-x86-64 and ARM64 Debian-family installations, not all of `/etc/alternatives`. Only
+x86-64 and ARM64 Debian-family installations, not all of `/etc/alternatives`. Every
+sandbox additionally exposes only the optional GL dispatch alternatives
+(`glx--*`) that the helper itself needs to start on those installations. Only
 validated numeric fields and bounded codec identifiers reach the UI, not arbitrary
 embedded tags. Closing Properties cancels its work and prevents stale results
 from appearing. Ordinary image and audio/video previews retain their normal size,
@@ -369,7 +576,7 @@ Support depends on the format and available tools; unavailable tags in other
 RAW containers remain `N/A`.
 
 Both parsers run only inside a short-lived, software-only sandbox with the
-existing 512 MiB input limit, memory/CPU/wall-time limits, and a 64 KiB output
+existing 512 MiB input limit, memory/CPU/wall-time limits, and a 256 KiB output
 budget. Only the seven validated properties reach the UI; camera/lens strings
 are bounded plain text. Locally backed Trash entries use their existing local
 thumbnail source, recognizing the original display-name extension even when the
@@ -401,15 +608,18 @@ packet crosses into an unsandboxed media parser.
 A media worker uses separate FFmpeg video and audio processes when both tracks
 exist. Each decodes only its selected track. This avoids cross-output pipe
 deadlocks with sparse/VFR video or attached cover art. Both processes remain in
-one sandbox, with access to the same single input. Cover art is decoded once in
-software and retained alongside audio; audio-only inputs need no video decoder.
+one sandbox, with access to the same single input. Cover art in a video preview
+is decoded once in software and retained alongside audio; audio files play
+through an audio-only session that never decodes artwork into frames.
 Video timing is normalized **inside the sandbox** to 30 fps, including holding
 VFR/GIF frames. Audio is 48 kHz, stereo, interleaved signed 16-bit little-endian
 PCM. Resampling preserves gaps/offsets relative to the common source timeline.
 
 Previews play **the entire source**, without a 30-second playback cap. Seeking
 restarts the sandbox at the requested source position, rounded down to the 30-fps
-grid. Video retains decoder preroll so a seek into a VFR gap can show the frame
+grid. A seek whose decoder dies before its first frame, as happens past the real
+end of a truncated download whose header overstates the duration, resumes where
+playback was instead of ending the preview. Video retains decoder preroll so a seek into a VFR gap can show the frame
 covering that point. Short GIFs still batch loops into a 30-second generation,
 with seeks mapped to their animation phase to avoid restarting a process every
 cycle; this does not truncate the animation. Longer GIFs play their complete
@@ -424,11 +634,170 @@ sentinel, not a practical preview-length policy.
 The decode rectangle follows the pane's logical size times display scale, capped
 at 1280 pixels on either axis. Frames preserve display aspect ratio, including
 sample aspect ratio/right-angle rotation, without unnecessarily enlarging small
-sources. Resizes settle for 250 ms before restarting at the current playback
-position; the previous texture remains visible. Changes that would not materially
-change the fitted frame size do not restart decoding. A paused resize/seek stays
-paused. Mute/volume preferences initialize and update every player's raw-audio
+sources. Resizes settle for 250 ms; the previous texture remains visible.
+Shrinking the pane never restarts decoding: the larger frames are downsampled on
+screen and the next seek or restart adopts the smaller size. Growing restarts at
+the current playback position only when the fitted frame would grow by 8 % or
+more, so a resize costs at most one restart. A paused resize/seek stays paused. Mute/volume preferences initialize and update every player's raw-audio
 output live; backend preference changes apply on the next preview request.
+
+## Audio previews
+
+Audio files open in a now-playing view with artwork, tags, a live spectrum, and a
+waveform scrubber. Each part is sandboxed or derived from already-validated data:
+
+- **Playback** uses the incremental media path with the `preview-audio`
+  operation, which ignores attached pictures before validating dimensions.
+  Broken or oversized artwork cannot prevent playback. A real video stream
+  overrides the filename's audio type: the stream header selects the video view,
+  including its normal resize and resume behavior. Pure audio never restarts on resize.
+- **Artwork** comes from a separate `audio-cover` operation that maps exactly one
+  attached-picture stream (tagged front cover first, otherwise the first picture)
+  and scales it to at most 800×800 inside the sandbox. The result is validated like
+  any preview PNG; the exact `null` payload means the probe found no artwork,
+  distinct from a failed lookup. Playback, cover extraction and waveform decoding
+  share FFmpeg allocation, pixel and filter-thread limits. Without embedded art, the first of
+  `cover`, `folder`, `front`, `album`, or `albumart` (`.jpg`, `.jpeg`, `.png`,
+  `.webp`) in the same local folder is decoded by the pooled image-preview
+  helper. Remote files use embedded art only.
+- **Tags** come from an `audio-tags` `ffprobe` operation limited to title, artist,
+  album, album artist, and track number/total, bounded like media metadata. The
+  parent removes control and bidirectional-override characters, collapses
+  whitespace, caps each value at 200 characters, and shows them as plain text.
+- **The spectrum** is computed in the application from the PCM it already plays,
+  aligned to the audio sink's clock rather than to the decoder, so no extra
+  parser or GStreamer analysis element sees the stream. It keeps one second
+  behind the playhead plus everything decoded ahead of it, so it follows the
+  sink however far the device delays playback.
+- **The waveform overview** starts only after a track has stayed selected for
+  50 ms, avoiding work for selections replaced within that interval. One `audio-peaks` operation
+  runs at a time with niceness 10. It streams `STRPEAK1` records: a header with
+  1,024 buckets and the duration, then in-order runs of at most 256 one-byte RMS
+  levels and an explicit empty end run. The parent rejects gaps, oversized or
+  out-of-range runs, trailing output, and helper failure. Changing tracks cancels
+  the decode, a 90-second limit bounds it, and finished overviews are cached in
+  memory for 64 tracks. Unknown durations, failures, and timeouts keep the plain
+  progress line.
+
+Audio previews always start from the beginning, like a music player, and do not
+remember where they stopped. Video previews reopen where they were closed, unless
+they had played less than a second or reached the end.
+
+Uncached tags and artwork also wait 50 ms; cache hits are immediate. Completed
+lookups are cached for the last 12 tracks, but failed or cancelled lookups are
+retried on revisiting. Folder artwork is separately cached for 12 directories,
+with source-version checks before reuse. Consecutive audio files reuse one view.
+The current artwork stays in place while details load, and only different artwork
+crossfades. Cached artwork textures scale during resizing and regenerate after
+120 ms at a stable size.
+
+Previous/next skip playlists and MIDI. During filtering they follow visible audio
+results, including subfolders, and untagged captions read “X of Y in results”
+instead of “X of Y in folder”. Playback errors remain visible inside the audio
+view without disabling track navigation. Tracks never advance automatically.
+
+## Video previews
+
+Video files open in a now-playing view of their own, laid out like the audio
+view: the frame is the hero, the header with the file's position among the
+folder's videos, the volume control, the title and the badges sits directly
+under it, then the timeline and the same previous/play/next transport, with
+the whole stack centred in the pane. The frame keeps its place from the first
+paint, sized by the poster's aspect until the probe answers. Clicking the frame
+toggles playback; there is no separate centre button. Consecutive video files
+reuse one view, like audio. Previous/next step to the previous or next file of
+the same media family, so audio steps to audio and video to video, following
+visible search results like audio does. Playback errors remain visible inside the
+view without disabling navigation. The timeline is the audio view's waveform
+slider: the same overview peaks, grown in from nothing the same way once the
+storyboard has finished with the shared decode slot, with the played range,
+playhead and hover line shared and chapter starts added as ticks.
+
+Badges under the title summarise the file from the same bounded `media-metadata`
+`ffprobe` operation that File Properties uses: resolution class by the long
+edge (SD, 720p, 1080p, 2K, 4K, 8K), HDR10 or HLG from the transfer
+characteristics, 10-, 12- or 16-bit from the pixel format, rounded frame rate,
+video codec, audio codec with channel layout, and a captions badge counting
+embedded subtitle tracks plus subtitle files named after the video (`clip.srt`,
+`clip.en.vtt`, and the `ass`, `ssa` and `sub` extensions), found by a bounded
+scan of the original's folder off the GTK thread. Chapter starts become ticks on
+the timeline and chapter titles join the time in the storyboard bubble; nothing
+renders subtitles over the frames. The probe starts after the same 50 ms settle as audio
+details, is cancelled when the selection moves on, and completed results are
+cached for the last 12 files. Until it answers, empty pills hold the row; a
+failed probe leaves the row empty. Badges fade in with a short stagger once per
+file, or appear at once under reduced motion; they never animate while idle.
+
+The timeline shows a storyboard bubble while the pointer hovers or drags: the
+keyframe nearest that time with its timestamp, or an empty cell until one has
+arrived. A seek covers the stale frame with the nearest cell until the new frame
+is decoded, so scrubbing never shows a frozen picture. Cells come from a
+`video-storyboard` operation that starts only after the first frame is on screen
+plus the 50 ms settle, shares the single nice-10 background slot with the
+waveform overviews, and is cancelled when the selection moves on. A video's own
+storyboard and its waveform peaks take that one slot in turn: the storyboard
+goes first, since it is short and bounded by the cell count, and the waveform's
+length-proportional audio decode follows once the storyboard has finished, so
+scrubbing is never blocked behind it. The helper probes once,
+then runs one software `ffmpeg` decode per cell of the keyframe at or before its
+time (the frame a seek there lands on), with an input seek and `-skip_frame
+nokey`, so the cost scales with the cell count rather than the file
+length: 8 to 48 cells at one per two seconds, 128 pixels on the long edge,
+never enlarged, in binary-subdivision order so the middle, quarters and eighths
+arrive first. The `STRSTB01` stream carries a sheet header and raw RGBA cells
+whose exact length, unique index and explicit end the parent checks; cells a seek
+could not produce are absent and the nearest neighbour stands in. Clips under
+four seconds, animations, attached pictures, raw elementary streams and unknown
+durations have no storyboard. A 90-second limit bounds the decode, and finished
+or partial boards are cached in memory for the last 8 clips (at most about 14
+MB); a partial board keeps its decoded cells while the next visit decodes the
+board again.
+
+Opening a previewed video externally, with **Enter**, the header's Open button
+or activation in the listing, pauses the preview and hands its position to the
+default player. A file opened while its preview is still loading, as the second
+click of a double-click does, stays paused once that preview lands instead of
+autoplaying beside the player; moving to another file or pressing play lifts
+the hold. The launcher inserts the player's start option into its desktop
+`Exec` line before the file placeholder (or a bare `--`), seen through `env`
+and Flatpak wrappers: `--start` for mpv, `--start-time` for VLC, `--mpv-start`
+for Celluloid and `-ss` for MPlayer. Unknown players, failed timed launches and
+positions within a second of either end open the file plainly. The launch uses
+the display's launch context, so the player gets startup notification.
+
+With **Preview autoplay** on, playback starts silent: the player scales its
+output by a fade gain on top of the saved volume, which it never changes. The
+gain rises on a slow-in, slow-out curve (a smoothstep squared, so the ear hears
+an even rise), over 1 s from the first frame for video and over 0.5 s from the
+first sample for audio, set about sixty times a second on the GStreamer
+`volume` element, so no audio is processed in the application. Files shorter
+than 10 s would lose most of themselves to the rise, so they play at full volume
+from the start; unknown durations ease in. A muted
+saved state skips the ramp, and any play, pause, seek, volume or mute input, or
+moving to another file, ends it immediately.
+
+Ambient light bleeds the frame's border colours into a 24-pixel band around the
+picture. While the poster stands in, the band takes its colours from the cached
+thumbnail (one download of a 256-pixel texture) and the live frames ease in
+from there. The player samples a 6×4 grid of a few pixels each from a decoded
+frame at most ten times a second, the view eases towards it and uploads it as a tiny
+texture that the GPU scales with linear filtering under the picture, and four
+gradients fade the band into the pane. There is no blur, no per-frame CPU work
+beyond those samples, and nothing updates while playback is paused. The light
+follows the **Element glow** preference, which also releases the band, stays off
+under reduced motion, and never runs on the Cairo software renderer.
+
+The frame area never shows a spinner. Until the first decoded frame it shows the
+listing's cached thumbnail dimmed as a poster when that rendition is already in
+memory, otherwise the picture's own surface colour, at the probed aspect once
+the header has arrived, with no outline so the edge does not change when the
+frame lands. A clip that resumes where it stopped shows the cell of its cached
+storyboard nearest that point instead, at the seek cover's strength, so the
+stand-in matches the frame about to arrive rather than the opening one.
+The lookup never queues thumbnail work. The first frame fades the stand-in out
+over 150 ms, or replaces it at once under reduced motion. Every media stream
+waits 50 ms before starting its sandbox session, so a selection that moves on
+within that window spawns no decoder.
 
 ## Wire validation and budgets
 
@@ -446,8 +815,10 @@ The parent independently checks:
 - strictly consecutive ticks below the declared duration, exact
   `floor(tick * 1,000,000 / 30)` timestamps, and an end tick that cannot overflow;
 - video length exactly `width * height * 4`, at most 6,553,600 bytes;
-- PCM length exactly 6,400 bytes per tick (1,600 stereo samples), with the last
-  block truncated to the advertised content duration before audio output;
+- PCM length exactly 6,400 bytes per tick (1,600 stereo samples); the first
+  record of a generation carries 61 blocks because audio runs 60 ticks (2 s)
+  ahead of video, and the last block is truncated to the advertised content
+  duration before audio output;
 - end timestamp/lengths, no trailing output, and successful helper exit.
 
 Lengths are checked **before allocation**. Helper buffers cannot mutate textures:
@@ -457,9 +828,17 @@ last reference is released. There is no shared writable memory.
 The worker-to-GTK queue holds three records, the presentation queue three frames,
 and a worker may hold one pending frame. Including the displayed CPU texture,
 that is at most eight directly application-held frames (50 MiB at the maximum
-square size), plus small audio buffers and bounded kernel pipes. FFmpeg's input
-and output packet queues are limited to two packets each. GStreamer's appsrc
-queue is capped at 38,400 bytes / 200 ms; no unbounded queue element is inserted.
+square size), plus small audio buffers and bounded kernel pipes. Audio never
+pins frames to stay ahead of a slow sink: the first record of a generation
+carries a 2-second PCM lead and later records run that far ahead of their frame,
+so a sink that only starts once its own buffer fills, or whose device delay is
+subtracted from its reported position (PipeWire-Pulse, Bluetooth A2DP), is
+primed before playback starts. Audio files additionally read ahead until
+GStreamer's appsrc queue is full rather than until the playhead moves, so no
+device delay can starve them; video keeps its three-frame queue, which bounds the
+start-up delay it tolerates at the lead. FFmpeg's input and output packet queues
+are limited to two packets each. GStreamer's appsrc queue is capped at 66 blocks
+(2.2 s, about 420 KiB); no unbounded queue element is inserted.
 GTK/driver rendering caches and codec working memory are additional, not part of
 that application-buffer claim. Total decoded bytes scale with playback duration,
 but queued memory does not: no complete clip is accumulated. Audio timestamp
@@ -490,14 +869,44 @@ have separate limits, not a machine-global scheduler.
 | --- | --- |
 | Startup or seek | 22 seconds from request to first frame; includes a 4-second probe, hardware attempts of at most 4 seconds each / 8 seconds combined, and up to 8 seconds for software. Isolated seeks restart at once; bursts within 200 ms coalesce to the settled position. |
 | Active decoding | 8 seconds for a complete next record, not a deadline restarted by each byte. A stall mid-playback (frozen audio clock, decoder/worker failure, audio-sink error) restarts at the last position up to 3 times, then fails with the last error. |
-| Backpressure | A full queue stops consumption and propagates pressure through bounded pipes; it does not accumulate a whole clip. Waiting for the consumer is not charged as decoder progress time. |
+| Backpressure | A full queue stops consumption and propagates pressure through bounded pipes; it does not accumulate a whole clip. Audio files read ahead until the appsrc queue is full, video until the presentation queue is, never until the playhead moves. Waiting for the consumer is not charged as decoder progress time. |
+| Audio clock | Until the sink first advances after a start, seek or resume, the playhead and video hold their position instead of leading on wall time, so a start-up or resume delay never snaps the playhead back; the 3-second stuck-clock recovery is armed only once the clock has run, leaving the 8-second progress watchdog as the bound for a sink that never starts. After that, a stalled clock lets video lead on wall time by at most 2 seconds. |
 | Paused | Keep position, frame and bounded queues for 30 seconds, then cancel the worker, drop PCM output/queues, and stop the polling timer. The displayed frame and position remain. Resume or a paused seek starts a new bounded decode. |
-| Close / selection change / destruction | Cancel promptly; pipe/queue waits check cancellation at 10–20-ms intervals. Kill/reap the renderer and its sandbox descendants. No join of a blocked pipe reader on the GTK thread. |
+| Close / selection change / destruction | Cancel promptly; pipe/queue waits check cancellation at 10–20-ms intervals. Kill/reap the renderer and its sandbox descendants, then wait for the sandbox's namespace (below). No join of a blocked pipe reader on the GTK thread. |
+| A file operation changes the file | Stop as on close, refuse new work on the file until the operation ends, then follow the selection again (below). |
 | End / malformed output / failure | Release the worker; malformed/truncated output, unavailable decoding and unsuccessful exit fail closed. No unsandboxed fallback. End-of-audio allows only sample-grid rounding (at most 22 µs), not a stalled clock. |
 
 The old batch-conversion wall timeout does not govern a paused real-time player.
 The limits do not promise instant startup, zero-latency seeking, or a total RAM
 plateau for every toolkit/driver.
+
+## Releasing files for file operations
+
+Every sandbox, pooled decode, media session and in-process read registers the
+file it reads, by the path it was given and by its real path, in
+`services/file_activity.rs` before it opens anything. Before a delete, Trash,
+move, rename, Replace, Merge, undo, restore, Empty Trash or unmount changes an
+item, the operation stops every registered read of the item and of anything
+inside it and waits, at most 2 seconds, until they have ended; reads that would
+start meanwhile fail with "This item is being changed by a file operation." On
+NFS, SMB and FUSE mounts a read still open there would leave the deleted file
+behind under a hidden name, keep its folder from being removed or renamed, or
+keep an unmounted filesystem alive. See
+[Files that are still open](filesystem-compatibility.md#files-that-are-still-open).
+
+- A preview drawer showing the item, or a file inside it, clears its target,
+  which stops playback, waveform and storyboard work. When the operation ends,
+  it shows the browser's focused entry again: the item at its new name after a
+  rename or move, the same file after a failed operation.
+- A thumbnail or metadata probe stopped or refused this way is not cached as a
+  failure; thumbnails still bound are asked for again when the operation ends.
+- bubblewrap reports its namespace's first process through `--info-fd`, on the
+  sandbox's otherwise unused stderr, and Strata opens a pidfd on it while the
+  sandbox runs. After every exit of bubblewrap, killed or normal, it waits on
+  that pidfd, at most 1 second, until the kernel has reaped the namespace and
+  dropped its bind of the user's file. With bubblewrap 0.12.0 the namespace was
+  still alive after nearly every exit; the wait costs about 2 ms after a kill and
+  0.1 ms after a normal exit. A sandbox's read counts as ended only after it.
 
 ## Isolation and hardware policy
 
@@ -552,7 +961,8 @@ change neither applies nor retires that patch kit or claims to fix all RAM growt
 The Ubuntu runtime-library alias problem tracked in
 [#806](https://github.com/lgse/strata/issues/806) was initially deferred. The sandbox
 now includes optional read-only binds of the BLAS/LAPACK alternatives used by
-media helpers on x86-64 and ARM64 Debian-family installations. This resolves their
+media helpers on x86-64 and ARM64 Debian-family installations, plus the GL
+dispatch alternatives (`glx--*`) every helper needs to start there. This resolves their
 runtime links without exposing the whole `/etc/alternatives` directory or the
 rest of `/etc`. Canonical pinned-container HEIC, MOV,
 and MP4 preview tests exercise actual sandbox startup and decoding; installed

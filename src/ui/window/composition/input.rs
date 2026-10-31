@@ -27,12 +27,12 @@ pub(super) fn install_mouse_history(root: &gtk::Box, view: &BrowserView) {
     root.add_controller(gesture);
 }
 
-pub(super) fn install_edit_cancellation(window: &gtk::ApplicationWindow, browser: &BrowserView) {
+pub(super) fn install_edit_cancellation(window: &impl IsA<gtk::Widget>, browser: &BrowserView) {
     browser.install_inline_edit_dismissal(window);
     install_location_cancellation(window, browser);
 }
 
-fn install_location_cancellation(window: &gtk::ApplicationWindow, browser: &BrowserView) {
+fn install_location_cancellation(window: &impl IsA<gtk::Widget>, browser: &BrowserView) {
     let view = browser.clone();
     let gesture = gtk::GestureClick::new();
     gesture.set_propagation_phase(gtk::PropagationPhase::Capture);

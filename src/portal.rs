@@ -30,6 +30,7 @@ use ashpd::{
 use futures_channel::oneshot;
 use gio::prelude::*;
 
+use crate::adapters::gio_close;
 use crate::model::{FileEntry, Location};
 
 const BACKEND_NAME: &str = "org.freedesktop.impl.portal.desktop.strata";
@@ -206,7 +207,7 @@ impl FileChooserBackend {
     }
 }
 
-pub(crate) fn run() -> glib::ExitCode {
+pub(crate) fn run(#[cfg(feature = "qa")] qa: Option<crate::qa::Session>) -> glib::ExitCode {
     glib::set_prgname(Some(CHOOSER_APPLICATION_ID));
     glib::set_application_name("Strata");
 
@@ -257,9 +258,8 @@ pub(crate) fn run() -> glib::ExitCode {
         return glib::ExitCode::FAILURE;
     }
     crate::metrics::initialize();
-    if let Err(error) = tracing_subscriber::fmt::try_init() {
-        eprintln!("Unable to initialize logging: {error}");
-    }
+    crate::logging::initialize();
+    crate::util::ui_thread::stalls::start();
     tracing::info!(
         version = FILE_CHOOSER_VERSION,
         "starting Strata FileChooser portal backend"
@@ -275,7 +275,13 @@ pub(crate) fn run() -> glib::ExitCode {
     if service_failed.load(Ordering::SeqCst) {
         return glib::ExitCode::FAILURE;
     }
+    #[cfg(feature = "qa")]
+    if let Some(session) = qa {
+        session.start_portal(&main_loop);
+    }
     main_loop.run();
+    crate::ui::preferences::flush_pending_folder_views();
+    crate::storage::writer::flush_at_exit();
     if service_failed.load(Ordering::SeqCst) {
         glib::ExitCode::FAILURE
     } else {
@@ -310,7 +316,7 @@ async fn open_request(
         token,
         parent_size_hint: None,
         title: request_title(title, "Open Files"),
-        accept_label: options.accept_label().unwrap_or("Open").to_owned(),
+        accept_label: default_accept_label(options.accept_label(), "Open"),
         modal: options.modal().unwrap_or(true),
         parent,
         initial_directory,
@@ -359,7 +365,7 @@ async fn save_file_request(
         token,
         parent_size_hint: None,
         title: request_title(title, "Save File"),
-        accept_label: options.accept_label().unwrap_or("Save").to_owned(),
+        accept_label: default_accept_label(options.accept_label(), "Save"),
         modal: options.modal().unwrap_or(true),
         parent,
         initial_directory,
@@ -402,7 +408,7 @@ async fn save_files_request(
         token,
         parent_size_hint: None,
         title: request_title(title, "Save Files"),
-        accept_label: options.accept_label().unwrap_or("Save").to_owned(),
+        accept_label: default_accept_label(options.accept_label(), "Save"),
         modal: options.modal().unwrap_or(true),
         parent,
         initial_directory,
@@ -413,12 +419,17 @@ async fn save_files_request(
     })
 }
 
+/// Caller titles stay verbatim; only Strata's own fallback is translated.
 fn request_title(title: &str, fallback: &str) -> String {
     if title.trim().is_empty() {
-        fallback.to_owned()
+        crate::i18n::tr(fallback)
     } else {
         title.to_owned()
     }
+}
+
+fn default_accept_label(label: Option<&str>, fallback: &str) -> String {
+    label.map_or_else(|| crate::i18n::tr(fallback), ToOwned::to_owned)
 }
 
 fn validate_common_request(
@@ -575,14 +586,14 @@ async fn accessible_folder(suggestion: Option<PathBuf>) -> ashpd::backend::Resul
 }
 
 async fn directory_is_accessible(path: &Path) -> bool {
-    gio::File::for_path(path)
-        .enumerate_children_future(
-            gio::FILE_ATTRIBUTE_STANDARD_TYPE,
-            gio::FileQueryInfoFlags::NONE,
-            glib::Priority::DEFAULT,
-        )
-        .await
-        .is_ok()
+    gio_close::enumerate_children(
+        &gio::File::for_path(path),
+        gio::FILE_ATTRIBUTE_STANDARD_TYPE,
+        gio::FileQueryInfoFlags::NONE,
+        None,
+    )
+    .await
+    .is_ok()
 }
 
 async fn save_file_suggestion(
@@ -759,12 +770,12 @@ pub(crate) async fn check_destinations(
     names: &[OsString],
 ) -> Result<DestinationCheck, String> {
     if !folder.is_absolute() || folder.as_os_str().as_bytes().len() > MAX_STRING_BYTES {
-        return Err("Choose an accessible local folder".into());
+        return Err(crate::i18n::tr("Choose an accessible local folder"));
     }
-    validate_save_filenames(names).map_err(|_| "Enter bounded, safe filenames".to_owned())?;
+    validate_save_filenames(names).map_err(|_| crate::i18n::tr("Enter bounded, safe filenames"))?;
     glib::future_with_timeout(PATH_IO_TIMEOUT, inspect_destinations(folder, names))
         .await
-        .map_err(|_| "Timed out while inspecting the destination".to_owned())?
+        .map_err(|_| crate::i18n::tr("Timed out while inspecting the destination"))?
 }
 
 async fn inspect_destinations(
@@ -772,7 +783,7 @@ async fn inspect_destinations(
     names: &[OsString],
 ) -> Result<DestinationCheck, String> {
     if !directory_is_accessible(folder).await {
-        return Err("Choose an accessible local folder".into());
+        return Err(crate::i18n::tr("Choose an accessible local folder"));
     }
     let mut paths = Vec::with_capacity(names.len());
     let mut existing_files = false;
@@ -788,10 +799,7 @@ async fn inspect_destinations(
             .await
         {
             Ok(info) if info.file_type() == gio::FileType::Directory => {
-                return Err(format!(
-                    "A folder named “{}” already exists",
-                    name.to_string_lossy()
-                ));
+                return Err(folder_exists_message(name));
             }
             Ok(info) if info.file_type() == gio::FileType::SymbolicLink => {
                 if file
@@ -803,16 +811,19 @@ async fn inspect_destinations(
                     .await
                     .is_ok_and(|target| target.file_type() == gio::FileType::Directory)
                 {
-                    return Err(format!(
-                        "A folder named “{}” already exists",
-                        name.to_string_lossy()
-                    ));
+                    return Err(folder_exists_message(name));
                 }
                 existing_files = true;
             }
             Ok(_) => existing_files = true,
             Err(error) if error.matches(gio::IOErrorEnum::NotFound) => {}
-            Err(error) => return Err(format!("Unable to inspect the destination: {error}")),
+            Err(error) => {
+                return Err(rust_i18n::t!(
+                    "Unable to inspect the destination: %{error}",
+                    error = error
+                )
+                .into_owned());
+            }
         }
         paths.push(path);
     }
@@ -820,4 +831,12 @@ async fn inspect_destinations(
         paths,
         existing_files,
     })
+}
+
+fn folder_exists_message(name: &OsStr) -> String {
+    rust_i18n::t!(
+        "A folder named “%{name}” already exists",
+        name = name.to_string_lossy()
+    )
+    .into_owned()
 }

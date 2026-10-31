@@ -26,10 +26,20 @@ impl BrowserView {
                 super::super::thumbnail::set_worker_limit(workers);
             },
         );
+        // The folder is part of the value, so a size read before navigating
+        // cannot hide a later change.
+        let weak = Rc::downgrade(&self.state);
         self.bind_view_preference(
             manager,
-            PreferenceManager::icons_thumbnail_size,
-            Self::set_icons_thumbnail_size,
+            move |manager| {
+                let location = weak.upgrade().and_then(|state| {
+                    let browser = &state.browser;
+                    browser.location_at(browser.active_depth()?)
+                });
+                let size = manager.icons_size_for(location.as_ref());
+                (location, size)
+            },
+            |view, (_, size)| view.apply_resolved_icons_size(size),
         );
         self.bind_view_preference(
             manager,
@@ -43,13 +53,27 @@ impl BrowserView {
         );
         self.bind_view_preference(
             manager,
+            PreferenceManager::columns_show_sizes,
+            |view, enabled| {
+                if enabled {
+                    view.state.request_columns_folder_counts();
+                }
+            },
+        );
+        self.bind_view_preference(
+            manager,
             PreferenceManager::group_by_type,
             Self::set_group_by_type,
         );
         self.bind_view_preference(
             manager,
-            PreferenceManager::auto_refresh_interval,
-            Self::set_auto_refresh_interval,
+            PreferenceManager::list_visible_columns,
+            |view, _| view.set_list_columns(),
+        );
+        self.bind_view_preference(
+            manager,
+            PreferenceManager::watch_network_folders,
+            Self::set_watch_network_folders,
         );
         self.bind_view_preference(
             manager,
@@ -91,6 +115,22 @@ impl BrowserView {
             |view, value| {
                 view.browser().apply_default_preferences(value);
             },
+        );
+        self.bind_view_preference(
+            manager,
+            PreferenceManager::remember_folder_views,
+            |view, remember| {
+                view.browser().set_folder_sorts(remember.then(|| {
+                    Rc::new(|location: &crate::model::Location, opened| {
+                        PreferenceManager::shared().resolve_folder_sort(location, opened)
+                    }) as crate::app::FolderSortResolver
+                }));
+            },
+        );
+        self.bind_view_preference(
+            manager,
+            PreferenceManager::folder_sorts_revision,
+            |view, _| view.browser().resync_column_sorts(),
         );
     }
 }

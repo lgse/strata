@@ -1,0 +1,31 @@
+{"scenario":"rename-and-undo-restores","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"file","vars":{"kind":"file"}},{"id":"folder","vars":{"kind":"folder"}}],"cost":{"columns-file":1.0,"columns-folder":0.9},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"F2 rename then Ctrl+Z restores original; only GUI undo-of-rename check, logic in app/browser/tests/undo.rs"}}
+{"fs":{"path":"archive/marker.txt","write":"keep\n"},"variants":["folder"]}
+{"select":{"entry":"readme.md"},"variants":["file"]}
+{"select_with_keyboard":"todo.txt","variants":["file"]}
+{"key":"F2","variants":["file"]}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus","variants":["file"]}
+{"remember":{"field":true},"as":"rename","variants":["file"]}
+{"key":"ctrl+a","variants":["file"]}
+{"wait":{"field":{"of":"rename","text":"todo.txt"}},"message":"the original name to appear","variants":["file"]}
+{"fs":{"path":"todo.txt","is":"file"},"timeout_ms":0,"variants":["file"]}
+{"select":{"entry":"readme.md"},"variants":["folder"]}
+{"select_with_keyboard":"archive","variants":["folder"]}
+{"wait":{"panes":{"ends_with":["archive"]}},"message":"the column the cursor mirrors","variants":["folder"]}
+{"key":"F2","variants":["folder"]}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus","variants":["folder"]}
+{"remember":{"field":true},"as":"rename","variants":["folder"]}
+{"wait":{"field":{"of":"rename","text":"archive"}},"message":"the original name to appear","variants":["folder"]}
+{"fs":{"path":"archive","is":"dir"},"timeout_ms":0,"variants":["folder"]}
+{"type":"undo-target"}
+{"wait":{"field":{"of":"rename","text":"undo-target"}},"message":"the replacement name"}
+{"key":"Return"}
+{"wait":{"absent":{"role":"text","name":"Rename"}},"message":"the name editor to close"}
+{"fs":{"path":"undo-target","exists":true},"message":"the renamed item"}
+{"wait":{"selected":["undo-target"],"dir":"$root"},"message":"the selection to become ['undo-target']"}
+{"wait":{"focused":"undo-target"},"message":"the committed rename cursor"}
+{"settle":{"entry":"undo-target","dir":"$root"}}
+{"key":"ctrl+z"}
+{"wait":{"all":[{"file":{"path":"$fixture/todo.txt","exists":true}},{"file":{"path":"$fixture/undo-target","exists":false}}]},"message":"Ctrl+Z to restore the original item","variants":["file"]}
+{"wait":{"all":[{"file":{"path":"$fixture/archive","exists":true}},{"file":{"path":"$fixture/undo-target","exists":false}}]},"message":"Ctrl+Z to restore the original item","variants":["folder"]}
+{"fs":{"path":"todo.txt","text":"todo\n"},"timeout_ms":0,"variants":["file"]}
+{"fs":{"path":"archive/marker.txt","text":"keep\n"},"timeout_ms":0,"variants":["folder"]}

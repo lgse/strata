@@ -15,6 +15,10 @@ use std::{
 
 use gtk::{glib, prelude::*};
 
+use super::keys::{
+    self,
+    bindings::{DOWN, ENTER, UP},
+};
 use crate::{
     app::Browser,
     model::{FileEntry, Location},
@@ -27,7 +31,7 @@ use collection::{
     CollectionBehavior, ResultCollection, ResultKind, build_collection, collection_entry,
 };
 
-pub(super) const SEARCH_RESULTS_LABEL: &str = "Search results";
+pub(crate) const SEARCH_RESULTS_LABEL: &str = "Search results";
 pub(super) type SearchSelectionChanged = Rc<dyn Fn(Vec<FileEntry>)>;
 pub(super) type SearchSelectionHandlers = Rc<RefCell<Vec<SearchSelectionChanged>>>;
 
@@ -45,7 +49,7 @@ pub(super) struct SearchCollectionOptions {
     pub(super) presentation: SearchPresentation,
     pub(super) multiple_selection: Rc<Cell<bool>>,
     pub(super) activate: Rc<dyn Fn(FileEntry)>,
-    pub(super) single_click: Rc<dyn Fn(FileEntry)>,
+    pub(super) pointer_click: Rc<dyn Fn(FileEntry, i32)>,
     pub(super) selection_changed: SearchSelectionChanged,
     pub(super) focus_items: Rc<dyn Fn()>,
     /// Runs after the displayed results (or the return to the directory) change.
@@ -53,7 +57,11 @@ pub(super) struct SearchCollectionOptions {
 }
 
 enum Publication {
-    Results(Vec<SearchItem>, bool),
+    Results {
+        items: Vec<SearchItem>,
+        recursive: bool,
+        keep_selection: bool,
+    },
     Directory,
 }
 
@@ -62,6 +70,7 @@ struct State {
     stack: gtk::Stack,
     status: gtk::Label,
     collection: ResultCollection,
+    enter: super::enter_target::EnterTarget,
     session: super::search_session::SearchSession,
     query_binding: RefCell<Option<super::browser::FilterQueryBinding>>,
     updating: Cell<bool>,
@@ -78,6 +87,14 @@ struct State {
 }
 
 impl State {
+    fn set_empty_state(&self, empty: bool) {
+        if empty {
+            self.status.set_valign(gtk::Align::Center);
+        } else {
+            self.status.set_valign(gtk::Align::Start);
+        }
+    }
+
     fn selected_entries(&self) -> Vec<FileEntry> {
         self.collection
             .selected_positions()
@@ -112,7 +129,11 @@ impl State {
         self.publishing.set(false);
         if let Some(publication) = self.pending_update.take() {
             match publication {
-                Publication::Results(items, recursive) => update_results(self, items, recursive),
+                Publication::Results {
+                    items,
+                    recursive,
+                    keep_selection,
+                } => update_results(self, items, recursive, keep_selection),
                 Publication::Directory => show_directory_listing(self),
             }
         }
@@ -140,6 +161,13 @@ impl InlineSearch {
         (state.stack.visible_child_name().as_deref() == Some("search"))
             .then(|| self.marquee.clone())
             .flatten()
+    }
+
+    /// The view that shows filter results in place of the listing, shown or not.
+    pub(in crate::ui) fn result_collection_view(&self) -> Option<gtk::Widget> {
+        self.state
+            .as_ref()
+            .map(|state| state.collection.view.clone())
     }
 
     pub(in crate::ui) fn has_item_focus(&self, focused: Option<&gtk::Widget>) -> bool {
@@ -278,13 +306,10 @@ impl InlineSearch {
             .collect()
     }
 
-    pub(in crate::ui) fn visit_result_name_labels(&self, visit: &impl Fn(&gtk::Widget)) {
-        if let Some(state) = self.showing_results() {
-            for bound in state.collection.bound.borrow().iter() {
-                if let Some(label) = bound.rename_label.upgrade() {
-                    visit(&label);
-                }
-            }
+    pub(in crate::ui) fn refresh_result_highlights(&self, find: Option<&str>) {
+        if let Some(state) = self.state.as_ref() {
+            state.collection.highlights.borrow_mut().find = find.map(str::to_owned);
+            state.collection.refresh_highlights();
         }
     }
 
@@ -295,7 +320,12 @@ impl InlineSearch {
         if state.stack.visible_child_name().as_deref() != Some("search") {
             return false;
         }
-        state.collection.view.grab_focus()
+        if let Some(position) = state.collection.current_position() {
+            state.collection.restore_focus(position);
+            true
+        } else {
+            state.collection.view.grab_focus()
+        }
     }
 
     pub(super) fn selected_anchor(&self) -> Option<(gtk::Widget, FileEntry)> {
@@ -366,7 +396,7 @@ impl InlineSearch {
             .filter(|item| browser.allows_entry(&super::browser::search_result_entry(item)))
             .cloned()
             .collect();
-        update_results(state, items, state.recursive.get());
+        update_results(state, items, state.recursive.get(), true);
         if let Some(entry) = state.entry.upgrade() {
             handle.query(entry.text().trim());
         }
@@ -379,16 +409,32 @@ impl InlineSearch {
         if !state.session.is_active() {
             return;
         }
-        let pruned: Vec<_> = state
+        let paths = state
             .collection
             .items()
-            .iter()
-            .filter(|item| search_path_present(&item.path))
-            .cloned()
+            .into_iter()
+            .map(|item| item.path)
             .collect();
-        if pruned.len() != state.collection.sorted.n_items() as usize {
-            update_results(state, pruned, state.recursive.get());
-        }
+        let weak = Rc::downgrade(state);
+        state.session.prune_missing(paths, move |gone| {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let pruned: Vec<_> = state
+                .collection
+                .items()
+                .into_iter()
+                .filter(|item| !gone.contains(&item.path))
+                .collect();
+            if pruned.len() != state.collection.sorted.n_items() as usize {
+                if pruned.is_empty() {
+                    state.status.set_text(&crate::i18n::tr("No matching files"));
+                    state.set_empty_state(true);
+                    state.status.set_visible(true);
+                }
+                update_results(&state, pruned, state.recursive.get(), true);
+            }
+        });
     }
 
     pub(in crate::ui) fn set_icons_max_columns(&self, max_columns: u32) {
@@ -457,6 +503,11 @@ impl InlineSearch {
         collection.item(collection.current_position()?)
     }
 
+    pub(in crate::ui) fn awaiting_results(&self) -> bool {
+        self.showing_results()
+            .is_some_and(|state| state.session.awaiting_results())
+    }
+
     pub(in crate::ui) fn results_view(&self) -> Option<gtk::Widget> {
         Some(self.showing_results()?.collection.view.clone())
     }
@@ -517,12 +568,14 @@ impl InlineSearch {
 
 fn show_directory_listing(state: &State) {
     state.session.cancel();
+    state.enter.clear();
     if state.updating.get() || state.publishing.get() {
         state.pending_update.replace(Some(Publication::Directory));
         return;
     }
     state.updating.set(true);
     state.collection.clear();
+    state.set_empty_state(false);
     state.stack.set_visible_child_name("files");
     state.updating.set(false);
     state.emit_selection_changed();
@@ -535,22 +588,9 @@ fn install_marquee(
     overlay: &gtk::Overlay,
     allow_drag: Rc<Cell<bool>>,
 ) -> super::marquee::Marquee {
-    let weak = Rc::downgrade(state);
     let targets = Rc::new(RefCell::new(vec![super::marquee::MarqueeTarget {
         selection: state.collection.selection.clone(),
-        visit_items: Rc::new(move |visit| {
-            let Some(state) = weak.upgrade() else {
-                return;
-            };
-            state.collection.bound.borrow_mut().retain(|bound| {
-                let (Some(item), Some(widget)) = (bound.item.upgrade(), bound.widget.upgrade())
-                else {
-                    return false;
-                };
-                visit(item.position(), &widget);
-                true
-            });
-        }),
+        visit_items: state.collection.visit_bound(),
     }]));
     let weak = Rc::downgrade(state);
     super::marquee::install(super::marquee::MarqueeSetup {
@@ -589,18 +629,22 @@ pub(super) fn wrap(
         presentation,
         multiple_selection,
         activate,
-        single_click,
+        pointer_click,
         selection_changed,
         focus_items,
         results_changed,
     } = options;
     let stack = gtk::Stack::builder().hexpand(true).vexpand(true).build();
     stack.add_named(content, Some("files"));
-    let results = gtk::Box::new(gtk::Orientation::Vertical, 4);
-    let status = gtk::Label::new(None);
-    status.add_css_class("status-message");
-    results.append(&status);
     let recursive = Rc::new(Cell::new(false));
+    let weak_entry = entry.downgrade();
+    let focus_entry = Rc::new(move || {
+        weak_entry
+            .upgrade()
+            .filter(|entry| entry.is_mapped())
+            .is_some_and(|entry| entry.grab_focus_without_selecting())
+    });
+    let enter = super::enter_target::EnterTarget::new(entry);
     let (collection, scroll, overlay) = build_collection(
         presentation,
         recursive.clone(),
@@ -608,17 +652,29 @@ pub(super) fn wrap(
         CollectionBehavior {
             multiple_selection: multiple_selection.clone(),
             activate: activate.clone(),
-            single_click,
+            pointer_click,
             focus_items,
+            focus_entry,
+            enter: enter.clone(),
         },
     );
-    results.append(&overlay);
-    stack.add_named(&results, Some("search"));
+    let status = gtk::Label::new(None);
+    status.add_css_class("status-message");
+    status.set_wrap(true);
+    status.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    status.set_justify(gtk::Justification::Center);
+    status.set_halign(gtk::Align::Center);
+    status.set_valign(gtk::Align::Center);
+    status.set_can_target(false);
+    overlay.add_overlay(&status);
+    overlay.set_measure_overlay(&status, false);
+    stack.add_named(&overlay, Some("search"));
     let state = Rc::new(State {
         entry: entry.downgrade(),
         stack: stack.clone(),
         status,
         collection,
+        enter,
         session: super::search_session::SearchSession::default(),
         query_binding: RefCell::new(None),
         updating: Cell::new(false),
@@ -634,6 +690,18 @@ pub(super) fn wrap(
         results_changed,
     });
     let weak_state = Rc::downgrade(&state);
+    state.enter.attach(
+        &state.collection.view,
+        &state.collection.selection,
+        &scroll,
+        state.collection.visit_bound(),
+        move || {
+            weak_state
+                .upgrade()
+                .is_some_and(|state| state.updating.get() || state.collection.reconciling.get())
+        },
+    );
+    let weak_state = Rc::downgrade(&state);
     state
         .collection
         .selection
@@ -647,35 +715,35 @@ pub(super) fn wrap(
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let weak = Rc::downgrade(&state);
-    keys.connect_key_pressed(move |_, key, _, modifiers| {
+    keys::on_press(&keys, move |_, press| {
         let Some(state) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
-        if !state.session.is_active()
-            || modifiers.intersects(
-                gtk::gdk::ModifierType::CONTROL_MASK
-                    | gtk::gdk::ModifierType::ALT_MASK
-                    | gtk::gdk::ModifierType::SUPER_MASK
-                    | gtk::gdk::ModifierType::SHIFT_MASK,
-            )
-        {
+        if !state.session.is_active() {
             return glib::Propagation::Proceed;
         }
-        let current = state.collection.current_position();
-        if key == gtk::gdk::Key::Up {
+        if press.is(UP) {
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::Down {
+        if press.is(DOWN) {
+            let current = state
+                .collection
+                .current_position()
+                .filter(|_| !state.enter.offers_top());
             if let Some(window) = state.stack.root().and_downcast::<gtk::Window>() {
                 window.set_focus_visible(true);
             }
             state.collection.focus(current.unwrap_or(0), true);
             return glib::Propagation::Stop;
         }
-        if matches!(key, gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter)
-            && state.activate(current.unwrap_or(0))
-        {
-            return glib::Propagation::Stop;
+        if press.is(ENTER) {
+            let current = state
+                .collection
+                .current_position()
+                .filter(|_| !state.enter.offers_top());
+            if state.activate(current.unwrap_or(0)) {
+                return glib::Propagation::Stop;
+            }
         }
         glib::Propagation::Proceed
     });
@@ -684,17 +752,11 @@ pub(super) fn wrap(
     let return_to_filter = gtk::EventControllerKey::new();
     return_to_filter.set_propagation_phase(gtk::PropagationPhase::Capture);
     let weak = Rc::downgrade(&state);
-    return_to_filter.connect_key_pressed(move |_, key, _, modifiers| {
+    keys::on_press(&return_to_filter, move |_, press| {
         let Some(state) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
-        if key != gtk::gdk::Key::Up
-            || modifiers.intersects(
-                gtk::gdk::ModifierType::CONTROL_MASK
-                    | gtk::gdk::ModifierType::SHIFT_MASK
-                    | gtk::gdk::ModifierType::ALT_MASK
-                    | gtk::gdk::ModifierType::SUPER_MASK,
-            )
+        if !press.untyped().is(UP)
             || !state
                 .collection
                 .current_position()
@@ -723,10 +785,9 @@ pub(super) fn wrap(
         marquee: Some(marquee),
     };
     let query_state = state.clone();
-    let binding = super::browser::bind_filter_query(
-        entry,
-        &state.session,
-        move |text, is_recursive, restart| {
+    let binding =
+        super::browser::bind_filter_query(entry, &state.session, move |text, scope, restart| {
+            let is_recursive = scope.recursive();
             let state = &query_state;
             state.recursive.set(is_recursive);
             recursive.set(is_recursive);
@@ -741,22 +802,27 @@ pub(super) fn wrap(
             state.stack.set_visible_child_name("search");
             if restart {
                 // As in Columns, a restarted query drops the previous query's hits.
-                update_results(state, Vec::new(), is_recursive);
+                state.enter.restart();
+                update_results(state, Vec::new(), is_recursive, false);
             }
             if state.collection.sorted.n_items() == 0 {
-                state.status.set_text("Searching…");
+                state.status.set_text(&crate::i18n::tr("Searching…"));
+                state.set_empty_state(true);
                 state.status.set_visible(true);
             }
-            let show_hidden = weak_browser
-                .upgrade()
-                .is_some_and(|browser| browser.preferences().show_hidden);
+            let (show_hidden, within) = weak_browser.upgrade().map_or((false, None), |browser| {
+                (browser.preferences().show_hidden, browser.confined_to())
+            });
             let weak = Rc::downgrade(state);
             let browser = weak_browser.clone();
+            let search_root = root.clone();
             state.session.update(
                 super::search_session::SearchInput {
                     root,
                     show_hidden,
-                    recursive: is_recursive,
+                    scope,
+                    refused: Default::default(),
+                    within,
                 },
                 query,
                 restart,
@@ -770,38 +836,57 @@ pub(super) fn wrap(
                         &batch.query,
                         batch.items,
                         batch.has_more,
+                        batch.candidates,
                     );
+                    let is_empty = items.is_empty();
+                    state.set_empty_state(is_empty);
                     state
                         .status
-                        .set_visible(items.is_empty() || batch.coverage.is_partial());
+                        .set_visible(is_empty || batch.coverage.is_partial());
                     state.status.set_text(&if batch.coverage.is_partial() {
                         batch.coverage.message()
                     } else if batch.indexing {
-                        "Searching…".to_owned()
+                        crate::i18n::tr("Searching…")
                     } else {
-                        "No matching files".to_owned()
+                        crate::i18n::tr("No matching files")
                     });
-                    update_results(&state, items, state.recursive.get());
+                    state.collection.highlights.borrow_mut().hits = if scope.fuzzy() {
+                        super::browser::find::search_hit_ranges(&batch.query, &search_root, &items)
+                    } else {
+                        Default::default()
+                    };
+                    let keep_selection = !state.enter.show_query(&batch.query);
+                    update_results(&state, items, state.recursive.get(), keep_selection);
                 }),
             );
-        },
-    );
+        });
     state.query_binding.replace(Some(binding));
     search
 }
 
-fn update_results(state: &State, items: Vec<SearchItem>, recursive: bool) {
+fn update_results(state: &State, items: Vec<SearchItem>, recursive: bool, keep_selection: bool) {
     if state.detached.get() {
         return;
     }
     if state.updating.get() || state.publishing.get() {
-        state
-            .pending_update
-            .replace(Some(Publication::Results(items, recursive)));
+        // A deferred new query still drops the old selection when a refresh replaces it.
+        let keep_selection = keep_selection
+            && !matches!(
+                *state.pending_update.borrow(),
+                Some(Publication::Results {
+                    keep_selection: false,
+                    ..
+                })
+            );
+        state.pending_update.replace(Some(Publication::Results {
+            items,
+            recursive,
+            keep_selection,
+        }));
         return;
     }
     state.updating.set(true);
-    state.collection.update(&items, recursive);
+    state.collection.update(&items, recursive, keep_selection);
     state.updating.set(false);
     state.emit_selection_changed();
     (state.results_changed)();
@@ -813,14 +898,11 @@ pub(super) fn eligible_results(
     query: &str,
     items: Vec<SearchItem>,
     has_more: bool,
+    candidates: usize,
 ) -> Vec<SearchItem> {
-    let candidates = items.len();
     let items = items
         .into_iter()
-        .filter(|item| {
-            browser.allows_entry(&super::browser::search_result_entry(item))
-                && search_path_present(&item.path)
-        })
+        .filter(|item| browser.allows_entry(&super::browser::search_result_entry(item)))
         .take(crate::services::SEARCH_RESULT_LIMIT)
         .collect::<Vec<_>>();
     // Type/folder predicates run on GTK's thread, after ranking but before the display cap.
@@ -829,12 +911,4 @@ pub(super) fn eligible_results(
         handle.query_candidates(query, candidates.saturating_mul(2));
     }
     items
-}
-
-pub(super) fn search_path_present(path: &Path) -> bool {
-    // Preserve dangling symlinks and uncertain paths; only confirmed absence removes a hit.
-    path.symlink_metadata().map_or_else(
-        |error| error.kind() != std::io::ErrorKind::NotFound,
-        |_| true,
-    )
 }

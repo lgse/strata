@@ -1,0 +1,37 @@
+{"scenario":"return-restores-nested-scroll","modes":["icons","list"],"layout":"us","mutation":null,"known_bug":null,"tree":{"folder-{000..059}":{}},"quality":{"impact":2,"coverage":4,"criticality":4,"diagnostic":3,"score":38,"note":"Alt+Left and Alt+Up restore nested viewport, selection and cursor after pointer and keyboard entry; alt-up-and-history never checks scroll"}}
+{"key":"End"}
+{"wait":{"focused":"folder-059"},"message":"End to scroll the listing to its last folder"}
+{"note":"middle_visible","unless_first":"folder-000","until_found":true,"message":"a scrolled directory viewport","as":"first"}
+{"fs":{"path":"$first/folder-{000..059}","mkdir":true}}
+{"remember":{"entry":"$first"},"as":"first-entered"}
+{"click":{"entry":"$first"},"count":2}
+{"wait":{"directory":"$first"},"message":"a double-click to open '$first'"}
+{"wait":{"entry":"folder-000","dir":"$first"},"message":"the nested folders to list"}
+{"key":"End"}
+{"wait":{"focused":"folder-059"},"message":"End to scroll the nested listing to its last folder"}
+{"note":"middle_visible","unless_first":"folder-000","until_found":true,"message":"a scrolled nested viewport","as":"second"}
+{"select":{"entry":"$second"}}
+{"wait":{"focused":"$second"},"message":"keyboard focus to reach '$second'"}
+{"remember":{"entry":"$second"},"as":"second-entered"}
+{"key":"Return"}
+{"wait":{"directory":"$second"},"message":"Return to open '$second'"}
+{"key":"alt+Left"}
+{"wait":{"directory":"$first"},"message":"Alt+Left to go back to '$first'"}
+{"wait":{"selected":["$second"]},"message":"Alt+Left to restore the selection ['$second']"}
+{"wait":{"focused":"$second"},"message":"Alt+Left to restore the keyboard cursor on '$second'"}
+{"wait":{"moved":{"target":{"entry":"$second"},"direction":"none","since":"second-entered","y_within":2}},"message":"Alt+Left must restore the viewport, not just reveal the selection"}
+{"increment":"second","as":"second_next"}
+{"key":"Right","modes":["icons"]}
+{"key":"Down","modes":["list"]}
+{"wait":{"focused":"$second_next"},"message":"the next key to move on from the restored cursor to '$second_next'"}
+{"wait":{"selected":["$second_next"]},"message":"the next key to select '$second_next'"}
+{"key":"alt+Up"}
+{"wait":{"directory":"$root"},"message":"Alt+Up to go up to the fixture"}
+{"wait":{"selected":["$first"]},"message":"Alt+Up to restore the selection ['$first']"}
+{"wait":{"focused":"$first"},"message":"Alt+Up to restore the keyboard cursor on '$first'"}
+{"wait":{"moved":{"target":{"entry":"$first"},"direction":"none","since":"first-entered","y_within":2}},"message":"Alt+Up must restore the viewport, not just reveal the selection"}
+{"increment":"first","as":"first_next"}
+{"key":"Right","modes":["icons"]}
+{"key":"Down","modes":["list"]}
+{"wait":{"focused":"$first_next"},"message":"the next key to move on from the restored cursor to '$first_next'"}
+{"wait":{"selected":["$first_next"]},"message":"the next key to select '$first_next'"}

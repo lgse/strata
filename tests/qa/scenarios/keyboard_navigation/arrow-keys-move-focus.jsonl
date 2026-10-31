@@ -1,0 +1,10 @@
+{"scenario":"arrow-keys-move-focus","modes":["columns"],"prefs":{"type_to_search":false},"layout":"us","mutation":"keyboard-navigation","known_bug":null,"variants":[{"id":"arrows","vars":{"layout":"us","next":"Down","previous":"Up","selected":"todo.txt"}},{"id":"hjkl-tenxer-ru","prefs":{"tenxer_mode":true},"vars":{"layout":"ru","next":"j","previous":"k","selected":"readme.md"}}],"cost":{"columns-arrows":0.5,"columns-hjkl-tenxer-ru":0.5},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":4,"score":38,"note":"Focus/selection move by arrows in Columns and hjkl under ru layout in tenxer; Icons/List arrows and us hjkl are in arrow-keys-move-focus-remaining"}}
+{"expect":{"entries":["archive","documents","pictures","readme.md","todo.txt"]}}
+{"select":{"entry":"readme.md"}}
+{"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
+{"layout":"$layout"}
+{"key":"$next"}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'"}
+{"wait":{"selected":["$selected"]},"message":"the selection to be $selected after the move"}
+{"key":"$previous"}
+{"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}

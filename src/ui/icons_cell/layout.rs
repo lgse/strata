@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use std::cell::RefCell;
+
 use gtk::{glib, graphene, gsk, prelude::*, subclass::prelude::*};
 
 use super::{
@@ -61,8 +63,8 @@ fn preferred_caption_width(label: &gtk::Inscription) -> i32 {
     (chars + gtk::pango::SCALE - 1) / gtk::pango::SCALE + label_insets(label).0
 }
 
-fn caption_extent(label: &gtk::Inscription, width: i32) -> (i32, i32) {
-    let (horizontal, vertical) = label_insets(label);
+fn caption_layout(label: &gtk::Inscription, width: i32) -> gtk::pango::Layout {
+    let horizontal = label_insets(label).0;
     let layout = label.create_pango_layout(label.text().as_deref());
     layout.set_attributes(label.attributes().as_ref());
     layout.set_width(
@@ -74,11 +76,22 @@ fn caption_extent(label: &gtk::Inscription, width: i32) -> (i32, i32) {
     layout.set_alignment(gtk::pango::Alignment::Center);
     layout.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     layout.set_height(-ICONS_CARD_LABEL_LINES);
-    let (text_width, text_height) = layout.pixel_size();
+    layout
+}
+
+fn caption_extent(label: &gtk::Inscription, width: i32) -> (i32, i32) {
+    let (horizontal, vertical) = label_insets(label);
+    let (text_width, text_height) = caption_layout(label, width).pixel_size();
     (text_width + horizontal, text_height + vertical)
 }
 
-fn reserved_caption_height(label: &gtk::Inscription, width: i32) -> i32 {
+pub(super) fn caption_truncated(label: &gtk::Inscription) -> bool {
+    label
+        .parent()
+        .is_some_and(|caption| caption_layout(label, caption.width()).is_ellipsized())
+}
+
+fn sample_caption_height(label: &gtk::Inscription) -> i32 {
     // Measure independently of visibility so entering rename cannot shrink the row.
     let lines = std::iter::repeat_n("M", ICONS_CARD_LABEL_LINES as usize)
         .collect::<Vec<_>>()
@@ -87,7 +100,30 @@ fn reserved_caption_height(label: &gtk::Inscription, width: i32) -> i32 {
     layout.set_attributes(label.attributes().as_ref());
     (layout.pixel_size().1 + label_insets(label).1)
         .max(ICONS_CARD_LABEL_LINE_PX * ICONS_CARD_LABEL_LINES)
-        .max(caption_extent(label, width).1)
+}
+
+#[derive(PartialEq)]
+struct CaptionInputs {
+    serial: u32,
+    insets: (i32, i32),
+    attributes: Option<gtk::pango::AttrList>,
+}
+
+impl CaptionInputs {
+    fn of(label: &gtk::Inscription) -> Self {
+        Self {
+            serial: label.pango_context().serial(),
+            insets: label_insets(label),
+            attributes: label.attributes(),
+        }
+    }
+}
+
+struct MeasuredCaption {
+    inputs: CaptionInputs,
+    text: Option<glib::GString>,
+    width: i32,
+    extent: (i32, i32),
 }
 
 mod imp {
@@ -158,7 +194,48 @@ mod imp {
     }
 
     #[derive(Default)]
-    pub struct CaptionLayout;
+    pub struct CaptionLayout {
+        sample_height: RefCell<Option<(CaptionInputs, i32)>>,
+        measured: RefCell<Option<MeasuredCaption>>,
+    }
+
+    impl CaptionLayout {
+        fn reserved_height(&self, label: &gtk::Inscription, width: i32) -> i32 {
+            let inputs = CaptionInputs::of(label);
+            let cached = self
+                .sample_height
+                .borrow()
+                .as_ref()
+                .filter(|(cached, _)| *cached == inputs)
+                .map(|(_, height)| *height);
+            let sample = cached.unwrap_or_else(|| {
+                let height = sample_caption_height(label);
+                self.sample_height.replace(Some((inputs, height)));
+                height
+            });
+            sample.max(self.extent(label, width).1)
+        }
+
+        fn extent(&self, label: &gtk::Inscription, width: i32) -> (i32, i32) {
+            let inputs = CaptionInputs::of(label);
+            let text = label.text();
+            if let Some(measured) = self.measured.borrow().as_ref()
+                && measured.width == width
+                && measured.text == text
+                && measured.inputs == inputs
+            {
+                return measured.extent;
+            }
+            let extent = caption_extent(label, width);
+            self.measured.replace(Some(MeasuredCaption {
+                inputs,
+                text,
+                width,
+                extent,
+            }));
+            extent
+        }
+    }
 
     #[glib::object_subclass]
     impl ObjectSubclass for CaptionLayout {
@@ -195,7 +272,8 @@ mod imp {
             // The single-line label reserves its font height even before details arrive.
             let details_height =
                 caption_details(widget).map_or(0, |details| details.measure(orientation, width).1);
-            let content_height = reserved_caption_height(&label, width)
+            let content_height = self
+                .reserved_height(&label, width)
                 .max(caption_editor(widget).map_or(0, |field| field.measure(orientation, width).1));
             let height = content_height + details_height;
             (height, height, -1, -1)
@@ -207,7 +285,7 @@ mod imp {
             };
             let mut current_y = 0;
             if label.is_visible() {
-                let (caption_width, caption_height) = caption_extent(&label, width);
+                let (caption_width, caption_height) = self.extent(&label, width);
                 let caption_width = caption_width.min(width);
                 let caption_height = caption_height.min(height);
                 label.allocate(

@@ -5,6 +5,8 @@ mod tests;
 
 use gio::prelude::*;
 
+use std::{collections::HashSet, path::Path};
+
 use crate::model::Location;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -175,15 +177,50 @@ fn cross_volume_commit(input: DropActionInput) -> DropCommit {
 }
 
 pub(crate) fn transferable_drop_sources(dest: &Location, sources: &[Location]) -> Vec<Location> {
+    if sources.is_empty() {
+        return Vec::new();
+    }
+
+    if let Some(dest_path) = dest.native_path()
+        && sources.iter().all(|source| source.native_path().is_some())
+    {
+        let first_parent = sources[0].native_path().and_then(Path::parent);
+        if let Some(first_parent) = first_parent
+            && sources
+                .iter()
+                .all(|source| source.native_path().and_then(Path::parent) == Some(first_parent))
+        {
+            if dest_path == first_parent {
+                return Vec::new();
+            }
+            if !dest_path.starts_with(first_parent) {
+                return sources.to_vec();
+            }
+        }
+
+        let ancestors: HashSet<&Path> = dest_path.ancestors().skip(1).collect();
+        return sources
+            .iter()
+            .filter(|location| {
+                location.native_path().is_some_and(|source_path| {
+                    source_path != dest_path
+                        && source_path.parent() != Some(dest_path)
+                        && !ancestors.contains(source_path)
+                })
+            })
+            .cloned()
+            .collect();
+    }
+
     let destination = gio_file(dest);
     sources
         .iter()
         .filter(|location| {
             let source = gio_file(location);
-            let Some(name) = source.basename() else {
+            let Some(name) = location.file_name() else {
                 return false;
             };
-            let target = destination.child(name);
+            let target = destination.child(&name);
             !source.equal(&target)
                 && !source.equal(&destination)
                 && !destination.has_prefix(&source)

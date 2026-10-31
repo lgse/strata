@@ -2,6 +2,7 @@
 # Imported Tinted Base16 palettes use this semantic mapping:
 # 00 background, 01 surface, 05 text, 0D accent, 08 danger,
 # 02 muted/highlight, 03 border, and 04 dim text.
+# Foreground overrides for readability are commented in place; see docs/themes.md.
 
 # Syntax: 0E keywords, 0B strings, 09 constants, 0A types, 0C preprocessor.
 # Catppuccin uses catppuccin-mocha; Tokyo Night uses tokyo-night-dark.
@@ -1128,13 +1129,13 @@ id = "material-lighter"
 name = "Material Lighter"
 background = "#FAFAFA"
 surface = "#E7EAEC"
-text = "#80CBC4"
+text = "#455A64"      # upstream base05 #80CBC4 is 1.79:1 on the background
 accent = "#6182B8"
 danger = "#FF5370"
 muted = "#CCEAE7"
 highlight = "#CCEAE7"
 border = "#CCD7DA"
-dim_text = "#8796B0"
+dim_text = "#607D8B"  # upstream base04 #8796B0 is 2.87:1; >= 3:1 on background, surface and highlight, dimmer than text
 syntax_keyword = "#7c4dff"
 syntax_string = "#91b859"
 syntax_constant = "#f76d47"
@@ -1164,7 +1165,7 @@ id = "material-vivid"
 name = "Material Vivid"
 background = "#202124"
 surface = "#27292c"
-text = "#80868b"
+text = "#9e9e9e"  # upstream base06; base05 #80868b is 4.37:1 on the background
 accent = "#2196f3"
 danger = "#f44336"
 muted = "#323639"

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use gtk::gdk;
 use gtk::subclass::prelude::ObjectSubclassIsExt;
 use std::time::Instant;
 
@@ -101,6 +102,60 @@ fn enter_in_a_single_line_field_invokes_the_primary_action() {
 }
 
 #[test]
+fn escape_closes_with_any_modifiers_held_and_other_keys_pass_through() {
+    crate::test_support::gtk_test(
+        "ui::modal::tests::escape_closes_with_any_modifiers_held_and_other_keys_pass_through",
+        || {
+            let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            let closed = Rc::new(Cell::new(false));
+            let close = closed.clone();
+            close_on_escape(&layer, move || close.set(true));
+            let controllers = layer.observe_controllers();
+            let keys = (0..controllers.n_items())
+                .find_map(|index| {
+                    controllers
+                        .item(index)
+                        .and_downcast::<gtk::EventControllerKey>()
+                })
+                .expect("key controller on the layer");
+            let every_modifier = gdk::ModifierType::CONTROL_MASK
+                | gdk::ModifierType::ALT_MASK
+                | gdk::ModifierType::SHIFT_MASK
+                | gdk::ModifierType::SUPER_MASK;
+            // A table that replaces Escape with an alternate keeps Escape as a fallback.
+            for alternate in [false, true] {
+                let _keymap = alternate.then(|| {
+                    use crate::ui::keys::{Binding, Keymap, Map, bindings::ESCAPE, use_keymap};
+                    use_keymap(Keymap::defaults().with(
+                        Map::Default,
+                        ESCAPE,
+                        vec![Binding::ctrl(gdk::Key::bracketleft)],
+                    ))
+                });
+                for (key, modifiers, closes) in [
+                    (gdk::Key::Escape, gdk::ModifierType::empty(), true),
+                    (gdk::Key::Escape, every_modifier, true),
+                    (gdk::Key::Return, gdk::ModifierType::empty(), false),
+                    (
+                        gdk::Key::bracketleft,
+                        gdk::ModifierType::CONTROL_MASK,
+                        alternate,
+                    ),
+                ] {
+                    let handled =
+                        keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]);
+                    assert_eq!(
+                        (handled, closed.replace(false)),
+                        (closes, closes),
+                        "{key:?} with {modifiers:?}, alternate={alternate}"
+                    );
+                }
+            }
+        },
+    );
+}
+
+#[test]
 fn modal_focus_restoration_preserves_explicit_action_focus() {
     crate::test_support::gtk_test(
         "ui::modal::tests::modal_focus_restoration_preserves_explicit_action_focus",
@@ -141,6 +196,249 @@ fn modal_focus_restoration_preserves_explicit_action_focus() {
             assert!(!origin.has_focus());
             assert_eq!(unwanted_restores.get(), 0);
             window.destroy();
+        },
+    );
+}
+
+struct FocusFixture {
+    window: gtk::Window,
+    overlay: gtk::Overlay,
+    origin: gtk::Button,
+    target: gtk::Button,
+    fallbacks: Rc<Cell<usize>>,
+}
+
+impl FocusFixture {
+    fn new() -> Self {
+        let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let origin = gtk::Button::with_label("Origin");
+        let target = gtk::Button::with_label("File list");
+        body.append(&origin);
+        body.append(&target);
+        let overlay = gtk::Overlay::new();
+        overlay.set_child(Some(&body));
+        let window = gtk::Window::builder().child(&overlay).build();
+        crate::ui::window::install_modal_focus_trap(&window);
+        let fallbacks = Rc::new(Cell::new(0));
+        let counted = fallbacks.clone();
+        let fallback_target = target.clone();
+        set_modal_focus_fallback(
+            &window,
+            Rc::new(move || {
+                counted.set(counted.get() + 1);
+                fallback_target.grab_focus();
+            }),
+        );
+        window.present();
+        assert!(origin.grab_focus());
+        Self {
+            window,
+            overlay,
+            origin,
+            target,
+            fallbacks,
+        }
+    }
+
+    fn assert_focus(&self, expected: &gtk::Button, fallbacks: usize, case: &str) {
+        let focus = gtk::prelude::RootExt::focus(&self.window).and_downcast::<gtk::Button>();
+        assert_eq!(
+            focus.as_ref(),
+            Some(expected),
+            "{case}: focus is on {:?}",
+            focus.as_ref().and_then(gtk::Button::label)
+        );
+        assert_eq!(self.fallbacks.get(), fallbacks, "{case}: fallback calls");
+    }
+
+    /// GTK hides focus rings on the release of a key whose press left the window
+    /// without focus, as a dismissal does when it disables the focused control.
+    fn release_dismissal_key(&self) {
+        self.window.set_focus_visible(false);
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Closing {
+    OriginOnScreen,
+    OriginHidden,
+    FocusTakenMeanwhile,
+    ChainedOnListingDialog,
+}
+
+#[test]
+fn dismissed_modal_restores_the_origin_or_falls_back_to_the_window_target() {
+    crate::test_support::gtk_test(
+        "ui::modal::tests::dismissed_modal_restores_the_origin_or_falls_back_to_the_window_target",
+        || {
+            for closing in [
+                Closing::OriginOnScreen,
+                Closing::OriginHidden,
+                Closing::FocusTakenMeanwhile,
+                Closing::ChainedOnListingDialog,
+            ] {
+                let fixture = FocusFixture::new();
+                let elsewhere = gtk::Button::with_label("Elsewhere");
+                fixture
+                    .origin
+                    .parent()
+                    .and_downcast::<gtk::Box>()
+                    .expect("fixture body")
+                    .append(&elsewhere);
+                let listing = matches!(closing, Closing::ChainedOnListingDialog).then(|| {
+                    let progress =
+                        modal_layer(&gtk::Label::new(None), &fixture.overlay, None, None);
+                    remember_modal_focus_for_listing(&progress, &fixture.overlay);
+                    fixture.overlay.add_overlay(&progress);
+                    progress
+                });
+                let layer = modal_layer(
+                    &gtk::Button::with_label("Close"),
+                    &fixture.overlay,
+                    None,
+                    None,
+                );
+                remember_modal_focus(&layer, &fixture.overlay);
+                fixture.overlay.add_overlay(&layer);
+                if let Some(progress) = listing {
+                    dismiss_modal_layer(&progress, &fixture.overlay, None);
+                    wait_until(|| progress.parent().is_none());
+                }
+                layer.grab_focus();
+                if matches!(closing, Closing::OriginHidden) {
+                    fixture.origin.set_visible(false);
+                }
+                fixture.window.set_focus_visible(true);
+                dismiss_modal_layer(&layer, &fixture.overlay, None);
+                fixture.release_dismissal_key();
+                if matches!(closing, Closing::FocusTakenMeanwhile) {
+                    assert!(elsewhere.grab_focus());
+                }
+                wait_until(|| layer.parent().is_none());
+                let case = format!("{closing:?}");
+                assert!(fixture.window.gets_focus_visible(), "{case}: focus ring");
+                match closing {
+                    Closing::OriginOnScreen => fixture.assert_focus(&fixture.origin, 0, &case),
+                    Closing::OriginHidden => fixture.assert_focus(&fixture.target, 1, &case),
+                    Closing::FocusTakenMeanwhile => fixture.assert_focus(&elsewhere, 0, &case),
+                    Closing::ChainedOnListingDialog => {
+                        fixture.assert_focus(&fixture.target, 1, &case);
+                    }
+                }
+                fixture.window.destroy();
+            }
+        },
+    );
+}
+
+#[test]
+fn persistent_layer_restores_focus_when_hidden_unless_disarmed() {
+    crate::test_support::gtk_test(
+        "ui::modal::tests::persistent_layer_restores_focus_when_hidden_unless_disarmed",
+        || {
+            let fixture = FocusFixture::new();
+            let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            layer.add_css_class("app-modal-layer");
+            layer.set_focusable(true);
+            layer.set_visible(false);
+            fixture.overlay.add_overlay(&layer);
+            let restore = remember_persistent_modal_focus(layer.upcast_ref());
+            for (restore_origin, expected, fallbacks) in
+                [(true, &fixture.origin, 0), (false, &fixture.target, 1)]
+            {
+                assert!(fixture.origin.grab_focus());
+                restore.set(false);
+                layer.set_visible(true);
+                assert!(restore.get(), "showing the layer re-arms the origin");
+                assert!(layer.grab_focus());
+                restore.set(restore_origin);
+                fixture.window.set_focus_visible(true);
+                layer.add_css_class("dismissing");
+                layer.set_sensitive(false);
+                fixture.release_dismissal_key();
+                layer.set_visible(false);
+                layer.remove_css_class("dismissing");
+                layer.set_sensitive(true);
+                fixture.assert_focus(
+                    expected,
+                    fallbacks,
+                    &format!("restore origin: {restore_origin}"),
+                );
+                assert!(fixture.window.gets_focus_visible(), "focus ring");
+            }
+            fixture.window.destroy();
+        },
+    );
+}
+
+#[test]
+fn a_dialog_closed_over_another_modal_returns_focus_to_its_opener() {
+    crate::test_support::gtk_test(
+        "ui::modal::tests::a_dialog_closed_over_another_modal_returns_focus_to_its_opener",
+        || {
+            for registered in [false, true] {
+                let fixture = FocusFixture::new();
+                let settings = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                settings.add_css_class("app-modal-layer");
+                settings.set_focusable(true);
+                let opener = gtk::Button::with_label("Opener");
+                settings.append(&opener);
+                settings.set_visible(false);
+                fixture.overlay.add_overlay(&settings);
+                remember_persistent_modal_focus(settings.upcast_ref());
+                settings.set_visible(true);
+                assert!(opener.grab_focus());
+
+                let close = gtk::Button::with_label("Close");
+                let layer = modal_layer(&close, &fixture.overlay, None, None);
+                if registered {
+                    remember_modal_focus(&layer, &fixture.overlay);
+                }
+                fixture.overlay.add_overlay(&layer);
+                assert!(close.grab_focus());
+                fixture.window.set_focus_visible(true);
+                dismiss_modal_layer(&layer, &fixture.overlay, None);
+                fixture.release_dismissal_key();
+                wait_until(|| layer.parent().is_none());
+
+                let case = format!("registered: {registered}");
+                fixture.assert_focus(&opener, 0, &case);
+                assert!(fixture.window.gets_focus_visible(), "{case}: focus ring");
+                fixture.window.destroy();
+            }
+        },
+    );
+}
+
+#[test]
+fn a_dialog_closing_under_its_chained_successor_leaves_its_focus_and_ring_alone() {
+    crate::test_support::gtk_test(
+        "ui::modal::tests::a_dialog_closing_under_its_chained_successor_leaves_its_focus_and_ring_alone",
+        || {
+            let fixture = FocusFixture::new();
+            let confirm = gtk::Button::with_label("Confirm");
+            let first = modal_layer(&confirm, &fixture.overlay, None, None);
+            remember_modal_focus(&first, &fixture.overlay);
+            fixture.overlay.add_overlay(&first);
+            assert!(confirm.grab_focus());
+            fixture.window.set_focus_visible(true);
+            dismiss_modal_layer(&first, &fixture.overlay, None);
+
+            let close = gtk::Button::with_label("Close");
+            let second = modal_layer(&close, &fixture.overlay, None, None);
+            remember_modal_focus(&second, &fixture.overlay);
+            fixture.overlay.add_overlay(&second);
+            // Chained dialogs open focused without a ring, as `focus_button` does.
+            assert!(close.grab_focus());
+            fixture.window.set_focus_visible(false);
+            wait_until(|| first.parent().is_none());
+
+            fixture.assert_focus(&close, 0, "chained dialog");
+            assert!(
+                !fixture.window.gets_focus_visible(),
+                "no ring on the chained dialog"
+            );
+            fixture.window.destroy();
         },
     );
 }

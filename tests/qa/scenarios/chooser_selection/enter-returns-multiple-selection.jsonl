@@ -1,0 +1,10 @@
+{"scenario":"enter-returns-multiple-selection","modes":["list","columns"],"layout":"us","mutation":null,"known_bug":null,"portal":true,"session_bus":true,"cost":{"list":0.6,"columns":0.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Ctrl-click two files then Enter returns both names via chooser portal; only QA route for multi-select response, portal/chooser unit tests cover acceptance logic"}}
+{"portal_open":"Multiple selection test","options":{"current_folder":"$fixture","multiple":true}}
+{"adopt":"Multiple selection test","timeout_ms":20000,"message":"Multiple selection test chooser"}
+{"wait":{"present":{"row":"readme.md"}},"message":"the 'readme.md' row"}
+{"click":{"row":"readme.md"}}
+{"wait":{"present":{"row":"todo.txt"}},"message":"the 'todo.txt' row"}
+{"click":{"row":"todo.txt"},"mods":["ctrl"]}
+{"wait":{"all":[{"state":{"target":{"row":"readme.md"},"selected":true}},{"state":{"target":{"row":"todo.txt"},"selected":true}}]},"message":"both files selected"}
+{"key":"Return"}
+{"portal_response":{"done":true,"status":0,"names":["readme.md","todo.txt"]},"timeout_ms":20000,"message":"portal response"}

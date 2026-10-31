@@ -92,5 +92,102 @@ impl PointerSequence {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum MiddleClickAction {
+    OpenTab,
+    OpenWindow,
+    RevealParent,
+}
+
+pub(super) fn middle_click_action(
+    is_directory: bool,
+    control: bool,
+    shift: bool,
+) -> MiddleClickAction {
+    if !is_directory {
+        return MiddleClickAction::RevealParent;
+    }
+    if control || shift {
+        MiddleClickAction::OpenWindow
+    } else {
+        MiddleClickAction::OpenTab
+    }
+}
+
+/// A press that moves past the drag threshold or repeats as a multi-click does
+/// not activate. `activate` receives the row's view position and modifiers.
+pub(super) fn install_row_middle_click(
+    widget: &impl IsA<gtk::Widget>,
+    item: &gtk::ListItem,
+    activate: impl Fn(u32, gdk::ModifierType) + 'static,
+) {
+    let origin = Rc::new(Cell::new((0.0, 0.0)));
+    let moved = Rc::new(Cell::new(false));
+    let click = gtk::GestureClick::new();
+    click.set_button(gdk::BUTTON_MIDDLE);
+    click.set_propagation_phase(gtk::PropagationPhase::Capture);
+    {
+        let origin = origin.clone();
+        let moved = moved.clone();
+        click.connect_pressed(move |gesture, _, x, y| {
+            origin.set(
+                gesture
+                    .current_event()
+                    .and_then(|event| event.position())
+                    .unwrap_or((x, y)),
+            );
+            moved.set(false);
+        });
+    }
+    {
+        let origin = origin.clone();
+        let moved = moved.clone();
+        click.connect_update(move |gesture, _| {
+            let (Some(point), Some(widget)) = (
+                gesture.current_event().and_then(|event| event.position()),
+                gesture.widget(),
+            ) else {
+                return;
+            };
+            if crate::ui::pointer::exceeds_drag_threshold(
+                origin.get(),
+                point,
+                widget.settings().gtk_dnd_drag_threshold(),
+            ) {
+                moved.set(true);
+            }
+        });
+    }
+    let item = item.downgrade();
+    click.connect_released(move |gesture, count, x, y| {
+        let Some(widget) = gesture.widget() else {
+            return;
+        };
+        let point = gesture
+            .current_event()
+            .and_then(|event| event.position())
+            .unwrap_or((x, y));
+        if count != 1
+            || moved.get()
+            || crate::ui::pointer::exceeds_drag_threshold(
+                origin.get(),
+                point,
+                widget.settings().gtk_dnd_drag_threshold(),
+            )
+        {
+            return;
+        }
+        let Some(item) = item.upgrade() else {
+            return;
+        };
+        let position = item.position();
+        if position == gtk::INVALID_LIST_POSITION {
+            return;
+        }
+        activate(position, gesture.current_event_state());
+    });
+    widget.add_controller(click);
+}
+
 #[cfg(test)]
 mod tests;

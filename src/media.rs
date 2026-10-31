@@ -13,13 +13,30 @@ pub(crate) const FPS: u32 = 30;
 pub(crate) const MAX_DURATION_US: u64 = u32::MAX as u64 * 1_000_000 / FPS as u64;
 pub(crate) const SAMPLE_RATE: u64 = 48_000;
 pub(crate) const AUDIO_BYTES: usize = 6_400;
+// Audio runs this many ticks ahead of video inside the records, so a sink's
+// buffer and device delay are covered by PCM rather than by pinned frames.
+pub(crate) const AUDIO_LEAD_TICKS: u32 = 60;
 pub(crate) const STARTUP_TIMEOUT: Duration = Duration::from_secs(22);
 pub(crate) const FRAME_TIMEOUT: Duration = Duration::from_secs(8);
 pub(crate) const HEADER_BYTES: usize = 40;
 const MAGIC: &[u8; 8] = b"STRRAW01";
 
+pub(crate) mod peaks;
+pub(crate) mod storyboard;
+
 pub(crate) fn timestamp(tick: u32) -> u64 {
     u64::from(tick) * 1_000_000 / u64::from(FPS)
+}
+
+/// PCM bytes a frame record carries; the first record also holds the lead.
+pub(crate) fn audio_bytes(header: Header, tick: u32) -> usize {
+    if !header.audio {
+        0
+    } else if tick == header.start_tick {
+        AUDIO_BYTES * (AUDIO_LEAD_TICKS as usize + 1)
+    } else {
+        AUDIO_BYTES
+    }
 }
 
 pub(crate) fn seek_tick(time_us: u64, duration_us: u64) -> u32 {
@@ -194,7 +211,7 @@ impl Decoder {
             || tick >= self.header.ticks()
             || pts != timestamp(tick)
             || video != self.header.video_bytes()
-            || audio != if self.header.audio { AUDIO_BYTES } else { 0 }
+            || audio != audio_bytes(self.header, tick)
         {
             return Err(invalid(
                 "Invalid decoded-frame dimensions, length or timestamp",

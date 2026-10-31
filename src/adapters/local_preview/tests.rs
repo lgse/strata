@@ -5,6 +5,7 @@ use std::{fs, time::Duration};
 mod cover_preview;
 mod model_preview;
 mod remote_preview;
+mod route_preview;
 
 use super::*;
 use crate::services::{MediaPreviewSize, PreviewContent};
@@ -132,6 +133,8 @@ fn cold_previews_with_shared_thumbnails_match_rendered_cache_hits() {
                     .expect("page surface");
                 let mut png = Vec::new();
                 surface.write_to_png(&mut png).expect("page PNG");
+                let _fixture =
+                    crate::util::ui_thread::allow(crate::util::ui_thread::Exception::TestSetup);
                 crate::ui::thumbnail_cache::store(&path, 1, &png);
                 let thumbnail = crate::ui::thumbnail_cache::lookup(&path, 1)
                     .expect("shared thumbnail is available");
@@ -153,12 +156,15 @@ fn cold_previews_with_shared_thumbnails_match_rendered_cache_hits() {
                         image_dimensions: MetadataValue::Unknown,
                         child_count: MetadataValue::Unknown,
                         duration_seconds: MetadataValue::Unknown,
+                        listable: MetadataValue::Unknown,
+                        recent_uri: None,
                     },
                     text_byte_limit: 1024,
                     render_document: false,
                     pdf_page: 0,
                     media_size: MediaPreviewSize::new(640, 800),
                     model_palette: crate::services::ModelPalette::default(),
+                    model_view: Default::default(),
                     archive_password: None,
                 };
                 let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
@@ -178,6 +184,7 @@ fn cold_previews_with_shared_thumbnails_match_rendered_cache_hits() {
                                 page: 0,
                                 pages: 40,
                                 text_layer: None,
+                                model_mesh: None,
                             })
                         },
                     );
@@ -224,6 +231,7 @@ fn preview_cache_stores_and_retrieves_entries() {
         modified: 100,
         pdf_page: None,
         model: None,
+        route: None,
     };
     let content1 = PreviewContent::Rasterized {
         png: vec![1, 2, 3, 4],
@@ -237,6 +245,7 @@ fn preview_cache_stores_and_retrieves_entries() {
         modified: 200,
         pdf_page: None,
         model: None,
+        route: None,
     };
     let content2 = PreviewContent::Text {
         content: "hello world".to_owned(),
@@ -251,12 +260,14 @@ fn preview_cache_stores_and_retrieves_entries() {
         modified: 300,
         pdf_page: Some((0, PdfRenderSize::new(640, 800))),
         model: None,
+        route: None,
     };
     let pdf_page_1 = PreviewCacheKey {
         path: PathBuf::from("doc.pdf"),
         modified: 300,
         pdf_page: Some((1, PdfRenderSize::new(640, 800))),
         model: None,
+        route: None,
     };
     let page0_content = PreviewContent::Pdf {
         png: vec![10, 20],
@@ -280,6 +291,7 @@ fn preview_cache_stores_and_retrieves_entries() {
             modified: 300,
             pdf_page: Some((0, PdfRenderSize::new(800, 1_800))),
             model: None,
+            route: None,
         }),
         None,
         "a page rendered for a smaller viewport must not poison a larger preview"
@@ -401,12 +413,15 @@ fn cancelled_in_flight_document_renders_keep_the_permit_and_emit_no_stale_events
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
+                    recent_uri: None,
                 },
                 text_byte_limit: 1024,
                 render_document: false,
                 pdf_page: 1,
                 media_size: MediaPreviewSize::new(640, 800),
                 model_palette: crate::services::ModelPalette::default(),
+                model_view: Default::default(),
                 archive_password: None,
             },
             Rc::new(move |event| events_for_emit.borrow_mut().push(event)),
@@ -422,6 +437,7 @@ fn cancelled_in_flight_document_renders_keep_the_permit_and_emit_no_stale_events
                         page: 1,
                         pages: 2,
                         text_layer: None,
+                        model_mesh: None,
                     })
                 } else {
                     Err("late renderer error".into())
@@ -484,13 +500,16 @@ fn cancelled_archive_listings_emit_no_stale_events() {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
                 is_hidden: false,
+                recent_uri: None,
             },
             text_byte_limit: 1024,
             render_document: false,
             pdf_page: 0,
             media_size: MediaPreviewSize::new(640, 800),
             model_palette: crate::services::ModelPalette::default(),
+            model_view: Default::default(),
             archive_password: None,
         },
         Rc::new(move |event| events_for_emit.borrow_mut().push(event)),
@@ -505,6 +524,7 @@ fn cancelled_archive_listings_emit_no_stale_events() {
                 page: 0,
                 pages: 0,
                 text_layer: None,
+                model_mesh: None,
             })
         },
     );
@@ -533,6 +553,7 @@ fn preview_cache_evicts_the_least_recent_entry() {
             modified: index as i64,
             pdf_page: None,
             model: None,
+            route: None,
         })
         .collect();
 
@@ -563,6 +584,7 @@ fn replacing_a_preview_cache_entry_updates_its_byte_count() {
         modified: 1,
         pdf_page: None,
         model: None,
+        route: None,
     };
 
     cache.insert(key.clone(), PreviewContent::Rasterized { png: vec![0; 8] });
@@ -584,6 +606,7 @@ fn active_media_requests_are_never_retained_by_the_preview_cache() {
         modified: 1,
         pdf_page: None,
         model: None,
+        route: None,
     };
     let content = PreviewContent::SandboxedMedia {
         media: SandboxedMedia {
@@ -591,6 +614,7 @@ fn active_media_requests_are_never_retained_by_the_preview_cache() {
             size: MediaPreviewSize::new(520, 800),
             backend: MediaPreviewBackend::Software,
             input_owner: None,
+            audio_only: false,
         },
     };
     cache.insert(key.clone(), content.clone());
@@ -622,6 +646,7 @@ fn preview_content_size_computes_accurately() {
                 size: MediaPreviewSize::new(520, 800),
                 backend: MediaPreviewBackend::Software,
                 input_owner: None,
+                audio_only: false,
             },
         }),
         0
@@ -651,23 +676,31 @@ fn uncertain_file_names_resolve_their_preview_from_the_content() {
     let context = glib::MainContext::default();
     let _owner = context.acquire().expect("main context owner");
 
-    for (name, bytes, expected) in [
+    let activity = crate::services::file_activity::begin(
+        crate::services::file_activity::OperationScope::default(),
+    );
+    let data = &[0_u8, 159, 146, 150, 0, 255, 0, 1][..];
+    for (name, bytes, fenced, expected) in [
         (
             "some notes",
             &b"hello\nworld\n"[..],
-            PreviewContent::Text {
+            false,
+            Ok(PreviewContent::Text {
                 content: "hello\nworld\n".to_owned(),
                 truncated: false,
-            },
+            }),
         ),
+        ("some data", data, false, Ok(PreviewContent::Unsupported)),
         (
-            "some data",
-            &[0_u8, 159, 146, 150, 0, 255, 0, 1][..],
-            PreviewContent::Unsupported,
+            "fenced data",
+            data,
+            true,
+            Err(crate::services::file_activity::HELD_FOR_OPERATION),
         ),
     ] {
         let path = directory.path().join(name);
         fs::write(&path, bytes).expect("preview fixture");
+        let _fence = fenced.then(|| activity.fence([path.clone()]));
         let request = PreviewRequest {
             id: PreviewRequestId(1),
             entry: FileEntry {
@@ -682,14 +715,17 @@ fn uncertain_file_names_resolve_their_preview_from_the_content() {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
                 recent_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
+                recent_uri: None,
             },
             text_byte_limit: 1024,
             render_document: false,
             pdf_page: 0,
             media_size: MediaPreviewSize::new(640, 800),
             model_palette: crate::services::ModelPalette::default(),
+            model_view: Default::default(),
             archive_password: None,
         };
         let events = Rc::new(RefCell::new(Vec::new()));
@@ -710,10 +746,12 @@ fn uncertain_file_names_resolve_their_preview_from_the_content() {
 
         let events = events.borrow();
         assert_eq!(events.len(), 1, "{name}");
-        let PreviewEvent::Ready(preview) = &events[0] else {
-            panic!("{name} preview failed");
+        let outcome = match &events[0] {
+            PreviewEvent::Ready(preview) => Ok(preview.content.clone()),
+            PreviewEvent::Failed { message, .. } => Err(message.as_str()),
+            _ => panic!("{name} preview neither loaded nor failed"),
         };
-        assert_eq!(preview.content, expected, "{name}");
+        assert_eq!(outcome, expected, "{name}");
     }
 }
 
@@ -756,14 +794,17 @@ fn text_subclassed_names_resolve_their_preview_from_the_type_hierarchy() {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
                 recent_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
+                recent_uri: None,
             },
             text_byte_limit: 1024,
             render_document: false,
             pdf_page: 0,
             media_size: MediaPreviewSize::new(640, 800),
             model_palette: crate::services::ModelPalette::default(),
+            model_view: Default::default(),
             archive_password: None,
         };
         let events = Rc::new(RefCell::new(Vec::new()));
@@ -795,6 +836,189 @@ fn text_subclassed_names_resolve_their_preview_from_the_type_hierarchy() {
             },
             "{name}"
         );
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum Resolved {
+    Text(String),
+    Image,
+    Media,
+    Pdf,
+    Unsupported,
+}
+
+#[test]
+fn preview_families_follow_file_bytes_not_names() {
+    use crate::{
+        model::{EntryKind, FileEntry, Location, MetadataValue},
+        services::PreviewRequestId,
+    };
+
+    let _main_context = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("main context lock");
+    let directory = tempfile::tempdir().expect("preview fixture directory");
+    let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
+    let context = glib::MainContext::default();
+    let _owner = context.acquire().expect("main context owner");
+
+    let png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x01\0\0\0\x01";
+    let utf16 = b"\xff\xfeh\x00i\x00\n\x00";
+    for (name, bytes, expected) in [
+        (
+            "notes.png",
+            &b"just some notes\n"[..],
+            Resolved::Text("just some notes\n".into()),
+        ),
+        (
+            "clip.mp4",
+            &b"not a movie\n"[..],
+            Resolved::Text("not a movie\n".into()),
+        ),
+        (
+            "clip.h264",
+            &b"not a movie\n"[..],
+            Resolved::Text("not a movie\n".into()),
+        ),
+        ("empty.H264", &b""[..], Resolved::Text(String::new())),
+        (
+            "stream.h264",
+            &b"\x00\x00\x00\x01\x67\x64\x00\x0c\xac\xd9\x41\x41"[..],
+            Resolved::Media,
+        ),
+        (
+            "STREAM.H264",
+            &b"\x00\x00\x01\x67\x64\x00\x0c\xac\xd9\x41\x41"[..],
+            Resolved::Media,
+        ),
+        (
+            "app.ts",
+            &b"const x = 1;\n"[..],
+            Resolved::Text("const x = 1;\n".into()),
+        ),
+        (
+            "backup.zip",
+            &b"not an archive\n"[..],
+            Resolved::Text("not an archive\n".into()),
+        ),
+        (
+            "report.docx",
+            &b"not a document\n"[..],
+            Resolved::Text("not a document\n".into()),
+        ),
+        (
+            "App.tsx",
+            &b"<div />\n"[..],
+            Resolved::Text("<div />\n".into()),
+        ),
+        ("README.md", &png[..], Resolved::Image),
+        ("photo.txt", &png[..], Resolved::Image),
+        (
+            "paper.txt",
+            &b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"[..],
+            Resolved::Pdf,
+        ),
+        (
+            "icon.svg",
+            &b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>"[..],
+            Resolved::Image,
+        ),
+        (
+            "data.json",
+            &[0u8, 159, 146, 150, 0, 255, 0, 1][..],
+            Resolved::Unsupported,
+        ),
+        ("wide.txt", &utf16[..], Resolved::Text("hi\n".into())),
+        (
+            "DSCF0001.RAF",
+            &b"FUJIFILMCCD-RAW 0201FF383501\0"[..],
+            Resolved::Image,
+        ),
+        (
+            "GOPR0001.GPR",
+            &[0u8, 1, 2, 3, 255, 254][..],
+            Resolved::Image,
+        ),
+    ] {
+        let path = directory.path().join(name);
+        fs::write(&path, bytes).expect("preview fixture");
+        let request = PreviewRequest {
+            id: PreviewRequestId(1),
+            entry: FileEntry {
+                location: Location::local(&path),
+                thumbnail_path: None,
+                native_name: name.into(),
+                display_name: name.into(),
+                kind: EntryKind::File,
+                size: MetadataValue::Unknown,
+                modified_unix_seconds: MetadataValue::Unknown,
+                mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
+                recent_unix_seconds: MetadataValue::Unknown,
+                is_hidden: false,
+                recent_uri: None,
+            },
+            text_byte_limit: 1024,
+            render_document: true,
+            pdf_page: 0,
+            media_size: MediaPreviewSize::new(640, 800),
+            model_palette: crate::services::ModelPalette::default(),
+            model_view: Default::default(),
+            archive_password: None,
+        };
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let events_for_emit = events.clone();
+        let _handle = provider.load_with_renderer(
+            request,
+            Rc::new(move |event| events_for_emit.borrow_mut().push(event)),
+            move |_, operation, _, _, _| {
+                let expected = if name.ends_with(".RAF") || name.ends_with(".GPR") {
+                    matches!(operation, crate::sandbox::ParseOperation::PreviewRaw)
+                } else {
+                    matches!(
+                        operation,
+                        crate::sandbox::ParseOperation::PreviewImage
+                            | crate::sandbox::ParseOperation::PreviewPdf(_)
+                    )
+                };
+                assert!(expected, "{name} reached the sandbox as {operation:?}");
+                Ok(crate::sandbox::ParseOutput {
+                    data: Vec::new(),
+                    page: 0,
+                    pages: 0,
+                    text_layer: None,
+                    model_mesh: None,
+                })
+            },
+        );
+        context.block_on(async {
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while events.borrow().is_empty() && std::time::Instant::now() < deadline {
+                glib::timeout_future(Duration::from_millis(1)).await;
+            }
+        });
+
+        let events = events.borrow();
+        assert_eq!(events.len(), 1, "{name}");
+        let PreviewEvent::Ready(preview) = &events[0] else {
+            panic!("{name} preview failed: {:?}", events[0]);
+        };
+        let resolved = match &preview.content {
+            PreviewContent::Text { content, .. } => Resolved::Text(content.clone()),
+            PreviewContent::Rasterized { .. } => Resolved::Image,
+            PreviewContent::SandboxedMedia { media } => {
+                assert_eq!(media.path, path);
+                Resolved::Media
+            }
+            PreviewContent::Pdf { .. } => Resolved::Pdf,
+            PreviewContent::Unsupported => Resolved::Unsupported,
+            other => panic!("{name} resolved to {other:?}"),
+        };
+        assert_eq!(resolved, expected, "{name}");
     }
 }
 
@@ -835,13 +1059,16 @@ fn archives_list_member_trees_as_preview_content() {
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
                     is_hidden: false,
+                    recent_uri: None,
                 },
                 text_byte_limit: 1024,
                 render_document: false,
                 pdf_page: 0,
                 media_size: MediaPreviewSize::new(640, 800),
                 model_palette: crate::services::ModelPalette::default(),
+                model_view: Default::default(),
                 archive_password: None,
             };
             let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
@@ -870,6 +1097,7 @@ fn archives_list_member_trees_as_preview_content() {
                         page: 0,
                         pages: 0,
                         text_layer: None,
+                        model_mesh: None,
                     })
                 },
             );
@@ -943,13 +1171,16 @@ fn preview_archive_with_password(
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
+            listable: MetadataValue::Unknown,
             is_hidden: false,
+            recent_uri: None,
         },
         text_byte_limit: 1024,
         render_document: false,
         pdf_page: 0,
         media_size: MediaPreviewSize::new(640, 800),
         model_palette: crate::services::ModelPalette::default(),
+        model_view: Default::default(),
         archive_password: password
             .map(|password| crate::services::SecretString::new(password.to_owned())),
     };
@@ -977,6 +1208,7 @@ fn preview_archive_with_password(
                 page: 0,
                 pages: 0,
                 text_layer: None,
+                model_mesh: None,
             })
         },
     );
@@ -1049,7 +1281,8 @@ fn corrupt_archives_report_a_failed_preview() {
         || {
             let directory = tempfile::tempdir().expect("preview fixture directory");
             let path = directory.path().join("fake.zip");
-            fs::write(&path, b"not a zip archive").expect("write corrupt fixture");
+            fs::write(&path, b"PK\x03\x04\0\0\0\0not a zip archive")
+                .expect("write corrupt fixture");
             let events = preview_archive(&path, "fake.zip");
             assert_eq!(events.len(), 1);
             let PreviewEvent::Failed { message, .. } = &events[0] else {
@@ -1224,7 +1457,7 @@ fn unsupported_archive_preview_reports_unsupported_format() {
 
             let directory = tempfile::tempdir().expect("preview fixture directory");
             let path = directory.path().join("sample.zip");
-            fs::write(&path, b"placeholder").expect("write placeholder");
+            fs::write(&path, b"PK\x03\x04\0\0\0\0placeholder").expect("write placeholder");
             let request = PreviewRequest {
                 id: PreviewRequestId(1),
                 entry: FileEntry {
@@ -1240,13 +1473,16 @@ fn unsupported_archive_preview_reports_unsupported_format() {
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
                     is_hidden: false,
+                    recent_uri: None,
                 },
                 text_byte_limit: 1024,
                 render_document: false,
                 pdf_page: 0,
                 media_size: MediaPreviewSize::new(640, 800),
                 model_palette: crate::services::ModelPalette::default(),
+                model_view: Default::default(),
                 archive_password: None,
             };
             let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
@@ -1273,6 +1509,7 @@ fn unsupported_archive_preview_reports_unsupported_format() {
                         page: 0,
                         pages: 0,
                         text_layer: None,
+                        model_mesh: None,
                     })
                 },
             );
@@ -1294,4 +1531,26 @@ fn unsupported_archive_preview_reports_unsupported_format() {
             assert_eq!(message, crate::adapters::ARCHIVE_UNSUPPORTED_MESSAGE);
         },
     );
+}
+
+#[test]
+fn text_reads_refuse_a_file_an_operation_fences() {
+    let directory = tempfile::tempdir().expect("fixture directory");
+    let path = directory.path().join("notes.txt");
+    fs::write(&path, "notes").expect("text file");
+    let file = gio::File::for_path(&path);
+    let read = || glib::MainContext::new().block_on(read_text(&file, Some(&path), 64));
+    let activity = crate::services::file_activity::begin(
+        crate::services::file_activity::OperationScope::default(),
+    );
+
+    let fence = activity.fence([directory.path().to_owned()]);
+    let refused = read().expect_err("a fenced file is not read");
+    drop(fence);
+
+    assert_eq!(
+        refused.message(),
+        crate::services::file_activity::HELD_FOR_OPERATION
+    );
+    assert_eq!(read().expect("read once the fence lifts").0, "notes");
 }

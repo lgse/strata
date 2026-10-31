@@ -1,0 +1,11 @@
+{"scenario":"properties-copy-path-slashes-only-folders","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"file","vars":{"name":"readme.md","suffix":""}},{"id":"directory","vars":{"name":"documents","suffix":"/"}}],"cost":{"columns-file":1.2,"columns-directory":1.0},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":5,"score":47,"note":"Properties Copy path puts the exact file path and slash-ended folder path on the clipboard; only GUI check, copy_path_text unit-tested in clipboard/tests.rs"}}
+{"click":{"entry":"$name"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for '$name'"}
+{"wait":{"present":{"menu_item":"Properties"}},"message":"the menu item 'Properties'"}
+{"settle":{"menu_item":"Properties"}}
+{"click":{"menu_item":"Properties"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"click":{"dialog_button":"Copy path"}}
+{"wait":{"present":{"role":"button","name":"Copied","within":{"dialog":true}}},"message":"Copy path to complete"}
+{"clipboard":"$fixture/$name$suffix","message":"the Properties path on the clipboard"}

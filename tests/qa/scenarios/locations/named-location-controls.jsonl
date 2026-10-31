@@ -1,0 +1,18 @@
+{"scenario":"named-location-controls","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.7},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Location Navigate/Cancel buttons by click and their names; Navigate via Return is typed-path-navigates, Cancel-by-click is unique here"}}
+{"key":"ctrl+l"}
+{"expect":{"present":{"role":"text","name":"Location (Ctrl+L)"}}}
+{"expect":[{"present":{"role":"button","name":"Navigate (Enter)"}},{"present":{"role":"button","name":"Cancel (Escape)"}}]}
+{"key":"ctrl+a"}
+{"type":"$fixture/documents"}
+{"wait":{"field":{"name":"Location (Ctrl+L)","text":{"ends_with":"documents"}}},"message":"typed location"}
+{"click":{"role":"button","name":"Navigate (Enter)"}}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"wait":{"entry":"notes.txt","dir":"documents"},"message":"the entry 'notes.txt' in 'documents' to appear"}
+{"key":"ctrl+l"}
+{"expect":{"present":{"role":"button","name":"Cancel (Escape)"}}}
+{"click":{"role":"button","name":"Cancel (Escape)"}}
+{"wait":{"absent":{"role":"button","name":"Navigate (Enter)"}},"message":"the location entry to close"}
+{"expect":{"absent":{"role":"text","name":"Location (Ctrl+L)"}}}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}

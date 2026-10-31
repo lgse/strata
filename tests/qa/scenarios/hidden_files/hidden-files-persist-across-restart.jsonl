@@ -1,0 +1,21 @@
+{"scenario":"hidden-files-persist-across-restart","modes":["columns","icons","list"],"cost":{"columns":1.0,"icons":1.1,"list":1.1}}
+{"wait":{"entries":{"contains":["todo.txt"],"excludes":[".hidden.txt"]},"dir":"$root"},"message":"the fixture listed without its hidden file"}
+{"fs":{"path":".external.txt","write":"created outside Strata\n"}}
+{"fs":{"path":"monitor-ready.txt","write":"visible monitor barrier\n"}}
+{"wait":{"entries":{"contains":["monitor-ready.txt"]},"dir":"$root"},"message":"the visible sibling proves external changes reached the browser"}
+{"key":"ctrl+period"}
+{"wait":{"entries":{"contains":[".hidden.txt",".external.txt"]},"dir":"$root"},"message":"Ctrl+. reveals both existing and externally created hidden files without a reload"}
+{"wait":{"pref":{"key":"show_hidden","value":true}},"message":"show_hidden to be saved as true"}
+{"restart":true}
+{"wait":{"entries":{"contains":["todo.txt",".hidden.txt",".external.txt"]},"dir":"$root"},"message":"hidden files to stay shown after a restart"}
+{"key":"ctrl+period"}
+{"wait":{"entries":{"contains":["todo.txt"],"excludes":[".hidden.txt"]},"dir":"$root"},"message":"Ctrl+. to hide hidden files again"}
+{"wait":{"pref":{"key":"show_hidden","value":false}},"message":"show_hidden to be saved as false"}
+{"fs":{"path":".external.txt","rename":".renamed.txt"}}
+{"fs":{"path":".hidden.txt","remove":true}}
+{"fs":{"path":"monitor-ready-again.txt","write":"second visible monitor barrier\n"}}
+{"wait":{"entries":{"contains":["monitor-ready-again.txt"]},"dir":"$root"},"message":"external rename and removal were followed by a visible monitor event"}
+{"key":"ctrl+period"}
+{"wait":{"entries":{"contains":[".renamed.txt"],"excludes":[".external.txt",".hidden.txt"]},"dir":"$root"},"message":"hidden rename and removal remain current while hidden files were off"}
+{"key":"ctrl+period"}
+{"wait":{"pref":{"key":"show_hidden","value":false}},"message":"restore the saved hidden-file preference"}

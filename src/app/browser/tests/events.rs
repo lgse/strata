@@ -2,6 +2,41 @@
 
 use super::*;
 
+type Validation = Rc<dyn Fn(Result<(), LocationValidationError>)>;
+
+#[derive(Default)]
+struct LifecycleSource {
+    callbacks: RefCell<Vec<(Location, Validation)>>,
+    immediate: Option<Location>,
+    cancelled: Rc<RefCell<Vec<Location>>>,
+}
+
+impl FileSource for LifecycleSource {
+    fn validate_location(&self, _: &Location) -> Result<(), LocationValidationError> {
+        Ok(())
+    }
+
+    fn validate_location_async(&self, location: Location, emit: Validation) -> LoadHandle {
+        if self.immediate.as_ref() == Some(&location) {
+            emit(Ok(()));
+        } else {
+            self.callbacks.borrow_mut().push((location.clone(), emit));
+        }
+        let cancelled = self.cancelled.clone();
+        LoadHandle::new(move || cancelled.borrow_mut().push(location))
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        emit(DirectoryEvent::Finished {
+            request_id: request.id,
+            truncated: false,
+            can_trash: None,
+            can_delete: None,
+        });
+        LoadHandle::new(|| {})
+    }
+}
+
 #[test]
 fn fan_out_shares_one_event_with_every_observer() {
     let browser = Browser::new(Rc::new(SortFillSource));
@@ -88,4 +123,77 @@ fn nested_emission_during_dispatch_is_safe() {
         }),
         "the nested select should have been dispatched"
     );
+}
+
+#[test]
+fn navigation_observers_can_reenter_and_add_observers_without_losing_newer_validation() {
+    let source = Rc::new(LifecycleSource::default());
+    let browser = Browser::new(source.clone());
+    browser.navigate(Location::local("/fixture"));
+    let first = Location::uri("sftp://fixture/first");
+    let newer = Location::uri("sftp://fixture/newer");
+    let started = Rc::new(Cell::new(false));
+    let start = started.clone();
+    let reentrant = browser.clone();
+    let target = newer.clone();
+    let snapshots = Rc::new(RefCell::new(Vec::new()));
+    let late_snapshots = snapshots.clone();
+    browser.observe_navigation(move || {
+        if reentrant.pending_navigation_generation().is_some() && !start.replace(true) {
+            let observed = late_snapshots.clone();
+            let weak = Rc::downgrade(&reentrant);
+            reentrant.observe_navigation(move || {
+                if let Some(browser) = weak.upgrade() {
+                    observed
+                        .borrow_mut()
+                        .push(browser.pending_navigation_generation());
+                }
+            });
+            reentrant.navigate_validated(target.clone(), true);
+        }
+    });
+    browser.navigate_validated(first.clone(), true);
+    assert!(source.cancelled.borrow().contains(&first));
+    assert!(!source.cancelled.borrow().contains(&newer));
+    let older = source.callbacks.borrow_mut().remove(0).1;
+    older(Ok(()));
+    assert!(browser.pending_navigation_generation().is_some());
+    assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
+    let complete = source.callbacks.borrow_mut().remove(0).1;
+    complete(Ok(()));
+    assert_eq!(browser.active_location(), Some(newer));
+    assert_eq!(browser.pending_navigation_generation(), None);
+    assert_eq!(snapshots.borrow().last(), Some(&None));
+    browser.clear_observer();
+    let count = snapshots.borrow().len();
+    browser.navigate(Location::local("/elsewhere"));
+    assert_eq!(snapshots.borrow().len(), count);
+}
+
+#[test]
+fn synchronous_descent_does_not_overwrite_validation_started_by_an_observer() {
+    let alpha = Location::uri("sftp://fixture/alpha");
+    let source = Rc::new(LifecycleSource {
+        immediate: Some(alpha.clone()),
+        ..LifecycleSource::default()
+    });
+    let browser = Browser::new(source.clone());
+    browser.navigate(Location::local("/fixture"));
+    let newer = Location::uri("sftp://fixture/newer");
+    let reentrant = browser.clone();
+    let target = newer.clone();
+    let first = alpha.clone();
+    browser.observe(move |event| {
+        if matches!(event, BrowserEvent::ColumnAdded { depth: 1, location } if location == &first) {
+            reentrant.navigate_validated(target.clone(), true);
+        }
+    });
+    browser.descend(0, alpha);
+    assert!(browser.pending_navigation_generation().is_some());
+    assert!(!source.cancelled.borrow().contains(&newer));
+    let complete = source.callbacks.borrow_mut().remove(0).1;
+    complete(Ok(()));
+    assert_eq!(browser.active_location(), Some(newer));
+    assert_eq!(browser.pending_navigation_generation(), None);
+    browser.clear_observer();
 }

@@ -80,6 +80,36 @@ fn ordinary_entries_do_not_redirect_to_target_uris() {
     }
 }
 
+#[test]
+fn listed_entries_keep_non_utf8_uri_children() {
+    use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+    for (directory, name, uri) in [
+        ("trash:///", &b"caf\xe9.txt"[..], "trash:///caf%E9.txt"),
+        (
+            "sftp://host/share",
+            &b"\xff name"[..],
+            "sftp://host/share/%FF%20name",
+        ),
+    ] {
+        let info = gio::FileInfo::new();
+        info.set_name(OsStr::from_bytes(name));
+        info.set_display_name(&format!(
+            "{} (invalid encoding)",
+            String::from_utf8_lossy(name)
+        ));
+        info.set_file_type(gio::FileType::Regular);
+        let entry = listed_entry(
+            RequestId(1),
+            &Location::uri(directory),
+            &gio::File::for_uri(directory),
+            info,
+        )
+        .unwrap_or_else(|| panic!("non-UTF-8 children of {directory} are listed"));
+        assert_eq!(entry.location, Location::uri(uri));
+        assert_eq!(entry.native_name.as_bytes(), name);
+    }
+}
+
 fn recent_info(target: &str, recent_modified: i64) -> gio::FileInfo {
     let info = gio::FileInfo::new();
     info.set_name("recent-item");
@@ -106,22 +136,31 @@ fn target_info(name: &str, size: u64, modified: u64) -> gio::FileInfo {
 fn recent_entries_use_the_native_target_and_keep_recency_separate() {
     let recent = recent_info("file:///fixture/target.txt", 42);
     let target = recent_target_location(&recent).expect("the target URI should resolve");
-    let entry = recent_entry_from_target(&recent, target, target_info("target.txt", 7, 123))
-        .expect("the target should produce an operational entry");
+    let entry = recent_entry_from_target(
+        &recent,
+        "recent:///1".to_owned(),
+        entry_from_info(target, target_info("target.txt", 7, 123)),
+    )
+    .expect("the target should produce an operational entry");
 
     assert_eq!(entry.location, Location::local("/fixture/target.txt"));
     assert_eq!(entry.display_name, "target.txt");
     assert_eq!(entry.size, MetadataValue::Known(7));
     assert_eq!(entry.modified_unix_seconds, MetadataValue::Known(123));
     assert_eq!(entry.recent_unix_seconds, MetadataValue::Known(42));
+    assert_eq!(entry.recent_uri, Some("recent:///1".to_owned()));
 }
 
 #[test]
 fn recent_entries_keep_non_native_target_uris_clean() {
     let recent = recent_info("smb://server/share/target.txt", 42);
     let target = recent_target_location(&recent).expect("the target URI should resolve");
-    let entry = recent_entry_from_target(&recent, target, target_info("target.txt", 7, 123))
-        .expect("the target should produce an operational entry");
+    let entry = recent_entry_from_target(
+        &recent,
+        "recent:///2".to_owned(),
+        entry_from_info(target, target_info("target.txt", 7, 123)),
+    )
+    .expect("the target should produce an operational entry");
 
     assert_eq!(
         entry.location,
@@ -151,7 +190,14 @@ fn recent_target_redirects_that_return_to_recent_are_not_operational_entries() {
         target
     };
 
-    assert!(recent_entry_from_target(&recent, target_location, target_info).is_none());
+    assert!(
+        recent_entry_from_target(
+            &recent,
+            "recent:///3".to_owned(),
+            entry_from_info(target_location, target_info)
+        )
+        .is_none()
+    );
 }
 
 #[test]
@@ -162,11 +208,48 @@ fn unavailable_recent_targets_are_skipped() {
         .expect("the async test lock should not be poisoned");
     let resolution = glib::MainContext::default().block_on(resolve_recent_entry(
         recent,
+        "recent:///missing".to_owned(),
         false,
         Instant::now() + Duration::from_secs(10),
     ));
 
     assert!(matches!(resolution, RecentEntryResolution::Stale));
+}
+
+#[test]
+fn recent_symlink_targets_and_broken_links_are_distinguished() -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::symlink;
+
+    let directory = tempfile::tempdir()?;
+    fs::create_dir(directory.path().join("directory"))?;
+    fs::write(directory.path().join("archive.zip"), b"fixture")?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    for (link, target, expected) in [
+        ("file-link.zip", "archive.zip", EntryKind::FileSymbolicLink),
+        (
+            "directory-link",
+            "directory",
+            EntryKind::DirectorySymbolicLink,
+        ),
+        ("broken-link.zip", "missing.zip", EntryKind::SymbolicLink),
+    ] {
+        let path = directory.path().join(link);
+        symlink(target, &path)?;
+        let recent = recent_info(&gio::File::for_path(&path).uri(), 42);
+        let resolution = glib::MainContext::default().block_on(resolve_recent_entry(
+            recent,
+            gio::File::for_path(&path).uri().to_string(),
+            false,
+            Instant::now() + Duration::from_secs(10),
+        ));
+        let RecentEntryResolution::Entry(entry) = resolution else {
+            panic!("{link} should resolve to an entry");
+        };
+        assert_eq!(entry.kind, expected, "{link}");
+    }
+    Ok(())
 }
 
 struct BrowseSource {
@@ -251,10 +334,11 @@ fn browse_activation_navigates_or_requests_mounting_of_the_resolved_share() {
                             BrowserEvent::NavigationRejected {
                                 parent_depth: 0,
                                 error,
+                                ..
                             } => {
                                 !in_place && error == expected
                             }
-                            BrowserEvent::LocationNavigationRejected { error } => {
+                            BrowserEvent::LocationNavigationRejected { error, .. } => {
                                 in_place && error == expected
                             }
                             _ => false,

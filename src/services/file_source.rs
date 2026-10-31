@@ -3,9 +3,18 @@
 #[cfg(test)]
 mod tests;
 
-use std::{fmt, rc::Rc, time::Duration};
+use std::{
+    fmt,
+    path::Path,
+    rc::Rc,
+    time::{Duration, SystemTime},
+};
 
-use crate::model::{FileEntry, Location, MetadataValue, uri_contains_credentials};
+use super::{ItemIdentity, Proof};
+use crate::model::{
+    FileEntry, GIO_URI_BUILD_FLAGS, GIO_URI_PARSE_FLAGS, Location, MetadataValue,
+    uri_contains_credentials,
+};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct RequestId(pub u64);
@@ -25,6 +34,7 @@ pub struct DirectoryRequest {
     /// Complete camera Photos scans use `Duration::MAX` to disable the deadline;
     /// their `max_entries` is `usize::MAX`. Bounded peeks retain finite limits.
     pub time_budget: Duration,
+    pub background: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -38,10 +48,28 @@ pub enum LocationValidationError {
     NotMounted(Location),
     Mountable(Location),
     Unavailable(String),
-    UnsupportedShorthand(String),
+    /// An English source message, translated by [`LocationValidationError::message`].
+    UnsupportedShorthand(&'static str),
     UnsupportedScheme(String),
+    /// A chooser policy refusal, held as an English source message.
+    Refused(&'static str),
     EmbeddedCredential,
+    /// Polkit refused an `admin://` operation, or its prompt was dismissed; GVfs reports both
+    /// as `PERMISSION_DENIED`.
+    NotAuthorized,
+    /// Already localized by [`backend_unavailable_message`].
     BackendUnavailable(String),
+}
+
+impl From<std::io::Error> for LocationValidationError {
+    fn from(error: std::io::Error) -> Self {
+        match error.kind() {
+            std::io::ErrorKind::NotFound => Self::Missing,
+            std::io::ErrorKind::PermissionDenied => Self::Inaccessible,
+            std::io::ErrorKind::NotADirectory => Self::NotDirectory,
+            _ => Self::Unavailable(io_error_detail(&error)),
+        }
+    }
 }
 
 impl fmt::Display for LocationValidationError {
@@ -60,39 +88,253 @@ impl fmt::Display for LocationValidationError {
             Self::Unavailable(message) => {
                 write!(formatter, "Unable to open that location: {message}")
             }
-            Self::UnsupportedShorthand(message) | Self::UnsupportedScheme(message) => {
+            Self::UnsupportedShorthand(message) | Self::Refused(message) => {
                 formatter.write_str(message)
             }
+            Self::UnsupportedScheme(scheme) => write!(
+                formatter,
+                "The {scheme}:// scheme isn't supported. Use an absolute local path or one of: \
+                 smb://, sftp://, ftp://, ftps://, dav://, davs://, admin://, or recent:///."
+            ),
             Self::EmbeddedCredential => formatter.write_str(
                 "Passwords typed into the address bar aren't accepted. Enter the address \
                  without a password, you'll be prompted to sign in securely.",
             ),
+            Self::NotAuthorized => formatter.write_str("Administrator access wasn't granted."),
             Self::BackendUnavailable(message) => formatter.write_str(message),
         }
     }
 }
 
-fn backend_package_hint(scheme: &str) -> Option<&'static str> {
+impl LocationValidationError {
+    /// Localized text for dialogs; `Display` stays English.
+    pub fn message(&self) -> String {
+        use crate::i18n::tr;
+        match self {
+            Self::Empty => tr("Enter a location."),
+            Self::InvalidUri => tr("Enter a valid URI."),
+            Self::NotAbsolute => tr("Enter an absolute path."),
+            Self::Missing => tr("That location does not exist."),
+            Self::NotDirectory => tr("That location is not a directory."),
+            Self::Inaccessible => tr("You do not have permission to open that location."),
+            Self::NotMounted(_) => tr("That location is not mounted yet."),
+            Self::Mountable(_) => tr("That location needs to be mounted first."),
+            Self::Unavailable(message) => rust_i18n::t!(
+                "Unable to open that location: %{error}",
+                error = message
+            )
+            .into_owned(),
+            Self::UnsupportedShorthand(message) | Self::Refused(message) => tr(message),
+            Self::UnsupportedScheme(scheme) => rust_i18n::t!(
+                "The %{scheme}:// scheme isn't supported. Use an absolute local path or one of: smb://, sftp://, ftp://, ftps://, dav://, davs://, admin://, or recent:///.",
+                scheme = scheme
+            )
+            .into_owned(),
+            Self::EmbeddedCredential => tr(
+                "Passwords typed into the address bar aren't accepted. Enter the address without a password, you'll be prompted to sign in securely.",
+            ),
+            Self::NotAuthorized => tr("Administrator access wasn't granted."),
+            Self::BackendUnavailable(message) => message.clone(),
+        }
+    }
+}
+
+/// Localized text for an I/O failure. An unrecognized OS error gets a generic reason and its
+/// system text is logged; errors built by Strata or a library keep their own message.
+pub(crate) fn io_error_message(error: &std::io::Error) -> String {
+    if let Some(link) = error
+        .get_ref()
+        .and_then(|inner| inner.downcast_ref::<crate::storage::DestinationError>())
+    {
+        return link.message();
+    }
+    match io_error_reason(error) {
+        Some(reason) => crate::i18n::tr(reason),
+        None if error.raw_os_error().is_some() => {
+            tracing::debug!(error = %system_error_text(error), "unrecognized I/O error");
+            crate::i18n::tr(UNEXPECTED_SYSTEM_ERROR)
+        }
+        None => system_error_text(error),
+    }
+}
+
+pub(crate) const UNEXPECTED_SYSTEM_ERROR: &str = "An unexpected system error occurred";
+
+pub(crate) const INVALID_NAME_REASON: &str = "The name isn\u{2019}t valid at this location";
+
+/// [`io_error_message`] for the `%{error}` slot after a colon; see [`error_detail`].
+pub(crate) fn io_error_detail(error: &std::io::Error) -> String {
+    error_detail(io_error_message(error))
+}
+
+/// The English catalog message for a recognized I/O failure.
+pub(crate) fn io_error_reason(error: &std::io::Error) -> Option<&'static str> {
+    use std::io::ErrorKind;
+    // These errnos have no stable `ErrorKind`.
+    match error.raw_os_error() {
+        Some(libc::ELOOP) => return Some("There are too many levels of symbolic links"),
+        Some(libc::EIO) => return Some("A device input/output error occurred"),
+        Some(libc::ENODEV | libc::ENXIO) => return Some("The device is not available"),
+        _ => {}
+    }
+    Some(match error.kind() {
+        ErrorKind::NotFound => "No such file or folder",
+        ErrorKind::PermissionDenied => "Permission denied",
+        ErrorKind::NotADirectory => "Not a folder",
+        ErrorKind::StorageFull => "There is not enough space on the device",
+        ErrorKind::ReadOnlyFilesystem => "The file system is read-only",
+        ErrorKind::TimedOut => "The operation timed out",
+        ErrorKind::AlreadyExists => "An item with that name already exists",
+        ErrorKind::DirectoryNotEmpty => "The folder is not empty",
+        ErrorKind::IsADirectory => "The item is a folder",
+        ErrorKind::FileTooLarge => "The file is too large for this file system",
+        ErrorKind::QuotaExceeded => "The disk quota has been exceeded",
+        ErrorKind::ResourceBusy => "The item is in use",
+        ErrorKind::InvalidFilename => "The name is too long",
+        ErrorKind::UnexpectedEof => "The file is truncated or damaged",
+        ErrorKind::ConnectionRefused => "The connection was refused",
+        ErrorKind::ConnectionReset => "The connection was reset",
+        ErrorKind::ConnectionAborted => "The connection was interrupted",
+        ErrorKind::HostUnreachable => "The server cannot be reached",
+        ErrorKind::NetworkUnreachable => "The network is unreachable",
+        ErrorKind::NetworkDown => "The network is down",
+        ErrorKind::NotConnected => "The location is no longer connected",
+        ErrorKind::StaleNetworkFileHandle => "The network file handle is no longer valid",
+        ErrorKind::ExecutableFileBusy => "The file is running and cannot be changed",
+        _ => return None,
+    })
+}
+
+/// System text without the errno suffix or a tempfile path, which can name internal staging files.
+pub(crate) fn system_error_text(error: &std::io::Error) -> String {
+    let text = error.to_string();
+    let text = match error.get_ref() {
+        Some(_) => text
+            .split_once(" at path \"")
+            .map_or(text.as_str(), |(head, _)| head),
+        None => text.as_str(),
+    };
+    match text.rsplit_once(" (os error ") {
+        Some((head, tail)) if tail.ends_with(')') => head.to_owned(),
+        _ => text.to_owned(),
+    }
+}
+
+/// Localized common GIO failures; application-owned errors retain their detail.
+pub(crate) fn gio_error_message(error: &glib::Error) -> String {
+    gio_error_reason(error)
+        .map(crate::i18n::tr)
+        .unwrap_or_else(|| error.message().to_owned())
+}
+
+/// Platform backend wording is diagnostic detail, not an application-owned message.
+pub(crate) fn gio_backend_error_message(error: &glib::Error) -> String {
+    let reason = gio_error_reason(error)
+        .or_else(|| describes_refused_credentials(error.message()).then_some("Permission denied"))
+        .unwrap_or_else(|| {
+            tracing::debug!(
+                error = %sanitize_failure_message(error.message()),
+                "unrecognized GIO backend error"
+            );
+            UNEXPECTED_SYSTEM_ERROR
+        });
+    crate::i18n::tr(reason)
+}
+
+/// GVfs' SMB backend reports rejected credentials as `G_IO_ERROR_FAILED` on
+/// some versions, preserving the distinction only in its message.
+pub(crate) fn describes_refused_credentials(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    [
+        "permission denied",
+        "authentication failed",
+        "authentication required",
+        "auth fail",
+        "too many authentication failures",
+        "logon failure",
+        "invalid credentials",
+    ]
+    .iter()
+    .any(|reason| message.contains(reason))
+}
+
+fn gio_error_reason(error: &glib::Error) -> Option<&'static str> {
+    use gtk::gio::IOErrorEnum;
+    Some(match error.kind::<IOErrorEnum>() {
+        Some(IOErrorEnum::NotFound) => "No such file or folder",
+        Some(IOErrorEnum::PermissionDenied) => "Permission denied",
+        Some(IOErrorEnum::NotDirectory) => "Not a folder",
+        Some(IOErrorEnum::NoSpace) => "There is not enough space on the device",
+        Some(IOErrorEnum::ReadOnly) => "The file system is read-only",
+        Some(IOErrorEnum::TimedOut) => "The operation timed out",
+        Some(IOErrorEnum::Exists) => "An item with that name already exists",
+        Some(IOErrorEnum::NotEmpty) => "The folder is not empty",
+        Some(IOErrorEnum::IsDirectory) => "The item is a folder",
+        Some(IOErrorEnum::FilenameTooLong) => "The name is too long",
+        Some(IOErrorEnum::InvalidFilename) => INVALID_NAME_REASON,
+        Some(IOErrorEnum::Busy) => "The item is in use",
+        Some(IOErrorEnum::ConnectionRefused) => "The connection was refused",
+        Some(IOErrorEnum::HostUnreachable) => "The server cannot be reached",
+        Some(IOErrorEnum::NetworkUnreachable) => "The network is unreachable",
+        Some(IOErrorEnum::HostNotFound) => "Could not find the server",
+        Some(IOErrorEnum::TooManyLinks) => "There are too many levels of symbolic links",
+        Some(IOErrorEnum::NotMounted) => "The location is not mounted",
+        _ => return None,
+    })
+}
+
+/// [`gio_error_message`] for the `%{error}` slot after a colon; see [`error_detail`].
+pub(crate) fn gio_error_detail(error: &glib::Error) -> String {
+    error_detail(gio_error_message(error))
+}
+
+/// Adapts a standalone, capitalized error reason for a `…: %{error}` slot. French, Spanish,
+/// Italian, Portuguese, Hungarian, Russian and Vietnamese continue in lower case after a colon;
+/// German capitalizes nouns, and English and CJK keep the text as is.
+pub(crate) fn error_detail(text: String) -> String {
+    error_detail_in(&rust_i18n::locale(), text)
+}
+
+fn error_detail_in(locale: &str, text: String) -> String {
+    if !matches!(locale, "fr" | "es" | "it" | "pt-BR" | "hu" | "ru" | "vi") {
+        return text;
+    }
+    let mut chars = text.chars();
+    match (chars.next(), chars.next()) {
+        // A second capital marks an acronym such as "HTTP".
+        (Some(first), second)
+            if first.is_uppercase() && !second.is_some_and(char::is_uppercase) =>
+        {
+            first.to_lowercase().chain(text.chars().skip(1)).collect()
+        }
+        _ => text,
+    }
+}
+
+fn backend_package_hint(scheme: &str) -> Option<(&'static str, &'static str)> {
     match scheme.to_ascii_lowercase().as_str() {
-        "smb" => Some("gvfs-smb or gvfs-backends"),
-        "sftp" | "ftp" | "ftps" | "dav" | "davs" => Some("gvfs or gvfs-backends"),
+        "smb" => Some(("gvfs-smb", "gvfs-backends")),
+        "sftp" | "ftp" | "ftps" | "dav" | "davs" => Some(("gvfs", "gvfs-backends")),
         _ => None,
     }
 }
 
+/// Localized, because every caller presents it directly.
 pub fn backend_unavailable_message(uri: &str) -> String {
     let scheme = uri.split("://").next().unwrap_or(uri);
     match backend_package_hint(scheme) {
-        Some(packages) => format!(
-            "The {scheme}:// backend isn't installed. Install your distribution's GVfs \
-             {scheme} backend, commonly packaged as {packages}, then try again."
+        Some((package, alternative)) => rust_i18n::t!(
+            "The %{scheme}:// backend isn't installed. Install your distribution's GVfs %{scheme} backend, commonly packaged as %{package} or %{alternative}, then try again.",
+            scheme = scheme,
+            package = package,
+            alternative = alternative
         ),
-        None => format!(
-            "The {scheme}:// backend isn't installed on this system, so {scheme}:// \
-             locations can't be opened. Install the matching GVfs backend from your \
-             distribution, then try again."
+        None => rust_i18n::t!(
+            "The %{scheme}:// backend isn't installed on this system, so %{scheme}:// locations can't be opened. Install the matching GVfs backend from your distribution, then try again.",
+            scheme = scheme
         ),
     }
+    .into_owned()
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -102,14 +344,12 @@ pub struct UriCredentials {
 }
 
 /// Removes URI user-info secrets while preserving the username separately.
+/// Path, query and fragment keep GIO's percent-encoding so non-UTF-8 names survive.
 pub fn sanitize_uri_credentials(
     input: &str,
 ) -> Result<(String, Option<UriCredentials>), LocationValidationError> {
-    let uri = glib::Uri::parse(
-        input,
-        glib::UriFlags::HAS_PASSWORD | glib::UriFlags::HAS_AUTH_PARAMS,
-    )
-    .map_err(|_| LocationValidationError::InvalidUri)?;
+    let uri = glib::Uri::parse(input, GIO_URI_PARSE_FLAGS)
+        .map_err(|_| LocationValidationError::InvalidUri)?;
     if !uri_contains_credentials(&uri) {
         return Ok((uri.to_str().to_string(), None));
     }
@@ -138,7 +378,7 @@ pub fn sanitize_uri_credentials(
     }
 
     let sanitized = glib::Uri::build_with_user(
-        glib::UriFlags::empty(),
+        GIO_URI_BUILD_FLAGS,
         &uri.scheme(),
         (!username.is_empty()).then_some(username.as_str()),
         None,
@@ -177,11 +417,12 @@ pub(crate) fn sanitize_failure_message(message: &str) -> String {
         .collect()
 }
 
-/// Rejects URI password and authentication-parameter fields, including encoded delimiters.
-pub fn validate_uri_credentials(uri: &str) -> Result<(), LocationValidationError> {
+/// Rejects URI password and authentication-parameter fields, including encoded delimiters,
+/// and returns the URI in GIO's percent-encoded form.
+pub fn validate_uri_credentials(uri: &str) -> Result<String, LocationValidationError> {
     match sanitize_uri_credentials(uri)? {
         (_, Some(_)) => Err(LocationValidationError::EmbeddedCredential),
-        (_, None) => Ok(()),
+        (sanitized, None) => Ok(sanitized),
     }
 }
 
@@ -193,11 +434,106 @@ pub enum DirectoryChange {
     Rescan,
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum MountToken {
+    Native(u64),
+    Remote(String),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DirectoryStamp {
+    pub modified: (i64, u32),
+    pub changed: Option<(i64, u32)>,
+    pub identity: Option<ItemIdentity>,
+    pub mount: Option<MountToken>,
+    pub outside_writers: bool,
+    pub coarse_window: Option<Duration>,
+    pub daemon_cache: Option<Duration>,
+    pub read_at: SystemTime,
+}
+
+impl DirectoryStamp {
+    pub fn moved_since(&self, baseline: &Self) -> bool {
+        self.modified != baseline.modified
+            || self.changed != baseline.changed
+            || self.replaced(baseline)
+    }
+
+    pub fn replaced(&self, baseline: &Self) -> bool {
+        match (&self.identity, &baseline.identity) {
+            (Some(identity), Some(baseline)) => identity.proof(baseline) == Proof::Different,
+            (None, None) => false,
+            _ => true,
+        }
+    }
+
+    fn settles_at(&self, window: Duration) -> Option<SystemTime> {
+        let latest = self
+            .changed
+            .map_or(self.modified, |changed| changed.max(self.modified));
+        u64::try_from(latest.0).ok().and_then(|seconds| {
+            (SystemTime::UNIX_EPOCH + Duration::new(seconds, latest.1)).checked_add(window)
+        })
+    }
+
+    pub fn may_hide_changes(&self) -> bool {
+        let Some(window) = self.coarse_window else {
+            return false;
+        };
+        self.settles_at(window)
+            .is_none_or(|settled| self.read_at < settled)
+    }
+
+    pub fn confirm_after(&self) -> Option<Duration> {
+        let whole_seconds =
+            self.modified.1 == 0 && self.changed.is_none_or(|changed| changed.1 == 0);
+        let window = self
+            .coarse_window
+            .filter(|_| whole_seconds && self.may_hide_changes())?;
+        let settles = self.settles_at(window).map_or(window, |settled| {
+            settled.duration_since(self.read_at).unwrap_or_default()
+        });
+        Some(settles.max(self.daemon_cache.unwrap_or_default()))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Responsiveness {
+    #[default]
+    Answering,
+    Stalled,
+    NotResponding,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Watching {
+    Live,
+    Unavailable,
+}
+
+#[derive(Clone, Debug)]
+pub enum StampAnswer {
+    Stamp(Box<DirectoryStamp>),
+    Missing,
+    Inaccessible,
+    Unreachable,
+    Unresponsive,
+    Unsupported,
+}
+
 #[derive(Clone, Debug)]
 pub enum DirectoryEvent {
+    Stamp {
+        request_id: RequestId,
+        stamp: Box<DirectoryStamp>,
+    },
     Batch {
         request_id: RequestId,
         entries: Vec<FileEntry>,
+    },
+    ListingDigest {
+        request_id: RequestId,
+        names_digest: u64,
     },
     Finished {
         request_id: RequestId,
@@ -218,6 +554,9 @@ pub enum DirectoryEvent {
     Failed {
         request_id: RequestId,
         message: String,
+        refused: bool,
+        /// Permissions keep the user out of a native folder that exists.
+        denied: bool,
     },
     /// Size/mtime arrivals for already-listed entries, positioned by the receiver
     /// against stable locations. Zero or more chunks, then exactly one `MetadataFinished`
@@ -261,6 +600,7 @@ pub struct MetadataUpdate {
     pub image_dimensions: MetadataValue<(u32, u32)>,
     pub child_count: MetadataValue<u64>,
     pub duration_seconds: MetadataValue<u64>,
+    pub listable: MetadataValue<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -309,6 +649,15 @@ pub trait FileSource {
         true
     }
 
+    fn confined_to(&self) -> Option<&Path> {
+        None
+    }
+
+    /// Whether a native folder the user can't read may be reopened through `admin://`.
+    fn offers_administrator_access(&self) -> bool {
+        false
+    }
+
     fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError>;
 
     /// Validates a location without blocking the caller. Providers should override this when
@@ -349,5 +698,61 @@ pub trait FileSource {
         _notify: Rc<dyn Fn(DirectoryChange)>,
     ) -> Option<LoadHandle> {
         None
+    }
+
+    fn start_watch(
+        &self,
+        location: Location,
+        include_hidden: bool,
+        notify: Rc<dyn Fn(DirectoryChange)>,
+        report: Rc<dyn Fn(Watching)>,
+    ) -> LoadHandle {
+        match self.watch(location, include_hidden, notify) {
+            Some(watch) => {
+                report(Watching::Live);
+                watch
+            }
+            None => {
+                report(Watching::Unavailable);
+                LoadHandle::new(|| {})
+            }
+        }
+    }
+
+    fn probe_stamp(&self, _location: Location, emit: Rc<dyn Fn(StampAnswer)>) -> LoadHandle {
+        emit(StampAnswer::Unsupported);
+        LoadHandle::new(|| {})
+    }
+
+    fn responsiveness(&self, _location: &Location) -> Responsiveness {
+        Responsiveness::Answering
+    }
+
+    fn follow_responsiveness(&self, _notify: Rc<dyn Fn()>) -> LoadHandle {
+        LoadHandle::new(|| {})
+    }
+
+    /// `locations` must share one mount: the check runs on the first one's lane.
+    fn check_stamps(
+        &self,
+        locations: Vec<Location>,
+        emit: Rc<dyn Fn(Location, StampAnswer)>,
+    ) -> LoadHandle {
+        for location in locations {
+            emit(location, StampAnswer::Unsupported);
+        }
+        LoadHandle::new(|| {})
+    }
+
+    /// Finds the folder in `parent` that matches `identity`, such as one renamed in place.
+    /// Emits `None` when nothing matches or `parent` cannot be listed.
+    fn find_by_identity(
+        &self,
+        _parent: Location,
+        _identity: ItemIdentity,
+        emit: Rc<dyn Fn(Option<Location>)>,
+    ) -> LoadHandle {
+        emit(None);
+        LoadHandle::new(|| {})
     }
 }

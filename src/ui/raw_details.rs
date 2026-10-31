@@ -104,7 +104,7 @@ impl RawDetails {
             label.set_selectable(true);
             label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
             label.set_max_width_chars(32);
-            label.update_property(&[gtk::accessible::Property::Description(name)]);
+            super::accessibility::set_description(&label, Some(name));
             row.append(&heading);
             row.append(&label);
             section.append(&row);

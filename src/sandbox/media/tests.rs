@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::media::{AUDIO_BYTES, Frame};
+use crate::{media::Frame, services::file_activity};
 
 pub(crate) fn stream(header: Header) -> Result<Session, String> {
     stream_to(header, header.duration_us)
@@ -28,17 +28,38 @@ pub(crate) fn stream_to(header: Header, end: u64) -> Result<Session, String> {
             let frame = Frame {
                 tick,
                 pixels: vec![(tick % 255) as u8; header.video_bytes()],
-                samples: if header.audio {
-                    vec![0; AUDIO_BYTES]
-                } else {
-                    Vec::new()
-                },
+                samples: vec![0; crate::media::audio_bytes(header, tick)],
             };
             if send(&sender, Event::Packet(Packet::Frame(frame)), &cancelled).is_err() {
                 return;
             }
         }
         let _sent = send(&sender, Event::Packet(Packet::End(end)), &cancelled);
+    });
+    Ok(Session {
+        cancellation,
+        receiver,
+        worker,
+        _slot: slot,
+    })
+}
+
+/// A session whose decoder dies before producing a header, as a seek past the
+/// end of a truncated file does.
+pub(crate) fn failing_stream() -> Result<Session, String> {
+    let slot = WorkerSlot::acquire().ok_or("Media previews are busy (four active players)")?;
+    let slot = Arc::new(slot);
+    let worker_slot = slot.clone();
+    let cancellation = Cancellation::default();
+    let cancelled = cancellation.clone();
+    let (sender, receiver) = mpsc::sync_channel(QUEUED_PACKETS);
+    let worker = thread::spawn(move || {
+        let _slot = worker_slot;
+        let _sent = send(
+            &sender,
+            Event::Failed("failed to fill whole buffer".into()),
+            &cancelled,
+        );
     });
     Ok(Session {
         cancellation,
@@ -111,6 +132,7 @@ fn decoder_failure_and_trailing_output_are_not_successful_end_of_stream() {
         size: crate::services::MediaPreviewSize::new(16, 16),
         backend: MediaPreviewBackend::Software,
         input_owner: None,
+        audio_only: false,
     };
     let h = Header {
         width: 1,
@@ -147,5 +169,132 @@ fn decoder_failure_and_trailing_output_are_not_successful_end_of_stream() {
                 .any(|event| matches!(event, Event::Packet(Packet::End(_))))
         );
         terminate(&mut child);
+    }
+}
+
+#[test]
+fn waveform_streams_forward_levels_and_reject_failed_or_trailing_output() {
+    let mut bytes = Vec::new();
+    crate::media::peaks::write_header(&mut bytes, 2_000_000).expect("header");
+    let mut accumulator = crate::media::peaks::Accumulator::new(2_000_000);
+    accumulator
+        .push(&[0x40; 32_000], &mut bytes)
+        .expect("levels");
+    accumulator.finish(&mut bytes).expect("end");
+    let file = tempfile::NamedTempFile::new().expect("wire fixture");
+    fs::write(file.path(), bytes).expect("wire bytes");
+    for (suffix, succeeds) in [("", true), ("exit 1", false), ("printf garbage", false)] {
+        let mut child = spawn_renderer(
+            Command::new("sh")
+                .args(["-c", &format!("cat \"$1\"; {suffix}"), "fixture"])
+                .arg(file.path())
+                .stdout(Stdio::piped()),
+        )
+        .expect("worker");
+        let (sender, receiver) = mpsc::sync_channel(4096);
+        let result = consume_peaks(&mut child, &Cancellation::default(), &sender);
+        assert_eq!(result.is_ok(), succeeds, "{suffix:?}");
+        let levels: usize = receiver
+            .try_iter()
+            .map(|event| match event {
+                PeaksEvent::Levels { levels, .. } => levels.len(),
+                _ => 0,
+            })
+            .sum();
+        assert_eq!(levels, crate::media::peaks::BUCKETS as usize);
+        terminate(&mut child);
+    }
+}
+
+#[test]
+fn storyboards_forward_cells_and_reject_failed_or_trailing_output() {
+    use crate::media::storyboard::{Sheet, write_cell, write_end};
+
+    let sheet = Sheet {
+        width: 2,
+        height: 2,
+        count: 8,
+        duration_us: 16_000_000,
+    };
+    let mut bytes = Vec::new();
+    sheet.write(&mut bytes).expect("sheet");
+    write_cell(&mut bytes, 4, &[7; 16]).expect("cell");
+    write_cell(&mut bytes, 2, &[9; 16]).expect("cell");
+    write_end(&mut bytes, sheet).expect("end");
+    let file = tempfile::NamedTempFile::new().expect("wire fixture");
+    fs::write(file.path(), bytes).expect("wire bytes");
+    for (suffix, succeeds) in [("", true), ("exit 1", false), ("printf garbage", false)] {
+        let mut child = spawn_renderer(
+            Command::new("sh")
+                .args(["-c", &format!("cat \"$1\"; {suffix}"), "fixture"])
+                .arg(file.path())
+                .stdout(Stdio::piped()),
+        )
+        .expect("worker");
+        let (sender, receiver) = mpsc::sync_channel(64);
+        let result = consume_storyboard(&mut child, &Cancellation::default(), &sender);
+        assert_eq!(result.is_ok(), succeeds, "{suffix:?}");
+        let events: Vec<_> = receiver.try_iter().collect();
+        assert!(matches!(events.first(), Some(StoryboardEvent::Sheet(read)) if *read == sheet));
+        let cells: Vec<u32> = events
+            .iter()
+            .filter_map(|event| match event {
+                StoryboardEvent::Cell { index, pixels } if pixels.len() == 16 => Some(*index),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(cells, [4, 2], "{suffix:?}");
+        terminate(&mut child);
+    }
+}
+
+#[test]
+fn storyboards_and_waveforms_share_one_background_slot() {
+    let source = SandboxedMedia {
+        path: "/unused".into(),
+        size: crate::services::MediaPreviewSize::new(16, 16),
+        backend: MediaPreviewBackend::Software,
+        input_owner: None,
+        audio_only: false,
+    };
+    let slot = BackgroundSlot::acquire().expect("free slot");
+    assert!(StoryboardSession::start(source.clone(), 128).is_none());
+    assert!(PeaksSession::start(source.clone()).is_none());
+    drop(slot);
+    wait_for(|| ACTIVE_BACKGROUND.load(Ordering::Acquire) == 0);
+    assert!(BackgroundSlot::acquire().is_some());
+}
+
+#[test]
+fn a_clip_an_operation_fences_starts_no_decoder_under_either_name() {
+    let root = tempfile::tempdir().expect("root folder");
+    let real = root.path().canonicalize().expect("root path").join("real");
+    std::fs::create_dir(&real).expect("real folder");
+    std::fs::write(real.join("clip.mp4"), b"clip").expect("clip");
+    let link = root.path().join("link");
+    std::os::unix::fs::symlink(&real, &link).expect("symbolic link");
+    let source = SandboxedMedia {
+        path: link.join("clip.mp4"),
+        size: crate::services::MediaPreviewSize::new(16, 16),
+        backend: MediaPreviewBackend::Software,
+        input_owner: None,
+        audio_only: false,
+    };
+    let activity = file_activity::begin(file_activity::OperationScope::default());
+
+    for fenced in [&real, &link] {
+        let _fence = activity.fence([fenced.clone()]);
+        let refused = spawn_helper(
+            &source,
+            ParseOperation::AudioPeaks,
+            None,
+            &Cancellation::default(),
+        )
+        .err();
+        assert_eq!(
+            refused.as_deref(),
+            Some(file_activity::HELD_FOR_OPERATION),
+            "under {fenced:?}"
+        );
     }
 }

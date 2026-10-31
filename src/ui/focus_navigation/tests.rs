@@ -3,59 +3,10 @@
 use super::*;
 
 #[test]
-fn vim_keys_normalize_only_without_typing_or_modifiers() {
-    for (letter, arrow) in [
-        (gdk::Key::h, gdk::Key::Left),
-        (gdk::Key::j, gdk::Key::Down),
-        (gdk::Key::k, gdk::Key::Up),
-        (gdk::Key::l, gdk::Key::Right),
-    ] {
-        assert_eq!(
-            navigation_key(letter, gdk::ModifierType::empty(), false, None),
-            arrow
-        );
-        assert_eq!(
-            navigation_key(letter, gdk::ModifierType::empty(), true, None),
-            letter
-        );
-        for modifier in [
-            gdk::ModifierType::SHIFT_MASK,
-            gdk::ModifierType::CONTROL_MASK,
-            gdk::ModifierType::ALT_MASK,
-            gdk::ModifierType::SUPER_MASK,
-        ] {
-            assert_eq!(navigation_key(letter, modifier, false, None), letter);
-        }
-    }
-}
-
-#[test]
 fn native_arrow_aliases_use_gtk_spatial_selection() {
     crate::test_support::gtk_test(
         "ui::focus_navigation::tests::native_arrow_aliases_use_gtk_spatial_selection",
         || {
-            let entry = gtk::Entry::new();
-            assert_eq!(
-                navigation_key(
-                    gdk::Key::j,
-                    gdk::ModifierType::empty(),
-                    false,
-                    Some(entry.upcast_ref())
-                ),
-                gdk::Key::j
-            );
-            let popover = gtk::Popover::new();
-            let button = gtk::Button::with_label("Option");
-            popover.set_child(Some(&button));
-            assert_eq!(
-                navigation_key(
-                    gdk::Key::l,
-                    gdk::ModifierType::empty(),
-                    false,
-                    Some(button.upcast_ref())
-                ),
-                gdk::Key::l
-            );
             for grid in [false, true] {
                 let model = gtk::StringList::new(&["a", "b", "c", "d", "e", "f", "g", "h", "i"]);
                 let selection = gtk::SingleSelection::new(Some(model));
@@ -209,5 +160,63 @@ fn arrows_and_enter_reach_controls_without_stealing_text_or_popover_keys() {
         super::super::window::visible_modal_layer(&window),
         Some(settings.upcast())
     );
+    window.destroy();
+}
+
+#[test]
+#[ignore = "requires a GTK display; run this test alone"]
+fn arrows_reach_a_notebook_tab_and_leave_tab_switching_to_gtk() {
+    gtk::init().expect("GTK display");
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    let close = gtk::Button::with_label("Close");
+    close.set_halign(gtk::Align::End);
+    let notebook = gtk::Notebook::new();
+    let mut page_buttons = Vec::new();
+    for title in ["General", "Script"] {
+        let page = gtk::Box::new(gtk::Orientation::Vertical, 12);
+        let button = gtk::Button::with_label(title);
+        button.set_halign(gtk::Align::End);
+        page.append(&button);
+        notebook.append_page(&page, Some(&gtk::Label::new(Some(title))));
+        page_buttons.push(button);
+    }
+    root.append(&close);
+    root.append(&notebook);
+    let window = gtk::Window::builder()
+        .default_width(400)
+        .child(&root)
+        .build();
+    window.present();
+    let context = glib::MainContext::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while page_buttons[0].width() == 0 {
+        while context.pending() {
+            context.iteration(false);
+        }
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let scope = root.upcast_ref::<gtk::Widget>();
+
+    page_buttons[0].grab_focus();
+    assert!(move_focus(scope, gtk::DirectionType::Up));
+    assert!(notebook.has_focus());
+    assert!(!move_focus(scope, gtk::DirectionType::Right));
+    assert!(!move_focus(scope, gtk::DirectionType::Left));
+    assert!(!activate(scope));
+    assert!(move_focus(scope, gtk::DirectionType::Up));
+    assert!(close.has_focus());
+    assert!(move_focus(scope, gtk::DirectionType::Down));
+    assert!(notebook.has_focus());
+    assert!(move_focus(scope, gtk::DirectionType::Down));
+    assert!(page_buttons[0].has_focus());
+
+    notebook.set_show_tabs(false);
+    while context.pending() {
+        context.iteration(false);
+    }
+    page_buttons[0].grab_focus();
+    assert!(move_focus(scope, gtk::DirectionType::Up));
+    assert!(close.has_focus());
     window.destroy();
 }

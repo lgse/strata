@@ -164,6 +164,16 @@ pub(super) fn install_item(
         let can_delete = state.browser.can_delete_at(depth);
         let trash_visible = move_to_trash_is_visible(in_trash, can_trash);
         let permanent_visible = permanently_delete_is_visible(in_trash, can_delete);
+        let permanent_label = if permanent_visible
+            && super::trash::deletion_reach(&super::context_menu::context_entries(
+                &state,
+                &RefCell::new(Some((source, entry.clone()))),
+            )) == super::trash::DeletionReach::Remote
+        {
+            "Delete without Trash"
+        } else {
+            "Permanently delete"
+        };
         let delete_label = if in_trash {
             "Permanently delete"
         } else {
@@ -223,7 +233,7 @@ pub(super) fn install_item(
             options.push((
                 Action::PermanentDelete,
                 crate::assets::icons::TRASH,
-                "Permanently delete",
+                permanent_label,
                 ContextHint::PermanentDelete,
                 true,
                 true,

@@ -16,7 +16,9 @@ pub(crate) fn gio_file_for_location(location: &Location) -> gio::File {
 /// SFTP, ...) can still return a `.path()` via its FUSE mirror even though the
 /// file isn't native; using that path would leak the mirror's opaque
 /// `/run/user/$UID/gvfs/...` location instead of the clean URI (lgse/strata#5).
-/// Returns `None` when GIO provides a malformed URI.
+/// GIO URIs keep GLib's normalized percent-encoding (`trash:///caf%E9.txt` is not decoded), so
+/// names that are not valid UTF-8 round-trip. Returns `None` only for a genuinely malformed URI,
+/// such as an invalid `%` escape.
 pub(crate) fn location_for_file(file: &gio::File) -> Option<Location> {
     if file.is_native()
         && let Some(path) = file.path()
@@ -26,6 +28,16 @@ pub(crate) fn location_for_file(file: &gio::File) -> Option<Location> {
     let uri = file.uri();
     let (sanitized, _) = sanitize_uri_credentials(&uri).ok()?;
     Some(Location::uri(sanitized))
+}
+
+/// Rebuild the child as GIO listings do, preserving location equality across URI spellings.
+pub(crate) fn reveal_target_for_file(file: &gio::File) -> Option<(Location, Location)> {
+    let parent = file.parent()?;
+    let name = file.basename()?;
+    Some((
+        location_for_file(&parent)?,
+        location_for_file(&parent.child(name))?,
+    ))
 }
 
 #[cfg(test)]

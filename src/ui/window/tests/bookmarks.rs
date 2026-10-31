@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-use super::super::{resolve_place_order, serialize_pinned_places};
+use super::super::resolve_place_order;
+use crate::adapters::bookmarks::serialize_pinned_places;
 
 #[test]
 fn existing_sidebar_order_gains_music_after_downloads() {

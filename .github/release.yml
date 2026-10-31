@@ -3,3 +3,32 @@ changelog:
     labels:
       - dependencies
       - skip-changelog
+  # Type labels are applied from the Conventional Commit PR title by pr-policy.yml.
+  # GitHub places each PR in the first category that matches.
+  categories:
+    - title: Breaking changes
+      labels:
+        - breaking
+    - title: New features
+      labels:
+        - feature
+    - title: Fixes and improvements
+      labels:
+        - fix
+    - title: Performance
+      labels:
+        - performance
+    - title: Documentation
+      labels:
+        - documentation
+    - title: Maintenance
+      labels:
+        - refactor
+        - testing
+        - build
+        - ci
+        - chore
+        - deps
+    - title: Other changes
+      labels:
+        - "*"

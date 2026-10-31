@@ -186,7 +186,7 @@ fn unknown_keys_do_not_break_an_older_binary() {
     );
 
     assert_eq!(
-        source.managed().map(ManagedInstall::manager),
+        source.managed().map(ManagedInstall::manager).as_deref(),
         Some("pacman")
     );
 }

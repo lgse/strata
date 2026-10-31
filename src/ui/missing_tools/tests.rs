@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use gtk::glib;
+
 use super::*;
 
 #[test]
@@ -63,6 +65,7 @@ fn missing_tools_dialog_shows_caller_content_and_closes() {
                         (PackageManager::Apt, "dosfstools"),
                     ],
                 }],
+                None,
             );
             let widgets = descendants(overlay.upcast_ref());
             for text in [

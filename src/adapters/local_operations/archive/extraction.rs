@@ -5,26 +5,63 @@
 //! Decoders lend member streams to the session and supply already-known pending
 //! names only on cancellation. The session validates and maps destination reports
 //! without scanning ahead, probing the filesystem or reserving pending names.
+//!
+//! Staging isolates conflict naming from the user's files. A password failure
+//! discards it, because the retry extracts the whole archive again. Unfinished
+//! sessions retain partial output even during decoder panic unwinding.
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
+    ffi::{OsStr, OsString},
     io::{Read, Write},
+    os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    time::SystemTime,
 };
 
-use crate::model::Location;
+use rustix::io::Errno;
 
+use crate::{
+    model::Location,
+    services::{RenameCause, RenamedItem, SkippedItem, SpecialKind, TransferReport},
+};
+
+use super::super::copy_engine::holds_no_links;
 use super::{
-    ArchiveError, COPY_BUF, archive_failed, check_archive_cancelled,
-    destination::{ExtractNameResolver, ExtractionDestination, sanitized_archive_path},
+    ArchiveError, COPY_BUF, archive_failed, archive_io_failed, archive_read_failed,
+    check_archive_cancelled,
+    destination::{
+        ExtractNameResolver, ExtractionDestination, Unmade, archive_stem, creation_failed,
+        hard_link_failed, names_archive_root, process_umask, sanitized_archive_path,
+        symlink_failed,
+    },
 };
 
 #[cfg(test)]
 mod tests;
 
+/// Linux `PATH_MAX` less its terminating NUL; longer symlink targets are refused.
+pub(super) const MAX_SYMLINK_TARGET_BYTES: u64 = 4095;
+
 pub(super) enum MemberContent<'a> {
     Directory,
     File(&'a mut dyn Read, Option<u64>),
+    Symlink(&'a [u8]),
+    /// Only earlier extracted members may be link targets.
+    HardLink(&'a Path),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct MemberMetadata {
+    pub(super) mode: Option<u32>,
+    pub(super) modified: Option<SystemTime>,
+}
+
+impl MemberMetadata {
+    pub(super) const NONE: Self = Self {
+        mode: None,
+        modified: None,
+    };
 }
 
 /// Result of an extract that may stop after writing some members.
@@ -38,91 +75,123 @@ pub(super) enum ArchiveOutcome<T> {
     },
 }
 
-#[derive(Debug)]
-pub(super) struct ExtractedRoots {
-    pub(super) roots: Vec<PathBuf>,
-    directory: ExtractionDestination,
+enum Placement {
+    Made(PathBuf),
+    LeftOut(PathBuf),
 }
 
-impl ExtractedRoots {
-    pub(super) fn bundle(self, archive_name: &str) -> Result<Option<String>, ArchiveError> {
-        self.directory
-            .bundle_roots(archive_name, &self.roots)
-            .map_err(archive_failed)
-    }
-}
-
+/// Member paths are relative to the staging folder.
 enum InterruptedMember {
-    NotAttempted(Location),
-    Failed(Location),
+    NotAttempted(PathBuf),
+    Failed(PathBuf),
+}
+
+struct Staging {
+    name: OsString,
+    directory: ExtractionDestination,
 }
 
 pub(super) struct ExtractionSession<'a> {
     destination: &'a Path,
+    archive_name: &'a str,
     directory: ExtractionDestination,
+    staging: Option<Staging>,
     resolver: ExtractNameResolver,
     progress: &'a AtomicUsize,
     cancelled: &'a AtomicBool,
     roots: Vec<PathBuf>,
     seen_roots: HashSet<PathBuf>,
-    completed: Vec<Location>,
+    completed: Vec<PathBuf>,
+    /// Directory-only leftovers can be discarded after a failed password attempt.
+    has_content: bool,
     interrupted: Option<InterruptedMember>,
     written: u64,
     available_bytes: Option<u64>,
+    records_hard_link_targets: bool,
+    /// Native archive identity must survive conflict renames for later hard links.
+    created_names: HashMap<PathBuf, PathBuf>,
+    skipped_links: HashSet<PathBuf>,
+    skipped: Vec<PathBuf>,
+    directories: Vec<(PathBuf, MemberMetadata)>,
+    report: &'a mut TransferReport,
 }
 
 impl<'a> ExtractionSession<'a> {
     pub(super) fn open(
         destination: &'a Path,
+        archive_name: &'a str,
         progress: &'a AtomicUsize,
         cancelled: &'a AtomicBool,
+        report: &'a mut TransferReport,
     ) -> Result<Self, ArchiveError> {
         let directory = ExtractionDestination::open(destination)?;
         let available_bytes = directory.available_bytes()?;
         Ok(Self::from_open(
             destination,
+            archive_name,
             directory,
             progress,
             cancelled,
             available_bytes,
+            report,
         ))
     }
 
     fn from_open(
         destination: &'a Path,
+        archive_name: &'a str,
         directory: ExtractionDestination,
         progress: &'a AtomicUsize,
         cancelled: &'a AtomicBool,
         available_bytes: Option<u64>,
+        report: &'a mut TransferReport,
     ) -> Self {
         Self {
             destination,
+            archive_name,
+            resolver: ExtractNameResolver::new(&directory),
             directory,
-            resolver: ExtractNameResolver::new(),
+            staging: None,
             progress,
             cancelled,
             roots: Vec::new(),
             seen_roots: HashSet::new(),
             completed: Vec::new(),
+            has_content: false,
             interrupted: None,
             written: 0,
             available_bytes,
+            records_hard_link_targets: false,
+            created_names: HashMap::new(),
+            skipped_links: HashSet::new(),
+            skipped: Vec::new(),
+            directories: Vec::new(),
+            report,
         }
+    }
+
+    /// Avoid retaining every member name in formats without hard links.
+    pub(super) fn record_hard_link_targets(&mut self) {
+        self.records_hard_link_targets = true;
     }
 
     #[cfg(test)]
     pub(super) fn open_with_available_bytes(
         destination: &'a Path,
+        archive_name: &'a str,
         progress: &'a AtomicUsize,
         cancelled: &'a AtomicBool,
         available_bytes: Option<u64>,
+        report: &'a mut TransferReport,
     ) -> Result<Self, ArchiveError> {
         Ok(Self::from_open(
             destination,
+            archive_name,
             ExtractionDestination::open(destination)?,
             progress,
             cancelled,
             available_bytes,
+            report,
         ))
     }
 
@@ -134,9 +203,13 @@ impl<'a> ExtractionSession<'a> {
     /// Sequential formats that cannot cheaply sum headers rely on per-member checks.
     pub(super) fn preflight_claimed_size(&self, claimed: u128) -> Result<(), ArchiveError> {
         match self.remaining() {
-            Some(available) if claimed > u128::from(available) => Err(archive_failed(format!(
-                "Archive declared size ({claimed} bytes) exceeds the {available} bytes of free space at the destination"
-            ))),
+            Some(available) if claimed > u128::from(available) => {
+                Err(archive_failed(rust_i18n::t!(
+                    "Archive declared size (%{claimed}) exceeds the free space at the destination (%{available})",
+                    claimed = crate::i18n::file_size(u64::try_from(claimed).unwrap_or(u64::MAX)),
+                    available = crate::i18n::file_size(available)
+                )))
+            }
             _ => Ok(()),
         }
     }
@@ -148,64 +221,187 @@ impl<'a> ExtractionSession<'a> {
 
     fn ensure_member_fits(&self, name: &str, declared: u64) -> Result<(), ArchiveError> {
         match self.remaining() {
-            Some(available) if declared > available => Err(archive_failed(format!(
-                "Archive member `{name}` declared {declared} bytes, but only {available} bytes are free at the destination"
+            Some(available) if declared > available => Err(archive_failed(rust_i18n::t!(
+                "Archive member “%{name}” declared %{declared}, but only %{available} is free at the destination",
+                name = name,
+                declared = crate::i18n::file_size(declared),
+                available = crate::i18n::file_size(available)
             ))),
             _ => Ok(()),
         }
     }
 
-    /// Processes one member. On error the decoder must stop and call `finish`.
-    /// Names retain the adapters' legacy string conversion until decoder evaluation.
+    fn ensure_staging(&mut self) -> Result<(), ArchiveError> {
+        if self.staging.is_none() {
+            let (name, directory) = self.directory.create_staging()?;
+            self.staging = Some(Staging { name, directory });
+        }
+        Ok(())
+    }
+
+    fn hard_link_target(&self, name: &str, target: &Path) -> Result<Option<PathBuf>, ArchiveError> {
+        let target_path = sanitized_archive_path(target).ok();
+        if let Some(created) = target_path
+            .as_ref()
+            .and_then(|path| self.created_names.get(path))
+        {
+            return Ok(Some(created.clone()));
+        }
+        if target_path.is_some_and(|path| self.skipped_links.contains(&path)) {
+            return Ok(None);
+        }
+        Err(archive_failed(rust_i18n::t!(
+            "Archive member “%{name}” is a hard link to “%{target}”, which was not extracted",
+            name = name,
+            target = target.display()
+        )))
+    }
+
+    /// On error the decoder must stop and call `finish`.
     pub(super) fn extract_member(
         &mut self,
-        name: &str,
+        name: impl AsRef<OsStr>,
         content: MemberContent<'_>,
+        metadata: MemberMetadata,
     ) -> Result<(), ArchiveError> {
-        let path = sanitized_archive_path(name)?;
+        if matches!(content, MemberContent::Directory) && names_archive_root(name.as_ref()) {
+            return Ok(());
+        }
+        let path = sanitized_archive_path(&name)?;
+        let name = name.as_ref().to_string_lossy();
         if let Err(error) = self.check_cancelled() {
-            self.interrupted = Some(InterruptedMember::NotAttempted(extract_entry_location(
-                self.destination,
-                &self.resolver.apply_known_rename(&path),
-            )));
+            self.interrupted = Some(InterruptedMember::NotAttempted(self.resolver.known(&path)));
             return Err(error);
         }
         if let MemberContent::File(_, Some(declared)) = &content {
-            self.ensure_member_fits(name, *declared)?;
+            self.ensure_member_fits(&name, *declared)?;
         }
-        let outpath = self.resolver.resolve(&self.directory, &path)?;
-        let created = match content {
-            MemberContent::Directory => {
-                self.directory.create_directories(&outpath)?;
-                outpath
+        // Checked before staging exists, so a refused first member leaves nothing behind.
+        let hard_link_target = match &content {
+            MemberContent::Symlink(target) => {
+                validate_link_target(&name, target)?;
+                None
             }
-            content => {
-                let (mut file, created) = self.directory.create_file(&outpath)?;
-                let result = match content {
-                    MemberContent::File(reader, declared_size) => copy_member(
-                        name,
-                        reader,
-                        &mut file,
-                        self.cancelled,
-                        declared_size,
-                        self.remaining(),
-                    ),
-                    MemberContent::Directory => unreachable!(),
+            MemberContent::HardLink(target) => Some(self.hard_link_target(&name, target)?),
+            _ => None,
+        };
+        self.ensure_staging()?;
+        let staging = &self
+            .staging
+            .as_ref()
+            .expect("staging exists after ensure_staging")
+            .directory;
+        let resolver = &mut self.resolver;
+        let is_directory = matches!(content, MemberContent::Directory);
+        let placement = match content {
+            MemberContent::Directory => {
+                let created = resolver.folder(staging, &path)?;
+                self.directories.push((created.clone(), metadata));
+                Placement::Made(created)
+            }
+            MemberContent::Symlink(target)
+                if staging.names().holds_link_to(OsStr::from_bytes(target)) =>
+            {
+                let link = |placed: &_| {
+                    staging.create_symlink(placed, OsStr::from_bytes(target), metadata.modified)
                 };
+                match resolver.leaf(staging, &path, link) {
+                    Ok((placed, ())) => Placement::Made(resolver.made(placed)),
+                    Err(Unmade::Unheld(refusal)) => {
+                        if holds_no_links(refusal) {
+                            staging.names().refuse_links();
+                        }
+                        Placement::LeftOut(resolver.requested(staging, &path)?)
+                    }
+                    // A target the mount cannot store is refused like the link.
+                    Err(Unmade::Refused(Errno::INVAL | Errno::ILSEQ)) => {
+                        Placement::LeftOut(resolver.requested(staging, &path)?)
+                    }
+                    Err(unmade) => {
+                        return Err(unmade.worded(|error| symlink_failed(&path, error)).into());
+                    }
+                }
+            }
+            MemberContent::Symlink(_) => Placement::LeftOut(resolver.requested(staging, &path)?),
+            MemberContent::HardLink(_) => match hard_link_target.flatten() {
+                Some(target) => {
+                    let linked = resolver.leaf(staging, &path, |placed| {
+                        staging.create_hard_link(placed, &target)
+                    });
+                    match linked {
+                        Ok((placed, ())) => Placement::Made(resolver.made(placed)),
+                        Err(unmade) => {
+                            // A mount that cannot hold hard links gets a copy instead.
+                            let unmade = match unmade {
+                                unheld @ Unmade::Unheld(_) => match staging.open_extracted(&target)
+                                {
+                                    Ok(Some((mut source, size))) => {
+                                        return self.extract_member(
+                                            &path,
+                                            MemberContent::File(&mut source, Some(size)),
+                                            metadata,
+                                        );
+                                    }
+                                    Ok(None) => unheld,
+                                    Err(reason) => {
+                                        Unmade::Failed(hard_link_failed(&path, &target, &reason))
+                                    }
+                                },
+                                unmade => unmade,
+                            };
+                            return Err(unmade
+                                .worded(|error| hard_link_failed(&path, &target, error))
+                                .into());
+                        }
+                    }
+                }
+                None => Placement::LeftOut(resolver.requested(staging, &path)?),
+            },
+            MemberContent::File(reader, declared_size) => {
+                let (placed, mut file) = resolver
+                    .leaf(staging, &path, |placed| {
+                        staging.create_file(placed, metadata.mode)
+                    })
+                    .map_err(|unmade| unmade.worded(|error| creation_failed(&path, error)))?;
+                let result = copy_member(
+                    &name,
+                    reader,
+                    &mut file,
+                    self.cancelled,
+                    declared_size,
+                    self.available_bytes
+                        .map(|available| available.saturating_sub(self.written)),
+                )
+                .and_then(|copied| match metadata.modified {
+                    Some(modified) => staging
+                        .set_file_times(&file, modified)
+                        .map(|()| copied)
+                        .map_err(|error| {
+                            archive_failed(rust_i18n::t!(
+                                "Could not restore the modification time of “%{path}”: %{error}",
+                                path = name,
+                                error = crate::services::io_error_detail(&error.into())
+                            ))
+                        }),
+                    None => Ok(copied),
+                });
                 match result {
                     Ok(copied) => {
                         self.written = self.written.saturating_add(copied);
-                        created
+                        Placement::Made(resolver.made(placed))
                     }
                     Err(error) => {
                         drop(file);
-                        let removed = self.directory.remove_file(&created);
+                        let created = placed.path;
+                        let removed = staging.remove_file(&created);
+                        if removed.is_err() {
+                            self.has_content = true;
+                        }
                         if error == ArchiveError::Cancelled {
-                            let location = extract_entry_location(self.destination, &created);
                             self.interrupted = Some(if removed.is_ok() {
-                                InterruptedMember::NotAttempted(location)
+                                InterruptedMember::NotAttempted(created)
                             } else {
-                                InterruptedMember::Failed(location)
+                                InterruptedMember::Failed(created)
                             });
                         }
                         return Err(error);
@@ -213,79 +409,388 @@ impl<'a> ExtractionSession<'a> {
                 }
             }
         };
-        if let Some(root) = created.components().next() {
+        let created = match placement {
+            Placement::Made(created) => created,
+            Placement::LeftOut(requested) => {
+                // A hard link to a link left out is left out with it.
+                if self.records_hard_link_targets {
+                    self.skipped_links.insert(path);
+                }
+                if let Some(folder) = requested.parent() {
+                    self.note_root(folder);
+                }
+                self.skipped.push(requested);
+                self.progress.fetch_add(1, Ordering::Relaxed);
+                return Ok(());
+            }
+        };
+        if !is_directory {
+            self.has_content = true;
+            if self.records_hard_link_targets {
+                self.created_names.insert(path, created.clone());
+            }
+        }
+        self.note_root(&created);
+        self.completed.push(created);
+        self.progress.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+
+    fn note_root(&mut self, path: &Path) {
+        if let Some(root) = path.components().next() {
             let root = PathBuf::from(root.as_os_str());
             if self.seen_roots.insert(root.clone()) {
                 self.roots.push(root);
             }
         }
-        self.completed
-            .push(extract_entry_location(self.destination, &created));
-        self.progress.fetch_add(1, Ordering::Relaxed);
-        Ok(())
     }
 
     /// Pending names exclude members already passed to `extract_member`.
     /// Reports apply established top-level renames, but cannot predict final leaf
     /// conflicts for unattempted members. Invalid names are omitted, not errors.
-    ///
-    /// A completed extraction reports the distinct resolved top-level names it
-    /// wrote, in archive order, so the caller can bundle a spilled archive.
     pub(super) fn finish(
-        self,
+        mut self,
         result: Result<(), ArchiveError>,
         remaining: impl FnOnce() -> Vec<String>,
-    ) -> Result<ArchiveOutcome<ExtractedRoots>, ArchiveError> {
+    ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
+        // Taking the staging folder disarms the `Drop` publication.
+        let staging = self.staging.take();
+        let directory = &self.directory;
+        let destination = self.destination;
+        let archive_name = self.archive_name;
+        let reported = Reported {
+            renamed: self.resolver.take_renamed(),
+            skipped: std::mem::take(&mut self.skipped),
+        };
+        let report = &mut *self.report;
+        // Reported only where the output it names was kept.
+        let mut kept_in = |folder: &Result<Option<String>, String>, reported: Reported| {
+            if let Ok(Some(folder)) = folder {
+                reported.in_folder(report, directory, destination, archive_name, folder);
+            }
+        };
         match result {
-            Ok(()) => Ok(ArchiveOutcome::Completed(ExtractedRoots {
-                roots: self.roots,
-                directory: self.directory,
-            })),
+            Ok(()) => {
+                let Some(staging) = staging else {
+                    return Ok(ArchiveOutcome::Completed(None));
+                };
+                let (top_level, nested): (Vec<_>, Vec<_>) =
+                    merge_repeated_directories(std::mem::take(&mut self.directories))
+                        .into_iter()
+                        .partition(|(path, _)| path.components().count() == 1);
+                // Nested directories never move on their own during publication.
+                if let Err(error) = restore_directory_metadata(&staging.directory, nested) {
+                    let kept =
+                        keep_or_remove(directory, Some(&staging), archive_name, self.has_content);
+                    kept_in(&kept, reported);
+                    return Err(ArchiveError::Failed(failure_message(error, kept)));
+                }
+                let (name, is_folder) = match self.roots.as_slice() {
+                    [] => {
+                        remove_empty(directory, &staging)?;
+                        reported.add_to(report, |path| destination.join(path));
+                        return Ok(ArchiveOutcome::Completed(None));
+                    }
+                    [root] => {
+                        let leaf = directory
+                            .publish_single_root(&staging.directory, root)
+                            .map_err(|error| staging_kept(&error, &staging))?;
+                        remove_empty(directory, &staging)?;
+                        reported.add_to(report, |path| {
+                            let mut names = path.iter();
+                            match names.next() {
+                                Some(top) if top == root.as_os_str() => {
+                                    destination.join(&leaf).join(names.as_path())
+                                }
+                                _ => destination.join(path),
+                            }
+                        });
+                        (leaf, false)
+                    }
+                    _ => {
+                        let folder = directory
+                            .publish_staging_as_folder(&staging.name, archive_name)
+                            .map_err(|error| staging_kept(&error, &staging))?;
+                        reported.in_folder(report, directory, destination, archive_name, &folder);
+                        (OsString::from(folder), true)
+                    }
+                };
+                // Cross-parent directory moves may need owner write access to `..`.
+                let published = top_level
+                    .into_iter()
+                    .map(|(path, metadata)| {
+                        let path = if is_folder {
+                            Path::new(&name).join(path)
+                        } else {
+                            PathBuf::from(&name)
+                        };
+                        (path, metadata)
+                    })
+                    .collect();
+                let name = name.to_string_lossy().into_owned();
+                restore_directory_metadata(directory, published).map_err(|error| {
+                    ArchiveError::Failed(crate::i18n::join_sentences(
+                        &error,
+                        &entries_remain_in(&name),
+                    ))
+                })?;
+                Ok(ArchiveOutcome::Completed(Some(name)))
+            }
             Err(ArchiveError::Cancelled) => {
+                let kept =
+                    keep_or_remove(directory, staging.as_ref(), archive_name, self.has_content);
+                kept_in(&kept, reported);
+                let kept = kept.map_err(ArchiveError::Failed)?;
+                let base = |relative: &Path| match &kept {
+                    Some(folder) => Location::local(destination.join(folder).join(relative)),
+                    None => Location::local(destination.join(relative)),
+                };
+                let mut completed = Vec::new();
                 let mut failed = Vec::new();
                 let mut not_attempted = Vec::new();
-                match self.interrupted {
-                    Some(InterruptedMember::NotAttempted(location)) => not_attempted.push(location),
-                    Some(InterruptedMember::Failed(location)) => failed.push(location),
+                if kept.is_some() || staging.is_none() {
+                    completed.extend(self.completed.iter().map(|path| base(path)));
+                } else {
+                    not_attempted.extend(self.completed.iter().map(|path| base(path)));
+                }
+                match self.interrupted.take() {
+                    Some(InterruptedMember::NotAttempted(path)) => not_attempted.push(base(&path)),
+                    Some(InterruptedMember::Failed(path)) => failed.push(base(&path)),
                     None => {}
                 }
                 not_attempted.extend(remaining().into_iter().filter_map(|name| {
                     let path = sanitized_archive_path(&name).ok()?;
-                    Some(extract_entry_location(
-                        self.destination,
-                        &self.resolver.apply_known_rename(&path),
-                    ))
+                    Some(base(&self.resolver.known(&path)))
                 }));
                 Ok(ArchiveOutcome::Cancelled {
-                    completed: self.completed,
+                    completed,
                     failed,
                     not_attempted,
                 })
             }
-            Err(error) => Err(error),
+            Err(
+                error @ (ArchiveError::PasswordRequired(_) | ArchiveError::IncorrectPassword(_)),
+            ) => {
+                let discarded = staging
+                    .as_ref()
+                    .map_or(Ok(()), |staging| directory.remove_staging(&staging.name));
+                // Output that cannot be discarded would make the retry take a
+                // numbered name, so report an ordinary failure instead.
+                match discarded {
+                    Ok(()) => Err(error),
+                    Err(removal) => {
+                        let kept = keep_or_remove(
+                            directory,
+                            staging.as_ref(),
+                            archive_name,
+                            self.has_content,
+                        );
+                        kept_in(&kept, reported);
+                        Err(ArchiveError::Failed(failure_message(
+                            crate::i18n::join_sentences(&error.to_string(), &removal),
+                            kept,
+                        )))
+                    }
+                }
+            }
+            Err(ArchiveError::Failed(message)) => {
+                let kept =
+                    keep_or_remove(directory, staging.as_ref(), archive_name, self.has_content);
+                kept_in(&kept, reported);
+                Err(ArchiveError::Failed(failure_message(message, kept)))
+            }
         }
     }
 }
 
-fn extract_entry_location(destination: &Path, relative: &Path) -> Location {
-    Location::local(destination.join(relative))
+struct Reported {
+    renamed: Vec<(PathBuf, PathBuf, RenameCause)>,
+    skipped: Vec<PathBuf>,
+}
+
+impl Reported {
+    fn add_to(self, report: &mut TransferReport, place: impl Fn(&Path) -> PathBuf) {
+        report.renamed.extend(
+            self.renamed
+                .into_iter()
+                .map(|(requested, saved_as, cause)| RenamedItem {
+                    requested: Location::local(place(&requested)),
+                    saved_as: Location::local(place(&saved_as)),
+                    cause,
+                }),
+        );
+        report
+            .skipped
+            .extend(self.skipped.iter().map(|path| SkippedItem {
+                location: Location::local(place(path)),
+                kind: SpecialKind::Symlink,
+            }));
+    }
+
+    fn in_folder(
+        self,
+        report: &mut TransferReport,
+        directory: &ExtractionDestination,
+        destination: &Path,
+        archive_name: &str,
+        folder: &str,
+    ) {
+        if let Some(cause) = directory.folder_name(archive_name).cause {
+            report.renamed.push(RenamedItem {
+                requested: Location::local(destination.join(archive_stem(archive_name))),
+                saved_as: Location::local(destination.join(folder)),
+                cause,
+            });
+        }
+        self.add_to(report, |path| destination.join(folder).join(path));
+    }
+}
+
+impl Drop for ExtractionSession<'_> {
+    fn drop(&mut self) {
+        if let Some(staging) = self.staging.take() {
+            let _ = keep_or_remove(
+                &self.directory,
+                Some(&staging),
+                self.archive_name,
+                self.has_content,
+            );
+        }
+    }
+}
+
+fn failure_message(message: String, kept: Result<Option<String>, String>) -> String {
+    match kept {
+        Ok(Some(folder)) => crate::i18n::join_sentences(&message, &entries_remain_in(&folder)),
+        Ok(None) => message,
+        Err(error) => crate::i18n::join_sentences(&message, &error),
+    }
+}
+
+/// Restore each directory once: an earlier restrictive mode could block a later restore.
+fn merge_repeated_directories(
+    directories: Vec<(PathBuf, MemberMetadata)>,
+) -> Vec<(PathBuf, MemberMetadata)> {
+    let mut positions: HashMap<PathBuf, usize> = HashMap::new();
+    let mut merged: Vec<(PathBuf, MemberMetadata)> = Vec::new();
+    for (path, metadata) in directories {
+        match positions.get(&path) {
+            Some(&position) => {
+                let earlier = &mut merged[position].1;
+                *earlier = MemberMetadata {
+                    mode: metadata.mode.or(earlier.mode),
+                    modified: metadata.modified.or(earlier.modified),
+                };
+            }
+            None => {
+                positions.insert(path.clone(), merged.len());
+                merged.push((path, metadata));
+            }
+        }
+    }
+    merged.retain(|(_, metadata)| *metadata != MemberMetadata::NONE);
+    merged
+}
+
+/// Deepest-first restoration keeps ancestors traversable; rollback reverses that order.
+fn restore_directory_metadata(
+    destination: &ExtractionDestination,
+    mut directories: Vec<(PathBuf, MemberMetadata)>,
+) -> Result<(), String> {
+    directories.sort_by_key(|(path, _)| std::cmp::Reverse(path.components().count()));
+    let umask = process_umask();
+    for (index, (path, metadata)) in directories.iter().enumerate() {
+        if let Err(error) = destination.apply_directory_metadata(path, *metadata, umask) {
+            for (path, _) in directories[..=index].iter().rev() {
+                destination.reset_directory_mode(path, umask);
+            }
+            return Err(error);
+        }
+    }
+    Ok(())
+}
+
+fn validate_link_target(name: &str, target: &[u8]) -> Result<(), ArchiveError> {
+    if target.is_empty() || target.len() as u64 > MAX_SYMLINK_TARGET_BYTES || target.contains(&0) {
+        return Err(archive_failed(rust_i18n::t!(
+            "Archive member “%{name}” has an invalid symbolic link target",
+            name = name
+        )));
+    }
+    Ok(())
+}
+
+fn remove_empty(parent: &ExtractionDestination, staging: &Staging) -> Result<(), ArchiveError> {
+    match parent.remove_empty_staging(&staging.name) {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(staging_kept(
+            &crate::i18n::tr("Some extracted entries were not published"),
+            staging,
+        )),
+        Err(error) => Err(archive_failed(error)),
+    }
+}
+
+fn keep_or_remove(
+    parent: &ExtractionDestination,
+    staging: Option<&Staging>,
+    archive_name: &str,
+    has_content: bool,
+) -> Result<Option<String>, String> {
+    let Some(staging) = staging else {
+        return Ok(None);
+    };
+    let removed = if has_content {
+        parent.remove_empty_staging(&staging.name)
+    } else {
+        parent.remove_directory_only_staging(&staging.name)
+    };
+    let kept = removed.and_then(|removed| {
+        if removed {
+            Ok(None)
+        } else {
+            parent
+                .publish_staging_as_folder(&staging.name, archive_name)
+                .map(Some)
+        }
+    });
+    kept.map_err(|error| staging_kept_message(&error, staging))
+}
+
+fn staging_kept_message(error: &str, staging: &Staging) -> String {
+    crate::i18n::join_sentences(error, &entries_remain_in(&staging.name.to_string_lossy()))
+}
+
+fn entries_remain_in(folder: &str) -> String {
+    rust_i18n::t!("Extracted entries remain in “%{folder}”.", folder = folder).into_owned()
+}
+
+fn staging_kept(error: &str, staging: &Staging) -> ArchiveError {
+    ArchiveError::Failed(staging_kept_message(error, staging))
 }
 
 fn declared_size_exceeded(name: &str, declared: u64) -> ArchiveError {
-    archive_failed(format!(
-        "Archive member `{name}` declared {declared} bytes but produced more"
+    archive_failed(rust_i18n::t!(
+        "Archive member “%{name}” declared %{declared} but produced more",
+        name = name,
+        declared = crate::i18n::count_u64("bytes", declared)
     ))
 }
 
 fn declared_size_short(name: &str, declared: u64, actual: u64) -> ArchiveError {
-    archive_failed(format!(
-        "Archive member `{name}` declared {declared} bytes but produced {actual} bytes"
+    archive_failed(rust_i18n::t!(
+        "Archive member “%{name}” declared %{declared} but produced %{actual}",
+        name = name,
+        declared = crate::i18n::count_u64("bytes", declared),
+        actual = crate::i18n::count_u64("bytes", actual)
     ))
 }
 
 fn destination_full(name: &str, available: u64) -> ArchiveError {
-    archive_failed(format!(
-        "Not enough free space at the destination to extract `{name}` ({available} bytes available)"
+    archive_failed(rust_i18n::t!(
+        "Not enough free space at the destination to extract “%{name}” (%{available} available)",
+        name = name,
+        available = crate::i18n::file_size(available)
     ))
 }
 
@@ -311,7 +816,11 @@ fn copy_member(
         };
         if allowed == 0 {
             let mut probe = [0u8; 1];
-            if reader.read(&mut probe).map_err(archive_failed)? == 0 {
+            let probed = match reader.read(&mut probe) {
+                Err(error) if error.kind() == std::io::ErrorKind::FileTooLarge => 1,
+                result => result.map_err(archive_read_failed)?,
+            };
+            if probed == 0 {
                 break;
             }
             return Err(match declared_size {
@@ -328,11 +837,13 @@ fn copy_member(
         let cap = buf
             .len()
             .min(usize::try_from(allowed).unwrap_or(usize::MAX));
-        let n = reader.read(&mut buf[..cap]).map_err(archive_failed)?;
+        let n = reader.read(&mut buf[..cap]).map_err(archive_read_failed)?;
         if n == 0 {
             break;
         }
-        writer.write_all(&buf[..n]).map_err(archive_failed)?;
+        writer
+            .write_all(&buf[..n])
+            .map_err(|error| archive_io_failed(&error))?;
         copied = copied.saturating_add(n as u64);
     }
     if let Some(declared) = declared_size

@@ -1,0 +1,8 @@
+{"scenario":"appearance-menu-switches-view","modes":["columns"],"layout":"us","mutation":"view-switching","known_bug":null,"cost":{"columns":0.7},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"Icons value of the Appearance menu switch; appearance-menu-switches-view-list covers the same route for List and is a superset"}}
+{"expect":{"view_mode":"Columns"}}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"radio menu item","name":"Icons"}},"message":"the Icons option"}
+{"click":{"role":"radio menu item","name":"Icons"}}
+{"wait":{"view_mode":"Icons"},"message":"the browser to switch to the Icons view"}
+{"expect":[{"view_mode":"Icons"},{"pane":"$root"},{"entries":{"contains":["documents"]}}]}
+{"wait":{"pref":{"key":"browser_mode","value":"icons"}},"message":"the chosen view to be written to settings.toml"}

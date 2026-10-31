@@ -5,7 +5,8 @@ mod tests;
 
 use std::{
     fs,
-    io::{Read, Write},
+    io::{self, Read, Write},
+    os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -14,6 +15,8 @@ use std::{
     },
     time::{Duration, SystemTime},
 };
+
+use super::{file_source::io_error_detail, network_error::NetworkError};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -24,6 +27,23 @@ const CHUNK: usize = 64 * 1024;
 const PROGRESS_STRIDE: u64 = 256 * 1024;
 
 pub(crate) const DOWNLOAD_PREFIX: &str = "strata-download-";
+
+// The shared temp directory is listable by every local user, and tempfile and
+// `File::create` follow the umask (typically 0755/0644).
+pub(crate) fn private_download_dir() -> io::Result<tempfile::TempDir> {
+    tempfile::Builder::new()
+        .prefix(DOWNLOAD_PREFIX)
+        .permissions(fs::Permissions::from_mode(0o700))
+        .tempdir()
+}
+
+pub(crate) fn create_private_file(path: &Path) -> io::Result<fs::File> {
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)
+}
 
 #[derive(Debug)]
 pub(crate) enum RemoteDownload {
@@ -75,7 +95,7 @@ fn fetch(
 ) -> Result<PathBuf, String> {
     prune_stale_downloads();
     if cancelled.load(Ordering::SeqCst) {
-        return Err("Download cancelled".to_owned());
+        return Err(crate::i18n::tr("Download cancelled"));
     }
     let config = ureq::Agent::config_builder()
         // A remote server must not redirect the portal into host-only services.
@@ -89,9 +109,11 @@ fn fetch(
         .get(url)
         .header("User-Agent", "strata-file-manager")
         .call()
-        .map_err(|error| format!("Could not download the file: {error}"))?;
+        .map_err(|error| download_failed(&NetworkError::from_ureq(&error)))?;
     if response.status().is_redirection() {
-        return Err("The URL redirects elsewhere; paste the direct file URL instead".to_owned());
+        return Err(crate::i18n::tr(
+            "The URL redirects elsewhere; paste the direct file URL instead",
+        ));
     }
     let disposition = response
         .headers()
@@ -109,13 +131,15 @@ fn fetch(
         .get("content-length")
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.parse::<u64>().ok());
-    let directory = tempfile::Builder::new()
-        .prefix(DOWNLOAD_PREFIX)
-        .tempdir()
-        .map_err(|error| format!("Could not create a temporary folder: {error}"))?;
+    let directory = private_download_dir().map_err(|error| {
+        rust_i18n::t!(
+            "Could not create a temporary folder: %{error}",
+            error = io_error_detail(&error)
+        )
+        .into_owned()
+    })?;
     let path = directory.path().join(&name);
-    let mut file = fs::File::create(&path)
-        .map_err(|error| format!("Could not write the download: {error}"))?;
+    let mut file = create_private_file(&path).map_err(|error| write_failed(&error))?;
     let mut reader = response.body_mut().as_reader();
     let mut buffer = [0_u8; CHUNK];
     let mut downloaded = 0_u64;
@@ -123,16 +147,16 @@ fn fetch(
     let _sent = progress.send(RemoteDownload::Progress { downloaded, total });
     loop {
         if cancelled.load(Ordering::SeqCst) {
-            return Err("Download cancelled".to_owned());
+            return Err(crate::i18n::tr("Download cancelled"));
         }
         let count = reader
             .read(&mut buffer)
-            .map_err(|error| format!("Could not download the file: {error}"))?;
+            .map_err(|error| download_failed(&NetworkError::from_io(&error)))?;
         if count == 0 {
             break;
         }
         file.write_all(&buffer[..count])
-            .map_err(|error| format!("Could not write the download: {error}"))?;
+            .map_err(|error| write_failed(&error))?;
         downloaded = downloaded.saturating_add(count as u64);
         if downloaded - reported >= PROGRESS_STRIDE {
             reported = downloaded;
@@ -140,11 +164,27 @@ fn fetch(
         }
     }
     if cancelled.load(Ordering::SeqCst) {
-        return Err("Download cancelled".to_owned());
+        return Err(crate::i18n::tr("Download cancelled"));
     }
     // The requesting app opens the file after the portal request completes.
     let _persisted = directory.keep();
     Ok(path)
+}
+
+fn download_failed(error: &NetworkError) -> String {
+    rust_i18n::t!(
+        "Could not download the file: %{error}",
+        error = error.detail()
+    )
+    .into_owned()
+}
+
+fn write_failed(error: &std::io::Error) -> String {
+    rust_i18n::t!(
+        "Could not write the download: %{error}",
+        error = io_error_detail(error)
+    )
+    .into_owned()
 }
 
 fn filename_from_disposition(header: &str) -> Option<String> {

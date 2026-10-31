@@ -1,0 +1,31 @@
+{"scenario":"capture-records-latin-key-on-russian-layout","modes":["columns"],"prefs":{"type_to_search":false},"variants":[{"id":"ru","vars":{"layout":"ru"}},{"id":"ru-only","vars":{"layout":"ru-only"}}],"cost":{"columns-ru":2.4,"columns-ru-only":2.4},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"capture on real ru and ru-only XKB layouts records Latin Ctrl+E and dispatches it; keys tests pin the mapping with synthetic tables only"}}
+{"click":{"role":"button","name":"Settings"}}
+{"wait":{"present":{"role":"button","name":"Keyboard settings"}},"message":"Settings to open"}
+{"click":{"role":"button","name":"Keyboard settings"}}
+{"wait":{"present":{"role":"text","name":"Search keybinds"}},"message":"the Keyboard settings page"}
+{"click":{"role":"text","name":"Search keybinds"}}
+{"type":"Rename"}
+{"wait":{"field":{"name":"Search keybinds","text":"Rename"}},"message":"the keybind search to be typed"}
+{"wait":{"present":{"role":"button","name":"Add a key for “Rename”"}},"message":"the search to show the Rename row"}
+{"settle":{"role":"button","name":"Add a key for “Rename”"}}
+{"click":{"role":"button","name":"Add a key for “Rename”"}}
+{"wait":{"focused_widget":"Press the new key for “Rename”"},"message":"the capture for Rename to take focus"}
+{"layout":"$layout"}
+{"key":"ctrl+e"}
+{"wait":{"presented":{"role":"button","name":"Remove Ctrl+E from “Rename”"}},"message":"the key that types у on $layout to be recorded as Ctrl+E"}
+{"wait":{"pref":{"key":"keymap","value":{"default":{"rename":["F2","<Control>r","<Control>e"]}}}},"message":"the Latin <Control>e to be saved"}
+{"layout":"us"}
+{"click":{"role":"button","name":"Close settings"}}
+{"wait":{"absent":{"role":"button","name":"Close settings"}},"message":"Settings to close"}
+{"select_with_keyboard":"readme.md","message":"keyboard focus to reach 'readme.md'"}
+{"layout":"$layout"}
+{"key":"ctrl+e"}
+{"wait":{"field":{"text":"readme.md"}},"message":"the captured Ctrl+E to rename 'readme.md' on $layout"}
+{"key":"Escape"}
+{"wait":{"editable_fields":0},"message":"Escape to cancel the rename"}
+{"wait":{"focused":"readme.md"},"message":"focus to return to 'readme.md'"}
+{"layout":"us"}
+{"key":"ctrl+e"}
+{"wait":{"field":{"text":"readme.md"}},"message":"the captured Ctrl+E to rename 'readme.md' on US"}
+{"key":"Escape"}
+{"wait":{"editable_fields":0},"message":"Escape to cancel the rename"}

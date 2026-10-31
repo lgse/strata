@@ -1,13 +1,41 @@
 // SPDX-License-Identifier: MIT
 
-use crate::model::{FolderColor, FolderColorValue};
-use crate::ui::controls::modal_layout;
-use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer};
+use crate::model::{FolderColor, FolderColorValue, Location};
+use crate::services::ItemIdentity;
+use crate::ui::controls::{focus_button, modal_layout};
+use crate::ui::keys::{self, bindings::ESCAPE_ANY};
+use crate::ui::modal::{
+    ModalHost, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer,
+    modal_layer_with_backdrop, remember_modal_focus,
+};
+use crate::ui::preferences::PreferenceManager;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
+
+/// Item customizations are keyed by native path; remote locations carry none.
+pub(super) fn relocate_item_customizations(from: &Location, to: &Location, merged: bool) {
+    if let Some(from) = from.native_path() {
+        PreferenceManager::shared().relocate_item_customizations(from, to.native_path(), merged);
+    }
+}
+
+pub(super) fn forget_item_customizations(
+    location: &Location,
+    trash_identity: Option<ItemIdentity>,
+) {
+    if let Some(path) = location.native_path() {
+        PreferenceManager::shared().forget_item_customizations(path, trash_identity);
+    }
+}
+
+pub(super) fn restore_item_customizations(location: &Location, identity: Option<ItemIdentity>) {
+    if let (Some(path), Some(identity)) = (location.native_path(), identity) {
+        PreferenceManager::shared().restore_item_customizations(path, identity);
+    }
+}
 
 fn rgba_to_hex(rgba: &gdk::RGBA) -> String {
     format!(
@@ -43,14 +71,26 @@ fn show_custom_color_modal(
         popover.popdown();
     }
 
-    let item_title = if item_label == "folder" {
-        "Folder"
+    let folder = item_label == "folder";
+    let (title, choose_subtitle, editor_subtitle) = if folder {
+        (
+            "Custom Folder Color",
+            "Choose a color for this folder",
+            "Customize folder color",
+        )
     } else {
-        "File"
+        (
+            "Custom File Color",
+            "Choose a color for this file",
+            "Customize file color",
+        )
     };
-    let title = format!("Custom {item_title} Color");
-    let subtitle = format!("Choose a color for this {item_label}");
-    let layout = modal_layout(preview_icon, &title, &subtitle, "Apply");
+    let layout = modal_layout(
+        preview_icon,
+        &crate::i18n::tr(title),
+        &crate::i18n::tr(choose_subtitle),
+        &crate::i18n::tr("Apply"),
+    );
     layout.close.set_visible(false);
 
     let modal_icon = layout.icon.clone();
@@ -63,6 +103,7 @@ fn show_custom_color_modal(
 
     let chooser = gtk::ColorChooserWidget::new();
     chooser.set_use_alpha(false);
+    crate::assets::use_bundled_spin_icons(&chooser);
     if let Ok(rgba) = gdk::RGBA::parse(&initial_hex) {
         chooser.set_rgba(&rgba);
     }
@@ -83,7 +124,7 @@ fn show_custom_color_modal(
     back.add_css_class("action-dialog-cancel");
     let back_icon = crate::assets::primary_icon(crate::assets::icons::ARROW_LEFT, 14);
     back.set_child(Some(&back_icon));
-    back.set_tooltip_text(Some("Back to palette"));
+    crate::ui::accessibility::set_tooltip_and_label(&back, &crate::i18n::tr("Back to palette"));
     back.set_visible(false);
     layout.actions.prepend(&back);
 
@@ -97,50 +138,61 @@ fn show_custom_color_modal(
     chooser.connect_notify_local(Some("show-editor"), move |c, _| {
         let in_editor = c.property::<bool>("show-editor");
         back_btn.set_visible(in_editor);
-        if in_editor {
-            subtitle_label.set_text(&format!("Customize {item_label} color"));
+        subtitle_label.set_text(&crate::i18n::tr(if in_editor {
+            editor_subtitle
         } else {
-            subtitle_label.set_text(&format!("Choose a color for this {item_label}"));
-        }
+            choose_subtitle
+        }));
     });
 
-    let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+    // The Customize dialog stays open underneath, so the shared restore (which waits
+    // for the last modal) cannot return focus to the button that opened this one.
+    let opener = parent.as_ref().downgrade();
+    let close_layer: Rc<dyn Fn(&gtk::Box)> = {
+        let overlay = window_overlay.clone();
+        Rc::new(move |layer| {
+            let opener = opener.clone();
+            dismiss_modal_layer_then(layer, &overlay, blurred_root.as_ref(), move || {
+                if let Some(opener) = opener.upgrade()
+                    && opener.is_mapped()
+                {
+                    opener.grab_focus();
+                }
+            });
+        })
+    };
+    let layer = modal_layer_with_backdrop(&content, close_layer.clone());
+    remember_modal_focus(&layer, &window_overlay);
     window_overlay.add_overlay(&layer);
+    let dismiss: Rc<dyn Fn()> = {
+        let layer = layer.clone();
+        Rc::new(move || close_layer(&layer))
+    };
 
     let on_confirm = Rc::new(on_confirm);
-    let confirm_layer = layer.clone();
-    let confirm_overlay = window_overlay.clone();
-    let confirm_root = blurred_root.clone();
+    let confirm_dismiss = dismiss.clone();
     let chooser_for_confirm = chooser.clone();
     let on_confirm_click = on_confirm.clone();
     confirm.connect_clicked(move |_| {
         let hex = rgba_to_hex(&chooser_for_confirm.rgba());
-        dismiss_modal_layer(&confirm_layer, &confirm_overlay, confirm_root.as_ref());
+        confirm_dismiss();
         on_confirm_click(FolderColorValue::Custom(hex));
     });
 
-    let cancel_layer = layer.clone();
-    let cancel_overlay = window_overlay.clone();
-    let cancel_root = blurred_root.clone();
-    cancel.connect_clicked(move |_| {
-        dismiss_modal_layer(&cancel_layer, &cancel_overlay, cancel_root.as_ref());
-    });
+    let cancel_dismiss = dismiss.clone();
+    cancel.connect_clicked(move |_| cancel_dismiss());
 
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let escape_layer = layer.clone();
-    let escape_overlay = window_overlay;
-    let escape_root = blurred_root;
     let chooser_for_escape = chooser.clone();
-    keys.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
+    keys::on_press(&keys, move |_, press| {
+        if press.is(ESCAPE_ANY) {
             if chooser_for_escape.property::<bool>("show-editor") {
                 chooser_for_escape.set_property("show-editor", false);
-                glib::Propagation::Stop
             } else {
-                dismiss_modal_layer(&escape_layer, &escape_overlay, escape_root.as_ref());
-                glib::Propagation::Stop
+                dismiss();
             }
+            glib::Propagation::Stop
         } else {
             glib::Propagation::Proceed
         }
@@ -179,7 +231,12 @@ pub(in crate::ui) fn show_customize_modal(
     } else {
         "Customize File"
     };
-    let layout = modal_layout(crate::assets::icons::PALETTE, item_kind, &item_name, "Done");
+    let layout = modal_layout(
+        crate::assets::icons::PALETTE,
+        &crate::i18n::tr(item_kind),
+        &item_name,
+        &crate::i18n::tr("Done"),
+    );
     layout.content.add_css_class("customize-dialog");
     layout
         .subtitle
@@ -205,7 +262,7 @@ pub(in crate::ui) fn show_customize_modal(
     preview.append(&preview_name);
     layout.body.append(&preview);
 
-    let clear = gtk::Button::with_label("Clear");
+    let clear = gtk::Button::with_label(&crate::i18n::tr("Clear"));
     clear.add_css_class("action-dialog-cancel");
     clear.set_sensitive(initial_color.is_some() || initial_icon.is_some());
     layout
@@ -214,7 +271,7 @@ pub(in crate::ui) fn show_customize_modal(
 
     let color_section = gtk::Box::new(gtk::Orientation::Vertical, 8);
     color_section.add_css_class("customize-section");
-    let color_label = gtk::Label::new(Some("COLOR"));
+    let color_label = gtk::Label::new(Some(&crate::i18n::tr("COLOR")));
     color_label.add_css_class("customize-section-label");
     color_label.set_xalign(0.0);
     color_section.append(&color_label);
@@ -245,7 +302,7 @@ pub(in crate::ui) fn show_customize_modal(
     let section = gtk::Box::new(gtk::Orientation::Vertical, 8);
     section.add_css_class("customize-section");
     section.add_css_class("separated");
-    let label = gtk::Label::new(Some("ICON"));
+    let label = gtk::Label::new(Some(&crate::i18n::tr("ICON")));
     label.add_css_class("customize-section-label");
     label.set_xalign(0.0);
     section.append(&label);
@@ -265,8 +322,9 @@ pub(in crate::ui) fn show_customize_modal(
             .map(|&(icon_name, label)| {
                 let button = gtk::Button::new();
                 button.add_css_class("customize-icon-button");
-                button.set_tooltip_text(Some(label));
-                button.update_property(&[gtk::accessible::Property::Label(label)]);
+                let label = crate::i18n::tr(label);
+                button.set_tooltip_text(Some(&label));
+                crate::ui::accessibility::set_label(&button, &label);
                 button.set_child(Some(&crate::assets::primary_icon(icon_name, 20)));
                 if initial_icon.as_deref() == Some(icon_name) {
                     button.add_css_class("active");
@@ -281,13 +339,13 @@ pub(in crate::ui) fn show_customize_modal(
         .as_deref()
         .and_then(crate::assets::icons::custom_emoji);
     let emoji_button = gtk::Button::with_label(&selected_emoji.map_or_else(
-        || "Choose Emoji…".to_owned(),
-        |emoji| format!("Emoji  {emoji}"),
+        || crate::i18n::tr("Choose Emoji…"),
+        |emoji| rust_i18n::t!("Emoji  %{emoji}", emoji = emoji).into_owned(),
     ));
     emoji_button.add_css_class("customize-emoji-button");
-    emoji_button.update_property(&[gtk::accessible::Property::Description(
+    emoji_button.update_property(&[gtk::accessible::Property::Description(&crate::i18n::tr(
         "Choose any emoji for this item",
-    )]);
+    ))]);
     let emoji_chooser = gtk::EmojiChooser::new();
     emoji_chooser.add_css_class("customize-emoji-chooser");
     emoji_chooser.set_parent(&emoji_button);
@@ -309,7 +367,7 @@ pub(in crate::ui) fn show_customize_modal(
                     button.remove_css_class("active");
                 }
             }
-            emoji_for_icon.set_label("Choose Emoji…");
+            emoji_for_icon.set_label(&crate::i18n::tr("Choose Emoji…"));
             crate::ui::preferences::PreferenceManager::shared()
                 .set_custom_icon(&icon_path, Some(selected_name));
             crate::ui::thumbnail::show_customized_icon_image(
@@ -332,7 +390,7 @@ pub(in crate::ui) fn show_customize_modal(
         for (_, button) in buttons_for_emoji.iter() {
             button.remove_css_class("active");
         }
-        emoji_label.set_label(&format!("Emoji  {emoji}"));
+        emoji_label.set_label(&rust_i18n::t!("Emoji  %{emoji}", emoji = emoji));
         crate::ui::preferences::PreferenceManager::shared()
             .set_custom_icon(&emoji_path, Some(&preference));
         crate::ui::thumbnail::show_customized_icon_image(
@@ -360,7 +418,7 @@ pub(in crate::ui) fn show_customize_modal(
         for (_, icon_button) in buttons_for_clear.iter() {
             icon_button.remove_css_class("active");
         }
-        emoji_for_clear.set_label("Choose Emoji…");
+        emoji_for_clear.set_label(&crate::i18n::tr("Choose Emoji…"));
         crate::ui::thumbnail::show_customized_icon_image(
             &clear_preview,
             &clear_path,
@@ -373,6 +431,7 @@ pub(in crate::ui) fn show_customize_modal(
     let content = layout.content;
     let confirm = layout.confirm;
     let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+    remember_modal_focus(&layer, &window_overlay);
     window_overlay.add_overlay(&layer);
 
     let dismiss = {
@@ -390,15 +449,21 @@ pub(in crate::ui) fn show_customize_modal(
     let escape_layer = layer.clone();
     let escape_overlay = window_overlay;
     let escape_root = blurred_root;
-    keys.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
-            dismiss_modal_layer(&escape_layer, &escape_overlay, escape_root.as_ref());
-            glib::Propagation::Stop
-        } else {
-            glib::Propagation::Proceed
+    let escape_emoji = emoji_chooser.downgrade();
+    keys::on_press(&keys, move |_, press| {
+        if !press.is(ESCAPE_ANY) {
+            return glib::Propagation::Proceed;
         }
+        // The capture phase sees the emoji popover's Escape before the popover does.
+        if let Some(emoji) = escape_emoji.upgrade().filter(|emoji| emoji.is_visible()) {
+            emoji.popdown();
+        } else {
+            dismiss_modal_layer(&escape_layer, &escape_overlay, escape_root.as_ref());
+        }
+        glib::Propagation::Stop
     });
     layer.add_controller(keys);
+    focus_button(&confirm);
 }
 
 struct FolderColorBar {
@@ -422,7 +487,10 @@ fn build_folder_color_bar(
     theme_btn.set_has_frame(false);
     theme_btn.add_css_class("folder-color-dot");
     theme_btn.add_css_class("folder-color-theme");
-    theme_btn.set_tooltip_text(Some("Default (Theme color)"));
+    crate::ui::accessibility::set_tooltip_and_label(
+        &theme_btn,
+        &crate::i18n::tr("Default (Theme color)"),
+    );
     let theme_icon = crate::assets::primary_icon(crate::assets::icons::PALETTE, 12);
     theme_btn.set_child(Some(&theme_icon));
     container.append(&theme_btn);
@@ -433,7 +501,8 @@ fn build_folder_color_bar(
         dot.set_has_frame(false);
         dot.add_css_class("folder-color-dot");
         dot.add_css_class(color.css_class());
-        dot.set_tooltip_text(Some(color.name()));
+        dot.set_tooltip_text(Some(&crate::i18n::tr(color.name())));
+        crate::ui::accessibility::set_own_label(&dot, &crate::i18n::tr(color.name()));
         let check = gtk::Image::from_icon_name(crate::assets::icons::CHECK_ON_PRIMARY);
         check.set_pixel_size(10);
         check.set_visible(false);
@@ -446,7 +515,7 @@ fn build_folder_color_bar(
     custom_btn.set_has_frame(false);
     custom_btn.add_css_class("folder-color-dot");
     custom_btn.add_css_class("folder-color-custom");
-    custom_btn.set_tooltip_text(Some("Custom color…"));
+    custom_btn.set_tooltip_text(Some(&crate::i18n::tr("Custom color…")));
 
     let custom_stack = gtk::Stack::new();
     custom_stack.set_transition_type(gtk::StackTransitionType::None);
@@ -516,14 +585,18 @@ fn build_folder_color_bar(
                     }
                     custom_btn.remove_css_class("active");
                     custom_stack.set_visible_child_name("plus");
-                    custom_btn.set_tooltip_text(Some("Custom color…"));
+                    let label = crate::i18n::tr("Custom color…");
+                    custom_btn.set_tooltip_text(Some(&label));
+                    crate::ui::accessibility::set_label(&custom_btn, &label);
                     hex_for_draw.replace(None);
                 }
                 Some(FolderColorValue::Custom(hex)) => {
                     theme_btn.remove_css_class("active");
                     custom_btn.add_css_class("active");
                     custom_stack.set_visible_child_name("dot");
-                    custom_btn.set_tooltip_text(Some(&format!("Custom ({hex})")));
+                    let label = rust_i18n::t!("Custom (%{hex})", hex = hex);
+                    custom_btn.set_tooltip_text(Some(&label));
+                    crate::ui::accessibility::set_label(&custom_btn, &label);
                     hex_for_draw.replace(Some(hex.clone()));
                     custom_dot.queue_draw();
                 }

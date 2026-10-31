@@ -1,0 +1,34 @@
+{"scenario":"single-click-clipped-parent-column","modes":["columns"],"prefs":{"list_folder_clicks":1,"list_file_clicks":1,"grid_folder_clicks":1,"grid_file_clicks":1,"explorer_folder_clicks":1,"explorer_file_clicks":1,"single_click_previews":false},"layout":"us","setup":[{"fs":{"path":".","populate":{"documents":{"Level 2":{"Level 3":{"old-branch.txt":"old branch\n"}}}}}}],"mutation":null,"known_bug":null,"variants":[{"id":"settled","vars":{"reveal":"False"}},{"id":"revealed","vars":{"reveal":"True"}}],"cost":{"columns-settled":1.4,"columns-revealed":1.4},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"single-click opens folder in clipped Columns parent, settled and revealed-during-press; only single-click route through a clipped column"}}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"toggle button","name":"Preview panel"}},"message":"the preview panel toggle"}
+{"key":"Escape","when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":false}}}
+{"click":{"role":"toggle button","name":"Preview panel"},"when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":true}}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location editor to take focus"}
+{"key":"Escape"}
+{"wait":{"focused_pane":true},"message":"focus to return to the file listing"}
+{"remember":{"pane":null},"as":"browser"}
+{"select_with_keyboard":"documents"}
+{"key":"Return"}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"select_with_keyboard":"Level 2"}
+{"key":"Return"}
+{"wait":{"directory":"Level 2"},"message":"the browser to be working in 'Level 2'"}
+{"settle":{"pane":"Level 2"}}
+{"select_with_keyboard":"Level 3"}
+{"key":"Return"}
+{"wait":{"directory":"Level 3"},"message":"the browser to be working in 'Level 3'"}
+{"settle":{"pane":"Level 3"}}
+{"wait":{"entry":"pictures","dir":"$root"},"message":"the entry 'pictures' in '$root' to appear"}
+{"move":{"entry":"pictures","dir":"$root"},"at":[12,"50%"],"left_bound":"browser"}
+{"button_down":1}
+{"set_scrollbar":"horizontal","value":0,"variants":["revealed"]}
+{"sleep":200}
+{"move_by":[2,0]}
+{"button_up":1}
+{"wait":{"directory":"pictures"},"message":"the browser to be working in 'pictures'"}
+{"settle":{"pane":"pictures"}}
+{"wait":{"entry":"diagram.txt","dir":"pictures"},"message":"the entry 'diagram.txt' in 'pictures' to appear"}
+{"wait":{"selected":[],"dir":"pictures"},"message":"the selection to become []"}

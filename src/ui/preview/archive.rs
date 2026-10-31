@@ -10,7 +10,10 @@ use gtk::prelude::*;
 use crate::{
     assets::{icons, primary_icon, set_primary_icon},
     services::{ArchiveDirectory, ArchiveNode, ArchivePreviewTree},
-    ui::browser::icon_for_name,
+    ui::{
+        browser::icon_for_name, collection_interaction::PointerSequence,
+        pointer::connect_click_release,
+    },
 };
 
 use super::format_file_size;
@@ -38,11 +41,11 @@ fn child_summary(directory: &ArchiveDirectory) -> (usize, usize) {
         })
 }
 
-fn crumb_name(directory: &ArchiveDirectory) -> &str {
+fn crumb_name(directory: &ArchiveDirectory) -> String {
     if directory.name.is_empty() {
-        ROOT_LABEL
+        crate::i18n::tr(ROOT_LABEL)
     } else {
-        &directory.name
+        directory.name.clone()
     }
 }
 
@@ -53,6 +56,7 @@ pub(super) struct ArchiveBrowser {
     navigate: Rc<dyn Fn(usize)>,
     model: gtk::gio::ListStore,
     selection: gtk::SingleSelection,
+    pointer: PointerSequence,
     cursor: Cell<usize>,
     root: gtk::Box,
     crumbs: gtk::Box,
@@ -62,8 +66,13 @@ pub(super) struct ArchiveBrowser {
 }
 
 impl ArchiveBrowser {
-    /// `navigate` receives an absolute depth, with zero denoting the archive root.
-    pub(super) fn new(tree: ArchivePreviewTree, navigate: Rc<dyn Fn(usize)>) -> Self {
+    /// `navigate` receives an absolute depth, with zero denoting the archive root. `open`
+    /// receives a child index in the current directory.
+    pub(super) fn new(
+        tree: ArchivePreviewTree,
+        navigate: Rc<dyn Fn(usize)>,
+        open: Rc<dyn Fn(usize)>,
+    ) -> Self {
         let tree = Rc::new(tree);
         let path = Rc::new(RefCell::new(Vec::new()));
         let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -89,7 +98,12 @@ impl ArchiveBrowser {
         let selection = gtk::SingleSelection::new(Some(model.clone()));
         selection.set_autoselect(false);
         let factory = gtk::SignalListItemFactory::new();
-        factory.connect_setup(|_, item| {
+        let pointer = PointerSequence::default();
+        let selection_for_setup = selection.clone();
+        let pointer_for_setup = pointer.clone();
+        let list_presses = Rc::new(Cell::new(0));
+        let list_presses_for_setup = list_presses.clone();
+        factory.connect_setup(move |_, item| {
             let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
                 return;
             };
@@ -109,6 +123,45 @@ impl ArchiveBrowser {
             let chevron = primary_icon(icons::CHEVRON_RIGHT, 14);
             row_content.append(&chevron);
             item.set_child(Some(&row_content));
+
+            let click = gtk::GestureClick::new();
+            click.set_button(1);
+            click.set_propagation_phase(gtk::PropagationPhase::Capture);
+            pointer_for_setup.install(&click);
+            let pointer_for_press = pointer_for_setup.clone();
+            // The list is single-selection, so Ctrl and Shift clicks act like plain clicks.
+            click.connect_pressed(move |_, _, _, _| {
+                pointer_for_press.press(gtk::gdk::ModifierType::empty());
+            });
+            // Rows select and open on release, never on hover.
+            let weak_item = item.downgrade();
+            let selection = selection_for_setup.clone();
+            let pointer_for_release = pointer_for_setup.clone();
+            let list_presses = list_presses_for_setup.clone();
+            let open = open.clone();
+            connect_click_release(&click, item, move |gesture, _, _, _| {
+                if pointer_for_release.activation() != Some(true) {
+                    return;
+                }
+                // GTK's row gesture would otherwise select the row under the pointer with the
+                // click's modifiers, toggling it or moving the cursor after a folder opened.
+                gesture.set_state(gtk::EventSequenceState::Claimed);
+                if list_presses.get() != 1 {
+                    return;
+                }
+                let Some(item) = weak_item.upgrade() else {
+                    return;
+                };
+                let position = item.position();
+                if position == gtk::INVALID_LIST_POSITION {
+                    return;
+                }
+                selection.set_selected(position);
+                if item.is_activatable() {
+                    open(position as usize);
+                }
+            });
+            row_content.add_controller(click);
         });
         let tree_for_bind = tree.clone();
         let path_for_bind = path.clone();
@@ -159,7 +212,14 @@ impl ArchiveBrowser {
         });
         let list = gtk::ListView::new(Some(selection.clone()), Some(factory));
         list.add_css_class("preview-archive-list");
-        list.set_single_click_activate(true);
+        list.set_single_click_activate(false);
+        // Opening a folder replaces every row, so a double-click's second press can land on a
+        // fresh row whose own gesture counts it as a single click; the list keeps the count.
+        let press_counter = gtk::GestureClick::new();
+        press_counter.set_button(1);
+        press_counter.set_propagation_phase(gtk::PropagationPhase::Capture);
+        press_counter.connect_pressed(move |_, press_count, _, _| list_presses.set(press_count));
+        list.add_controller(press_counter);
         let focus = gtk::EventControllerFocus::new();
         let selection_on_focus = selection.clone();
         focus.connect_enter(move |_| {
@@ -178,7 +238,7 @@ impl ArchiveBrowser {
             .build();
         root.append(&list_scroll);
 
-        let empty = gtk::Label::new(Some("This folder is empty"));
+        let empty = gtk::Label::new(Some(&crate::i18n::tr("This folder is empty")));
         empty.add_css_class("preview-archive-empty");
         empty.set_halign(gtk::Align::Center);
         empty.set_valign(gtk::Align::Center);
@@ -192,6 +252,7 @@ impl ArchiveBrowser {
             navigate,
             model,
             selection,
+            pointer,
             cursor: Cell::new(0),
             root,
             crumbs,
@@ -209,6 +270,10 @@ impl ArchiveBrowser {
 
     pub(super) fn list(&self) -> &gtk::ListView {
         &self.list
+    }
+
+    pub(super) fn pointer_activation_pending(&self) -> bool {
+        self.pointer.activation().is_some()
     }
 
     pub(super) fn clear_selection(&self) {
@@ -299,12 +364,15 @@ impl ArchiveBrowser {
         self.rebuild_rows();
         let (files, folders) = child_summary(directory);
         let summary = match (files, folders) {
-            (0, 0) => "Empty folder".to_owned(),
-            (1, 0) => "1 file".to_owned(),
-            (files, 0) => format!("{files} files"),
-            (0, 1) => "1 folder".to_owned(),
-            (0, folders) => format!("{folders} folders"),
-            _ => format!("{files} files, {folders} folders"),
+            (0, 0) => crate::i18n::tr("Empty folder"),
+            (files, 0) => crate::i18n::count("files", files),
+            (0, folders) => crate::i18n::count("folders", folders),
+            _ => rust_i18n::t!(
+                "%{files}, %{folders}",
+                files = crate::i18n::count("files", files),
+                folders = crate::i18n::count("folders", folders)
+            )
+            .into_owned(),
         };
         self.count.set_text(&summary);
         if had_focus {
@@ -319,7 +387,10 @@ impl ArchiveBrowser {
             let back = gtk::Button::new();
             let back_icon = primary_icon(icons::ARROW_LEFT, 14);
             back.set_child(Some(&back_icon));
-            back.set_tooltip_text(Some("Go up one level"));
+            crate::ui::accessibility::set_tooltip_and_label(
+                &back,
+                &crate::i18n::tr("Go up one level"),
+            );
             back.add_css_class("preview-archive-crumb");
             let navigate = self.navigate.clone();
             back.connect_clicked(move |_| navigate(depth - 1));
@@ -337,7 +408,7 @@ impl ArchiveBrowser {
             }
         }
         let mut labels = Vec::with_capacity(descending.len() + 1);
-        labels.push(ROOT_LABEL.to_owned());
+        labels.push(crate::i18n::tr(ROOT_LABEL));
         labels.extend(descending.iter().map(|child| child.name.clone()));
         for (position, label) in labels.iter().enumerate() {
             if position == depth {

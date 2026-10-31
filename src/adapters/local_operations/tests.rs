@@ -9,7 +9,7 @@ use std::{
     future::Future,
     io,
     os::{
-        fd::OwnedFd,
+        fd::{AsFd, OwnedFd},
         unix::{ffi::OsStringExt, fs::PermissionsExt},
     },
     path::{Path, PathBuf},
@@ -23,76 +23,255 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 
 use crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT;
+use fs_quirks::{FsQuirks, Preset, Quirks};
 
+fn serial() -> Result<crate::test_support::MainContextGuard<'static>, String> {
+    ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())
+}
+
+mod aliases;
+mod closes;
 mod conflicts;
 mod copy;
 mod create_entry;
 mod deletion;
+mod file_copy;
+mod folder_copy;
+pub(super) mod fs_quirks;
+mod leftovers;
 mod merge;
 mod moves;
 mod naming;
 mod paste_results;
 mod paths;
+mod placement;
 mod progress;
+mod release;
 mod replacement;
 mod restore_safety;
 mod sync;
 mod trash_capabilities;
 mod undo;
 
-fn copy_recursively_fat_family(
+/// File copies running at once, and the most seen, across copy workers.
+static COPY_ACTIVITY: std::sync::Mutex<(usize, usize)> = std::sync::Mutex::new((0, 0));
+
+fn copy_activity() -> std::sync::MutexGuard<'static, (usize, usize)> {
+    COPY_ACTIVITY
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+}
+
+pub(super) struct CopyActivity;
+
+impl CopyActivity {
+    pub(super) fn start() -> Self {
+        let mut activity = copy_activity();
+        activity.0 += 1;
+        activity.1 = activity.1.max(activity.0);
+        Self
+    }
+}
+
+impl Drop for CopyActivity {
+    fn drop(&mut self) {
+        copy_activity().0 -= 1;
+    }
+}
+
+fn fixing() -> NamePolicy {
+    NamePolicy::new(NameMode::Fix)
+}
+
+fn copy_recursively_fixing(
     source: gio::File,
     target: gio::File,
-    overwrite_existing: bool,
+    merge: bool,
     cancellable: gio::Cancellable,
-    created_root: Option<Rc<super::CreatedCopyRoot>>,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
-    copy_recursively_with_progress(
-        source,
-        target,
-        overwrite_existing,
-        cancellable,
-        created_root,
+    Box::pin(async move {
+        let names = fixing();
+        if merge {
+            return super::merge_copy(None, names)(source, target, Default::default(), cancellable)
+                .await
+                .map(drop);
+        }
+        copy_new_recursively_on_filesystem(
+            source,
+            target,
+            Taken::Fail,
+            cancellable,
+            None,
+            names,
+            None,
+        )
+        .await
+        .map(drop)
+    })
+}
+
+fn recording_progress() -> (
+    Rc<TransferProgressTracker>,
+    Rc<RefCell<Vec<OperationEvent>>>,
+) {
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let progress = TransferProgressTracker::new(
+        OperationRequestId(1590),
         None,
-        true,
-    )
+        None,
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    (progress, events)
+}
+
+fn followed_report(events: &[OperationEvent]) -> crate::services::TransferReport {
+    let mut reported = crate::services::TransferReport::default();
+    for event in events {
+        if let OperationEvent::ItemsReported { report, .. } = event {
+            reported.extend(report.clone());
+        }
+    }
+    reported.follow_renames();
+    reported
+}
+
+pub(super) fn renamed_beneath(
+    target: &Path,
+    report: &crate::services::TransferReport,
+) -> Vec<(String, String, crate::services::RenameCause)> {
+    let relative = |location: &Location| {
+        location
+            .native_path()
+            .and_then(|path| path.strip_prefix(target).ok())
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+    let mut renamed = report
+        .renamed
+        .iter()
+        .map(|item| {
+            (
+                relative(&item.requested),
+                relative(&item.saved_as),
+                item.cause,
+            )
+        })
+        .collect::<Vec<_>>();
+    renamed.sort_by(|left, right| left.0.cmp(&right.0));
+    renamed
+}
+
+fn file_stage(root: &Path) -> Result<super::StagedSibling, Box<dyn Error>> {
+    let parent = Arc::new(open_local_parent_directory(root)?);
+    let (name, (_, created)) =
+        super::copy_engine::stage::create_file(super::fs_ops::fs(), parent.as_fd())
+            .map_err(|error| format!("{error:?}"))?;
+    Ok(super::StagedSibling {
+        ownership: None,
+        parent,
+        name,
+        identity: created.identity,
+        restrictive: Vec::new(),
+    })
+}
+
+fn staged(
+    root: &Path,
+    content: super::StageContent,
+) -> Result<super::StagedSibling, Box<dyn Error>> {
+    let parent = Arc::new(open_local_parent_directory(root)?);
+    Ok(super::StagedSibling::create(parent, content).map_err(|error| format!("{error:?}"))?)
 }
 
 use super::{
-    FAT32_MAX_FILE_SIZE, LocalDeleteRoot, LocalFileIdentity, LocalOperationProvider, MergeHooks,
-    MergePlan, MountTable, RestoreEntry, StageCopy, StageOverwrite, StagedOriginalLookup,
-    TransferProgressTracker, TransferStop, await_cancellable, bounded_local_delete_worker_count,
-    copy_failure_after_cleanup, copy_failure_on_fat32, copy_new_recursively,
-    copy_new_recursively_with_progress, copy_new_remote_file_with, copy_recursively,
-    copy_recursively_with_progress, deletion_error_message, deletion_error_summary,
-    duplicate_candidate_name, fat_sanitized_name, fat32_file_size_limit, home_trash_entries_at,
-    io_error, is_trash_unsupported_failure, local_file_identity, merge_local, merge_local_with,
-    move_local, move_local_with, open_local_parent_directory, operation_error_summary,
-    parallel_delete_local, parse_copy_suffix, permanently_delete_local,
-    permanently_delete_local_path_if_unchanged, replace_local, replace_local_with, run_merge_undo,
-    set_force_cross_volume_for_test, set_removable_roots_for_test, set_sync_observer,
-    stop_transfer, sync_probe_observations, target_is_fat_family, transfer_is_noop, transfer_sizes,
-    trash_stage_overwrite, unique_fat_sibling_name, validated_child, was_cancelled,
+    CopyStep, DeletionTarget, FailedAction, LocalFileIdentity, LocalOperationProvider, MergeCopied,
+    MergeHooks, MergePlan, NamePolicy, PinnedEntry, RestoreEntry, StageOverwrite,
+    StagedOriginalLookup, TRANSFER_PROGRESS_INTERVAL, TransferProgressTracker, TransferStop,
+    TrashError, await_cancellable, copy_failure_after_cleanup, copy_failure_on_fat32,
+    copy_new_recursively_on_filesystem, copy_new_remote_file_with, copy_recursively,
+    deletion_error_message, deletion_error_summary, io_error, join_local_tasks,
+    local_file_identity, merge_local, merge_local_with, move_local, move_local_with,
+    names::{Taken, numbered_name, numbered_names, parse_copy_suffix},
+    open_local_parent_directory, operation_error_summary, parallel_delete_local,
+    permanently_delete_local, permanently_delete_local_path_if_unchanged, replace_local,
+    replace_local_with, run_deletion_in, run_merge_undo, set_removable_roots_for_test,
+    set_sync_observer, stop_transfer, sync_probe_observations, transfer_is_noop, transfer_sizes,
+    trash_entries_at, trash_stage_overwrite, validated_child, was_cancelled,
 };
 use crate::{
-    model::{EntryKind, FileEntry, Location, MetadataValue},
+    adapters::volume::FAT32_MAX_FILE_SIZE,
+    model::{EntryKind, FileEntry, Location, MetadataValue, hidden_names::HiddenName},
     services::{
-        DeleteRequest, LoadHandle, MoveRecord, OperationEvent, OperationProvider,
-        OperationRequestId, PasteItem, PasteRequest, RestoreRequest, RestoreSource,
-        RestoreTrashItem, TransferConflict, TrashedOriginal, UndoMoveItem, UndoMoveRequest,
-        UndoRenameRequest,
+        DeleteRequest, ItemIdentity, LoadHandle, MoveRecord, NameMode, OperationEvent,
+        OperationProvider, OperationRequestId, PasteItem, PasteRequest, PlacedSnapshot,
+        RestoreRequest, RestoreSource, RestoreTrashItem, TransferConflict, UndoMoveItem,
+        UndoMoveRequest, UndoRenameRequest,
     },
 };
+
+struct ClockGuard;
+
+impl ClockGuard {
+    fn set(now: SystemTime) -> Self {
+        super::copy_engine::set_clock_for_test(Some(now));
+        Self
+    }
+}
+
+impl Drop for ClockGuard {
+    fn drop(&mut self) {
+        super::copy_engine::set_clock_for_test(None);
+    }
+}
+
+struct KernelGuard;
+
+impl KernelGuard {
+    fn set(release: Option<(u32, u32, u32)>) -> Self {
+        super::copy_engine::set_kernel_for_test(release);
+        Self
+    }
+}
+
+impl Drop for KernelGuard {
+    fn drop(&mut self) {
+        super::copy_engine::set_kernel_for_test(None);
+    }
+}
+
+struct PlacedEntriesGuard;
+
+impl PlacedEntriesGuard {
+    fn set(limit: usize) -> Self {
+        super::copy_engine::set_placed_entries_for_test(Some(limit));
+        Self
+    }
+}
+
+impl Drop for PlacedEntriesGuard {
+    fn drop(&mut self) {
+        super::copy_engine::set_placed_entries_for_test(None);
+    }
+}
 
 struct RemovableFlushGuard;
 
 impl RemovableFlushGuard {
-    fn install(root: &Path, fail: Option<io::ErrorKind>, cross_volume: bool) -> Self {
+    fn install(root: &Path, fail: Option<io::ErrorKind>) -> Self {
         set_removable_roots_for_test(Some(vec![root.to_path_buf()]));
-        set_force_cross_volume_for_test(cross_volume);
         super::install_sync_probe(fail, false);
         Self
     }
+}
+
+fn separate_volumes(source: &Path, destination: &Path) -> (FsQuirks, FsQuirks) {
+    (
+        FsQuirks::install(source, Quirks::default()),
+        FsQuirks::install(destination, Quirks::default()),
+    )
 }
 
 impl Drop for RemovableFlushGuard {
@@ -101,7 +280,271 @@ impl Drop for RemovableFlushGuard {
         super::clear_sync_probe();
         set_sync_observer(None);
         set_removable_roots_for_test(None);
-        set_force_cross_volume_for_test(false);
+    }
+}
+
+pub(super) fn names(dir: &Path) -> io::Result<Vec<String>> {
+    let mut names = fs::read_dir(dir)?
+        .map(|entry| entry.map(|entry| entry.file_name().to_string_lossy().into_owned()))
+        .collect::<Result<Vec<_>, _>>()?;
+    names.sort();
+    Ok(names)
+}
+
+/// Where inode numbers are not trusted, a file born within one birth-time tick
+/// of `than` passes for it.
+fn wait_for_a_later_birth_time(probe: &Path, than: &fs::Metadata) {
+    let Ok(born) = than.created() else {
+        return;
+    };
+    loop {
+        fs::write(probe, b"probe").expect("write the probe");
+        let stamped = fs::metadata(probe).expect("stat the probe");
+        fs::remove_file(probe).expect("remove the probe");
+        if stamped.created().is_ok_and(|later| later > born) {
+            break;
+        }
+    }
+}
+
+fn set_times(path: &Path, seconds: u64, nanoseconds: u32) -> io::Result<()> {
+    let times = rustix::fs::Timespec {
+        tv_sec: i64::try_from(seconds).map_err(io::Error::other)?,
+        tv_nsec: nanoseconds.into(),
+    };
+    rustix::fs::utimensat(
+        rustix::fs::CWD,
+        path,
+        &rustix::fs::Timestamps {
+            last_access: times,
+            last_modification: times,
+        },
+        rustix::fs::AtFlags::empty(),
+    )?;
+    Ok(())
+}
+
+fn base_takes_noreplace(folder: &Path) -> io::Result<bool> {
+    use rustix::fs::{CWD, RenameFlags, renameat_with};
+    let (one, other) = (folder.join("rename-probe"), folder.join("rename-probe-2"));
+    fs::write(&one, b"one")?;
+    let renamed = renameat_with(CWD, &one, CWD, &other, RenameFlags::NOREPLACE).is_ok();
+    for probe in [&one, &other] {
+        let _ = fs::remove_file(probe);
+    }
+    Ok(renamed)
+}
+
+fn base_takes_rename_flags(folder: &Path) -> io::Result<bool> {
+    use rustix::fs::{CWD, RenameFlags, renameat_with};
+    if !base_takes_noreplace(folder)? {
+        return Ok(false);
+    }
+    let (one, other) = (folder.join("rename-probe"), folder.join("rename-probe-2"));
+    fs::write(&one, b"one")?;
+    fs::write(&other, b"other")?;
+    let exchanged = renameat_with(CWD, &one, CWD, &other, RenameFlags::EXCHANGE).is_ok();
+    // exfat-fuse accepts RENAME_EXCHANGE and overwrites instead of swapping.
+    let overwrote = exchanged && fs::symlink_metadata(&one).is_err();
+    for probe in [&one, &other] {
+        let _ = fs::remove_file(probe);
+    }
+    Ok(!overwrote)
+}
+
+fn hard_linked(original: &Path, link: &Path) -> io::Result<bool> {
+    match fs::hard_link(original, link) {
+        Ok(()) => Ok(true),
+        Err(error) if error.raw_os_error() == Some(rustix::io::Errno::PERM.raw_os_error()) => {
+            Ok(false)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn base_links_keep_their_number(folder: &Path) -> io::Result<bool> {
+    use std::os::unix::fs::MetadataExt;
+    let (one, other) = (folder.join("link-probe"), folder.join("link-probe-2"));
+    fs::write(&one, b"one")?;
+    let kept = hard_linked(&one, &other)?
+        && fs::symlink_metadata(&one)?.ino() == fs::symlink_metadata(&other)?.ino();
+    for probe in [&one, &other] {
+        let _ = fs::remove_file(probe);
+    }
+    Ok(kept)
+}
+
+pub(super) fn base_places_files_by_linking(folder: &Path) -> io::Result<bool> {
+    Ok(!base_takes_noreplace(folder)? && base_links_keep_their_number(folder)?)
+}
+
+fn forced_mode(path: &Path) -> io::Result<u32> {
+    use rustix::fs::{AtFlags, CWD, StatxFlags};
+    let stat = rustix::fs::statx(
+        CWD,
+        path,
+        AtFlags::SYMLINK_NOFOLLOW | AtFlags::STATX_FORCE_SYNC,
+        StatxFlags::TYPE | StatxFlags::MODE,
+    )?;
+    Ok(u32::from(stat.stx_mode))
+}
+
+fn a_later_change_time(path: &Path, than: &Path, seconds: u64) -> io::Result<bool> {
+    use std::os::unix::fs::MetadataExt;
+    let changed = |metadata: &fs::Metadata| (metadata.ctime(), metadata.ctime_nsec());
+    let earlier = changed(&fs::symlink_metadata(than)?);
+    loop {
+        set_times(path, seconds, 0)?;
+        let stamped = fs::symlink_metadata(path)?;
+        if changed(&stamped) == (stamped.mtime(), stamped.mtime_nsec()) {
+            return Ok(false);
+        }
+        if changed(&stamped) > earlier {
+            return Ok(true);
+        }
+    }
+}
+
+/// Sets the times of each file beneath `root` again from outside the seam,
+/// as Samba does once the SMB client's deferred close of a file it wrote
+/// reaches it: only the change time moves.
+fn land_deferred_closes(root: &Path) -> io::Result<()> {
+    use std::os::unix::fs::MetadataExt;
+    for entry in fs::read_dir(root)? {
+        let path = entry?.path();
+        let before = fs::symlink_metadata(&path)?;
+        if before.is_dir() {
+            land_deferred_closes(&path)?;
+            continue;
+        }
+        if !before.is_file() {
+            continue;
+        }
+        let time = |tv_sec, tv_nsec| rustix::fs::Timespec { tv_sec, tv_nsec };
+        let times = rustix::fs::Timestamps {
+            last_access: time(before.atime(), before.atime_nsec()),
+            last_modification: time(before.mtime(), before.mtime_nsec()),
+        };
+        // A kernel without fine-grained times stamps within its tick.
+        let deadline = Instant::now() + CHANGE_TIME_WAIT;
+        loop {
+            rustix::fs::utimensat(rustix::fs::CWD, &path, &times, rustix::fs::AtFlags::empty())?;
+            let after = fs::symlink_metadata(&path)?;
+            if (after.ctime(), after.ctime_nsec()) != (before.ctime(), before.ctime_nsec()) {
+                break;
+            }
+            if Instant::now() >= deadline {
+                return Err(io::Error::other(format!(
+                    "the change time of {} did not move within {CHANGE_TIME_WAIT:?}; this mount \
+                     may report the modification time as the change time",
+                    path.display()
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+const CHANGE_TIME_WAIT: Duration = Duration::from_secs(2);
+
+fn has_colon(name: &OsStr) -> Option<rustix::io::Errno> {
+    name.as_encoded_bytes()
+        .contains(&b':')
+        .then_some(rustix::io::Errno::INVAL)
+}
+
+async fn copy_new_recursively_with_progress(
+    source: gio::File,
+    target: gio::File,
+    cancellable: gio::Cancellable,
+    progress: Option<Rc<TransferProgressTracker>>,
+) -> Result<(), glib::Error> {
+    copy_new_recursively_on_filesystem(
+        source,
+        target,
+        Taken::Fail,
+        cancellable,
+        progress,
+        NamePolicy::default(),
+        None,
+    )
+    .await
+    .map(drop)
+}
+
+async fn copy_new_recursively(
+    source: gio::File,
+    target: gio::File,
+    cancellable: gio::Cancellable,
+) -> Result<(), glib::Error> {
+    copy_new_recursively_with_progress(source, target, cancellable, None).await
+}
+
+fn reporting(
+    source: &Path,
+    destination: super::copy_engine::Destination,
+    options: super::copy_engine::Options,
+) -> (Result<(), glib::Error>, crate::services::TransferReport) {
+    let reported = Rc::new(RefCell::new(crate::services::TransferReport::default()));
+    let events = reported.clone();
+    let progress = TransferProgressTracker::new(
+        OperationRequestId(1),
+        None,
+        None,
+        Rc::new(move |event| {
+            if let OperationEvent::ItemsReported { report, .. } = event {
+                events.borrow_mut().extend(report);
+            }
+        }),
+    );
+    let copied = glib::MainContext::default().block_on(super::copy_engine::copy_local(
+        source.to_path_buf(),
+        destination,
+        options,
+        Some(progress),
+        &gio::Cancellable::new(),
+    ));
+    (copied.map(drop), reported.take())
+}
+
+fn copy_reporting(
+    source: &Path,
+    target: &Path,
+    workers: Option<usize>,
+) -> Result<crate::services::TransferReport, Box<dyn Error>> {
+    let destination = super::copy_engine::Destination::New(target.to_path_buf(), Taken::Fail);
+    let (copied, reported) = reporting(source, destination, workers_only(workers));
+    copied?;
+    Ok(reported)
+}
+
+fn merge_reporting(
+    source: &Path,
+    target: &Path,
+    workers: Option<usize>,
+) -> (Result<(), glib::Error>, crate::services::TransferReport) {
+    let destination = super::copy_engine::Destination::Merge(target.to_path_buf(), None);
+    reporting(source, destination, workers_only(workers))
+}
+
+fn placed_now(paths: &[&Path]) -> HashMap<Location, PlacedSnapshot> {
+    paths
+        .iter()
+        .filter_map(|path| {
+            let placed = glib::MainContext::default().block_on(super::copy_engine::placed(
+                path.to_path_buf(),
+                super::copy_engine::placed_budget(),
+                &gio::Cancellable::new(),
+            ))?;
+            Some((Location::local(path), placed))
+        })
+        .collect()
+}
+
+fn workers_only(workers: Option<usize>) -> super::copy_engine::Options {
+    super::copy_engine::Options {
+        workers,
+        ..super::copy_engine::Options::default()
     }
 }
 
@@ -114,6 +557,46 @@ fn terminal_transfer(events: &[OperationEvent]) -> Option<&OperationEvent> {
                 | OperationEvent::Cancelled { .. }
         )
     })
+}
+
+fn item_moves(events: &[OperationEvent]) -> Vec<(Location, Location)> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            OperationEvent::ItemMoved { from, to, .. } => Some((from.clone(), to.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+fn trashed_items(events: &[OperationEvent]) -> Vec<(Location, (u64, u64))> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            OperationEvent::ItemTrashed {
+                location, identity, ..
+            } => Some((location.clone(), numbers(*identity))),
+            _ => None,
+        })
+        .collect()
+}
+
+fn numbers(identity: ItemIdentity) -> (u64, u64) {
+    (identity.evidence.device, identity.evidence.inode)
+}
+
+fn numbers_at(path: &Path) -> (u64, u64) {
+    use std::os::unix::fs::MetadataExt;
+    let metadata = fs::symlink_metadata(path).expect("identity");
+    (metadata.dev(), metadata.ino())
+}
+
+fn identity_off_main(path: &Path) -> Option<ItemIdentity> {
+    let path = path.to_owned();
+    std::thread::spawn(move || super::native_fs::identity_at_path(&path))
+        .join()
+        .ok()
+        .flatten()
 }
 
 fn pump_until_transfer(events: &RefCell<Vec<OperationEvent>>) {
@@ -162,6 +645,8 @@ fn file_entry(path: &std::path::Path) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
+        recent_uri: None,
     }
 }
 
@@ -171,6 +656,7 @@ fn directory_entry(path: &std::path::Path) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         ..file_entry(path)
     }
 }
@@ -182,15 +668,8 @@ fn settle_cancelled_io(context: &glib::MainContext) {
     }
 }
 
-fn always_would_recurse() -> super::MoveAttempt {
-    Rc::new(|_, _, _| {
-        Box::pin(async {
-            Err(glib::Error::new(
-                gio::IOErrorEnum::WouldRecurse,
-                "injected cross-filesystem move failure",
-            ))
-        })
-    })
+fn always_copy() -> super::MoveAttempt {
+    Rc::new(|_, _, _, _| Box::pin(async { Ok(super::Moved::Copy) }))
 }
 
 fn wait_for_operation(
@@ -199,6 +678,85 @@ fn wait_for_operation(
 ) {
     while !events.borrow().iter().any(&is_terminal) {
         glib::MainContext::default().iteration(true);
+    }
+}
+
+fn drive_until_rename_settles(events: &Rc<RefCell<Vec<OperationEvent>>>) {
+    wait_for_operation(events, |event| {
+        matches!(
+            event,
+            OperationEvent::Renamed { .. }
+                | OperationEvent::Failed { .. }
+                | OperationEvent::Cancelled { .. }
+        )
+    });
+}
+
+fn settle(start: impl FnOnce(Rc<dyn Fn(OperationEvent)>) -> LoadHandle) -> Vec<OperationEvent> {
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = start(Rc::new(move |event| emitted.borrow_mut().push(event)));
+    drive_until_rename_settles(&events);
+    events.take()
+}
+
+fn rename(path: &Path, new_name: &str) -> Vec<OperationEvent> {
+    let entry = file_entry(path);
+    settle(|emit| {
+        LocalOperationProvider.rename(
+            crate::services::RenameRequest {
+                id: OperationRequestId(46),
+                entry,
+                new_name: new_name.to_owned(),
+            },
+            emit,
+        )
+    })
+}
+
+/// Cancels from the main thread the first time a racer runs, holding that racer's worker
+/// until then, as a user's cancel lands while the worker is inside an item.
+#[derive(Clone, Default)]
+struct CancelFromMain(Arc<(std::sync::Mutex<Option<bool>>, std::sync::Condvar)>);
+
+impl CancelFromMain {
+    fn racer(&self) -> fs_quirks::Racer {
+        let this = self.clone();
+        Box::new(move || {
+            let (state, changed) = &*this.0;
+            let mut state = state.lock().expect("cancel state");
+            if state.is_none() {
+                *state = Some(false);
+                while *state == Some(false) {
+                    state = changed.wait(state).expect("cancel state");
+                }
+            }
+        })
+    }
+
+    fn waiter(&self) -> fs_quirks::Racer {
+        let this = self.clone();
+        Box::new(move || {
+            let (state, changed) = &*this.0;
+            let mut state = state.lock().expect("cancel state");
+            while *state != Some(true) {
+                state = changed.wait(state).expect("cancel state");
+            }
+        })
+    }
+
+    fn serve(&self, cancel: impl FnOnce()) {
+        let (state, changed) = &*self.0;
+        let mut state = state.lock().expect("cancel state");
+        if *state == Some(false) {
+            cancel();
+            *state = Some(true);
+            changed.notify_all();
+        }
+    }
+
+    fn served(&self) -> bool {
+        *self.0.0.lock().expect("cancel state") == Some(true)
     }
 }
 
@@ -247,6 +805,19 @@ fn drive_until_transfer_settles(events: &Rc<RefCell<Vec<OperationEvent>>>) {
 fn run_paste_collecting_created(
     request: PasteRequest,
 ) -> Result<Vec<Option<Location>>, Box<dyn Error>> {
+    let created = run_paste(request)
+        .iter()
+        .filter_map(|event| match event {
+            OperationEvent::TransferProgress {
+                created_location, ..
+            } => Some(created_location.clone()),
+            _ => None,
+        })
+        .collect();
+    Ok(created)
+}
+
+fn run_paste(request: PasteRequest) -> Vec<OperationEvent> {
     let events = Rc::new(RefCell::new(Vec::new()));
     let emitted = events.clone();
     let _operation = LocalOperationProvider.paste(
@@ -261,21 +832,11 @@ fn run_paste_collecting_created(
         )
     });
 
-    let created = events
-        .borrow()
-        .iter()
-        .filter_map(|event| match event {
-            OperationEvent::TransferProgress {
-                created_location, ..
-            } => Some(created_location.clone()),
-            _ => None,
-        })
-        .collect();
     assert!(matches!(
         events.borrow().last(),
         Some(OperationEvent::Pasted { .. })
     ));
-    Ok(created)
+    events.take()
 }
 
 fn sequential_delete_local(
@@ -286,7 +847,7 @@ fn sequential_delete_local(
         let step_parent = parent.try_clone().map_err(|error| error.to_string())?;
         let step_name = name.clone();
         let step = super::run_local_delete_step(move || {
-            super::open_local_delete_target(&step_parent, &step_name, None)
+            super::open_local_delete_target(&step_parent, &step_name, None, false)
         })
         .await
         .map_err(|error| error.to_string())?;
@@ -350,9 +911,7 @@ fn create_delete_benchmark_tree(root: &Path, count: usize) -> io::Result<()> {
 #[test]
 #[ignore = "manual performance benchmark; run scripts/benchmark-delete.sh"]
 fn benchmark_delete_large_directory() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
+    let _serial = serial()?;
     let unique = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_nanos();
@@ -413,10 +972,10 @@ fn benchmark_delete_large_directory() -> Result<(), Box<dyn Error>> {
             .file_name()
             .ok_or("benchmark root has no name")?
             .to_owned();
-        let target_root = super::LocalDeleteRoot {
+        let target_root = super::PinnedEntry {
             parent: Arc::new(parent),
             name,
-            expected: None,
+            identity: None,
         };
         detected_workers = Some(super::local_delete_worker_count(std::slice::from_ref(
             &target_root,
@@ -426,6 +985,7 @@ fn benchmark_delete_large_directory() -> Result<(), Box<dyn Error>> {
             vec![target_root],
             Arc::new(AtomicBool::new(false)),
             *workers,
+            &Default::default(),
         )
         .map_err(io::Error::other)?;
         let parallel_elapsed = parallel_started.elapsed();
@@ -470,9 +1030,7 @@ fn benchmark_delete_large_directory() -> Result<(), Box<dyn Error>> {
 #[test]
 #[ignore = "manual scale benchmark; run STRATA_DELETE_BENCH_SCALE=1 scripts/benchmark-delete.sh"]
 fn benchmark_parallel_delete_scale() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
+    let _serial = serial()?;
     let unique = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_nanos();
@@ -494,10 +1052,10 @@ fn benchmark_parallel_delete_scale() -> Result<(), Box<dyn Error>> {
         .file_name()
         .ok_or("benchmark root has no name")?
         .to_owned();
-    let target_root = super::LocalDeleteRoot {
+    let target_root = super::PinnedEntry {
         parent: Arc::new(parent),
         name,
-        expected: None,
+        identity: None,
     };
     let workers = super::local_delete_worker_count(std::slice::from_ref(&target_root));
     let cleanup_started = Instant::now();
@@ -505,6 +1063,7 @@ fn benchmark_parallel_delete_scale() -> Result<(), Box<dyn Error>> {
         vec![target_root],
         Arc::new(AtomicBool::new(false)),
         workers,
+        &Default::default(),
     )
     .map_err(io::Error::other)?;
     let cleanup_elapsed = cleanup_started.elapsed();

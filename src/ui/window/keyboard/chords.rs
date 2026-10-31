@@ -9,15 +9,16 @@
 use std::rc::Rc;
 
 use gtk::{
-    gdk::{Key, ModifierType as Modifiers},
+    gdk::ModifierType as Modifiers,
     glib::{self, Propagation},
 };
 
-use super::{Dispatcher, KeyResult, command_modifiers, items::is_modifier_key};
+use super::{Dispatcher, KeyResult};
 use crate::{
     app::Browser,
     model::Location,
     ui::{
+        keys::{KeyPress, bindings::*},
         tenxer_mode::{Chord, Prompt},
         window::home_directory,
     },
@@ -35,140 +36,149 @@ pub(in crate::ui::window) enum GoTarget {
         location: Location,
         validate: bool,
     },
+    Folder {
+        location: Location,
+        missing: String,
+    },
     Missing(String),
 }
 
 /// Resolves the second key of **g**. `pins` are the visible PINNED rows in
 /// sidebar display order.
-pub(in crate::ui::window) fn go_target(key: Key, pins: &[Location]) -> Option<GoTarget> {
+pub(in crate::ui::window) fn go_target(press: &KeyPress, pins: &[Location]) -> Option<GoTarget> {
     let place = |location, validate| Some(GoTarget::Place { location, validate });
-    match key {
-        Key::g => Some(GoTarget::FirstItem),
-        Key::f => Some(GoTarget::HitFolder),
-        Key::space | Key::KP_Space => Some(GoTarget::Prompt),
-        Key::plus | Key::KP_Add => Some(GoTarget::Pin(true)),
-        Key::minus | Key::KP_Subtract => Some(GoTarget::Pin(false)),
-        Key::h => place(Location::local(home_directory()), false),
-        Key::c => config_folder(),
-        Key::t => place(Location::uri("trash:///"), false),
-        Key::n => place(Location::uri("network:///"), true),
-        Key::r => place(Location::uri("recent:///"), false),
-        Key::d => user_folder(glib::UserDirectory::Downloads, "Downloads"),
-        Key::k => user_folder(glib::UserDirectory::Documents, "Documents"),
-        Key::m => user_folder(glib::UserDirectory::Music, "Music"),
-        Key::p => user_folder(glib::UserDirectory::Pictures, "Pictures"),
-        Key::v => user_folder(glib::UserDirectory::Videos, "Videos"),
-        _ => {
-            let number = pin_number(key)?;
-            Some(match pins.get(number - 1) {
-                Some(location) => GoTarget::Place {
-                    location: location.clone(),
-                    validate: true,
-                },
-                None => GoTarget::Missing(format!("No pin {number}")),
-            })
-        }
+    if press.is(GO_FIRST) {
+        Some(GoTarget::FirstItem)
+    } else if press.is(GO_FOLLOW) {
+        Some(GoTarget::HitFolder)
+    } else if press.is(GO_PROMPT.ignoring(Modifiers::SHIFT_MASK)) {
+        Some(GoTarget::Prompt)
+    } else if press.is(GO_PIN) {
+        Some(GoTarget::Pin(true))
+    } else if press.is(GO_UNPIN) {
+        Some(GoTarget::Pin(false))
+    } else if press.is(GO_HOME) {
+        place(Location::local(home_directory()), false)
+    } else if press.is(GO_CONFIG) {
+        config_folder()
+    } else if press.is(GO_TRASH) {
+        place(Location::uri("trash:///"), false)
+    } else if press.is(GO_NETWORK) {
+        place(Location::uri("network:///"), true)
+    } else if press.is(GO_RECENT) {
+        place(Location::uri("recent:///"), false)
+    } else if press.is(GO_DOWNLOADS) {
+        user_folder(glib::UserDirectory::Downloads, "No Downloads folder")
+    } else if press.is(GO_DOCUMENTS) {
+        user_folder(glib::UserDirectory::Documents, "No Documents folder")
+    } else if press.is(GO_MUSIC) {
+        user_folder(glib::UserDirectory::Music, "No Music folder")
+    } else if press.is(GO_PICTURES) {
+        user_folder(glib::UserDirectory::Pictures, "No Pictures folder")
+    } else if press.is(GO_VIDEOS) {
+        user_folder(glib::UserDirectory::Videos, "No Videos folder")
+    } else {
+        let number = usize::from(press.digit_in(PIN_NUMBERS)?);
+        Some(match pins.get(number - 1) {
+            Some(location) => GoTarget::Place {
+                location: location.clone(),
+                validate: true,
+            },
+            None => {
+                GoTarget::Missing(rust_i18n::t!("No pin %{number}", number = number).into_owned())
+            }
+        })
     }
 }
 
 fn config_folder() -> Option<GoTarget> {
-    let path = home_directory().join(".config");
-    Some(if path.is_dir() {
-        GoTarget::Place {
-            location: Location::local(path),
-            validate: false,
-        }
-    } else {
-        GoTarget::Missing("No .config folder".into())
+    Some(GoTarget::Folder {
+        location: Location::local(home_directory().join(".config")),
+        missing: crate::i18n::tr("No .config folder"),
     })
 }
 
-fn user_folder(directory: glib::UserDirectory, name: &str) -> Option<GoTarget> {
-    Some(
-        match glib::user_special_dir(directory).filter(|path| path.is_dir()) {
-            Some(path) => GoTarget::Place {
-                location: Location::local(path),
-                validate: false,
-            },
-            None => GoTarget::Missing(format!("No {name} folder")),
+fn user_folder(directory: glib::UserDirectory, missing: &str) -> Option<GoTarget> {
+    let missing = crate::i18n::tr(missing);
+    Some(match glib::user_special_dir(directory) {
+        Some(path) => GoTarget::Folder {
+            location: Location::local(path),
+            missing,
         },
-    )
-}
-
-fn pin_number(key: Key) -> Option<usize> {
-    let digit = match key {
-        Key::_1 | Key::KP_1 => 1,
-        Key::_2 | Key::KP_2 => 2,
-        Key::_3 | Key::KP_3 => 3,
-        Key::_4 | Key::KP_4 => 4,
-        Key::_5 | Key::KP_5 => 5,
-        Key::_6 | Key::KP_6 => 6,
-        Key::_7 | Key::KP_7 => 7,
-        Key::_8 | Key::KP_8 => 8,
-        Key::_9 | Key::KP_9 => 9,
-        _ => return None,
-    };
-    Some(digit)
+        None => GoTarget::Missing(missing),
+    })
 }
 
 impl Dispatcher {
     /// Runs ahead of every other 10xer key so a pending chord has one consumer.
-    pub(super) fn tenxer_chord(
-        &self,
-        browser: &Rc<Browser>,
-        key: Key,
-        modifiers: Modifiers,
-    ) -> KeyResult {
+    pub(super) fn tenxer_chord(&self, browser: &Rc<Browser>, press: &KeyPress) -> KeyResult {
         let chord = self.shortcuts.armed_chord()?;
-        if is_modifier_key(key) {
+        if press.is_modifier() {
             return Some(Propagation::Proceed);
         }
-        let mods = command_modifiers(modifiers);
         self.shortcuts.cancel_chord();
         // Settings opens over a canceled chord.
-        if key == Key::comma && mods == Modifiers::CONTROL_MASK {
+        if press.is(SETTINGS) {
             return None;
         }
-        if key == Key::Escape && mods.is_empty() {
+        if press.is(ESCAPE) {
             return Some(Propagation::Stop);
         }
-        // '+' requires Shift on many keyboard layouts.
         let completed = match chord {
-            _ if !(mods - Modifiers::SHIFT_MASK).is_empty() => false,
-            Chord::Sort => self.complete_sort(key),
-            Chord::Go => self.complete_go(browser, key),
-            Chord::PreviewTop if key == Key::g => self.preview_to_top(),
+            Chord::Sort => self.complete_sort(press),
+            Chord::Go => self.complete_go(browser, press),
+            Chord::PreviewTop if press.is(GO_FIRST) => self.preview_to_top(),
             Chord::PreviewTop => {
-                go_target(key, &[]).is_some() && {
+                go_target(press, &[]).is_some() && {
                     self.return_from_preview(browser);
-                    self.complete_go(browser, key)
+                    self.complete_go(browser, press)
                 }
             }
-            Chord::Copy => self.complete_copy(key),
-            Chord::Action => self.complete_action(key),
+            Chord::Copy => self.complete_copy(press),
+            Chord::Action => self.complete_action(press),
+            Chord::Tabs => self.complete_tab(press),
         };
         if !completed {
-            self.shortcuts.show_feedback("Unknown chord");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Unknown chord"));
         }
         Some(Propagation::Stop)
     }
 
-    fn complete_go(&self, browser: &Rc<Browser>, key: Key) -> bool {
-        let Some(target) = go_target(key, &self.sidebar.state.visible_pins()) else {
+    fn complete_tab(&self, press: &KeyPress) -> bool {
+        let (action, parameter) = if press.is(TAB_CHORD_NEW) {
+            ("win.new-tab", None)
+        } else if press.is(TAB_CHORD_CLOSE) {
+            ("win.close-tab", None)
+        } else if press.is(TAB_CHORD_PREVIOUS) {
+            ("win.previous-tab", None)
+        } else if let Some(digit) = press.digit_in(TAB_CHORD_NUMBERS) {
+            let index = super::super::composition::tab_index(digit);
+            ("win.select-tab", Some(glib::Variant::from(index as u32)))
+        } else {
+            return false;
+        };
+        gtk::prelude::WidgetExt::activate_action(&self.window, action, parameter.as_ref()).is_ok()
+    }
+
+    fn complete_go(&self, browser: &Rc<Browser>, press: &KeyPress) -> bool {
+        let Some(target) = go_target(press, &self.sidebar.state.visible_pins()) else {
             return false;
         };
         match target {
             GoTarget::FirstItem => self.view.move_displayed_cursor(-1, usize::MAX),
             GoTarget::HitFolder => {
                 if !self.view.reveal_listing_search_hit() {
-                    self.shortcuts.show_feedback("Nothing to reveal");
+                    self.shortcuts
+                        .show_feedback(&crate::i18n::tr("Nothing to reveal"));
                 }
             }
             GoTarget::Prompt => {
                 self.shortcuts.open_prompt(Prompt::Go);
             }
             GoTarget::Pin(_) if self.chooser.is_some() => {
-                self.shortcuts.show_feedback(super::chooser::UNAVAILABLE);
+                self.shortcuts
+                    .show_feedback(&crate::i18n::tr(super::chooser::UNAVAILABLE));
             }
             GoTarget::Pin(pin) => self.change_pin(pin),
             GoTarget::Place { location, .. } if self.refuse_remote_place(&location) => {}
@@ -180,6 +190,13 @@ impl Dispatcher {
                     browser.navigate_with_selection(location, true);
                 }
             }
+            GoTarget::Folder { location, missing } => {
+                self.view.keyboard_navigation();
+                let shortcuts = self.shortcuts.clone();
+                super::super::open_checked(browser, location, move || {
+                    shortcuts.show_feedback(&missing);
+                });
+            }
             GoTarget::Missing(message) => self.shortcuts.show_feedback(&message),
         }
         true
@@ -189,29 +206,48 @@ impl Dispatcher {
 impl Dispatcher {
     fn change_pin(&self, pin: bool) {
         use crate::ui::browser::PinChange;
-        let feedback = match self.view.change_keyboard_pin(pin) {
-            PinChange::Pinned(location, name) => {
-                match self
-                    .sidebar
-                    .state
-                    .visible_pins()
-                    .iter()
-                    .position(|pinned| *pinned == location)
-                    .filter(|index| *index < 9)
-                {
-                    Some(index) => format!("Pinned \u{201c}{name}\u{201d} as g {}", index + 1),
-                    None => format!("Pinned \u{201c}{name}\u{201d}"),
+        let sidebar = Rc::downgrade(&self.sidebar.state);
+        let shortcuts = self.shortcuts.clone();
+        self.view.change_keyboard_pin(pin, move |change| {
+            let Some(sidebar) = sidebar.upgrade() else {
+                return;
+            };
+            let feedback = match change {
+                PinChange::Pinned(location, name) => {
+                    match sidebar
+                        .visible_pins()
+                        .iter()
+                        .position(|pinned| *pinned == location)
+                        .filter(|index| *index < 9)
+                    {
+                        Some(index) => rust_i18n::t!(
+                            "Pinned “%{name}” as %{keys}",
+                            name = name,
+                            keys = crate::ui::keys::digit_label(
+                                crate::ui::keys::bindings::PIN_NUMBERS,
+                                (index + 1) as u8
+                            )
+                        )
+                        .into_owned(),
+                        None => rust_i18n::t!("Pinned “%{name}”", name = name).into_owned(),
+                    }
                 }
-            }
-            PinChange::Unpinned(name) => format!("Unpinned \u{201c}{name}\u{201d}"),
-            PinChange::AlreadyPinned(name) => {
-                format!("\u{201c}{name}\u{201d} is already pinned")
-            }
-            PinChange::NotPinned(name) => format!("\u{201c}{name}\u{201d} isn\u{2019}t pinned"),
-            PinChange::Refused(name) => format!("Can\u{2019}t pin \u{201c}{name}\u{201d}"),
-            PinChange::Nothing if pin => "Nothing to pin".to_owned(),
-            PinChange::Nothing => "Nothing to unpin".to_owned(),
-        };
-        self.shortcuts.show_feedback(&feedback);
+                PinChange::Unpinned(name) => {
+                    rust_i18n::t!("Unpinned “%{name}”", name = name).into_owned()
+                }
+                PinChange::AlreadyPinned(name) => {
+                    rust_i18n::t!("“%{name}” is already pinned", name = name).into_owned()
+                }
+                PinChange::NotPinned(name) => {
+                    rust_i18n::t!("“%{name}” isn’t pinned", name = name).into_owned()
+                }
+                PinChange::Refused(name) => {
+                    rust_i18n::t!("Can’t pin “%{name}”", name = name).into_owned()
+                }
+                PinChange::Nothing if pin => crate::i18n::tr("Nothing to pin"),
+                PinChange::Nothing => crate::i18n::tr("Nothing to unpin"),
+            };
+            shortcuts.show_feedback(&feedback);
+        });
     }
 }

@@ -9,16 +9,22 @@
     <file>icons/scalable/actions/strata-arrow-up.svg</file>
     <file>icons/scalable/actions/strata-arrow-up-narrow-wide.svg</file>
     <file>icons/scalable/actions/strata-app-window.svg</file>
+    <file>icons/scalable/actions/strata-audio-lines.svg</file>
+    <file>icons/scalable/actions/strata-blocks.svg</file>
     <file>icons/scalable/actions/strata-check.svg</file>
     <file>icons/scalable/actions/strata-circle-check.svg</file>
     <file>icons/scalable/actions/strata-circle-x.svg</file>
     <file>icons/scalable/actions/strata-check-on-primary.svg</file>
+    <file>icons/scalable/actions/strata-chevron-down-symbolic.svg</file>
     <file>icons/scalable/actions/strata-chevron-right.svg</file>
     <file>icons/scalable/actions/strata-clock.svg</file>
+    <file>icons/scalable/actions/strata-cloud.svg</file>
     <file>icons/scalable/actions/strata-clipboard-paste.svg</file>
     <file>icons/scalable/actions/strata-copy.svg</file>
     <file>icons/scalable/actions/strata-copy-plus.svg</file>
+    <file>icons/scalable/actions/strata-cog.svg</file>
     <file>icons/scalable/actions/strata-corner-down-left.svg</file>
+    <file>icons/scalable/actions/strata-disc.svg</file>
     <file>icons/scalable/actions/strata-download.svg</file>
     <file>icons/scalable/actions/strata-eject.svg</file>
     <file>icons/scalable/actions/strata-eye-off.svg</file>
@@ -27,11 +33,15 @@
     <file>icons/scalable/actions/strata-file-archive.svg</file>
     <file>icons/scalable/actions/strata-file-code.svg</file>
     <file>icons/scalable/actions/strata-file-plus.svg</file>
+    <file>icons/scalable/actions/strata-file-spreadsheet.svg</file>
+    <file>icons/scalable/actions/strata-file-terminal.svg</file>
     <file>icons/scalable/actions/strata-file-text.svg</file>
     <file>icons/scalable/actions/strata-file-type.svg</file>
     <file>icons/scalable/actions/strata-folder-archive.svg</file>
     <file>icons/scalable/actions/strata-folder.svg</file>
+    <file>icons/scalable/actions/strata-git-branch.svg</file>
     <file>icons/scalable/actions/strata-folder-input.svg</file>
+    <file>icons/scalable/actions/strata-folder-lock.svg</file>
     <file>icons/scalable/actions/strata-folder-open.svg</file>
     <file>icons/scalable/actions/strata-folder-output.svg</file>
     <file>icons/scalable/actions/strata-folder-plus.svg</file>
@@ -44,6 +54,7 @@
     <file>icons/scalable/actions/strata-info.svg</file>
     <file>icons/scalable/actions/strata-globe.svg</file>
     <file>icons/scalable/actions/strata-code-xml.svg</file>
+    <file>icons/scalable/actions/strata-box.svg</file>
     <file>icons/scalable/actions/strata-bug.svg</file>
     <file>icons/scalable/actions/strata-scale.svg</file>
     <file>icons/scalable/actions/strata-corner-down-right.svg</file>
@@ -53,6 +64,8 @@
     <file>icons/scalable/actions/strata-lock.svg</file>
     <file>icons/scalable/actions/strata-lock-open.svg</file>
     <file>icons/scalable/actions/strata-key.svg</file>
+    <file>icons/scalable/actions/strata-key-round.svg</file>
+    <file>icons/scalable/actions/strata-keyboard.svg</file>
     <file>icons/scalable/actions/strata-monitor.svg</file>
     <file>icons/scalable/actions/strata-network.svg</file>
     <file>icons/scalable/actions/strata-package-open.svg</file>
@@ -63,10 +76,16 @@
     <file>icons/scalable/actions/strata-pencil.svg</file>
     <file>icons/scalable/actions/strata-pin.svg</file>
     <file>icons/scalable/actions/strata-play.svg</file>
+    <file>icons/scalable/actions/strata-maximize.svg</file>
+    <file>icons/scalable/actions/strata-minimize.svg</file>
+    <file>icons/scalable/actions/strata-skip-back.svg</file>
+    <file>icons/scalable/actions/strata-skip-forward.svg</file>
     <file>icons/scalable/actions/strata-minus.svg</file>
+    <file>icons/scalable/actions/strata-minus-symbolic.svg</file>
     <file>icons/scalable/actions/strata-plus.svg</file>
+    <file>icons/scalable/actions/strata-plus-symbolic.svg</file>
+    <file>icons/scalable/actions/strata-presentation.svg</file>
     <file>icons/scalable/actions/strata-printer.svg</file>
-    <file>icons/scalable/actions/strata-rows.svg</file>
     <file>icons/scalable/actions/strata-route.svg</file>
     <file>icons/scalable/actions/strata-scissors.svg</file>
     <file>icons/scalable/actions/strata-search.svg</file>
@@ -76,6 +95,8 @@
     <file>icons/scalable/actions/strata-settings-2.svg</file>
     <file>icons/scalable/actions/strata-shredder.svg</file>
     <file>icons/scalable/actions/strata-sliders-horizontal.svg</file>
+    <file>icons/scalable/actions/strata-smartphone.svg</file>
+    <file>icons/scalable/actions/strata-stethoscope.svg</file>
     <file>icons/scalable/actions/strata-refresh.svg</file>
     <file>icons/scalable/actions/strata-terminal.svg</file>
     <file>icons/scalable/actions/strata-trash.svg</file>
@@ -91,5 +112,363 @@
     <file>icons/scalable/actions/strata-x.svg</file>
     <file>icons/scalable/actions/strata-panel-right-close.svg</file>
     <file>icons/scalable/apps/io.github.lgse.Strata.svg</file>
+    <file>icons/catppuccin/strata-ctp-adonis.svg</file>
+    <file>icons/catppuccin/strata-ctp-alex.svg</file>
+    <file>icons/catppuccin/strata-ctp-amber.svg</file>
+    <file>icons/catppuccin/strata-ctp-android.svg</file>
+    <file>icons/catppuccin/strata-ctp-angular.svg</file>
+    <file>icons/catppuccin/strata-ctp-ansible-lint.svg</file>
+    <file>icons/catppuccin/strata-ctp-antlr.svg</file>
+    <file>icons/catppuccin/strata-ctp-apache.svg</file>
+    <file>icons/catppuccin/strata-ctp-api-blueprint.svg</file>
+    <file>icons/catppuccin/strata-ctp-apollo.svg</file>
+    <file>icons/catppuccin/strata-ctp-apple.svg</file>
+    <file>icons/catppuccin/strata-ctp-arduino.svg</file>
+    <file>icons/catppuccin/strata-ctp-asciidoc.svg</file>
+    <file>icons/catppuccin/strata-ctp-assembly.svg</file>
+    <file>icons/catppuccin/strata-ctp-astro.svg</file>
+    <file>icons/catppuccin/strata-ctp-astro-config.svg</file>
+    <file>icons/catppuccin/strata-ctp-autohotkey.svg</file>
+    <file>icons/catppuccin/strata-ctp-azure-pipelines.svg</file>
+    <file>icons/catppuccin/strata-ctp-babel.svg</file>
+    <file>icons/catppuccin/strata-ctp-bash.svg</file>
+    <file>icons/catppuccin/strata-ctp-batch.svg</file>
+    <file>icons/catppuccin/strata-ctp-bazel.svg</file>
+    <file>icons/catppuccin/strata-ctp-benchmark.svg</file>
+    <file>icons/catppuccin/strata-ctp-bicep.svg</file>
+    <file>icons/catppuccin/strata-ctp-biome.svg</file>
+    <file>icons/catppuccin/strata-ctp-bitbucket.svg</file>
+    <file>icons/catppuccin/strata-ctp-blink.svg</file>
+    <file>icons/catppuccin/strata-ctp-blitz.svg</file>
+    <file>icons/catppuccin/strata-ctp-bower.svg</file>
+    <file>icons/catppuccin/strata-ctp-browserslist.svg</file>
+    <file>icons/catppuccin/strata-ctp-bun.svg</file>
+    <file>icons/catppuccin/strata-ctp-bun-lock.svg</file>
+    <file>icons/catppuccin/strata-ctp-c.svg</file>
+    <file>icons/catppuccin/strata-ctp-c-header.svg</file>
+    <file>icons/catppuccin/strata-ctp-cabal.svg</file>
+    <file>icons/catppuccin/strata-ctp-caddy.svg</file>
+    <file>icons/catppuccin/strata-ctp-capacitor.svg</file>
+    <file>icons/catppuccin/strata-ctp-cargo.svg</file>
+    <file>icons/catppuccin/strata-ctp-cargo-lock.svg</file>
+    <file>icons/catppuccin/strata-ctp-changelog.svg</file>
+    <file>icons/catppuccin/strata-ctp-circle-ci.svg</file>
+    <file>icons/catppuccin/strata-ctp-clojure.svg</file>
+    <file>icons/catppuccin/strata-ctp-cmake.svg</file>
+    <file>icons/catppuccin/strata-ctp-cobol.svg</file>
+    <file>icons/catppuccin/strata-ctp-code-climate.svg</file>
+    <file>icons/catppuccin/strata-ctp-code-of-conduct.svg</file>
+    <file>icons/catppuccin/strata-ctp-codeowners.svg</file>
+    <file>icons/catppuccin/strata-ctp-coffeescript.svg</file>
+    <file>icons/catppuccin/strata-ctp-commitlint.svg</file>
+    <file>icons/catppuccin/strata-ctp-config.svg</file>
+    <file>icons/catppuccin/strata-ctp-contributing.svg</file>
+    <file>icons/catppuccin/strata-ctp-cpp.svg</file>
+    <file>icons/catppuccin/strata-ctp-cpp-header.svg</file>
+    <file>icons/catppuccin/strata-ctp-crystal.svg</file>
+    <file>icons/catppuccin/strata-ctp-csharp.svg</file>
+    <file>icons/catppuccin/strata-ctp-cspell.svg</file>
+    <file>icons/catppuccin/strata-ctp-css.svg</file>
+    <file>icons/catppuccin/strata-ctp-css-map.svg</file>
+    <file>icons/catppuccin/strata-ctp-cucumber.svg</file>
+    <file>icons/catppuccin/strata-ctp-cuda.svg</file>
+    <file>icons/catppuccin/strata-ctp-cue.svg</file>
+    <file>icons/catppuccin/strata-ctp-cursor.svg</file>
+    <file>icons/catppuccin/strata-ctp-cursor-ignore.svg</file>
+    <file>icons/catppuccin/strata-ctp-cypress.svg</file>
+    <file>icons/catppuccin/strata-ctp-d.svg</file>
+    <file>icons/catppuccin/strata-ctp-darklua.svg</file>
+    <file>icons/catppuccin/strata-ctp-dart.svg</file>
+    <file>icons/catppuccin/strata-ctp-dart-generated.svg</file>
+    <file>icons/catppuccin/strata-ctp-database.svg</file>
+    <file>icons/catppuccin/strata-ctp-deno.svg</file>
+    <file>icons/catppuccin/strata-ctp-deno_lock.svg</file>
+    <file>icons/catppuccin/strata-ctp-dependabot.svg</file>
+    <file>icons/catppuccin/strata-ctp-devcontainer.svg</file>
+    <file>icons/catppuccin/strata-ctp-dhall.svg</file>
+    <file>icons/catppuccin/strata-ctp-django.svg</file>
+    <file>icons/catppuccin/strata-ctp-docker.svg</file>
+    <file>icons/catppuccin/strata-ctp-docker-compose.svg</file>
+    <file>icons/catppuccin/strata-ctp-docker-ignore.svg</file>
+    <file>icons/catppuccin/strata-ctp-docusaurus.svg</file>
+    <file>icons/catppuccin/strata-ctp-drizzle-orm.svg</file>
+    <file>icons/catppuccin/strata-ctp-dub.svg</file>
+    <file>icons/catppuccin/strata-ctp-dub-selections.svg</file>
+    <file>icons/catppuccin/strata-ctp-editorconfig.svg</file>
+    <file>icons/catppuccin/strata-ctp-ejs.svg</file>
+    <file>icons/catppuccin/strata-ctp-eleventy.svg</file>
+    <file>icons/catppuccin/strata-ctp-elixir.svg</file>
+    <file>icons/catppuccin/strata-ctp-elm.svg</file>
+    <file>icons/catppuccin/strata-ctp-ember.svg</file>
+    <file>icons/catppuccin/strata-ctp-env.svg</file>
+    <file>icons/catppuccin/strata-ctp-envrc.svg</file>
+    <file>icons/catppuccin/strata-ctp-erlang.svg</file>
+    <file>icons/catppuccin/strata-ctp-esbuild.svg</file>
+    <file>icons/catppuccin/strata-ctp-eslint.svg</file>
+    <file>icons/catppuccin/strata-ctp-eslint-ignore.svg</file>
+    <file>icons/catppuccin/strata-ctp-fastlane.svg</file>
+    <file>icons/catppuccin/strata-ctp-firebase.svg</file>
+    <file>icons/catppuccin/strata-ctp-flutter.svg</file>
+    <file>icons/catppuccin/strata-ctp-foreman.svg</file>
+    <file>icons/catppuccin/strata-ctp-fortran.svg</file>
+    <file>icons/catppuccin/strata-ctp-fsharp.svg</file>
+    <file>icons/catppuccin/strata-ctp-fvm.svg</file>
+    <file>icons/catppuccin/strata-ctp-gatsby.svg</file>
+    <file>icons/catppuccin/strata-ctp-gcp.svg</file>
+    <file>icons/catppuccin/strata-ctp-git.svg</file>
+    <file>icons/catppuccin/strata-ctp-git-cliff.svg</file>
+    <file>icons/catppuccin/strata-ctp-gitlab.svg</file>
+    <file>icons/catppuccin/strata-ctp-gitpod.svg</file>
+    <file>icons/catppuccin/strata-ctp-gleam.svg</file>
+    <file>icons/catppuccin/strata-ctp-gleam-config.svg</file>
+    <file>icons/catppuccin/strata-ctp-go.svg</file>
+    <file>icons/catppuccin/strata-ctp-go-mod.svg</file>
+    <file>icons/catppuccin/strata-ctp-go-template.svg</file>
+    <file>icons/catppuccin/strata-ctp-godot.svg</file>
+    <file>icons/catppuccin/strata-ctp-godot-assets.svg</file>
+    <file>icons/catppuccin/strata-ctp-gradle.svg</file>
+    <file>icons/catppuccin/strata-ctp-graphql.svg</file>
+    <file>icons/catppuccin/strata-ctp-groovy.svg</file>
+    <file>icons/catppuccin/strata-ctp-gulp.svg</file>
+    <file>icons/catppuccin/strata-ctp-haml.svg</file>
+    <file>icons/catppuccin/strata-ctp-handlebars.svg</file>
+    <file>icons/catppuccin/strata-ctp-hardhat.svg</file>
+    <file>icons/catppuccin/strata-ctp-hare.svg</file>
+    <file>icons/catppuccin/strata-ctp-haskell.svg</file>
+    <file>icons/catppuccin/strata-ctp-haxe.svg</file>
+    <file>icons/catppuccin/strata-ctp-helm.svg</file>
+    <file>icons/catppuccin/strata-ctp-heroku.svg</file>
+    <file>icons/catppuccin/strata-ctp-histoire.svg</file>
+    <file>icons/catppuccin/strata-ctp-html.svg</file>
+    <file>icons/catppuccin/strata-ctp-http.svg</file>
+    <file>icons/catppuccin/strata-ctp-huff.svg</file>
+    <file>icons/catppuccin/strata-ctp-hugo.svg</file>
+    <file>icons/catppuccin/strata-ctp-humans.svg</file>
+    <file>icons/catppuccin/strata-ctp-husky.svg</file>
+    <file>icons/catppuccin/strata-ctp-ionic.svg</file>
+    <file>icons/catppuccin/strata-ctp-java.svg</file>
+    <file>icons/catppuccin/strata-ctp-java-class.svg</file>
+    <file>icons/catppuccin/strata-ctp-java-jar.svg</file>
+    <file>icons/catppuccin/strata-ctp-javascript.svg</file>
+    <file>icons/catppuccin/strata-ctp-javascript-config.svg</file>
+    <file>icons/catppuccin/strata-ctp-javascript-map.svg</file>
+    <file>icons/catppuccin/strata-ctp-javascript-react.svg</file>
+    <file>icons/catppuccin/strata-ctp-javascript-test.svg</file>
+    <file>icons/catppuccin/strata-ctp-jest.svg</file>
+    <file>icons/catppuccin/strata-ctp-jinja.svg</file>
+    <file>icons/catppuccin/strata-ctp-json.svg</file>
+    <file>icons/catppuccin/strata-ctp-json-schema.svg</file>
+    <file>icons/catppuccin/strata-ctp-juce.svg</file>
+    <file>icons/catppuccin/strata-ctp-jule.svg</file>
+    <file>icons/catppuccin/strata-ctp-julia.svg</file>
+    <file>icons/catppuccin/strata-ctp-jupyter.svg</file>
+    <file>icons/catppuccin/strata-ctp-just.svg</file>
+    <file>icons/catppuccin/strata-ctp-kdl.svg</file>
+    <file>icons/catppuccin/strata-ctp-knip.svg</file>
+    <file>icons/catppuccin/strata-ctp-kotlin.svg</file>
+    <file>icons/catppuccin/strata-ctp-laravel.svg</file>
+    <file>icons/catppuccin/strata-ctp-latex.svg</file>
+    <file>icons/catppuccin/strata-ctp-latte.svg</file>
+    <file>icons/catppuccin/strata-ctp-lerna.svg</file>
+    <file>icons/catppuccin/strata-ctp-less.svg</file>
+    <file>icons/catppuccin/strata-ctp-lib.svg</file>
+    <file>icons/catppuccin/strata-ctp-license.svg</file>
+    <file>icons/catppuccin/strata-ctp-lint-staged.svg</file>
+    <file>icons/catppuccin/strata-ctp-liquid.svg</file>
+    <file>icons/catppuccin/strata-ctp-lisp.svg</file>
+    <file>icons/catppuccin/strata-ctp-lua.svg</file>
+    <file>icons/catppuccin/strata-ctp-lua-client.svg</file>
+    <file>icons/catppuccin/strata-ctp-lua-rocks.svg</file>
+    <file>icons/catppuccin/strata-ctp-lua-server.svg</file>
+    <file>icons/catppuccin/strata-ctp-lua-test.svg</file>
+    <file>icons/catppuccin/strata-ctp-luau.svg</file>
+    <file>icons/catppuccin/strata-ctp-luau-check.svg</file>
+    <file>icons/catppuccin/strata-ctp-luau-client.svg</file>
+    <file>icons/catppuccin/strata-ctp-luau-config.svg</file>
+    <file>icons/catppuccin/strata-ctp-luau-server.svg</file>
+    <file>icons/catppuccin/strata-ctp-luau-test.svg</file>
+    <file>icons/catppuccin/strata-ctp-macos.svg</file>
+    <file>icons/catppuccin/strata-ctp-makefile.svg</file>
+    <file>icons/catppuccin/strata-ctp-mantle.svg</file>
+    <file>icons/catppuccin/strata-ctp-markdown.svg</file>
+    <file>icons/catppuccin/strata-ctp-markdown-mdx.svg</file>
+    <file>icons/catppuccin/strata-ctp-marko.svg</file>
+    <file>icons/catppuccin/strata-ctp-matlab.svg</file>
+    <file>icons/catppuccin/strata-ctp-mdbook.svg</file>
+    <file>icons/catppuccin/strata-ctp-mermaid.svg</file>
+    <file>icons/catppuccin/strata-ctp-meson.svg</file>
+    <file>icons/catppuccin/strata-ctp-mjml.svg</file>
+    <file>icons/catppuccin/strata-ctp-modernizr.svg</file>
+    <file>icons/catppuccin/strata-ctp-moonrepo.svg</file>
+    <file>icons/catppuccin/strata-ctp-moonwave.svg</file>
+    <file>icons/catppuccin/strata-ctp-msbuild.svg</file>
+    <file>icons/catppuccin/strata-ctp-nativescript.svg</file>
+    <file>icons/catppuccin/strata-ctp-nest.svg</file>
+    <file>icons/catppuccin/strata-ctp-netlify.svg</file>
+    <file>icons/catppuccin/strata-ctp-next.svg</file>
+    <file>icons/catppuccin/strata-ctp-nextflow.svg</file>
+    <file>icons/catppuccin/strata-ctp-nginx.svg</file>
+    <file>icons/catppuccin/strata-ctp-nim.svg</file>
+    <file>icons/catppuccin/strata-ctp-ninja.svg</file>
+    <file>icons/catppuccin/strata-ctp-nix.svg</file>
+    <file>icons/catppuccin/strata-ctp-nix-lock.svg</file>
+    <file>icons/catppuccin/strata-ctp-nodemon.svg</file>
+    <file>icons/catppuccin/strata-ctp-npm.svg</file>
+    <file>icons/catppuccin/strata-ctp-npm-ignore.svg</file>
+    <file>icons/catppuccin/strata-ctp-npm-lock.svg</file>
+    <file>icons/catppuccin/strata-ctp-nuget.svg</file>
+    <file>icons/catppuccin/strata-ctp-nunjucks.svg</file>
+    <file>icons/catppuccin/strata-ctp-nuxt.svg</file>
+    <file>icons/catppuccin/strata-ctp-nuxt-ignore.svg</file>
+    <file>icons/catppuccin/strata-ctp-nx.svg</file>
+    <file>icons/catppuccin/strata-ctp-nx-ignore.svg</file>
+    <file>icons/catppuccin/strata-ctp-ocaml.svg</file>
+    <file>icons/catppuccin/strata-ctp-odin.svg</file>
+    <file>icons/catppuccin/strata-ctp-opentofu.svg</file>
+    <file>icons/catppuccin/strata-ctp-package-json.svg</file>
+    <file>icons/catppuccin/strata-ctp-panda-css.svg</file>
+    <file>icons/catppuccin/strata-ctp-perl.svg</file>
+    <file>icons/catppuccin/strata-ctp-pesde.svg</file>
+    <file>icons/catppuccin/strata-ctp-pesde-lock.svg</file>
+    <file>icons/catppuccin/strata-ctp-php.svg</file>
+    <file>icons/catppuccin/strata-ctp-phrase.svg</file>
+    <file>icons/catppuccin/strata-ctp-pixi.svg</file>
+    <file>icons/catppuccin/strata-ctp-pixi-lock.svg</file>
+    <file>icons/catppuccin/strata-ctp-plantuml.svg</file>
+    <file>icons/catppuccin/strata-ctp-playwright.svg</file>
+    <file>icons/catppuccin/strata-ctp-plop.svg</file>
+    <file>icons/catppuccin/strata-ctp-pnpm.svg</file>
+    <file>icons/catppuccin/strata-ctp-pnpm-lock.svg</file>
+    <file>icons/catppuccin/strata-ctp-poetry-lock.svg</file>
+    <file>icons/catppuccin/strata-ctp-postcss.svg</file>
+    <file>icons/catppuccin/strata-ctp-powershell.svg</file>
+    <file>icons/catppuccin/strata-ctp-pre-commit.svg</file>
+    <file>icons/catppuccin/strata-ctp-premake.svg</file>
+    <file>icons/catppuccin/strata-ctp-prettier.svg</file>
+    <file>icons/catppuccin/strata-ctp-prettier-ignore.svg</file>
+    <file>icons/catppuccin/strata-ctp-prisma.svg</file>
+    <file>icons/catppuccin/strata-ctp-prolog.svg</file>
+    <file>icons/catppuccin/strata-ctp-properties.svg</file>
+    <file>icons/catppuccin/strata-ctp-proto.svg</file>
+    <file>icons/catppuccin/strata-ctp-prototools.svg</file>
+    <file>icons/catppuccin/strata-ctp-pug.svg</file>
+    <file>icons/catppuccin/strata-ctp-puppet.svg</file>
+    <file>icons/catppuccin/strata-ctp-puppeteer.svg</file>
+    <file>icons/catppuccin/strata-ctp-python.svg</file>
+    <file>icons/catppuccin/strata-ctp-python-compiled.svg</file>
+    <file>icons/catppuccin/strata-ctp-python-config.svg</file>
+    <file>icons/catppuccin/strata-ctp-r.svg</file>
+    <file>icons/catppuccin/strata-ctp-racket.svg</file>
+    <file>icons/catppuccin/strata-ctp-razor.svg</file>
+    <file>icons/catppuccin/strata-ctp-readme.svg</file>
+    <file>icons/catppuccin/strata-ctp-reason.svg</file>
+    <file>icons/catppuccin/strata-ctp-redwood.svg</file>
+    <file>icons/catppuccin/strata-ctp-release.svg</file>
+    <file>icons/catppuccin/strata-ctp-remix.svg</file>
+    <file>icons/catppuccin/strata-ctp-renovate.svg</file>
+    <file>icons/catppuccin/strata-ctp-rescript.svg</file>
+    <file>icons/catppuccin/strata-ctp-rmd.svg</file>
+    <file>icons/catppuccin/strata-ctp-roblox.svg</file>
+    <file>icons/catppuccin/strata-ctp-robots.svg</file>
+    <file>icons/catppuccin/strata-ctp-rocket.svg</file>
+    <file>icons/catppuccin/strata-ctp-rokit.svg</file>
+    <file>icons/catppuccin/strata-ctp-rollup.svg</file>
+    <file>icons/catppuccin/strata-ctp-rproj.svg</file>
+    <file>icons/catppuccin/strata-ctp-rsml.svg</file>
+    <file>icons/catppuccin/strata-ctp-ruby.svg</file>
+    <file>icons/catppuccin/strata-ctp-ruby-gem.svg</file>
+    <file>icons/catppuccin/strata-ctp-ruby-gem-lock.svg</file>
+    <file>icons/catppuccin/strata-ctp-ruff.svg</file>
+    <file>icons/catppuccin/strata-ctp-rust.svg</file>
+    <file>icons/catppuccin/strata-ctp-rust-config.svg</file>
+    <file>icons/catppuccin/strata-ctp-salesforce.svg</file>
+    <file>icons/catppuccin/strata-ctp-sass.svg</file>
+    <file>icons/catppuccin/strata-ctp-scala.svg</file>
+    <file>icons/catppuccin/strata-ctp-scheme.svg</file>
+    <file>icons/catppuccin/strata-ctp-security.svg</file>
+    <file>icons/catppuccin/strata-ctp-semantic-release.svg</file>
+    <file>icons/catppuccin/strata-ctp-semgrep.svg</file>
+    <file>icons/catppuccin/strata-ctp-semgrep-ignore.svg</file>
+    <file>icons/catppuccin/strata-ctp-sentry.svg</file>
+    <file>icons/catppuccin/strata-ctp-serverless.svg</file>
+    <file>icons/catppuccin/strata-ctp-shader.svg</file>
+    <file>icons/catppuccin/strata-ctp-slidesk.svg</file>
+    <file>icons/catppuccin/strata-ctp-snowpack.svg</file>
+    <file>icons/catppuccin/strata-ctp-solidity.svg</file>
+    <file>icons/catppuccin/strata-ctp-sonar-cloud.svg</file>
+    <file>icons/catppuccin/strata-ctp-spwn.svg</file>
+    <file>icons/catppuccin/strata-ctp-squirrel.svg</file>
+    <file>icons/catppuccin/strata-ctp-stackblitz.svg</file>
+    <file>icons/catppuccin/strata-ctp-stata.svg</file>
+    <file>icons/catppuccin/strata-ctp-stencil.svg</file>
+    <file>icons/catppuccin/strata-ctp-stitches.svg</file>
+    <file>icons/catppuccin/strata-ctp-storybook.svg</file>
+    <file>icons/catppuccin/strata-ctp-storybook-svelte.svg</file>
+    <file>icons/catppuccin/strata-ctp-storybook-vue.svg</file>
+    <file>icons/catppuccin/strata-ctp-stylelint.svg</file>
+    <file>icons/catppuccin/strata-ctp-stylelint-ignore.svg</file>
+    <file>icons/catppuccin/strata-ctp-stylua.svg</file>
+    <file>icons/catppuccin/strata-ctp-stylua-ignore.svg</file>
+    <file>icons/catppuccin/strata-ctp-sublime.svg</file>
+    <file>icons/catppuccin/strata-ctp-super-collider.svg</file>
+    <file>icons/catppuccin/strata-ctp-svelte.svg</file>
+    <file>icons/catppuccin/strata-ctp-svelte-config.svg</file>
+    <file>icons/catppuccin/strata-ctp-swift.svg</file>
+    <file>icons/catppuccin/strata-ctp-swiftformat.svg</file>
+    <file>icons/catppuccin/strata-ctp-tailwind.svg</file>
+    <file>icons/catppuccin/strata-ctp-taskfile.svg</file>
+    <file>icons/catppuccin/strata-ctp-tauri.svg</file>
+    <file>icons/catppuccin/strata-ctp-tauri-ignore.svg</file>
+    <file>icons/catppuccin/strata-ctp-terraform.svg</file>
+    <file>icons/catppuccin/strata-ctp-toml.svg</file>
+    <file>icons/catppuccin/strata-ctp-turbo.svg</file>
+    <file>icons/catppuccin/strata-ctp-twig.svg</file>
+    <file>icons/catppuccin/strata-ctp-twine.svg</file>
+    <file>icons/catppuccin/strata-ctp-typescript.svg</file>
+    <file>icons/catppuccin/strata-ctp-typescript-config.svg</file>
+    <file>icons/catppuccin/strata-ctp-typescript-def.svg</file>
+    <file>icons/catppuccin/strata-ctp-typescript-react.svg</file>
+    <file>icons/catppuccin/strata-ctp-typescript-test.svg</file>
+    <file>icons/catppuccin/strata-ctp-typst.svg</file>
+    <file>icons/catppuccin/strata-ctp-unity.svg</file>
+    <file>icons/catppuccin/strata-ctp-unocss.svg</file>
+    <file>icons/catppuccin/strata-ctp-uv.svg</file>
+    <file>icons/catppuccin/strata-ctp-v.svg</file>
+    <file>icons/catppuccin/strata-ctp-vala.svg</file>
+    <file>icons/catppuccin/strata-ctp-vanilla-extract.svg</file>
+    <file>icons/catppuccin/strata-ctp-vapi.svg</file>
+    <file>icons/catppuccin/strata-ctp-vento.svg</file>
+    <file>icons/catppuccin/strata-ctp-vercel.svg</file>
+    <file>icons/catppuccin/strata-ctp-vercel-ignore.svg</file>
+    <file>icons/catppuccin/strata-ctp-verilog.svg</file>
+    <file>icons/catppuccin/strata-ctp-vhs.svg</file>
+    <file>icons/catppuccin/strata-ctp-vim.svg</file>
+    <file>icons/catppuccin/strata-ctp-visual-studio.svg</file>
+    <file>icons/catppuccin/strata-ctp-vital.svg</file>
+    <file>icons/catppuccin/strata-ctp-vite.svg</file>
+    <file>icons/catppuccin/strata-ctp-vitest.svg</file>
+    <file>icons/catppuccin/strata-ctp-vscode.svg</file>
+    <file>icons/catppuccin/strata-ctp-vscode-ignore.svg</file>
+    <file>icons/catppuccin/strata-ctp-vue.svg</file>
+    <file>icons/catppuccin/strata-ctp-vue-config.svg</file>
+    <file>icons/catppuccin/strata-ctp-web-assembly.svg</file>
+    <file>icons/catppuccin/strata-ctp-webpack.svg</file>
+    <file>icons/catppuccin/strata-ctp-windi.svg</file>
+    <file>icons/catppuccin/strata-ctp-workflow.svg</file>
+    <file>icons/catppuccin/strata-ctp-wrangler.svg</file>
+    <file>icons/catppuccin/strata-ctp-wxt.svg</file>
+    <file>icons/catppuccin/strata-ctp-xaml.svg</file>
+    <file>icons/catppuccin/strata-ctp-xcode.svg</file>
+    <file>icons/catppuccin/strata-ctp-xmake.svg</file>
+    <file>icons/catppuccin/strata-ctp-xml.svg</file>
+    <file>icons/catppuccin/strata-ctp-yaml.svg</file>
+    <file>icons/catppuccin/strata-ctp-yarn.svg</file>
+    <file>icons/catppuccin/strata-ctp-yarn-lock.svg</file>
+    <file>icons/catppuccin/strata-ctp-zap.svg</file>
+    <file>icons/catppuccin/strata-ctp-zig.svg</file>
+  </gresource>
+  <gresource prefix="/org/gtk/libgtk/theme/StrataEmpty">
+    <file alias="gtk.css">theme-empty.css</file>
+    <file alias="gtk-dark.css">theme-empty.css</file>
   </gresource>
 </gresources>

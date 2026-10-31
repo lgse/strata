@@ -32,7 +32,7 @@ impl DelayedLoading {
     pub(crate) fn new(stack: &gtk::Stack) -> Self {
         stack.add_named(
             &gtk::Box::new(gtk::Orientation::Vertical, 0),
-            Some("pending"),
+            Some(super::PENDING_PAGE),
         );
         let loading = Self {
             stack: stack.clone(),
@@ -48,7 +48,7 @@ impl DelayedLoading {
         let transition = self.stack.transition_type();
         self.stack
             .set_transition_type(gtk::StackTransitionType::None);
-        self.stack.set_visible_child_name("pending");
+        self.stack.set_visible_child_name(super::PENDING_PAGE);
         self.stack.set_transition_type(transition);
         let stack = self.stack.downgrade();
         let pending = Rc::downgrade(&self.pending);
@@ -57,7 +57,7 @@ impl DelayedLoading {
                 if let Some(pending) = pending.upgrade() {
                     pending.0.borrow_mut().take();
                     if let Some(stack) = stack.upgrade() {
-                        stack.set_visible_child_name("loading");
+                        stack.set_visible_child_name(super::LOADING_PAGE);
                     }
                 }
             }));

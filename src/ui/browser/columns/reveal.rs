@@ -2,13 +2,11 @@
 
 use super::*;
 
-pub(in crate::ui::browser) const COLUMN_PEEK_WIDTH: f64 = 48.0;
-
 #[derive(Clone, Copy, Debug)]
 pub(in crate::ui::browser) struct ColumnSpan {
     pub left: f64,
     pub right: f64,
-    pub total: f64,
+    pub trailing: f64,
 }
 
 impl ColumnSpan {
@@ -16,40 +14,20 @@ impl ColumnSpan {
         self.right - self.left
     }
 
-    pub fn peek_space(self, available: f64) -> f64 {
-        let neighbors = usize::from(self.left > 0.0) + usize::from(self.right < self.total);
-        ((available - self.width()).max(0.0) / COLUMN_PEEK_WIDTH)
-            .floor()
-            .min(neighbors as f64)
-            * COLUMN_PEEK_WIDTH
-    }
-
     pub fn reveal_target(self, current: f64, page_size: f64, lower: f64, upper: f64) -> f64 {
-        if self.left >= current && self.right <= current + page_size {
-            return current.clamp(lower, (upper - page_size).max(lower));
+        let maximum = (upper - page_size).max(lower);
+        // A column wider than the viewport is as visible as it gets while it fills it.
+        let visible = if self.width() > page_size {
+            self.left <= current && current + page_size <= self.right
+        } else {
+            self.left >= current && self.right <= current + page_size
+        };
+        if visible {
+            return current.clamp(lower, maximum);
         }
-        let budget = self.peek_space(page_size);
-        let left_first = self.left < current || self.right >= self.total;
-        let left = if self.left > lower && (left_first || budget >= COLUMN_PEEK_WIDTH * 2.0) {
-            budget.min(COLUMN_PEEK_WIDTH)
-        } else {
-            0.0
-        };
-        let right = if self.right < self.total {
-            (budget - left).min(COLUMN_PEEK_WIDTH)
-        } else {
-            0.0
-        };
-        let reveal_left = self.left - left;
-        let reveal_right = self.right + right;
-        let target = if reveal_right > current + page_size {
-            reveal_right - page_size
-        } else if reveal_left < current {
-            reveal_left
-        } else {
-            current
-        };
-        target.clamp(lower, (upper - page_size).max(lower))
+        (self.right + self.trailing - page_size)
+            .min(self.left)
+            .clamp(lower, maximum)
     }
 }
 
@@ -88,9 +66,9 @@ impl ViewState {
 
     pub(in crate::ui::browser) fn install_column_peek_targets(self: &Rc<Self>) {
         let weak = Rc::downgrade(self);
-        self.scroller.add_tick_callback(move |scroller, _| {
+        crate::ui::frame::after_layout(&self.scroller, move |scroller| {
             let Some(state) = weak.upgrade() else {
-                return glib::ControlFlow::Break;
+                return;
             };
             let page = scroller.width() as f32;
             for column in state.columns.borrow().iter() {
@@ -113,7 +91,6 @@ impl ViewState {
                         .set_width_request(visible.floor() as i32);
                 }
             }
-            glib::ControlFlow::Continue
         });
         let click = gtk::GestureClick::new();
         click.set_button(1);
@@ -134,6 +111,10 @@ impl ViewState {
             }
             origin_for_press.set(Some((x, y)));
             let target = weak.upgrade().and_then(|state| {
+                // A clipped column's resize edge still resizes it.
+                if resize_edge(&state, x, y).is_some() {
+                    return None;
+                }
                 let target = state.clipped_column(x, y)?;
                 let surface = gesture.widget()?;
                 let picked = surface.pick(x, y, gtk::PickFlags::DEFAULT)?;

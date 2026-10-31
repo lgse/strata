@@ -1,0 +1,19 @@
+{"scenario":"recent-preference-adds-no-place","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.8},"quality":{"impact":2,"coverage":3,"criticality":2,"diagnostic":4,"score":19,"note":"Only QA route toggling Show Recent live with no backend; startup absence is in recent-absent-from-sidebar; gating fn has no unit test"}}
+{"activate":{"role":"button","name":"Settings"}}
+{"wait":{"presented":{"role":"toggle button","name":"Show Recent in sidebar"}},"message":"the Recent sidebar preference"}
+{"flag":{"state":{"target":{"role":"toggle button","name":"Show Recent in sidebar"},"pressed":true}},"as":"enabled"}
+{"activate":{"role":"toggle button","name":"Show Recent in sidebar"},"if":"enabled"}
+{"wait":{"state":{"target":{"role":"toggle button","name":"Show Recent in sidebar"},"pressed":false}},"message":"the Recent preference to change","if":"enabled"}
+{"wait":{"absent":{"role":"button","name":"Recent"}},"message":"Recent to stay hidden while its backend is unavailable","if":"enabled"}
+{"activate":{"role":"toggle button","name":"Show Recent in sidebar"},"if":"enabled"}
+{"wait":{"state":{"target":{"role":"toggle button","name":"Show Recent in sidebar"},"pressed":true}},"message":"the Recent preference to change","if":"enabled"}
+{"wait":{"absent":{"role":"button","name":"Recent"}},"message":"Recent to stay hidden while its backend is unavailable","if":"enabled"}
+{"activate":{"role":"toggle button","name":"Show Recent in sidebar"},"unless":"enabled"}
+{"wait":{"state":{"target":{"role":"toggle button","name":"Show Recent in sidebar"},"pressed":true}},"message":"the Recent preference to change","unless":"enabled"}
+{"wait":{"absent":{"role":"button","name":"Recent"}},"message":"Recent to stay hidden while its backend is unavailable","unless":"enabled"}
+{"activate":{"role":"toggle button","name":"Show Recent in sidebar"},"unless":"enabled"}
+{"wait":{"state":{"target":{"role":"toggle button","name":"Show Recent in sidebar"},"pressed":false}},"message":"the Recent preference to change","unless":"enabled"}
+{"wait":{"absent":{"role":"button","name":"Recent"}},"message":"Recent to stay hidden while its backend is unavailable","unless":"enabled"}
+{"key":"Escape"}
+{"expect":{"present":{"sidebar":"Home"}}}
+{"expect":{"present":{"sidebar":"Trash"}}}

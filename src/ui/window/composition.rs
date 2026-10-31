@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use gtk::{gio, prelude::*};
 
@@ -15,6 +15,10 @@ mod input;
 mod layout;
 mod search;
 mod settings;
+mod tabs;
+mod tenxer_splash;
+
+pub(super) use tabs::{TabWindow, is_tab_shortcut, tab_index};
 
 pub(super) struct WindowContent {
     pub(super) browser: BrowserView,
@@ -24,6 +28,8 @@ pub(super) struct WindowContent {
     overlay: gtk::Overlay,
     blurred_root: BlurBin,
     footer: layout::FooterBinding,
+    actions: gio::SimpleActionGroup,
+    key_controllers: RefCell<Vec<gtk::EventController>>,
 }
 
 impl WindowContent {
@@ -35,11 +41,12 @@ impl WindowContent {
         let preview = layout::preview(&browser, preferences);
         let header = layout::Header::new(window, &browser, &preview, preferences);
         let sidebar = super::build_sidebar(browser.clone(), preferences.clone(), false);
-        let root = layout::browser_layout(&browser, &preview, &sidebar, &header);
+        let root = layout::browser_layout(&browser, &preview, &sidebar, &header, preferences);
         let footer = layout::FooterBinding::new(window, &root, &browser, preferences);
         input::install_mouse_history(&root, &browser);
         crate::ui::scrolling::install_autoscroll_stop(&root);
         let overlay = gtk::Overlay::new();
+        overlay.add_css_class("tab-context");
         let blurred_root = BlurBin::new(&root);
         overlay.set_child(Some(&blurred_root));
         Self {
@@ -50,18 +57,44 @@ impl WindowContent {
             overlay,
             blurred_root,
             footer,
+            actions: gio::SimpleActionGroup::new(),
+            key_controllers: RefCell::new(Vec::new()),
         }
     }
 
+    #[cfg(test)]
     pub(super) fn bind(
         &self,
         window: &gtk::ApplicationWindow,
         preferences: &Rc<PreferenceManager>,
     ) -> UpdateNoticeHandler {
-        search::install(window, self, preferences);
-        install_browser_actions(window, &self.browser, preferences);
-        let notice = settings::install(window, self, preferences);
+        let notice = self.bind_context(window, preferences);
+        self.activate_actions(window);
         window.set_child(Some(&self.overlay));
+        tenxer_splash::install(window, &self.overlay, preferences);
+        super::install_modal_focus_trap(window);
+        crate::ui::keys::install_native_aliases(window);
+        self.browser
+            .set_as_modal_focus_fallback(window.upcast_ref());
+        notice
+    }
+
+    fn activate_actions(&self, window: &gtk::ApplicationWindow) {
+        for name in self.actions.list_actions() {
+            if let Some(action) = self.actions.lookup_action(&name) {
+                window.add_action(&action);
+            }
+        }
+    }
+
+    fn bind_context(
+        &self,
+        window: &gtk::ApplicationWindow,
+        preferences: &Rc<PreferenceManager>,
+    ) -> UpdateNoticeHandler {
+        search::install(window, self, preferences);
+        install_browser_actions(window, &self.actions, &self.browser, preferences);
+        let notice = settings::install(window, self, preferences);
         let click_browser = self.browser.clone();
         let click = gtk::GestureClick::new();
         click.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -70,21 +103,18 @@ impl WindowContent {
                 click_browser.dismiss_filter_on_outside_click(&window, x, y);
             }
         });
-        window.add_controller(click);
-        input::install_edit_cancellation(window, &self.browser);
-        super::install_modal_focus_trap(window);
-        window.connect_unrealize(|window| {
-            PreferenceManager::shared().release_bindings_within(window);
-        });
+        self.overlay.add_controller(click);
+        input::install_edit_cancellation(&self.overlay, &self.browser);
         let top_bar = crate::ui::top_bar_navigation::TopBarNavigation::new(
             &self.header.content,
             &self.sidebar.widget,
-            &self.header.sidebar_toggle,
+            self.header.sidebar_toggle.upcast_ref(),
         );
-        keyboard::install(
+        let controllers = keyboard::install_on(
             window,
+            &self.overlay,
             &self.sidebar,
-            keyboard::Bindings {
+            keyboard::DispatcherParts {
                 view: self.browser.clone(),
                 top_bar,
                 preview: self.preview.clone(),
@@ -93,10 +123,10 @@ impl WindowContent {
                     preferences: preferences.clone(),
                 },
                 shortcuts: self.footer.shortcuts.clone(),
-                folders: Rc::new(crate::ui::go_completion::GioFolders),
                 history: crate::services::NavigationHistory::shared(),
             },
         );
+        self.key_controllers.borrow_mut().extend(controllers);
         notice
     }
 
@@ -111,13 +141,23 @@ impl WindowContent {
     }
 
     #[cfg(test)]
+    pub(super) fn minimize_button(&self) -> &gtk::Button {
+        &self.header.minimize
+    }
+
+    #[cfg(test)]
+    pub(super) fn maximize_button(&self) -> &gtk::Button {
+        &self.header.maximize
+    }
+
+    #[cfg(test)]
     pub(super) fn close_button(&self) -> &gtk::Button {
         &self.header.close
     }
 
     #[cfg(test)]
     pub(super) fn sidebar_toggle(&self) -> &gtk::ToggleButton {
-        &self.header.sidebar_toggle
+        self.header.sidebar_toggle.upcast_ref()
     }
 
     #[cfg(test)]
@@ -138,55 +178,90 @@ impl WindowContent {
     /// gtk_window_destroy() unrealizes a window but frees it only with its last
     /// reference, which its own closures can hold, so cleanup cannot wait for
     /// the destroy signal.
+    #[cfg(test)]
     pub(super) fn connect_cleanup(self, window: &gtk::ApplicationWindow) {
-        let browser = self.browser.browser();
-        let sidebar = self.sidebar;
-        let footer = self.footer;
-        window.connect_unrealize(move |_| {
-            footer.disconnect_clipboard();
-            browser.bump_navigation_generation();
-            browser.clear_observer();
-            sidebar.disconnect();
-        });
+        window.connect_unrealize(move |_| self.dispose());
     }
+
+    fn dispose(&self) {
+        for controller in self.key_controllers.take() {
+            if let Some(widget) = controller.widget() {
+                widget.remove_controller(&controller);
+            }
+        }
+        self.footer.shortcuts.cancel_chord();
+        self.footer.shortcuts.dismiss_prompt();
+        self.footer.disconnect_clipboard();
+        self.preview.clear_target();
+        let browser = self.browser.browser();
+        browser.bump_navigation_generation();
+        browser.clear_observer();
+        self.browser.dispose_file_progress();
+        browser.cancel_background_operations();
+        browser.cancel_file_operation();
+        self.browser.finish_navigation_cleanup();
+        self.sidebar.disconnect();
+        PreferenceManager::shared().release_bindings_within(&self.overlay);
+        let controllers = self.overlay.observe_controllers();
+        while let Some(controller) = controllers.item(0).and_downcast::<gtk::EventController>() {
+            self.overlay.remove_controller(&controller);
+        }
+    }
+}
+
+/// Adds a `win.<name>` action that does nothing while a modal layer other than
+/// `own_layer` is on top or an inline edit owns the listing. The key dispatcher
+/// runs window actions after yielding to those owners, so the check lives in the
+/// action rather than in the dispatcher.
+fn add_guarded_window_action(
+    window: &gtk::ApplicationWindow,
+    actions: &gio::SimpleActionGroup,
+    name: &str,
+    browser: &BrowserView,
+    own_layer: Option<gtk::Widget>,
+    run: impl Fn() + 'static,
+) {
+    let action = gio::SimpleAction::new(name, None);
+    let window = window.downgrade();
+    let browser = browser.clone();
+    action.connect_activate(move |_, _| {
+        let Some(window) = window.upgrade() else {
+            return;
+        };
+        if super::foreign_modal_visible(&window, own_layer.as_ref())
+            || browser.inline_edit_is_open()
+        {
+            return;
+        }
+        run();
+    });
+    actions.add_action(&action);
 }
 
 fn install_browser_actions(
     window: &gtk::ApplicationWindow,
+    actions: &gio::SimpleActionGroup,
     browser: &BrowserView,
     preferences: &Rc<PreferenceManager>,
 ) {
     let terminal_view = browser.clone();
-    let terminal_action = gio::SimpleAction::new("open-terminal", None);
-    terminal_action.connect_activate(move |_, _| {
+    add_guarded_window_action(window, actions, "open-terminal", browser, None, move || {
         terminal_view.open_terminal();
     });
-    window.add_action(&terminal_action);
-
     let refresh_view = browser.clone();
-    let refresh_action = gio::SimpleAction::new("refresh", None);
-    refresh_action.connect_activate(move |_, _| {
+    add_guarded_window_action(window, actions, "refresh", browser, None, move || {
         refresh_view.refresh();
     });
-    window.add_action(&refresh_action);
-
     let toggle_preferences = preferences.clone();
-    let toggle_action = gio::SimpleAction::new("toggle-arrow-scope", None);
-    toggle_action.connect_activate(move |_, _| {
-        let next = !toggle_preferences.arrow_navigation_scoped();
-        toggle_preferences.set_arrow_navigation_scoped(next);
-    });
-    window.add_action(&toggle_action);
-    // The set lives on the application, so it follows the saved mode rather
-    // than whichever window was constructed or destroyed last.
-    if let Some(application) = window.application() {
-        let application = application.clone();
-        preferences.bind_preference(
-            window,
-            PreferenceManager::tenxer_mode,
-            move |_window, enabled| {
-                super::install_mode_accelerators(&application, enabled);
-            },
-        );
-    }
+    add_guarded_window_action(
+        window,
+        actions,
+        "toggle-arrow-scope",
+        browser,
+        None,
+        move || {
+            let next = !toggle_preferences.arrow_navigation_scoped();
+            toggle_preferences.set_arrow_navigation_scoped(next);
+        },
+    );
 }

@@ -28,8 +28,37 @@ fn plain_queries_tolerate_one_edit_in_a_whole_filename_word() {
         ("trash.svg", "*trahs*", false),
         ("trash.svg", "trazh.svg", false),
         ("RE\u{301}SUME\u{301}.txt", "résmué", true),
+        ("éafé.svg", "café", true),
+        ("café.svg", "cafe", true),
+        ("café.svg", "caéfé", true),
+        ("caéfé.svg", "café", true),
+        ("café.svg", "caéf", true),
+        ("café.svg", "caéx", false),
         ("旅行写真.jpg", "旅写真", false),
         ("旅行写真.jpg", "旅写行真", true),
+    ] {
+        assert_eq!(
+            filter_name_matches(&fold_for_search(name), &fold_for_search(query)),
+            expected,
+            "name={name:?}, query={query:?}",
+        );
+    }
+}
+
+#[test]
+fn multi_word_queries_match_when_every_word_appears() {
+    for (name, query, expected) in [
+        ("ducks_in_the_pool.txt", "duck txt", true),
+        ("report final draft.pdf", "final draft", true),
+        ("report-final-draft.pdf", "final draft", true),
+        ("duck.txt", "duck txt", true),
+        ("ducks_in_the_pool.txt", "duck goose", false),
+        ("only-duck.md", "duck txt", false),
+        ("summer holiday.jpg", "summer holiday", true),
+        ("holiday.jpg", "summer holiday", false),
+        ("duck.txt", "duck ", true),
+        ("abc_tent.doc", "abc text", true),
+        ("abc_tent.doc", "abc tex", false),
     ] {
         assert_eq!(
             filter_name_matches(&fold_for_search(name), &fold_for_search(query)),

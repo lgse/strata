@@ -1,0 +1,14 @@
+{"scenario":"keep-both-numbered-archives","modes":["list"],"layout":"us","setup":[{"fs":{"path":"todo.txt.zip","write":"original archive"}},{"fs":{"path":"todo.txt (1).zip","write":"previous archive"}}],"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":3,"score":52,"note":"Keep Both by keyboard (Shift+Tab, Return) on a compress collision selects and reveals the numbered zip; pointer Keep Both is undo-compression-trashes-archive"}}
+{"click":{"entry":"todo.txt"},"button":3}
+{"wait":{"present":{"menu_item":"Compress…"}},"message":"the context menu item 'Compress…' for 'todo.txt'"}
+{"activate":{"role":"menu item","name":"Compress…"}}
+{"wait":{"field":{}},"message":"the Compress dialog's name field to take focus"}
+{"activate":{"dialog_button":"Compress"}}
+{"wait":{"all":[{"dialog":"File already exists"},{"state":{"target":{"dialog_button":"Replace"},"focused":true}}]},"message":"the archive collision prompt with Replace focused"}
+{"key":"shift+Tab"}
+{"wait":{"state":{"target":{"dialog_button":"Keep Both"},"focused":true}},"message":"Shift+Tab to move focus to Keep Both"}
+{"key":"Return"}
+{"fs":{"path":"todo.txt (2).zip","zip_members":[["todo.txt","todo.txt"]]},"message":"Keep Both by Return to publish 'todo.txt (2).zip'"}
+{"wait":{"all":[{"dialog":null},{"selected":["todo.txt (2).zip"]},{"on_screen":{"entry":"todo.txt (2).zip"}}]},"message":"the progress dialog to close and 'todo.txt (2).zip' to be selected and shown"}
+{"fs":{"path":"todo.txt.zip","text":"original archive"},"timeout_ms":0,"message":"Keep Both must not touch the original archive"}
+{"fs":{"path":"todo.txt (1).zip","text":"previous archive"},"timeout_ms":0,"message":"Keep Both must not touch an earlier numbered archive"}

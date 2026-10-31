@@ -133,6 +133,42 @@ fn failed_reload_rolls_back_and_keeps_a_backup() {
 }
 
 #[test]
+fn replace_bindings_writes_and_rolls_back_through_a_symlinked_bindings_file() {
+    let fixture = tempfile::tempdir().expect("valid test fixture");
+    let dotfiles = fixture.path().join("dotfiles");
+    let hypr = fixture.path().join("hypr");
+    fs::create_dir(&dotfiles).expect("valid test fixture");
+    fs::create_dir(&hypr).expect("valid test fixture");
+    let target = dotfiles.join("bindings.lua");
+    let link = hypr.join("bindings.lua");
+    let original = installed(4);
+    let updated = restored_bindings(&original, 4)
+        .expect("valid test fixture")
+        .expect("valid test fixture");
+    fs::write(&target, &original).expect("valid test fixture");
+    std::os::unix::fs::symlink(&target, &link).expect("valid test fixture");
+
+    let error = replace_bindings(&link, &original, &updated, || Err("reload failure".into()))
+        .expect_err("the failed reload is reported");
+    assert!(
+        error.starts_with("reload failure") && error.contains("Restored keyboard configuration"),
+        "the write and the rollback both go through the link: {error}"
+    );
+    assert_eq!(
+        fs::read_to_string(&target).expect("valid test fixture"),
+        original
+    );
+    assert_eq!(fs::read_link(&link).expect("valid test fixture"), target);
+
+    replace_bindings(&link, &original, &updated, || Ok(())).expect("writes through the link");
+    assert_eq!(
+        fs::read_to_string(&target).expect("valid test fixture"),
+        updated
+    );
+    assert_eq!(fs::read_link(&link).expect("valid test fixture"), target);
+}
+
+#[test]
 fn only_supported_omarchy_versions_are_selected() {
     for (version, expected) in [
         ("3.1.0", Some(3)),

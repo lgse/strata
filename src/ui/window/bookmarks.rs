@@ -6,7 +6,7 @@ use gtk::prelude::*;
 
 use crate::adapters::bookmarks::{BookmarkWatch, watch_changes};
 
-use super::{SidebarState, load_pinned_places, show_error_dialog};
+use super::{SidebarState, show_error_dialog};
 
 pub(super) fn watch_sidebar(state: &Rc<SidebarState>) -> BookmarkWatch {
     let weak = Rc::downgrade(state);
@@ -14,14 +14,10 @@ pub(super) fn watch_sidebar(state: &Rc<SidebarState>) -> BookmarkWatch {
         let Some(state) = weak.upgrade() else {
             return false;
         };
-        let places = result
-            .as_ref()
-            .map_err(ToString::to_string)
-            .and_then(|_| load_pinned_places().map_err(|error| error.to_string()));
-        match places {
+        match result {
             Ok(places) => {
-                if *state.pinned_places.borrow() != places {
-                    state.pinned_places.replace(places);
+                if *state.pinned_places.borrow() != *places {
+                    state.pinned_places.replace(places.clone());
                     state.rebuild();
                 }
                 true
@@ -32,8 +28,8 @@ pub(super) fn watch_sidebar(state: &Rc<SidebarState>) -> BookmarkWatch {
                 }
                 show_error_dialog(
                     &state.view.widget(),
-                    "Unable to update pinned folders",
-                    &error,
+                    &crate::i18n::tr("Unable to update pinned folders"),
+                    &crate::services::io_error_message(error),
                 );
                 true
             }

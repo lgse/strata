@@ -188,6 +188,45 @@ fn classify_reveals_a_regular_file_in_its_parent() {
 }
 
 #[test]
+fn classify_reveals_only_the_named_file_when_non_utf8_names_collide() {
+    crate::test_support::gtk_test(
+        "ui::window::open_argument::tests::classify_reveals_only_the_named_file_when_non_utf8_names_collide",
+        || {
+            use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+
+            PreferenceManager::seed_saved_preferences_for_test();
+            let root = tempfile::tempdir().expect("fixture");
+            let requested = root.path().join(OsStr::from_bytes(b"bad\xe8name.txt"));
+            let sibling = root.path().join(OsStr::from_bytes(b"bad\xe9name.txt"));
+            std::fs::write(&requested, b"requested").expect("fixture file");
+            std::fs::write(&sibling, b"sibling").expect("fixture file");
+            let file = gio::File::for_path(&requested);
+            let location = location_for_file(&file).expect("native location");
+
+            let browser = view();
+            classify(browser.clone(), file, location);
+
+            wait_until(|| {
+                browser
+                    .browser()
+                    .active_location()
+                    .is_some_and(|active| active.native_path() == Some(root.path()))
+                    && !browser.browser().selected_entries().is_empty()
+            });
+            pump_for(Duration::from_millis(300));
+
+            let selected = browser
+                .browser()
+                .selected_entries()
+                .into_iter()
+                .map(|entry| entry.location)
+                .collect::<Vec<_>>();
+            assert_eq!(selected, vec![Location::local(&requested)]);
+        },
+    );
+}
+
+#[test]
 fn classify_opens_a_directory_argument() {
     crate::test_support::gtk_test(
         "ui::window::open_argument::tests::classify_opens_a_directory_argument",
@@ -313,6 +352,38 @@ fn connecting_cancel_invalidates_the_request_and_clears_status() {
 
             assert!(browser.browser().navigation_generation() > generation);
             assert!(status_widget(&browser.overlay()).is_none());
+        },
+    );
+}
+
+#[test]
+fn an_unavailable_target_logs_no_user_query_or_fragment() {
+    crate::test_support::gtk_test(
+        "ui::window::open_argument::tests::an_unavailable_target_logs_no_user_query_or_fragment",
+        || {
+            PreferenceManager::seed_saved_preferences_for_test();
+            let file =
+                gio::File::for_uri("sftp://alice:s3cret@example.invalid/file?token=abc#frag");
+            let location = location_for_file(&file).expect("remote location");
+            let browser = view();
+
+            let output = crate::test_support::capture_logs(|| {
+                classify(browser.clone(), file, location);
+                wait_until(|| {
+                    status_widget(&browser.overlay())
+                        .as_ref()
+                        .and_then(|status| button_with_label(status, "Retry"))
+                        .is_some()
+                });
+            });
+
+            let warning =
+                crate::test_support::captured_event(&output, "target location unavailable");
+            assert_eq!(warning.split_whitespace().next(), Some("WARN"));
+            assert!(warning.contains("sftp://example.invalid/file"), "{warning}");
+            for secret in ["alice", "s3cret", "token", "frag"] {
+                assert!(!output.contains(secret), "{secret} leaked:\n{output}");
+            }
         },
     );
 }

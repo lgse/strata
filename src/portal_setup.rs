@@ -8,13 +8,16 @@ pub(crate) mod udiskie;
 
 use std::{
     env, fs, io,
-    io::Write as _,
+    io::{Read as _, Write as _},
     os::unix::{
         ffi::OsStrExt as _,
         fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
+        process::CommandExt as _,
     },
     path::{Path, PathBuf},
-    process::Stdio,
+    process::{Command, Output, Stdio},
+    thread,
+    time::{Duration, Instant},
 };
 
 use serde::{Deserialize, Serialize};
@@ -36,8 +39,13 @@ const FILE_MANAGER_STATE_FILE: &str = "state.toml";
 const INODE_DIRECTORY: &str = "inode/directory";
 
 pub(crate) fn install() -> Result<String, String> {
-    let executable = crate::services::installed_executable()
-        .map_err(|error| format!("Could not locate the Strata executable: {error}"))?;
+    let executable = crate::services::installed_executable().map_err(|error| {
+        rust_i18n::t!(
+            "Could not locate the Strata executable: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
     let context = SetupContext::from_environment()?;
     let config = install_at(&context, &executable)?;
     dismiss_prompt_at(&context)?;
@@ -65,8 +73,13 @@ pub(crate) fn uninstall() -> Result<String, String> {
 }
 
 pub(crate) fn install_file_manager() -> Result<String, String> {
-    let executable = crate::services::installed_executable()
-        .map_err(|error| format!("Could not locate the Strata executable: {error}"))?;
+    let executable = crate::services::installed_executable().map_err(|error| {
+        rust_i18n::t!(
+            "Could not locate the Strata executable: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
     let context = SetupContext::from_environment()?;
     let previous = query_default_file_manager().filter(|id| id != DESKTOP_ID);
     install_file_manager_at(&context, &executable, previous.as_deref())?;
@@ -119,15 +132,14 @@ fn install_file_manager_at(
     let executable = secure_executable(executable)?;
     let executable = executable
         .to_str()
-        .ok_or_else(|| "Strata must be installed at a UTF-8 path".to_owned())?;
+        .ok_or_else(|| crate::i18n::tr("Strata must be installed at a UTF-8 path"))?;
     if executable
         .chars()
         .any(|character| character.is_whitespace() || matches!(character, '\\' | '\'' | '"'))
     {
-        return Err(
-            "The Strata executable path contains characters unsupported by D-Bus activation"
-                .to_owned(),
-        );
+        return Err(crate::i18n::tr(
+            "The Strata executable path contains characters unsupported by D-Bus activation",
+        ));
     }
 
     let service_directory = context.data_home.join("dbus-1/services");
@@ -137,9 +149,11 @@ fn install_file_manager_at(
     let target = service_directory.join(FILE_MANAGER_SERVICE);
     let conflict = find_file_manager_conflict(&service_directory)?;
     if let Some(conflict) = conflict {
-        return Err(format!(
-            "Another per-user FileManager1 provider is already installed: {conflict}"
-        ));
+        return Err(rust_i18n::t!(
+            "Another per-user FileManager1 provider is already installed: %{path}",
+            path = conflict
+        )
+        .into_owned());
     }
 
     let service = include_str!("../data/io.github.lgse.Strata.FileManager1.service")
@@ -201,7 +215,7 @@ fn restore_folder_handler(
         return Ok(None);
     }
     let target = previous.map(str::to_owned).or_else(nautilus).ok_or_else(|| {
-        "No previous folder handler was recorded and Nautilus was not detected. Choose another default file manager first, then retry Restore previous.".to_owned()
+        crate::i18n::tr("No previous folder handler was recorded and Nautilus was not detected. Choose another default file manager first, then retry Restore default.")
     })?;
     restore(&target)?;
     Ok(Some(target))
@@ -216,7 +230,13 @@ fn file_manager_status_at(context: &SetupContext) -> Result<FileManagerStatus, S
         let config = KeyFile::new();
         config
             .load_from_data(&read_utf8(&service)?, KeyFileFlags::NONE)
-            .map_err(|error| format!("Could not parse FileManager1 service: {error}"))?;
+            .map_err(|error| {
+                rust_i18n::t!(
+                    "Could not parse FileManager1 service: %{error}",
+                    error = error
+                )
+                .into_owned()
+            })?;
         config
             .string("D-BUS Service", "Name")
             .is_ok_and(|name| name == "org.freedesktop.FileManager1")
@@ -267,7 +287,14 @@ fn find_file_manager_conflict(service_directory: &Path) -> Result<Option<String>
         let config = KeyFile::new();
         config
             .load_from_data(&read_utf8(&path)?, KeyFileFlags::NONE)
-            .map_err(|error| format!("Could not parse {}: {error}", path.display()))?;
+            .map_err(|error| {
+                rust_i18n::t!(
+                    "Could not parse %{path}: %{error}",
+                    path = path.display(),
+                    error = error
+                )
+                .into_owned()
+            })?;
         if config
             .string("D-BUS Service", "Name")
             .is_ok_and(|name| name == "org.freedesktop.FileManager1")
@@ -279,11 +306,12 @@ fn find_file_manager_conflict(service_directory: &Path) -> Result<Option<String>
 }
 
 fn query_default_file_manager() -> Option<String> {
-    crate::trusted_command::command("xdg-mime")
-        .ok()?
+    let mut command = crate::trusted_command::command("xdg-mime").ok()?;
+    command
         .args(["query", "default", INODE_DIRECTORY])
-        .output()
-        .ok()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    output_within(&mut command, SESSION_COMMAND_DEADLINE)
         .filter(|output| output.status.success())
         .and_then(|output| String::from_utf8(output.stdout).ok())
         .map(|output| output.trim().to_owned())
@@ -291,41 +319,63 @@ fn query_default_file_manager() -> Option<String> {
 }
 
 fn set_default_file_manager() -> Result<(), String> {
-    let status = crate::trusted_command::command("xdg-mime")
-        .map_err(|error| format!("Could not set the default file manager: {error}"))?
-        .args(["default", DESKTOP_ID, INODE_DIRECTORY])
-        .status()
-        .map_err(|error| format!("Could not set the default file manager: {error}"))?;
-    if !status.success() {
-        return Err("The folder association did not change".to_owned());
+    let mut command =
+        crate::trusted_command::command("xdg-mime").map_err(default_file_manager_error)?;
+    command.args(["default", DESKTOP_ID, INODE_DIRECTORY]);
+    if !succeeds_within(&mut command) {
+        return Err(crate::i18n::tr("The folder association did not change"));
     }
     let current = query_default_file_manager();
     if current.as_deref() != Some(DESKTOP_ID) {
-        return Err(format!(
-            "The folder association did not change (current value: {current:?})"
-        ));
+        return Err(rust_i18n::t!(
+            "The folder association did not change (current value: %{value})",
+            value = format!("{current:?}")
+        )
+        .into_owned());
     }
     Ok(())
 }
 
 fn restore_default_file_manager(previous: &str) -> Result<(), String> {
-    let status = crate::trusted_command::command("xdg-mime")
-        .map_err(|error| format!("Could not restore the previous file manager: {error}"))?
-        .args(["default", previous, INODE_DIRECTORY])
-        .status()
-        .map_err(|error| format!("Could not restore the previous file manager: {error}"))?;
-    if !status.success() || query_default_file_manager().as_deref() != Some(previous) {
-        return Err("Could not restore the previous file manager".to_owned());
+    let mut command =
+        crate::trusted_command::command("xdg-mime").map_err(restore_file_manager_error)?;
+    command.args(["default", previous, INODE_DIRECTORY]);
+    if !succeeds_within(&mut command) || query_default_file_manager().as_deref() != Some(previous) {
+        return Err(crate::i18n::tr(
+            "Could not restore the previous file manager",
+        ));
     }
     Ok(())
 }
 
+fn default_file_manager_error(error: impl std::fmt::Display) -> String {
+    rust_i18n::t!(
+        "Could not set the default file manager: %{error}",
+        error = error
+    )
+    .into_owned()
+}
+
+fn restore_file_manager_error(error: impl std::fmt::Display) -> String {
+    rust_i18n::t!(
+        "Could not restore the previous file manager: %{error}",
+        error = error
+    )
+    .into_owned()
+}
+
 fn reload_dbus() {
-    let _ = run_trusted(
+    let _ = reload_dbus_config();
+}
+
+fn reload_dbus_config() -> bool {
+    run_trusted(
         "gdbus",
         &[
             "call",
             "--session",
+            "--timeout",
+            "5",
             "--dest",
             "org.freedesktop.DBus",
             "--object-path",
@@ -333,7 +383,51 @@ fn reload_dbus() {
             "--method",
             "org.freedesktop.DBus.ReloadConfig",
         ],
-    );
+    )
+}
+
+/// A session bus that accepts the connection but never answers the handshake blocks
+/// gdbus, systemctl and xdg-mime's dbus-send before their own timeouts start.
+const SESSION_COMMAND_DEADLINE: Duration = Duration::from_secs(5);
+
+fn succeeds_within(command: &mut Command) -> bool {
+    command.stdout(Stdio::null()).stderr(Stdio::null());
+    output_within(command, SESSION_COMMAND_DEADLINE).is_some_and(|output| output.status.success())
+}
+
+/// Runs the command in its own process group so a stuck helper started by a wrapper
+/// script is killed along with it.
+fn output_within(command: &mut Command, limit: Duration) -> Option<Output> {
+    use rustix::process::{Pid, Signal, WaitId, WaitIdOptions, kill_process_group, waitid};
+
+    let mut child = command.process_group(0).spawn().ok()?;
+    let group = Pid::from_child(&child);
+    let deadline = Instant::now() + limit;
+    let exited = loop {
+        match waitid(
+            WaitId::Pid(group),
+            WaitIdOptions::EXITED | WaitIdOptions::NOWAIT | WaitIdOptions::NOHANG,
+        ) {
+            Ok(Some(_)) => break true,
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(20)),
+            _ => break false,
+        }
+    };
+    // The leader is not reaped yet, so its group id cannot have been reused.
+    let _ = kill_process_group(group, Signal::KILL);
+    let status = child.wait().ok()?;
+    if !exited {
+        return None;
+    }
+    let mut stdout = Vec::new();
+    if let Some(mut pipe) = child.stdout.take() {
+        let _ = pipe.read_to_end(&mut stdout);
+    }
+    Some(Output {
+        status,
+        stdout,
+        stderr: Vec::new(),
+    })
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -347,8 +441,13 @@ fn write_file_manager_state(
 ) -> Result<(), String> {
     fs::create_dir_all(directory).map_err(|error| path_error("create", directory, error))?;
     let path = directory.join(FILE_MANAGER_STATE_FILE);
-    let contents = toml::to_string(state)
-        .map_err(|error| format!("Could not serialize file manager state: {error}"))?;
+    let contents = toml::to_string(state).map_err(|error| {
+        rust_i18n::t!(
+            "Could not serialize file manager state: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
     crate::storage::atomic_write(&path, contents.as_bytes())
         .map_err(|error| path_error("write", &path, error))
 }
@@ -359,8 +458,9 @@ fn read_file_manager_state(directory: &Path) -> Result<Option<FileManagerInstall
         return Ok(None);
     }
     let contents = read_utf8(&path)?;
-    let state: FileManagerInstallState = toml::from_str(&contents)
-        .map_err(|error| format!("Could not read file manager state: {error}"))?;
+    let state: FileManagerInstallState = toml::from_str(&contents).map_err(|error| {
+        rust_i18n::t!("Could not read file manager state: %{error}", error = error).into_owned()
+    })?;
     Ok(Some(state))
 }
 
@@ -397,8 +497,13 @@ pub(crate) fn refresh_after_in_place_update() -> Result<(), String> {
 
 pub(crate) fn refresh_stale_portal() -> Result<(), String> {
     let context = SetupContext::from_environment()?;
-    let executable = crate::services::installed_executable()
-        .map_err(|error| format!("Could not locate the Strata executable: {error}"))?;
+    let executable = crate::services::installed_executable().map_err(|error| {
+        rust_i18n::t!(
+            "Could not locate the Strata executable: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
     refresh_stale_portal_at(&context, &executable, Path::new("/proc"), || {
         refresh_portals()
     })
@@ -425,7 +530,7 @@ fn refresh_configured_portal_at(
     }
     match refresh() {
         "" => Ok(()),
-        warning => Err(warning.trim().to_owned()),
+        warning => Err(crate::i18n::tr(warning.trim())),
     }
 }
 
@@ -492,7 +597,13 @@ fn status_at(context: &SetupContext) -> Result<PortalStatus, String> {
         let config = KeyFile::new();
         config
             .load_from_data(&read_utf8(&path)?, KeyFileFlags::NONE)
-            .map_err(|error| format!("Could not parse portal configuration: {error}"))?;
+            .map_err(|error| {
+                rust_i18n::t!(
+                    "Could not parse portal configuration: %{error}",
+                    error = error
+                )
+                .into_owned()
+            })?;
         config
             .value("preferred", FILE_CHOOSER_KEY)
             .or_else(|_| config.value("preferred", "default"))
@@ -609,10 +720,16 @@ fn xdg_home(
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .or_else(|| home.map(Path::new).map(|path| path.join(fallback)))
-        .ok_or_else(|| format!("Neither {variable} nor HOME is set"))?;
-    path.is_absolute()
-        .then_some(path)
-        .ok_or_else(|| format!("{variable} must resolve to an absolute path"))
+        .ok_or_else(|| {
+            rust_i18n::t!("Neither %{variable} nor HOME is set", variable = variable).into_owned()
+        })?;
+    path.is_absolute().then_some(path).ok_or_else(|| {
+        rust_i18n::t!(
+            "%{variable} must resolve to an absolute path",
+            variable = variable
+        )
+        .into_owned()
+    })
 }
 
 fn xdg_directories(variable: &str, default: &str) -> Vec<PathBuf> {
@@ -637,15 +754,14 @@ fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, Stri
     let executable = secure_executable(executable)?;
     let executable = executable
         .to_str()
-        .ok_or_else(|| "Strata must be installed at a UTF-8 path".to_owned())?;
+        .ok_or_else(|| crate::i18n::tr("Strata must be installed at a UTF-8 path"))?;
     if executable
         .chars()
         .any(|character| character.is_whitespace() || matches!(character, '\\' | '\'' | '"'))
     {
-        return Err(
-            "The Strata executable path contains characters unsupported by D-Bus activation"
-                .to_owned(),
-        );
+        return Err(crate::i18n::tr(
+            "The Strata executable path contains characters unsupported by D-Bus activation",
+        ));
     }
 
     let config_directory = context.portal_directory();
@@ -716,10 +832,18 @@ fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, Stri
 }
 
 fn secure_executable(path: &Path) -> Result<PathBuf, String> {
-    secure_executable_for_user(path, rustix::process::geteuid().as_raw())
+    let user = rustix::process::geteuid().as_raw();
+    secure_executable_for_user(path, user, &|group| {
+        let read = |file| fs::read_to_string(file).unwrap_or_default();
+        group_is_private(user, group, &read("/etc/passwd"), &read("/etc/group"))
+    })
 }
 
-fn secure_executable_for_user(path: &Path, effective_user: u32) -> Result<PathBuf, String> {
+fn secure_executable_for_user(
+    path: &Path,
+    effective_user: u32,
+    private_group: &dyn Fn(u32) -> bool,
+) -> Result<PathBuf, String> {
     let path = fs::canonicalize(path)
         .map_err(|error| path_error("resolve the Strata executable", path, error))?;
     for (index, component) in path.ancestors().enumerate() {
@@ -727,23 +851,70 @@ fn secure_executable_for_user(path: &Path, effective_user: u32) -> Result<PathBu
             .map_err(|error| path_error("inspect the Strata executable path", component, error))?;
         if index == 0 {
             if !metadata.is_file() || metadata.permissions().mode() & 0o111 == 0 {
-                return Err("The Strata executable must be a regular executable file".to_owned());
+                return Err(crate::i18n::tr(
+                    "The Strata executable must be a regular executable file",
+                ));
             }
         } else if !metadata.is_dir() {
-            return Err("The Strata executable path must contain only directories".to_owned());
+            return Err(crate::i18n::tr(
+                "The Strata executable path must contain only directories",
+            ));
         }
         if !trusted_owner(metadata.uid(), effective_user) {
-            return Err(
-                "The Strata executable path must be owned by the current user or root".to_owned(),
-            );
+            return Err(crate::i18n::tr(
+                "The Strata executable path must be owned by the current user or root",
+            ));
         }
-        if metadata.permissions().mode() & 0o022 != 0 {
-            return Err(
-                "The Strata executable path must not be writable by other users".to_owned(),
-            );
+        let mode = metadata.permissions().mode();
+        if mode & 0o002 != 0 || (mode & 0o020 != 0 && !private_group(metadata.gid())) {
+            return Err(crate::i18n::tr(
+                "The Strata executable path must not be writable by other users",
+            ));
         }
     }
     Ok(path)
+}
+
+/// Distributions that give each user a private group and a umask of 002 leave the user's own
+/// folders group-writable. A group the databases do not describe counts as shared.
+fn group_is_private(user: u32, group: u32, passwd: &str, groups: &str) -> bool {
+    let mut name = None;
+    for fields in passwd
+        .lines()
+        .map(|line| line.split(':').collect::<Vec<_>>())
+    {
+        let [login, _, uid, primary, ..] = fields[..] else {
+            continue;
+        };
+        if uid.parse() == Ok(user) {
+            name = Some(login);
+        } else if primary.parse() == Ok(group) {
+            return false;
+        }
+    }
+    let Some(name) = name else {
+        return false;
+    };
+    let mut listed = false;
+    for fields in groups
+        .lines()
+        .map(|line| line.split(':').collect::<Vec<_>>())
+    {
+        let [_, _, id, members] = fields[..] else {
+            continue;
+        };
+        if id.parse() != Ok(group) {
+            continue;
+        }
+        listed = true;
+        if members
+            .split(',')
+            .any(|member| !member.is_empty() && member != name)
+        {
+            return false;
+        }
+    }
+    listed
 }
 
 fn trusted_owner(owner: u32, effective_user: u32) -> bool {
@@ -794,8 +965,13 @@ struct InstallState {
 fn write_state(directory: &Path, state: &InstallState) -> Result<(), String> {
     fs::create_dir_all(directory).map_err(|error| path_error("create", directory, error))?;
     let path = directory.join(STATE_FILE);
-    let contents = toml::to_string(state)
-        .map_err(|error| format!("Could not serialize portal installation state: {error}"))?;
+    let contents = toml::to_string(state).map_err(|error| {
+        rust_i18n::t!(
+            "Could not serialize portal installation state: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
     crate::storage::atomic_write(&path, contents.as_bytes())
         .map_err(|error| path_error("write", &path, error))
 }
@@ -806,10 +982,17 @@ fn read_state(directory: &Path) -> Result<Option<InstallState>, String> {
         return Ok(None);
     }
     let contents = read_utf8(&path)?;
-    let state: InstallState = toml::from_str(&contents)
-        .map_err(|error| format!("Could not read portal installation state: {error}"))?;
+    let state: InstallState = toml::from_str(&contents).map_err(|error| {
+        rust_i18n::t!(
+            "Could not read portal installation state: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
     if portal_config_name_is_unsafe(&state.target_name) {
-        return Err("The saved portal configuration filename is invalid".to_owned());
+        return Err(crate::i18n::tr(
+            "The saved portal configuration filename is invalid",
+        ));
     }
     Ok(Some(state))
 }
@@ -858,7 +1041,13 @@ fn update_config(contents: &str, enable: bool) -> Result<String, String> {
     if !contents.is_empty() {
         config
             .load_from_data(contents, KeyFileFlags::KEEP_COMMENTS)
-            .map_err(|error| format!("Could not parse portal configuration: {error}"))?;
+            .map_err(|error| {
+                rust_i18n::t!(
+                    "Could not parse portal configuration: %{error}",
+                    error = error
+                )
+                .into_owned()
+            })?;
     }
     let chooser = config.value("preferred", FILE_CHOOSER_KEY).ok();
     if chooser.is_none() && !enable {
@@ -890,7 +1079,13 @@ fn update_config(contents: &str, enable: bool) -> Result<String, String> {
     } else if values.is_empty() || values == fallback {
         config
             .remove_key("preferred", FILE_CHOOSER_KEY)
-            .map_err(|error| format!("Could not remove portal preference: {error}"))?;
+            .map_err(|error| {
+                rust_i18n::t!(
+                    "Could not remove portal preference: %{error}",
+                    error = error
+                )
+                .into_owned()
+            })?;
     } else {
         config.set_value(
             "preferred",
@@ -965,10 +1160,11 @@ fn file_mode(path: &Path) -> u32 {
 fn ensure_regular_or_missing(path: &Path) -> Result<(), String> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.is_file() => Ok(()),
-        Ok(_) => Err(format!(
-            "Refusing to replace non-regular portal configuration {}",
-            path.display()
-        )),
+        Ok(_) => Err(rust_i18n::t!(
+            "Refusing to replace non-regular portal configuration %{path}",
+            path = path.display()
+        )
+        .into_owned()),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(path_error("inspect", path, error)),
     }
@@ -983,24 +1179,66 @@ fn remove_if_exists(path: &Path) -> Result<(), String> {
 }
 
 fn path_error(action: &str, path: &Path, error: io::Error) -> String {
-    format!("Could not {action} {}: {error}", path.display())
+    let path = path.display();
+    let error = crate::services::io_error_message(&error);
+    match action {
+        "create" => rust_i18n::t!(
+            "Could not create %{path}: %{error}",
+            path = path,
+            error = error
+        ),
+        "read" => rust_i18n::t!(
+            "Could not read %{path}: %{error}",
+            path = path,
+            error = error
+        ),
+        "write" => rust_i18n::t!(
+            "Could not write %{path}: %{error}",
+            path = path,
+            error = error
+        ),
+        "remove" => rust_i18n::t!(
+            "Could not remove %{path}: %{error}",
+            path = path,
+            error = error
+        ),
+        "inspect" | "inspect the installed Strata executable" | "inspect running processes" => {
+            rust_i18n::t!(
+                "Could not inspect %{path}: %{error}",
+                path = path,
+                error = error
+            )
+        }
+        "back up" => {
+            rust_i18n::t!(
+                "Could not back up %{path}: %{error}",
+                path = path,
+                error = error
+            )
+        }
+        "set permissions on" => rust_i18n::t!(
+            "Could not set permissions on %{path}: %{error}",
+            path = path,
+            error = error
+        ),
+        "resolve the Strata executable" => rust_i18n::t!(
+            "Could not resolve the Strata executable %{path}: %{error}",
+            path = path,
+            error = error
+        ),
+        "inspect the Strata executable path" => rust_i18n::t!(
+            "Could not inspect the Strata executable path %{path}: %{error}",
+            path = path,
+            error = error
+        ),
+        _ => return format!("Could not {action} {path}: {error}"),
+    }
+    .into_owned()
 }
 
 fn refresh_portals() -> &'static str {
     let backend_stopped = run_trusted("systemctl", &["--user", "stop", PORTAL_BACKEND_UNIT]);
-    let dbus_reloaded = run_trusted(
-        "gdbus",
-        &[
-            "call",
-            "--session",
-            "--dest",
-            "org.freedesktop.DBus",
-            "--object-path",
-            "/org/freedesktop/DBus",
-            "--method",
-            "org.freedesktop.DBus.ReloadConfig",
-        ],
-    );
+    let dbus_reloaded = reload_dbus_config();
     let portal_restarted = run_trusted(
         "systemctl",
         &["--user", "restart", "xdg-desktop-portal.service"],
@@ -1013,15 +1251,8 @@ fn refresh_portals() -> &'static str {
 }
 
 fn run_trusted(name: &str, args: &[&str]) -> bool {
-    crate::trusted_command::command(name)
-        .ok()
-        .and_then(|mut command| {
-            command
-                .args(args)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .ok()
-        })
-        .is_some_and(|status| status.success())
+    crate::trusted_command::command(name).is_ok_and(|mut command| {
+        command.args(args);
+        succeeds_within(&mut command)
+    })
 }

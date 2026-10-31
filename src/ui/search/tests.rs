@@ -198,9 +198,19 @@ fn deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset
             let fixture = tempfile::tempdir().expect("scroll fixture");
             let mut items = Vec::new();
             for position in 0..80 {
-                let path = fixture.path().join(format!("scroll-{position:03}"));
-                std::fs::create_dir(&path).expect("scroll fixture directory");
-                items.push(SearchItem::for_test(path, true));
+                let is_directory = position != 1;
+                let name = if is_directory {
+                    format!("scroll-{position:03}")
+                } else {
+                    "main.rs".to_owned()
+                };
+                let path = fixture.path().join(name);
+                if is_directory {
+                    std::fs::create_dir(&path).expect("scroll fixture directory");
+                } else {
+                    std::fs::write(&path, "fn main() {}\n").expect("scroll fixture file");
+                }
+                items.push(SearchItem::for_test(path, is_directory));
             }
             render_results(
                 &dialog.state,
@@ -209,6 +219,43 @@ fn deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset
                 SearchCoverage::default(),
             );
             drain_main_context();
+            let icon_for_path = |path: &std::path::Path| {
+                let position = dialog
+                    .state
+                    .visible_results
+                    .borrow()
+                    .iter()
+                    .position(|item| item.path == path)
+                    .expect("result path");
+                dialog
+                    .state
+                    .list
+                    .row_at_index(i32::try_from(position).expect("row index"))
+                    .and_then(|row| row.child())
+                    .and_then(|content| content.first_child())
+                    .and_then(|child| {
+                        child
+                            .downcast::<super::super::thumbnail::ThumbnailSlot>()
+                            .ok()
+                    })
+                    .expect("result icon")
+                    .fallback_icon()
+                    .expect("fallback icon")
+            };
+            let directory_path = items[0].path.clone();
+            let source_path = items[1].path.clone();
+            assert_eq!(icon_for_path(&directory_path), crate::assets::icons::FOLDER);
+            assert_eq!(
+                icon_for_path(&source_path),
+                crate::ui::browser::catppuccin::RUST
+            );
+            assert!(
+                dialog
+                    .state
+                    .requested_thumbnails
+                    .borrow()
+                    .contains(&source_path)
+            );
             let adjustment = dialog.state.scroller.vadjustment();
             assert!(adjustment.upper() > adjustment.page_size() + 300.0);
 
@@ -245,6 +292,18 @@ fn deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset
             drain_main_context();
             assert_eq!(adjustment.value(), 240.0);
             assert!(!dialog.state.requested_thumbnails.borrow().is_empty());
+            assert!(
+                !dialog
+                    .state
+                    .requested_thumbnails
+                    .borrow()
+                    .contains(&source_path)
+            );
+            assert_eq!(icon_for_path(&directory_path), crate::assets::icons::FOLDER);
+            assert_eq!(
+                icon_for_path(&source_path),
+                crate::ui::browser::catppuccin::RUST
+            );
 
             items.swap(3, 4);
             render_results(
@@ -288,6 +347,49 @@ fn deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset
             assert_eq!(adjustment.value(), 0.0);
             assert!(dialog.state.visible_results.borrow().is_empty());
             window.destroy();
+        },
+    );
+}
+
+#[test]
+fn enter_and_field_activation_open_the_selected_result() {
+    crate::test_support::gtk_test(
+        "ui::search::tests::enter_and_field_activation_open_the_selected_result",
+        || {
+            let routes: [fn(&SearchDialog); 2] = [
+                |dialog| {
+                    assert!(emit_key(
+                        dialog,
+                        gtk::gdk::Key::Return,
+                        gtk::gdk::ModifierType::empty()
+                    ));
+                },
+                |dialog| dialog.state.field.emit_activate(),
+            ];
+            for route in routes {
+                let opened = Rc::new(RefCell::new(Vec::new()));
+                let record = opened.clone();
+                let (dialog, window) =
+                    mapped_dialog(Rc::new(move |item| record.borrow_mut().push(item.path)));
+                dialog.state.field.set_text("navigation");
+                render_results(
+                    &dialog.state,
+                    search_items("navigation", 3),
+                    false,
+                    SearchCoverage::default(),
+                );
+                assert!(emit_key(
+                    &dialog,
+                    gtk::gdk::Key::Down,
+                    gtk::gdk::ModifierType::empty()
+                ));
+                route(&dialog);
+                assert_eq!(
+                    *opened.borrow(),
+                    [PathBuf::from("/search/navigation-001.txt")]
+                );
+                window.destroy();
+            }
         },
     );
 }
@@ -454,9 +556,17 @@ fn global_search_combines_home_and_drives_and_refreshes_mounts() {
             };
             render_results(&dialog.state, Vec::new(), false, coverage);
             assert!(dialog.state.truncated_hint.is_visible());
-            assert!(dialog.state.truncated_hint.tooltip_text().is_none());
+            let tooltip = dialog.state.truncated_hint.tooltip_text();
+            assert_eq!(tooltip.as_deref(), Some(coverage.message().as_str()));
+            assert!(
+                tooltip
+                    .as_deref()
+                    .is_some_and(|text| text.contains("Settings → General → Search & filtering")),
+                "a limit stop points to the search limit settings"
+            );
             render_results(&dialog.state, Vec::new(), false, SearchCoverage::default());
             assert!(!dialog.state.truncated_hint.is_visible());
+            assert!(dialog.state.truncated_hint.tooltip_text().is_none());
 
             dialog.show(vec![home, usb.clone()], false);
             dialog.state.field.set_text("needle");
@@ -474,6 +584,141 @@ fn global_search_combines_home_and_drives_and_refreshes_mounts() {
                 usb.join("needle.txt")
             );
             assert!(dialog.state.search.borrow().is_none());
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn global_search_reads_saved_exclusions_before_settings_and_on_each_window_invocation() {
+    crate::test_support::gtk_test(
+        "ui::search::tests::global_search_reads_saved_exclusions_before_settings_and_on_each_window_invocation",
+        || {
+            let config = glib::user_config_dir().join("strata");
+            std::fs::create_dir_all(&config).expect("isolated config directory");
+            std::fs::write(
+                config.join("settings.toml"),
+                "search_exclusions = ['private-build']\n",
+            )
+            .expect("saved exclusion");
+            let fixture = tempfile::tempdir().expect("search fixture");
+            let root = fixture.path();
+            std::fs::create_dir(root.join("private-build")).expect("excluded directory");
+            std::fs::write(root.join("private-build/needle-hidden.txt"), "hidden")
+                .expect("excluded file");
+            std::fs::write(root.join("needle-visible.txt"), "visible").expect("visible file");
+            let dialogs: Vec<_> = (0..2)
+                .map(|_| {
+                    let dialog =
+                        SearchDialog::new(Rc::new(|_| {}), Rc::new(|_| {}), Rc::new(|| {}));
+                    let window = gtk::Window::builder().child(&dialog.widget()).build();
+                    window.present();
+                    (dialog, window)
+                })
+                .collect();
+            let manager = super::super::preferences::PreferenceManager::shared();
+            for excluded in [true, false, true] {
+                if !excluded || manager.search_exclusions().is_empty() {
+                    manager.set_search_exclusions(if excluded {
+                        vec!["private-build".into()]
+                    } else {
+                        Vec::new()
+                    });
+                }
+                for (dialog, _) in &dialogs {
+                    dialog.show(vec![root.to_path_buf()], false);
+                    dialog.state.field.set_text("needle");
+                    wait_until(|| {
+                        !dialog.state.indexing_spinner.is_visible()
+                            && dialog.state.visible_results.borrow().len()
+                                == if excluded { 1 } else { 2 }
+                    });
+                    assert!(
+                        dialog
+                            .state
+                            .visible_results
+                            .borrow()
+                            .iter()
+                            .any(|item| item.path == root.join("needle-visible.txt"))
+                    );
+                    assert_eq!(
+                        dialog
+                            .state
+                            .visible_results
+                            .borrow()
+                            .iter()
+                            .any(|item| item.path == root.join("private-build/needle-hidden.txt")),
+                        !excluded
+                    );
+                }
+            }
+            for (dialog, window) in dialogs {
+                hide(&dialog.state);
+                window.destroy();
+            }
+        },
+    );
+}
+
+#[test]
+fn global_search_reads_saved_limits_before_settings_and_on_each_invocation() {
+    crate::test_support::gtk_test(
+        "ui::search::tests::global_search_reads_saved_limits_before_settings_and_on_each_invocation",
+        || {
+            let config = glib::user_config_dir().join("strata");
+            std::fs::create_dir_all(&config).expect("isolated config directory");
+            std::fs::write(
+                config.join("settings.toml"),
+                "search_time_limit = 0\nsearch_entry_limit = 0\n",
+            )
+            .expect("saved limits");
+            let fixture = tempfile::tempdir().expect("search fixture");
+            let root = fixture.path().to_path_buf();
+            std::fs::write(root.join("needle.txt"), "visible").expect("visible file");
+            let manager = super::super::preferences::PreferenceManager::shared();
+            assert_eq!(
+                manager.search_limits(),
+                crate::services::SearchLimits {
+                    time_budget: None,
+                    max_entries: None,
+                }
+            );
+            let index_with_current_limits = || {
+                index_trees_with_exclusions(
+                    vec![root.clone()],
+                    false,
+                    Vec::new(),
+                    manager.search_limits(),
+                )
+                .0
+            };
+            let unlimited = index_with_current_limits();
+            let dialog = SearchDialog::new(Rc::new(|_| {}), Rc::new(|_| {}), Rc::new(|| {}));
+            let window = gtk::Window::builder().child(&dialog.widget()).build();
+            window.present();
+            let dialog_shares = |handle: &SearchHandle| {
+                dialog
+                    .state
+                    .search
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|current| current.shares_index_with(handle))
+            };
+            dialog.show(vec![root.clone()], false);
+            assert!(
+                dialog_shares(&unlimited),
+                "saved limits apply before Settings opens"
+            );
+            manager.set_search_time_limit(10);
+            manager.set_search_entry_limit(200_000);
+            let capped = index_with_current_limits();
+            dialog.show(vec![root.clone()], false);
+            assert!(
+                dialog_shares(&capped),
+                "a changed limit applies to the next search"
+            );
+            assert!(!dialog_shares(&unlimited));
+            hide(&dialog.state);
             window.destroy();
         },
     );

@@ -66,6 +66,13 @@ body:
       required: true
 
   - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics report
+      description: Optional. In Settings → Diagnostics, select Run, then Copy report, and paste it here. Review it first; it names your custom actions and system details.
+      render: text
+
+  - type: textarea
     id: evidence
     attributes:
       label: Screenshots or video

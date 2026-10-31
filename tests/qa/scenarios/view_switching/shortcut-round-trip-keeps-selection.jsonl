@@ -1,0 +1,56 @@
+{"scenario":"shortcut-round-trip-keeps-selection","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"us","vars":{"layout":"us"}},{"id":"fr","vars":{"layout":"fr"}}],"cost":{"columns-us":1.3,"columns-fr":1.3},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":2,"score":27,"note":"ctrl+1/2/3 view switches keep selection and Appearance radio state; Icons/Columns selection unique, List in switching-keeps-directory-and-sort"}}
+{"select":{"entry":"todo.txt"}}
+{"layout":"$layout"}
+{"key":"ctrl+2"}
+{"wait":{"view_mode":"Icons"},"message":"the browser to switch to the Icons view"}
+{"layout":"us"}
+{"expect":{"panes":{"first":"$root"}}}
+{"expect":{"entries":{"contains":["documents"]}}}
+{"wait":{"all_selected":{"contains":["todo.txt"]}},"message":"the selection to survive the switch to Icons"}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"expect":{"present":{"role":"radio menu item","name":"Columns"}}}
+{"expect":{"state":{"target":{"role":"radio menu item","name":"Columns"},"checked":false}},"message":"('Icons', 'Columns')"}
+{"expect":{"present":{"role":"radio menu item","name":"Icons"}}}
+{"expect":{"state":{"target":{"role":"radio menu item","name":"Icons"},"checked":true}},"message":"('Icons', 'Icons')"}
+{"expect":{"present":{"role":"radio menu item","name":"List"}}}
+{"expect":{"state":{"target":{"role":"radio menu item","name":"List"},"checked":false}},"message":"('Icons', 'List')"}
+{"expect":{"present":{"role":"check menu item","name":"Group by file type"}}}
+{"expect":{"state":{"target":{"role":"check menu item","name":"Group by file type"},"sensitive":false}}}
+{"key":"Escape"}
+{"wait":{"absent":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to close"}
+{"layout":"$layout"}
+{"key":"ctrl+3"}
+{"wait":{"view_mode":"List"},"message":"the browser to switch to the List view"}
+{"layout":"us"}
+{"expect":{"panes":{"first":"$root"}}}
+{"expect":{"entries":{"contains":["documents"]}}}
+{"wait":{"all_selected":{"contains":["todo.txt"]}},"message":"the selection to survive the switch to List"}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"expect":{"present":{"role":"radio menu item","name":"Columns"}}}
+{"expect":{"state":{"target":{"role":"radio menu item","name":"Columns"},"checked":false}},"message":"('List', 'Columns')"}
+{"expect":{"present":{"role":"radio menu item","name":"Icons"}}}
+{"expect":{"state":{"target":{"role":"radio menu item","name":"Icons"},"checked":false}},"message":"('List', 'Icons')"}
+{"expect":{"present":{"role":"radio menu item","name":"List"}}}
+{"expect":{"state":{"target":{"role":"radio menu item","name":"List"},"checked":true}},"message":"('List', 'List')"}
+{"expect":{"present":{"role":"check menu item","name":"Group by file type"}}}
+{"expect":{"state":{"target":{"role":"check menu item","name":"Group by file type"},"sensitive":true}}}
+{"key":"Escape"}
+{"wait":{"absent":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to close"}
+{"layout":"$layout"}
+{"key":"ctrl+1"}
+{"wait":{"view_mode":"Columns"},"message":"the browser to switch to the Columns view"}
+{"layout":"us"}
+{"expect":{"panes":{"first":"$root"}}}
+{"expect":{"entries":{"contains":["documents"]}}}
+{"wait":{"all_selected":{"contains":["todo.txt"]}},"message":"the selection to survive the switch to Columns"}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"expect":{"present":{"role":"radio menu item","name":"Columns"}}}
+{"expect":{"state":{"target":{"role":"radio menu item","name":"Columns"},"checked":true}},"message":"('Columns', 'Columns')"}
+{"expect":{"present":{"role":"radio menu item","name":"Icons"}}}
+{"expect":{"state":{"target":{"role":"radio menu item","name":"Icons"},"checked":false}},"message":"('Columns', 'Icons')"}
+{"expect":{"present":{"role":"radio menu item","name":"List"}}}
+{"expect":{"state":{"target":{"role":"radio menu item","name":"List"},"checked":false}},"message":"('Columns', 'List')"}
+{"expect":{"present":{"role":"check menu item","name":"Group by file type"}}}
+{"expect":{"state":{"target":{"role":"check menu item","name":"Group by file type"},"sensitive":false}}}
+{"key":"Escape"}
+{"wait":{"absent":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to close"}

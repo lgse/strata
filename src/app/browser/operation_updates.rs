@@ -8,7 +8,10 @@ use crate::{
     services::DirectoryChange,
 };
 
-use super::{Browser, BrowserEvent, DeferredDirectoryChanges};
+use super::{
+    Browser, BrowserEvent, DeferredDirectoryChanges, SelectionUpdate,
+    directory_changes::{DepartureEvidence, removed_location},
+};
 
 type DirectoryChanges = Vec<(Location, DirectoryChange)>;
 
@@ -58,6 +61,56 @@ impl OperationBatch {
     }
 
     fn apply(self, state: &mut NavigationState) -> Option<BatchPublication> {
+        let one_watched = self
+            .changes
+            .first()
+            .map(|(watched, _)| watched)
+            .filter(|watched| {
+                self.changes
+                    .iter()
+                    .all(|(candidate, _)| candidate == *watched)
+            });
+        if let Some(watched) = one_watched
+            && self
+                .changes
+                .iter()
+                .all(|(_, change)| matches!(change, DirectoryChange::Upsert(_)))
+        {
+            let entries = self
+                .changes
+                .iter()
+                .filter_map(|(_, change)| match change {
+                    DirectoryChange::Upsert(entry) => Some(entry.clone()),
+                    _ => None,
+                })
+                .collect();
+            if let Ok(application) = state.apply_new_entries_batch(self.depth, watched, entries) {
+                return application.map(|(splices, focused)| BatchPublication {
+                    splices,
+                    focused,
+                    positions: state.selected_positions(self.depth),
+                });
+            }
+        }
+        if let Some(watched) = one_watched
+            && self
+                .changes
+                .iter()
+                .all(|(_, change)| matches!(change, DirectoryChange::Remove(_)))
+        {
+            let locations = self.changes.iter().filter_map(|(_, change)| match change {
+                DirectoryChange::Remove(location) => Some(location.clone()),
+                _ => None,
+            });
+            return state
+                .apply_removals_batch(self.depth, watched, locations)
+                .map(|(splices, focused)| BatchPublication {
+                    splices,
+                    focused,
+                    positions: state.selected_positions(self.depth),
+                });
+        }
+
         let mut splices = Vec::new();
         let mut focused = None;
         for (watched, change) in self.changes {
@@ -77,28 +130,61 @@ impl OperationBatch {
 }
 
 impl Browser {
+    pub(super) fn flush_visible_operation_changes(self: &Rc<Self>) {
+        let queued = self
+            .deferred_file_operation_changes
+            .borrow()
+            .values()
+            .map(Vec::len)
+            .sum::<usize>();
+        if queued < super::OPERATION_PUBLICATION_BATCH {
+            return;
+        }
+        let changes = self.deferred_file_operation_changes.take();
+        self.flush_deferred_file_operation_changes(changes);
+    }
+
     pub(super) fn flush_deferred_file_operation_changes(
         self: &Rc<Self>,
         changes: DeferredDirectoryChanges,
-        prefer_refresh: bool,
-    ) -> bool {
-        if changes.is_empty() {
-            return false;
-        }
-        if prefer_refresh {
-            // Monitor batches may omit some of the operation's source directories.
-            self.refresh_all();
-            return true;
-        }
+    ) {
         let mut batches: Vec<_> = changes.into_iter().collect();
         batches.sort_by_key(|(depth, _)| *depth);
         for (depth, changes) in batches {
             self.flush_operation_batch(OperationBatch { depth, changes });
         }
-        false
     }
 
-    fn flush_operation_batch(self: &Rc<Self>, batch: OperationBatch) {
+    fn flush_operation_batch(self: &Rc<Self>, mut batch: OperationBatch) {
+        let rescan = batch
+            .changes
+            .iter()
+            .any(|(_, change)| matches!(change, DirectoryChange::Rescan));
+        if rescan {
+            self.operation_rescan_depths
+                .borrow_mut()
+                .insert(batch.depth);
+            batch
+                .changes
+                .retain(|(_, change)| !matches!(change, DirectoryChange::Rescan));
+        }
+        let depth = batch.depth;
+        let current = self.location_at(depth);
+        let reported = batch.changes.len();
+        batch.changes.retain(|(watched, change)| {
+            Some(watched) != current.as_ref() || removed_location(change) != Some(watched)
+        });
+        let departed = current.filter(|_| batch.changes.len() != reported);
+        if !batch.changes.is_empty() {
+            self.apply_operation_batch(batch);
+        }
+        // Checked last, so a folder that turns out to stay keeps an up-to-date listing.
+        if let Some(departed) = departed {
+            self.check_departed_directory(depth, departed, DepartureEvidence::RemovalReport);
+        }
+    }
+
+    fn apply_operation_batch(self: &Rc<Self>, batch: OperationBatch) {
         // Classify each depth after earlier batches and their observers have run.
         let action = batch.action(&self.state.borrow());
         match action {
@@ -113,8 +199,11 @@ impl Browser {
                 let depth = batch.depth;
                 self.drain_publish(depth);
                 let application = batch.apply(&mut self.state.borrow_mut());
+                // The monitor reported these while the operation ran.
                 if let Some(publication) = application {
-                    self.publish_operation_batch(depth, publication);
+                    self.publish_external_change(|| {
+                        self.publish_operation_batch(depth, publication);
+                    });
                 }
             }
         }
@@ -128,7 +217,7 @@ impl Browser {
         if let Some(focused) = publication.focused {
             self.emit(BrowserEvent::SelectionSetChanged {
                 depth,
-                positions: publication.positions,
+                selection: SelectionUpdate::Positions(publication.positions),
                 focused,
                 take_focus: false,
             });
@@ -137,6 +226,7 @@ impl Browser {
             self.emit(BrowserEvent::FocusChanged {
                 depth,
                 position: publication.focused,
+                triggered_by_removal: false,
             });
         }
     }

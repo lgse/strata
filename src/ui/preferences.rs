@@ -2,10 +2,11 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     fs, io,
     path::{Component, Path, PathBuf},
     rc::Rc,
+    time::Duration,
 };
 
 use gtk::{glib, prelude::*};
@@ -14,18 +15,33 @@ use serde::{Deserialize, Serialize};
 use crate::{
     model::{FolderColorValue, SortDirection, SortKey, ViewPreferences},
     sandbox::MediaPreviewBackend,
-    services::{Channel, CrossVolumeDropStrategy},
+    services::{Channel, CrossVolumeDropStrategy, SearchLimits},
+    storage::{
+        file_stamp,
+        writer::{self, Policy},
+    },
 };
 
+use super::browser_modes::DensityScale;
 use super::icons_cell::{MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE};
 
 pub(in crate::ui) const SEND_TO_RECENT_DESTINATIONS_LIMIT: usize = 3;
 
 mod bindings;
+mod corner_roundness;
 #[cfg(test)]
 pub(in crate::ui) mod fixtures;
+mod folder_view_settings;
+mod folder_views;
+mod item_customizations;
+mod keymap;
+mod save_notice;
 mod text_size;
+mod trashed;
 pub(in crate::ui) use bindings::notify_live;
+pub use corner_roundness::CornerRoundness;
+pub(crate) use folder_view_settings::flush_pending_folder_views;
+use keymap::KeymapOverrides;
 pub use text_size::TextSize;
 
 thread_local! {
@@ -40,16 +56,50 @@ pub(crate) enum InterfaceRenderer {
     System,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum OmarchyVariant {
+    #[serde(alias = "original")]
+    Lighter,
+    #[default]
+    Darker,
+    #[serde(alias = "high_contrast")]
+    Contrast,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum FileIconColors {
+    #[default]
+    Brand,
+    Theme,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum UnitSystem {
+    #[default]
+    Metric,
+    Imperial,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub(in crate::ui) struct Preferences {
     mode: String,
     theme: String,
-    #[serde(default = "default_enabled")]
+    /// Pre-per-theme global choice, migrated to the active Omarchy theme.
+    #[serde(default, rename = "omarchy_variant", skip_serializing)]
+    legacy_omarchy_variant: Option<OmarchyVariant>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    omarchy_variants: HashMap<String, OmarchyVariant>,
+    #[serde(default)]
     folder_peeking: bool,
     #[serde(default = "default_enabled")]
     single_click_previews: bool,
     #[serde(default = "default_enabled")]
     columns_mirror_selection: bool,
+    #[serde(default = "default_enabled")]
+    columns_show_sizes: bool,
     #[serde(default = "default_enabled")]
     render_documents_by_default: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -58,6 +108,12 @@ pub(in crate::ui) struct Preferences {
     video_preview_backend: String,
     #[serde(default)]
     search_open_files_directly: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    search_exclusions: Vec<String>,
+    #[serde(default = "default_search_time_limit")]
+    search_time_limit: u32,
+    #[serde(default = "default_search_entry_limit")]
+    search_entry_limit: u32,
     #[serde(default = "default_enabled")]
     type_to_search: bool,
     #[serde(default)]
@@ -68,14 +124,28 @@ pub(in crate::ui) struct Preferences {
     filter_include_subfolders: bool,
     #[serde(default = "default_enabled")]
     show_keybinding_hints: bool,
+    #[serde(default = "default_enabled")]
+    window_show_close: bool,
+    #[serde(default)]
+    window_show_minimize: bool,
+    #[serde(default)]
+    window_show_maximize: bool,
     #[serde(default)]
     reduce_motion: bool,
     #[serde(default = "default_enabled")]
     element_glow: bool,
+    #[serde(default)]
+    file_icon_colors: FileIconColors,
     #[serde(default = "default_browser_mode")]
     browser_mode: String,
     #[serde(default = "default_browser_density")]
     browser_density: String,
+    #[serde(default = "default_density_custom_px")]
+    browser_density_custom_px: u8,
+    #[serde(default = "default_frame_density")]
+    frame_density: String,
+    #[serde(default = "default_density_custom_px")]
+    frame_density_custom_px: u8,
     #[serde(default)]
     group_by_type: bool,
     #[serde(default = "default_file_clicks", rename = "list_file_clicks")]
@@ -119,11 +189,19 @@ pub(in crate::ui) struct Preferences {
     #[serde(default)]
     sidebar_devices_collapsed: bool,
     #[serde(default)]
+    sidebar_compact: bool,
+    #[serde(default)]
     show_hidden: bool,
     #[serde(default)]
     text_size: TextSize,
     #[serde(default)]
+    corner_roundness: CornerRoundness,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    interface_font: Option<String>,
+    #[serde(default)]
     interface_renderer: InterfaceRenderer,
+    #[serde(default)]
+    language: crate::i18n::Language,
     #[serde(default = "default_enabled")]
     folders_first: bool,
     #[serde(default = "default_sort_key")]
@@ -139,11 +217,17 @@ pub(in crate::ui) struct Preferences {
     #[serde(default)]
     preview_text_wrap: bool,
     #[serde(default)]
-    preview_autoplay: bool,
+    unit_system: UnitSystem,
     #[serde(default)]
-    auto_refresh_interval: u32,
+    preview_autoplay: bool,
+    #[serde(default = "default_enabled")]
+    watch_network_folders: bool,
     #[serde(default = "crate::sandbox::browser::default_worker_limit")]
     thumbnail_workers: usize,
+    #[serde(default = "default_enabled")]
+    show_thumbnails: bool,
+    #[serde(default)]
+    stl_thumbnails: bool,
     #[serde(default = "default_icons_thumbnail_size")]
     icons_thumbnail_size: i32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -160,16 +244,117 @@ pub(in crate::ui) struct Preferences {
     release_channel: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     default_directory: Option<PathBuf>,
+    #[serde(default = "default_enabled")]
+    restore_tabs: bool,
+    #[serde(default = "default_enabled")]
+    remember_folder_views: bool,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     folder_colors: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     custom_icons: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     send_to_recent_destinations: HashMap<String, Vec<PathBuf>>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    device_labels: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     chooser_list_columns: Option<ListColumns>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     browser_list_columns: Option<ListColumns>,
+    #[serde(
+        default = "default_list_column_order",
+        skip_serializing_if = "is_default_list_column_order"
+    )]
+    list_column_order: Vec<ListColumnId>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    list_hidden_columns: Vec<ListColumnId>,
+    #[serde(default, skip_serializing_if = "KeymapOverrides::is_empty")]
+    keymap: KeymapOverrides,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum ListColumnId {
+    Name,
+    Mode,
+    Size,
+    #[serde(rename = "type")]
+    Type,
+    Modified,
+}
+
+impl ListColumnId {
+    pub const ALL: [Self; 5] = [
+        Self::Name,
+        Self::Mode,
+        Self::Size,
+        Self::Type,
+        Self::Modified,
+    ];
+
+    pub fn index(self) -> usize {
+        match self {
+            Self::Name => 0,
+            Self::Mode => 1,
+            Self::Size => 2,
+            Self::Type => 3,
+            Self::Modified => 4,
+        }
+    }
+
+    pub fn title(self) -> &'static str {
+        match self {
+            Self::Name => "Name",
+            Self::Mode => "Mode",
+            Self::Size => "Size",
+            Self::Type => "Type",
+            Self::Modified => "Modified",
+        }
+    }
+
+    pub fn css_class(self) -> &'static str {
+        match self {
+            Self::Name => "list-col-name",
+            Self::Mode => "list-col-mode",
+            Self::Size => "list-col-size",
+            Self::Type => "list-col-type",
+            Self::Modified => "list-col-modified",
+        }
+    }
+}
+
+pub fn default_list_column_order() -> Vec<ListColumnId> {
+    ListColumnId::ALL.to_vec()
+}
+
+fn is_default_list_column_order(order: &[ListColumnId]) -> bool {
+    order == ListColumnId::ALL
+}
+
+pub(crate) fn sanitize_list_column_order(order: &[ListColumnId]) -> Vec<ListColumnId> {
+    let mut sanitized = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for col in order {
+        if seen.insert(*col) {
+            sanitized.push(*col);
+        }
+    }
+    for col in ListColumnId::ALL {
+        if seen.insert(col) {
+            sanitized.push(col);
+        }
+    }
+    sanitized
+}
+
+pub(crate) fn sanitize_list_hidden_columns(hidden: &[ListColumnId]) -> Vec<ListColumnId> {
+    let mut sanitized = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for col in hidden {
+        if *col != ListColumnId::Name && seen.insert(*col) {
+            sanitized.push(*col);
+        }
+    }
+    sanitized
 }
 
 /// Unscaled pixels; an unset `name` lets Name absorb the remaining space.
@@ -198,22 +383,35 @@ impl Default for Preferences {
         Self {
             mode: "theme".to_owned(),
             theme: "tokyo-night".to_owned(),
-            folder_peeking: true,
+            legacy_omarchy_variant: None,
+            omarchy_variants: HashMap::new(),
+            folder_peeking: false,
             single_click_previews: true,
             columns_mirror_selection: true,
+            columns_show_sizes: true,
             render_documents_by_default: true,
             hardware_accelerated_video_previews: None,
             video_preview_backend: default_video_preview_backend(),
             search_open_files_directly: false,
+            search_exclusions: Vec::new(),
+            search_time_limit: default_search_time_limit(),
+            search_entry_limit: default_search_entry_limit(),
             type_to_search: true,
             arrow_navigation_scoped: false,
             tenxer_mode: false,
             filter_include_subfolders: true,
             show_keybinding_hints: true,
+            window_show_close: true,
+            window_show_minimize: false,
+            window_show_maximize: false,
             reduce_motion: false,
             element_glow: true,
+            file_icon_colors: FileIconColors::default(),
             browser_mode: default_browser_mode(),
             browser_density: default_browser_density(),
+            browser_density_custom_px: default_density_custom_px(),
+            frame_density: default_frame_density(),
+            frame_density_custom_px: default_density_custom_px(),
             group_by_type: false,
             columns_file_clicks: default_file_clicks(),
             columns_folder_clicks: default_folder_clicks(),
@@ -235,9 +433,13 @@ impl Default for Preferences {
             sidebar_expanded: true,
             sidebar_pinned_collapsed: false,
             sidebar_devices_collapsed: false,
+            sidebar_compact: false,
             show_hidden: false,
             text_size: TextSize::default(),
+            corner_roundness: CornerRoundness::default(),
+            interface_font: None,
             interface_renderer: InterfaceRenderer::default(),
+            language: crate::i18n::Language::default(),
             folders_first: true,
             sort_key: default_sort_key(),
             sort_direction: default_sort_direction(),
@@ -245,9 +447,12 @@ impl Default for Preferences {
             preview_muted: false,
             preview_volume: default_full_volume(),
             preview_text_wrap: false,
+            unit_system: UnitSystem::Metric,
             preview_autoplay: false,
-            auto_refresh_interval: 0,
+            watch_network_folders: true,
             thumbnail_workers: crate::sandbox::browser::default_worker_limit(),
+            show_thumbnails: true,
+            stl_thumbnails: false,
             icons_thumbnail_size: default_icons_thumbnail_size(),
             chooser_column_width: None,
             browser_column_width: None,
@@ -256,11 +461,17 @@ impl Default for Preferences {
             date_format: default_date_format(),
             release_channel: default_release_channel(),
             default_directory: None,
+            restore_tabs: true,
+            remember_folder_views: true,
             folder_colors: HashMap::new(),
             custom_icons: HashMap::new(),
             send_to_recent_destinations: HashMap::new(),
+            device_labels: HashMap::new(),
             chooser_list_columns: None,
             browser_list_columns: None,
+            list_column_order: default_list_column_order(),
+            list_hidden_columns: Vec::new(),
+            keymap: KeymapOverrides::default(),
         }
     }
 }
@@ -301,6 +512,36 @@ fn default_browser_density() -> String {
     "compact".to_owned()
 }
 
+fn default_frame_density() -> String {
+    "compact".to_owned()
+}
+
+/// Only read when the matching density is `"custom"`.
+fn default_density_custom_px() -> u8 {
+    0
+}
+
+fn stored_density<D: DensityScale>(mode: &str, custom_px: u8) -> D {
+    match mode {
+        "airy" => D::from_px(D::AIRY_PX),
+        "custom" => D::from_px(custom_px),
+        _ => D::from_px(D::COMPACT_PX),
+    }
+}
+
+fn store_density<D: DensityScale>(density: D, mode: &mut String, custom_px: &mut u8) {
+    let px = density.px();
+    *mode = if px == D::COMPACT_PX {
+        "compact"
+    } else if px == D::AIRY_PX {
+        "airy"
+    } else {
+        *custom_px = px;
+        "custom"
+    }
+    .to_owned();
+}
+
 fn default_file_clicks() -> u8 {
     2
 }
@@ -326,6 +567,20 @@ fn default_sidebar_order() -> Vec<String> {
         "pictures".to_owned(),
         "videos".to_owned(),
     ]
+}
+
+fn default_search_time_limit() -> u32 {
+    SearchLimits::default()
+        .time_budget
+        .and_then(|budget| u32::try_from(budget.as_secs()).ok())
+        .unwrap_or(0)
+}
+
+fn default_search_entry_limit() -> u32 {
+    SearchLimits::default()
+        .max_entries
+        .and_then(|entries| u32::try_from(entries).ok())
+        .unwrap_or(0)
 }
 
 fn default_sort_key() -> String {
@@ -360,6 +615,37 @@ fn normalized_volume(volume: f64) -> f64 {
     }
 }
 
+pub(in crate::ui) const SEARCH_TIME_LIMIT_CHOICES: [(&str, u32); 6] = [
+    ("10 s", 10),
+    ("30 s", 30),
+    ("1 min", 60),
+    ("5 min", 300),
+    ("15 min", 900),
+    ("No limit", 0),
+];
+
+pub(in crate::ui) const SEARCH_ENTRY_LIMIT_CHOICES: [(&str, u32); 5] = [
+    ("200,000", 200_000),
+    ("500,000", 500_000),
+    ("1,000,000", 1_000_000),
+    ("5,000,000", 5_000_000),
+    ("No limit", 0),
+];
+
+/// Unlisted limits round up to the next choice; 0 and anything past the largest
+/// choice mean no limit.
+fn normalized_search_limit(value: u32, choices: &[(&str, u32)]) -> u32 {
+    if value == 0 {
+        return 0;
+    }
+    choices
+        .iter()
+        .map(|(_, limit)| *limit)
+        .filter(|limit| *limit != 0)
+        .find(|limit| *limit >= value)
+        .unwrap_or(0)
+}
+
 pub(in crate::ui) fn is_valid_send_to_relative_path(path: &Path) -> bool {
     let mut components = path.components();
     matches!(components.next(), Some(Component::Normal(_)))
@@ -369,9 +655,25 @@ pub(in crate::ui) fn is_valid_send_to_relative_path(path: &Path) -> bool {
 pub struct PreferenceManager {
     preferences: RefCell<Preferences>,
     startup_interface_renderer: InterfaceRenderer,
+    startup_locale: &'static str,
     changes: bindings::PreferenceChanges,
     persistence_dirty: Cell<bool>,
-    persistence_enabled: bool,
+    saves_requested: Cell<u64>,
+    /// The settings as of the last load or queued save, to see what a save changes.
+    last_queued: RefCell<toml::Table>,
+    /// Changed or repaired since a save last succeeded; a save writes only these.
+    dirty_keys: RefCell<BTreeSet<SettingKey>>,
+    this: std::rc::Weak<Self>,
+    /// Why saving is off for this session: the file existed but could not be read.
+    load_failure: Option<io::Error>,
+    save_notices: save_notice::SaveNotices,
+    folder_views: std::cell::OnceCell<folder_view_settings::FolderViewStore>,
+    folder_sorts_revision: Cell<u64>,
+    folder_save_notices: save_notice::SaveNotices,
+    item_customizations: item_customizations::ItemCustomizationState,
+    keymap: RefCell<Option<Rc<crate::ui::keys::Keymap>>>,
+    keymap_revision: Cell<u64>,
+    active_omarchy_theme: RefCell<Option<String>>,
 }
 
 impl PreferenceManager {
@@ -386,15 +688,27 @@ impl PreferenceManager {
         })
     }
 
+    /// The shared manager while something holds it, without loading settings.
+    pub(crate) fn existing() -> Option<Rc<Self>> {
+        SHARED_MANAGER.with(|shared| shared.borrow().upgrade())
+    }
+
     fn load() -> Rc<Self> {
-        let loaded = read_preferences();
-        let persistence_enabled = loaded.is_ok();
-        let mut preferences = loaded.unwrap_or_else(|error| {
-            tracing::warn!(%error, path = %settings_path().display(),
-                "unable to load settings; using temporary defaults without saving; fix the file and restart Strata");
-            Preferences::default()
-        });
+        writer::note(&settings_path(), file_stamp(&settings_path()));
+        let (mut preferences, load_failure, salvaged) = match read_preferences_checked() {
+            Ok((preferences, salvaged)) => (preferences, None, salvaged),
+            Err(error) => {
+                tracing::warn!(%error, path = %settings_path().display(),
+                    "unable to load settings; using temporary defaults without saving; fix the file and restart Strata");
+                (Preferences::default(), Some(error), BTreeSet::new())
+            }
+        };
+        let parsed = preferences.clone();
         preferences.preview_volume = normalized_volume(preferences.preview_volume);
+        preferences.search_time_limit =
+            normalized_search_limit(preferences.search_time_limit, &SEARCH_TIME_LIMIT_CHOICES);
+        preferences.search_entry_limit =
+            normalized_search_limit(preferences.search_entry_limit, &SEARCH_ENTRY_LIMIT_CHOICES);
         preferences.thumbnail_workers = preferences
             .thumbnail_workers
             .clamp(1, crate::sandbox::browser::MAX_WORKERS);
@@ -411,16 +725,44 @@ impl PreferenceManager {
         preferences.browser_list_columns = preferences
             .browser_list_columns
             .filter(ListColumns::is_valid);
+        preferences.list_column_order = sanitize_list_column_order(&preferences.list_column_order);
+        preferences.list_hidden_columns =
+            sanitize_list_hidden_columns(&preferences.list_hidden_columns);
         super::motion::set_reduce_motion(preferences.reduce_motion);
         crate::util::set_date_format(crate::util::DateFormat::parse(&preferences.date_format));
+        let saved_base = toml::Table::try_from(&preferences).unwrap_or_default();
+        let mut repaired: BTreeSet<SettingKey> =
+            salvaged.into_iter().map(|key| (key, None)).collect();
+        record_changes(
+            &mut repaired,
+            &toml::Table::try_from(&parsed).unwrap_or_default(),
+            &saved_base,
+        );
 
-        Rc::new(Self {
+        let startup_locale = preferences.language.locale();
+        rust_i18n::set_locale(startup_locale);
+        let manager = Rc::new_cyclic(|this| Self {
+            startup_locale,
             startup_interface_renderer: preferences.interface_renderer,
             changes: bindings::PreferenceChanges::new(preferences.clone()),
             persistence_dirty: Cell::new(false),
-            persistence_enabled,
+            saves_requested: Cell::new(0),
+            last_queued: RefCell::new(saved_base),
+            dirty_keys: RefCell::new(repaired),
+            this: this.clone(),
+            load_failure,
+            save_notices: save_notice::SaveNotices::default(),
+            folder_views: std::cell::OnceCell::new(),
+            folder_sorts_revision: Cell::new(0),
+            folder_save_notices: save_notice::SaveNotices::for_folder_views(),
+            item_customizations: Default::default(),
+            keymap: RefCell::new(None),
+            keymap_revision: Cell::new(0),
+            active_omarchy_theme: RefCell::new(None),
             preferences: RefCell::new(preferences),
-        })
+        });
+        manager.folder_view_store();
+        manager
     }
 
     /// Repairs loaded values whose validity depends on data the preference store
@@ -439,6 +781,11 @@ impl PreferenceManager {
             preferences.mode = "theme".to_owned();
         } else if !settings_path().is_file() && omarchy_available {
             preferences.mode = "omarchy".to_owned();
+        }
+        if let Ok(normalized) = toml::Table::try_from(&*preferences) {
+            let mut last = self.last_queued.borrow_mut();
+            record_changes(&mut self.dirty_keys.borrow_mut(), &last, &normalized);
+            *last = normalized;
         }
         self.changes.reset_baseline(&preferences);
     }
@@ -489,6 +836,13 @@ impl PreferenceManager {
     /// published. Observers run before widget bindings.
     pub(in crate::ui) fn observe(&self, observer: Rc<dyn Fn()>) {
         self.changes.observe(observer);
+    }
+
+    /// Lets `window` show the notice when changes cannot be saved. Windows that
+    /// never register, such as the portal chooser, leave failures to the log.
+    pub(in crate::ui) fn register_save_notice_window(&self, window: &gtk::Window) {
+        self.save_notices.register(window);
+        self.folder_save_notices.register(window);
     }
 
     /// Republishes current preferences without a stored change, for runtime state
@@ -590,6 +944,15 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
+    pub fn columns_show_sizes(&self) -> bool {
+        self.preferences.borrow().columns_show_sizes
+    }
+
+    pub fn set_columns_show_sizes(&self, enabled: bool) {
+        self.preferences.borrow_mut().columns_show_sizes = enabled;
+        self.save_preferences();
+    }
+
     pub fn columns_mirror_selection(&self) -> bool {
         self.preferences.borrow().columns_mirror_selection
     }
@@ -654,6 +1017,47 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
+    pub fn search_exclusions(&self) -> Vec<String> {
+        self.preferences.borrow().search_exclusions.clone()
+    }
+
+    pub fn set_search_exclusions(&self, exclusions: Vec<String>) {
+        self.preferences.borrow_mut().search_exclusions = exclusions;
+        self.save_preferences();
+    }
+
+    /// Seconds one search walk may index; 0 means no limit.
+    pub fn search_time_limit(&self) -> u32 {
+        self.preferences.borrow().search_time_limit
+    }
+
+    pub fn set_search_time_limit(&self, secs: u32) {
+        self.preferences.borrow_mut().search_time_limit =
+            normalized_search_limit(secs, &SEARCH_TIME_LIMIT_CHOICES);
+        self.save_preferences();
+    }
+
+    /// Files and folders one search walk may index; 0 means no limit.
+    pub fn search_entry_limit(&self) -> u32 {
+        self.preferences.borrow().search_entry_limit
+    }
+
+    pub fn set_search_entry_limit(&self, entries: u32) {
+        self.preferences.borrow_mut().search_entry_limit =
+            normalized_search_limit(entries, &SEARCH_ENTRY_LIMIT_CHOICES);
+        self.save_preferences();
+    }
+
+    pub fn search_limits(&self) -> SearchLimits {
+        let preferences = self.preferences.borrow();
+        SearchLimits {
+            time_budget: (preferences.search_time_limit != 0)
+                .then(|| Duration::from_secs(u64::from(preferences.search_time_limit))),
+            max_entries: (preferences.search_entry_limit != 0)
+                .then(|| preferences.search_entry_limit as usize),
+        }
+    }
+
     pub fn filter_include_subfolders(&self) -> bool {
         self.preferences.borrow().filter_include_subfolders
     }
@@ -715,6 +1119,83 @@ impl PreferenceManager {
         self.bind_preference(anchor, Self::show_keybinding_hints, refresh);
     }
 
+    pub fn window_show_close(&self) -> bool {
+        self.preferences.borrow().window_show_close
+    }
+
+    pub fn set_window_show_close(&self, enabled: bool) {
+        self.preferences.borrow_mut().window_show_close = enabled;
+        self.save_preferences();
+    }
+
+    pub fn window_show_minimize(&self) -> bool {
+        self.preferences.borrow().window_show_minimize
+    }
+
+    pub fn set_window_show_minimize(&self, enabled: bool) {
+        self.preferences.borrow_mut().window_show_minimize = enabled;
+        self.save_preferences();
+    }
+
+    pub fn window_show_maximize(&self) -> bool {
+        self.preferences.borrow().window_show_maximize
+    }
+
+    pub fn set_window_show_maximize(&self, enabled: bool) {
+        self.preferences.borrow_mut().window_show_maximize = enabled;
+        self.save_preferences();
+    }
+
+    /// The variant remembered for the active Omarchy theme.
+    pub fn omarchy_variant(&self) -> OmarchyVariant {
+        let active = self.active_omarchy_theme.borrow();
+        active
+            .as_ref()
+            .and_then(|theme| {
+                self.preferences
+                    .borrow()
+                    .omarchy_variants
+                    .get(theme)
+                    .copied()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn set_omarchy_variant(&self, variant: OmarchyVariant) {
+        let Some(theme) = self.active_omarchy_theme.borrow().clone() else {
+            return;
+        };
+        if self.omarchy_variant() == variant {
+            return;
+        }
+        {
+            let variants = &mut self.preferences.borrow_mut().omarchy_variants;
+            if variant == OmarchyVariant::default() {
+                variants.remove(&theme);
+            } else {
+                variants.insert(theme, variant);
+            }
+        }
+        self.save_preferences();
+    }
+
+    /// Records which Omarchy theme is current without publishing; the theme
+    /// manager reapplies and notifies once its palette state is updated.
+    pub(in crate::ui) fn set_active_omarchy_theme(&self, theme: &str) {
+        let theme = theme.trim().to_owned();
+        let mut preferences = self.preferences.borrow_mut();
+        // Older versions always saved "original", so only a contrast choice was deliberate.
+        if let Some(legacy) = preferences.legacy_omarchy_variant.take()
+            && legacy == OmarchyVariant::Contrast
+        {
+            preferences
+                .omarchy_variants
+                .entry(theme.clone())
+                .or_insert(legacy);
+        }
+        self.active_omarchy_theme.replace(Some(theme));
+    }
+
     pub fn element_glow(&self) -> bool {
         self.preferences.borrow().element_glow
     }
@@ -724,6 +1205,18 @@ impl PreferenceManager {
             return;
         }
         self.preferences.borrow_mut().element_glow = enabled;
+        self.save_preferences();
+    }
+
+    pub fn file_icon_colors(&self) -> FileIconColors {
+        self.preferences.borrow().file_icon_colors
+    }
+
+    pub fn set_file_icon_colors(&self, colors: FileIconColors) {
+        if self.file_icon_colors() == colors {
+            return;
+        }
+        self.preferences.borrow_mut().file_icon_colors = colors;
         self.save_preferences();
     }
 
@@ -764,6 +1257,15 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
+    pub(crate) fn unit_system(&self) -> UnitSystem {
+        self.preferences.borrow().unit_system
+    }
+
+    pub(crate) fn set_unit_system(&self, units: UnitSystem) {
+        self.preferences.borrow_mut().unit_system = units;
+        self.save_preferences();
+    }
+
     pub fn preview_text_wrap(&self) -> bool {
         self.preferences.borrow().preview_text_wrap
     }
@@ -791,8 +1293,26 @@ impl PreferenceManager {
         }
     }
 
+    pub fn show_thumbnails(&self) -> bool {
+        self.preferences.borrow().show_thumbnails
+    }
+
+    pub fn set_show_thumbnails(&self, enabled: bool) {
+        self.preferences.borrow_mut().show_thumbnails = enabled;
+        self.save_preferences();
+    }
+
     pub fn thumbnail_workers(&self) -> usize {
         self.preferences.borrow().thumbnail_workers
+    }
+
+    pub fn stl_thumbnails(&self) -> bool {
+        self.preferences.borrow().stl_thumbnails
+    }
+
+    pub fn set_stl_thumbnails(&self, enabled: bool) {
+        self.preferences.borrow_mut().stl_thumbnails = enabled;
+        self.save_preferences();
     }
 
     pub fn set_thumbnail_workers(&self, workers: usize) {
@@ -847,12 +1367,86 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
-    pub fn auto_refresh_interval(&self) -> u32 {
-        self.preferences.borrow().auto_refresh_interval
+    pub fn list_column_order(&self) -> Vec<ListColumnId> {
+        sanitize_list_column_order(&self.preferences.borrow().list_column_order)
     }
 
-    pub fn set_auto_refresh_interval(&self, secs: u32) {
-        self.preferences.borrow_mut().auto_refresh_interval = secs;
+    pub fn set_list_column_order(&self, order: Vec<ListColumnId>) {
+        self.preferences.borrow_mut().list_column_order = sanitize_list_column_order(&order);
+        self.save_preferences();
+    }
+
+    pub fn list_hidden_columns(&self) -> Vec<ListColumnId> {
+        sanitize_list_hidden_columns(&self.preferences.borrow().list_hidden_columns)
+    }
+
+    pub fn set_list_hidden_columns(&self, hidden: Vec<ListColumnId>) {
+        self.preferences.borrow_mut().list_hidden_columns = sanitize_list_hidden_columns(&hidden);
+        self.save_preferences();
+    }
+
+    pub fn is_list_column_visible(&self, column: ListColumnId) -> bool {
+        if column == ListColumnId::Name {
+            return true;
+        }
+        !self.list_hidden_columns().contains(&column)
+    }
+
+    pub fn set_list_column_visible(&self, column: ListColumnId, visible: bool) {
+        if column == ListColumnId::Name {
+            return;
+        }
+        let mut hidden = self.list_hidden_columns();
+        if visible {
+            hidden.retain(|col| *col != column);
+        } else if !hidden.contains(&column) {
+            hidden.push(column);
+        }
+        self.set_list_hidden_columns(hidden);
+    }
+
+    pub fn move_list_column(&self, column: ListColumnId, target: ListColumnId, after: bool) {
+        let mut order = self.list_column_order();
+        let Some(from) = order.iter().position(|item| *item == column) else {
+            return;
+        };
+        let Some(target) = order.iter().position(|item| *item == target) else {
+            return;
+        };
+        let mut to = target + usize::from(after);
+        if from < to {
+            to -= 1;
+        }
+        if from != to {
+            let column = order.remove(from);
+            order.insert(to, column);
+            self.set_list_column_order(order);
+        }
+    }
+
+    pub fn reset_list_columns(&self) {
+        {
+            let mut prefs = self.preferences.borrow_mut();
+            prefs.list_column_order = default_list_column_order();
+            prefs.list_hidden_columns.clear();
+        }
+        self.save_preferences();
+    }
+
+    pub fn list_visible_columns(&self) -> Vec<ListColumnId> {
+        let hidden = self.list_hidden_columns();
+        self.list_column_order()
+            .into_iter()
+            .filter(|col| *col == ListColumnId::Name || !hidden.contains(col))
+            .collect()
+    }
+
+    pub fn watch_network_folders(&self) -> bool {
+        self.preferences.borrow().watch_network_folders
+    }
+
+    pub fn set_watch_network_folders(&self, enabled: bool) {
+        self.preferences.borrow_mut().watch_network_folders = enabled;
         self.save_preferences();
     }
 
@@ -862,6 +1456,52 @@ impl PreferenceManager {
 
     pub fn set_default_directory(&self, path: Option<PathBuf>) {
         self.preferences.borrow_mut().default_directory = path;
+        self.save_preferences();
+    }
+
+    pub fn restore_tabs(&self) -> bool {
+        self.preferences.borrow().restore_tabs
+    }
+
+    pub fn set_restore_tabs(&self, enabled: bool) {
+        self.preferences.borrow_mut().restore_tabs = enabled;
+        if !enabled {
+            super::tabs_session::remove();
+        }
+        self.save_preferences();
+    }
+
+    pub(in crate::ui) fn device_label(&self, device_id: &str) -> Option<String> {
+        self.preferences
+            .borrow()
+            .device_labels
+            .get(device_id)
+            .filter(|label| {
+                !label.trim().is_empty()
+                    && label.chars().count() <= 255
+                    && !label.chars().any(char::is_control)
+            })
+            .cloned()
+    }
+
+    pub(in crate::ui) fn set_device_label(&self, device_id: &str, label: &str) {
+        let label = label.trim();
+        if device_id.is_empty()
+            || label.chars().count() > 255
+            || label.chars().any(char::is_control)
+        {
+            return;
+        }
+        {
+            let mut preferences = self.preferences.borrow_mut();
+            if label.is_empty() {
+                preferences.device_labels.remove(device_id);
+            } else {
+                preferences
+                    .device_labels
+                    .insert(device_id.to_owned(), label.to_owned());
+            }
+        }
         self.save_preferences();
     }
 
@@ -973,19 +1613,58 @@ impl PreferenceManager {
     }
 
     pub fn browser_density(&self) -> super::browser_modes::BrowserDensity {
-        match self.preferences.borrow().browser_density.as_str() {
-            "airy" => super::browser_modes::BrowserDensity::Airy,
-            _ => super::browser_modes::BrowserDensity::Compact,
-        }
+        let preferences = self.preferences.borrow();
+        stored_density(
+            &preferences.browser_density,
+            preferences.browser_density_custom_px,
+        )
     }
 
     pub fn set_browser_density(&self, density: super::browser_modes::BrowserDensity) {
-        self.preferences.borrow_mut().browser_density = match density {
-            super::browser_modes::BrowserDensity::Compact => "compact",
-            super::browser_modes::BrowserDensity::Airy => "airy",
+        {
+            let mut preferences = self.preferences.borrow_mut();
+            let preferences = &mut *preferences;
+            store_density(
+                density,
+                &mut preferences.browser_density,
+                &mut preferences.browser_density_custom_px,
+            );
         }
-        .to_owned();
         self.save_preferences();
+    }
+
+    pub fn frame_density(&self) -> super::browser_modes::FrameDensity {
+        let preferences = self.preferences.borrow();
+        stored_density(
+            &preferences.frame_density,
+            preferences.frame_density_custom_px,
+        )
+    }
+
+    pub fn set_frame_density(&self, density: super::browser_modes::FrameDensity) {
+        {
+            let mut preferences = self.preferences.borrow_mut();
+            let preferences = &mut *preferences;
+            store_density(
+                density,
+                &mut preferences.frame_density,
+                &mut preferences.frame_density_custom_px,
+            );
+        }
+        self.save_preferences();
+    }
+
+    pub fn language(&self) -> crate::i18n::Language {
+        self.preferences.borrow().language
+    }
+
+    pub fn set_language(&self, language: crate::i18n::Language) {
+        self.preferences.borrow_mut().language = language;
+        self.save_preferences();
+    }
+
+    pub fn language_restart_required(&self) -> bool {
+        self.language().locale() != self.startup_locale
     }
 
     pub fn interface_renderer(&self) -> InterfaceRenderer {
@@ -1011,6 +1690,34 @@ impl PreferenceManager {
             return;
         }
         self.preferences.borrow_mut().text_size = size;
+        self.save_preferences();
+    }
+
+    pub fn corner_roundness(&self) -> CornerRoundness {
+        self.preferences.borrow().corner_roundness
+    }
+
+    pub fn set_corner_roundness(&self, roundness: CornerRoundness) {
+        if self.corner_roundness() == roundness {
+            return;
+        }
+        self.preferences.borrow_mut().corner_roundness = roundness;
+        self.save_preferences();
+    }
+
+    /// The chosen interface font family; `None` keeps the bundled default.
+    pub fn interface_font(&self) -> Option<String> {
+        self.preferences.borrow().interface_font.clone()
+    }
+
+    pub fn set_interface_font(&self, family: Option<String>) {
+        let family = family
+            .map(|family| family.trim().to_owned())
+            .filter(|family| !family.is_empty());
+        if self.interface_font() == family {
+            return;
+        }
+        self.preferences.borrow_mut().interface_font = family;
         self.save_preferences();
     }
 
@@ -1233,6 +1940,15 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
+    pub fn sidebar_compact(&self) -> bool {
+        self.preferences.borrow().sidebar_compact
+    }
+
+    pub fn set_sidebar_compact(&self, compact: bool) {
+        self.preferences.borrow_mut().sidebar_compact = compact;
+        self.save_preferences();
+    }
+
     pub fn sidebar_places_visibility(&self) -> [bool; 10] {
         let preferences = self.preferences.borrow();
         [
@@ -1253,6 +1969,8 @@ impl PreferenceManager {
         sort_preferences(&self.preferences.borrow())
     }
 
+    /// Unlike `set_default_sort`, this keeps folder sorts that equal the new
+    /// default: with per-folder sorts off, they are kept but ignored.
     pub fn set_sort_preferences(&self, preferences: ViewPreferences) {
         if preferences.sort_key == SortKey::Recency {
             return;
@@ -1260,22 +1978,7 @@ impl PreferenceManager {
         let mut stored = self.preferences.borrow_mut();
         stored.show_hidden = preferences.show_hidden;
         stored.folders_first = preferences.folders_first;
-        let sort_key = match preferences.sort_key {
-            SortKey::DeviceOrder => None,
-            SortKey::Recency => None,
-            SortKey::Name => Some("name"),
-            SortKey::Size => Some("size"),
-            SortKey::Modified => Some("modified"),
-            SortKey::Type => Some("type"),
-        };
-        if let Some(sort_key) = sort_key {
-            stored.sort_key = sort_key.to_owned();
-            stored.sort_direction = match preferences.sort_direction {
-                SortDirection::Ascending => "ascending",
-                SortDirection::Descending => "descending",
-            }
-            .to_owned();
-        }
+        store_sort(&mut stored, preferences.sort());
         drop(stored);
         self.save_preferences();
     }
@@ -1285,42 +1988,112 @@ impl PreferenceManager {
         if !changed && !self.persistence_dirty.get() {
             return;
         }
-        if !self.persistence_enabled {
+        let path = settings_path();
+        if let Some(error) = &self.load_failure {
             if changed {
                 self.changes.notify(self);
+                self.save_notices.unreadable_at_startup(&path, error);
             }
             return;
         }
         self.persistence_dirty.set(true);
-        let path = settings_path();
-        let result = (|| -> io::Result<()> {
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            let value =
-                toml::to_string_pretty(&*self.preferences.borrow()).map_err(io::Error::other)?;
-            crate::storage::atomic_write(&path, value.as_bytes())
-        })();
-        match result {
-            Ok(()) => self.persistence_dirty.set(false),
-            Err(error) => tracing::warn!(%error, "unable to save preference"),
+        let snapshot = toml::Table::try_from(&*self.preferences.borrow()).map_err(io::Error::other);
+        if let Ok(snapshot) = &snapshot {
+            self.queue_settings_save(path.clone(), snapshot.clone());
         }
         if changed {
             self.changes.notify(self);
         }
+        // Reported after bindings apply, and whether or not anything changed,
+        // because a retry with an unchanged value can fail too.
+        if let Err(error) = snapshot {
+            self.save_notices.write_failed(&path, &error);
+        }
+    }
+
+    fn queue_settings_save(&self, path: PathBuf, snapshot: toml::Table) {
+        let generation = self.saves_requested.get() + 1;
+        self.saves_requested.set(generation);
+        let keys = {
+            let mut last = self.last_queued.borrow_mut();
+            let mut dirty = self.dirty_keys.borrow_mut();
+            record_changes(&mut dirty, &last, &snapshot);
+            *last = snapshot.clone();
+            // Never serialized, so a migration cannot show up as a change.
+            if self.preferences.borrow().legacy_omarchy_variant.is_none() {
+                dirty.insert(("omarchy_variant".to_owned(), None));
+            }
+            dirty.extend(RETIRED_SETTINGS.map(|key| (key.to_owned(), None)));
+            dirty.clone()
+        };
+        let target = path.clone();
+        let saved = writer::save_locked(path.clone(), Policy::Config, move || {
+            merged_settings(&target, &snapshot, &keys)
+        });
+        let this = self.this.clone();
+        glib::MainContext::default().spawn_local(async move {
+            let result = saved
+                .await
+                .unwrap_or_else(|_| Err(io::Error::from_raw_os_error(libc::ECANCELED)));
+            if let Some(manager) = this.upgrade() {
+                manager.settings_saved(generation, &path, result);
+            }
+        });
+    }
+
+    fn settings_saved(&self, generation: u64, path: &Path, result: io::Result<()>) {
+        if generation != self.saves_requested.get() {
+            return;
+        }
+        match result {
+            Ok(()) => {
+                self.persistence_dirty.set(false);
+                self.dirty_keys.borrow_mut().clear();
+                self.save_notices.saved();
+            }
+            Err(error) => self.save_notices.write_failed(path, &error),
+        }
+    }
+
+    /// Whether a save not yet written, or one that failed, would replace `key` on disk.
+    fn setting_unsaved(&self, key: &str) -> bool {
+        self.dirty_keys
+            .borrow()
+            .iter()
+            .any(|(dirty, _)| dirty == key)
     }
 }
 
+fn read_state_file(path: &Path) -> io::Result<Option<String>> {
+    match fs::read_to_string(path) {
+        Ok(contents) => Ok(Some(contents)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+#[cfg(test)]
 fn read_preferences() -> io::Result<Preferences> {
-    let contents = match fs::read_to_string(settings_path()) {
-        Ok(contents) => contents,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Preferences::default()),
-        Err(error) => return Err(error),
+    read_preferences_checked().map(|(preferences, _)| preferences)
+}
+
+/// Also returns the keys salvage had to repair.
+fn read_preferences_checked() -> io::Result<(Preferences, BTreeSet<String>)> {
+    let Some(contents) = read_state_file(&settings_path())? else {
+        return Ok((Preferences::default(), BTreeSet::new()));
     };
-    let table: toml::Table = toml::from_str(&contents)
+    parse_preferences_checked(&contents)
+}
+
+fn parse_preferences(contents: &str) -> io::Result<Preferences> {
+    parse_preferences_checked(contents).map(|(preferences, _)| preferences)
+}
+
+fn parse_preferences_checked(contents: &str) -> io::Result<(Preferences, BTreeSet<String>)> {
+    let table: toml::Table = toml::from_str(contents)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
     match table.clone().try_into() {
-        Ok(preferences) => Ok(preferences),
+        Ok(preferences) => Ok((preferences, BTreeSet::new())),
         Err(error) => {
             tracing::warn!(%error, "settings file has invalid entries; keeping the valid ones");
             Ok(salvage_preferences(table))
@@ -1328,51 +2101,208 @@ fn read_preferences() -> io::Result<Preferences> {
     }
 }
 
-/// Rebuilds preferences from every entry that deserializes on its own, so one
-/// malformed value does not reset the rest (and, on the next save, overwrite
-/// them with defaults).
-fn salvage_preferences(saved: toml::Table) -> Preferences {
-    let Ok(mut merged) = toml::Table::try_from(Preferences::default()) else {
-        return Preferences::default();
-    };
-    for (key, value) in saved {
-        let previous = merged.insert(key.clone(), value);
-        if merged.clone().try_into::<Preferences>().is_err() {
-            match previous {
-                Some(previous) => {
-                    merged.insert(key, previous);
+const SETTINGS_LOCK_WAIT: Duration = Duration::from_millis(500);
+
+/// Dropped by every save.
+const RETIRED_SETTINGS: [&str; 1] = ["auto_refresh_interval"];
+
+/// A changed key, or one entry of a key in [`ENTRY_MERGED_SETTINGS`].
+type SettingKey = (String, Option<String>);
+
+/// Maps whose entries are merged one by one, so entries another process added survive.
+const ENTRY_MERGED_SETTINGS: [&str; 5] = [
+    "omarchy_variants",
+    "folder_colors",
+    "custom_icons",
+    "send_to_recent_destinations",
+    "device_labels",
+];
+
+fn record_changes(changed: &mut BTreeSet<SettingKey>, before: &toml::Table, after: &toml::Table) {
+    let empty = toml::Table::new();
+    for key in after.keys().chain(before.keys()) {
+        let (old, new) = (before.get(key), after.get(key));
+        if old == new {
+            continue;
+        }
+        fn entries<'a>(
+            value: Option<&'a toml::Value>,
+            empty: &'a toml::Table,
+        ) -> Option<&'a toml::Table> {
+            value.map_or(Some(empty), toml::Value::as_table)
+        }
+        match (entries(old, &empty), entries(new, &empty)) {
+            (Some(old), Some(new)) if ENTRY_MERGED_SETTINGS.contains(&key.as_str()) => {
+                for entry in new.keys().chain(old.keys()) {
+                    if old.get(entry) != new.get(entry) {
+                        changed.insert((key.clone(), Some(entry.clone())));
+                    }
                 }
-                None => {
-                    merged.remove(&key);
-                }
+            }
+            _ => {
+                changed.insert((key.clone(), None));
             }
         }
     }
-    merged.try_into().unwrap_or_default()
+}
+
+/// Another Strata process, such as the portal chooser, saves the same file, so a save
+/// replaces only what this process changed and keeps the rest as it is on disk,
+/// including keys this version does not know. A file that cannot be read or parsed
+/// is left alone.
+fn merged_settings(
+    path: &Path,
+    snapshot: &toml::Table,
+    changed: &BTreeSet<SettingKey>,
+) -> io::Result<(Vec<u8>, Option<fs::File>)> {
+    let lock = folder_view_settings::lock_saves(path, SETTINGS_LOCK_WAIT)
+        .inspect_err(|error| {
+            tracing::debug!(%error, path = %path.display(), "saving settings unlocked");
+        })
+        .ok();
+    // Anything but a file is left for the write to report.
+    let on_disk = if path.is_file() {
+        read_state_file(path)?
+    } else {
+        None
+    };
+    let merged = match on_disk {
+        None => snapshot.clone(),
+        Some(contents) => {
+            let mut table: toml::Table = toml::from_str(&contents)
+                .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+            for (key, entry) in changed {
+                let Some(entry) = entry else {
+                    match snapshot.get(key) {
+                        Some(value) => table.insert(key.clone(), value.clone()),
+                        None => table.remove(key),
+                    };
+                    continue;
+                };
+                let value = snapshot
+                    .get(key)
+                    .and_then(toml::Value::as_table)
+                    .and_then(|entries| entries.get(entry));
+                let slot = table
+                    .entry(key.clone())
+                    .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+                if !slot.is_table() {
+                    *slot = toml::Value::Table(toml::Table::new());
+                }
+                let Some(entries) = slot.as_table_mut() else {
+                    continue;
+                };
+                match value {
+                    Some(value) => entries.insert(entry.clone(), value.clone()),
+                    None => entries.remove(entry),
+                };
+                if entries.is_empty() {
+                    table.remove(key);
+                }
+            }
+            table
+        }
+    };
+    let contents = toml::to_string_pretty(&merged).map_err(io::Error::other)?;
+    Ok((contents.into_bytes(), lock))
+}
+
+/// Rebuilds preferences from every entry that deserializes on its own, so one
+/// malformed value does not reset the rest (and, on the next save, overwrite
+/// them with defaults). A malformed list or table keeps its other entries.
+/// Also returns the keys whose saved value was dropped or filled in.
+fn salvage_preferences(saved: toml::Table) -> (Preferences, BTreeSet<String>) {
+    let Ok(mut merged) = toml::Table::try_from(Preferences::default()) else {
+        return (
+            Preferences::default(),
+            saved.into_iter().map(|(key, _)| key).collect(),
+        );
+    };
+    for (key, value) in saved.clone() {
+        let kept = {
+            let accepts = |candidate: &toml::Value| {
+                let mut trial = merged.clone();
+                trial.insert(key.clone(), candidate.clone());
+                trial.try_into::<Preferences>().is_ok()
+            };
+            salvage_value(value, &accepts)
+        };
+        if let Some(kept) = kept {
+            merged.insert(key, kept);
+        }
+    }
+    let repaired = merged
+        .keys()
+        .chain(saved.keys())
+        .filter(|key| merged.get(*key) != saved.get(*key))
+        .cloned()
+        .collect();
+    (merged.try_into().unwrap_or_default(), repaired)
+}
+
+/// Returns `value` if `accepts` takes it, otherwise the entries that still pass
+/// after dropping the bad ones, level by level. Entries are tried alone, so
+/// salvage stays linear in a collection's size, and then checked together. A
+/// value of the wrong shape, or a record missing a required field, yields `None`.
+fn salvage_value(
+    value: toml::Value,
+    accepts: &dyn Fn(&toml::Value) -> bool,
+) -> Option<toml::Value> {
+    if accepts(&value) {
+        return Some(value);
+    }
+    let kept = match value {
+        toml::Value::Table(table) => {
+            let mut kept = toml::Table::new();
+            for (key, child) in table {
+                let alone = |candidate: &toml::Value| {
+                    let trial = toml::Table::from_iter([(key.clone(), candidate.clone())]);
+                    accepts(&toml::Value::Table(trial))
+                };
+                if let Some(child) = salvage_value(child, &alone) {
+                    kept.insert(key, child);
+                }
+            }
+            toml::Value::Table(kept)
+        }
+        toml::Value::Array(items) => {
+            let mut kept = Vec::new();
+            for item in items {
+                let alone =
+                    |candidate: &toml::Value| accepts(&toml::Value::Array(vec![candidate.clone()]));
+                if let Some(item) = salvage_value(item, &alone) {
+                    kept.push(item);
+                }
+            }
+            toml::Value::Array(kept)
+        }
+        _ => return None,
+    };
+    accepts(&kept).then_some(kept)
 }
 
 fn sort_preferences(preferences: &Preferences) -> ViewPreferences {
-    let sorting = match (
-        preferences.sort_key.as_str(),
-        preferences.sort_direction.as_str(),
-    ) {
-        ("name", "ascending") => Some((SortKey::Name, SortDirection::Ascending)),
-        ("name", "descending") => Some((SortKey::Name, SortDirection::Descending)),
-        ("size", "ascending") => Some((SortKey::Size, SortDirection::Ascending)),
-        ("size", "descending") => Some((SortKey::Size, SortDirection::Descending)),
-        ("modified", "ascending") => Some((SortKey::Modified, SortDirection::Ascending)),
-        ("modified", "descending") => Some((SortKey::Modified, SortDirection::Descending)),
-        ("type", "ascending") => Some((SortKey::Type, SortDirection::Ascending)),
-        ("type", "descending") => Some((SortKey::Type, SortDirection::Descending)),
-        _ => None,
-    }
-    .unwrap_or((SortKey::Name, SortDirection::Ascending));
+    let sorting = SortKey::from_stored(&preferences.sort_key)
+        .zip(SortDirection::from_stored(&preferences.sort_direction))
+        .unwrap_or((SortKey::Name, SortDirection::Ascending));
     ViewPreferences {
         show_hidden: preferences.show_hidden,
         folders_first: preferences.folders_first,
         sort_key: sorting.0,
         sort_direction: sorting.1,
     }
+}
+
+fn store_sort(
+    preferences: &mut Preferences,
+    (sort_key, sort_direction): (SortKey, SortDirection),
+) -> bool {
+    let Some(stored_key) = sort_key.stored_name() else {
+        return false;
+    };
+    preferences.sort_key = stored_key.to_owned();
+    preferences.sort_direction = sort_direction.stored_name().to_owned();
+    true
 }
 
 fn configured_video_preview_backend(preferences: &Preferences) -> MediaPreviewBackend {

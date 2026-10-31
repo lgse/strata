@@ -10,7 +10,8 @@ use crate::ui::browser::paths::{PinAction, compact_display_path, is_trash_root, 
 use crate::ui::browser::{PinStatus, ViewState};
 use crate::ui::controls::{ModalTone, form_check_button, modal_layout, properties_action};
 use crate::ui::modal::{
-    ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus, show_error_dialog,
+    ModalHost, close_on_escape, dismiss_modal_layer, modal_layer, remember_modal_focus,
+    show_error_dialog,
 };
 use gtk::prelude::*;
 use gtk::{gio, glib};
@@ -103,13 +104,16 @@ impl PropertiesMeasurement {
             Ok(summary) => self.update(summary),
             Err(_) => {
                 if let Some(size) = self.size.upgrade() {
-                    size.set_text("Unavailable");
+                    size.set_text(&crate::i18n::tr("Unavailable"));
                 }
                 if let Some(items) = self.items.as_ref().and_then(|items| items.upgrade()) {
-                    items.set_text("Unavailable");
+                    items.set_text(&crate::i18n::tr("Unavailable"));
                 }
                 if let Some(warning) = self.warning.upgrade() {
-                    set_measurement_warning(&warning, Some("Folder contents couldn't be read."));
+                    set_measurement_warning(
+                        &warning,
+                        Some(&crate::i18n::tr("Folder contents couldn't be read.")),
+                    );
                 }
             }
         }
@@ -142,7 +146,7 @@ fn properties_row_with_suffix(
 ) -> gtk::Label {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     row.add_css_class("properties-row");
-    let label = gtk::Label::new(Some(label));
+    let label = gtk::Label::new(Some(&crate::i18n::tr(label)));
     label.add_css_class("properties-row-label");
     label.set_xalign(0.0);
     let value = gtk::Label::new(Some(value));
@@ -188,7 +192,7 @@ struct PermissionEditor {
 fn permission_row(parent: &gtk::Box, label: &str) -> PermissionRow {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     row.add_css_class("properties-permission-row");
-    let title = gtk::Label::new(Some(label));
+    let title = gtk::Label::new(Some(&crate::i18n::tr(label)));
     title.add_css_class("properties-permission-title");
     title.set_xalign(0.0);
     let identity = gtk::Label::new(Some("—"));
@@ -196,13 +200,20 @@ fn permission_row(parent: &gtk::Box, label: &str) -> PermissionRow {
     identity.set_xalign(0.0);
     let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     spacer.set_hexpand(true);
-    let read = gtk::Button::with_label("—");
-    let write = gtk::Button::with_label("—");
-    let execute = gtk::Button::with_label("—");
-    for permission in [&read, &write, &execute] {
-        permission.add_css_class("properties-permission-bit");
-        permission.set_sensitive(false);
-    }
+    // Not a real toggle button: a click requests a chmod, the pressed state
+    // follows the requested mode, and it rolls back if the chmod fails.
+    let bit = || {
+        let button = gtk::Button::builder()
+            .label("—")
+            .accessible_role(gtk::AccessibleRole::ToggleButton)
+            .build();
+        // The visible `r`/`w`/`x` label would otherwise name the bit.
+        crate::ui::accessibility::clear_labelled_by(&button);
+        button.add_css_class("properties-permission-bit");
+        button.set_sensitive(false);
+        button
+    };
+    let [read, write, execute] = [bit(), bit(), bit()];
     row.append(&title);
     row.append(&identity);
     row.append(&spacer);
@@ -228,6 +239,7 @@ fn set_permission_row(row: &PermissionRow, mode: u32, shift: u32) {
         } else {
             permission.remove_css_class("enabled");
         }
+        crate::ui::accessibility::set_pressed(permission, enabled);
     }
 }
 
@@ -280,7 +292,11 @@ fn request_permission_change(
                     update_permission_editor(&editor, mode);
                 }
                 tracing::warn!(%error, "unable to change file permissions");
-                show_error_dialog(&parent, "Unable to change permissions", &error.to_string());
+                show_error_dialog(
+                    &parent,
+                    &crate::i18n::tr("Unable to change permissions"),
+                    &error.to_string(),
+                );
             }
         }
         editor.changing.set(false);
@@ -326,29 +342,46 @@ pub fn format_permissions(mode: u32) -> String {
 
 fn directory_counts_label(summary: &DirectorySummary) -> String {
     let prefix = if summary.truncated() { "≥ " } else { "" };
-    let files = summary.visible_file_count;
-    let folders = summary.visible_folder_count;
-    let file_noun = if files == 1 { "file" } else { "files" };
-    let folder_noun = if folders == 1 { "folder" } else { "folders" };
-    format!("{prefix}{files} {file_noun}, {prefix}{folders} {folder_noun}")
+    rust_i18n::t!(
+        "%{files}, %{folders}",
+        files = format!(
+            "{prefix}{}",
+            crate::i18n::count("files", summary.visible_file_count)
+        ),
+        folders = format!(
+            "{prefix}{}",
+            crate::i18n::count("folders", summary.visible_folder_count)
+        ),
+    )
+    .into_owned()
 }
 
 fn measurement_warning_text(summary: &DirectorySummary) -> Option<String> {
     let mut reasons = Vec::new();
     if summary.issues.unreadable {
-        reasons.push("Some folders or entries couldn't be read.");
+        reasons.push(crate::i18n::tr("Some folders or entries couldn't be read."));
     }
     if summary.issues.timed_out {
-        reasons.push("The five-minute calculation limit was reached.");
+        reasons.push(crate::i18n::tr(
+            "The five-minute calculation limit was reached.",
+        ));
     }
     if summary.issues.depth_limited {
-        reasons.push("Some folders exceeded the 64-level nesting limit.");
+        reasons.push(crate::i18n::tr(
+            "Some folders exceeded the 64-level nesting limit.",
+        ));
     }
-    (!reasons.is_empty()).then(|| format!("Totals are incomplete.\n{}", reasons.join("\n")))
+    (!reasons.is_empty()).then(|| {
+        rust_i18n::t!(
+            "Totals are incomplete.\n%{value1}",
+            value1 = reasons.join("\n")
+        )
+        .into_owned()
+    })
 }
 
 fn set_measurement_warning(warning: &gtk::Image, message: Option<&str>) {
-    warning.update_property(&[gtk::accessible::Property::Label(message.unwrap_or(""))]);
+    super::super::accessibility::set_own_label(warning, message.unwrap_or(""));
     warning.set_visible(message.is_some());
 }
 
@@ -394,8 +427,8 @@ impl ViewState {
         let layout = modal_layout(
             icon_name,
             &name,
-            if is_directory { "Folder" } else { "File" },
-            "Close",
+            &crate::i18n::tr(if is_directory { "Folder" } else { "File" }),
+            &crate::i18n::tr("Close"),
         );
         if let Some(path) = location.native_path() {
             crate::ui::thumbnail::show_customized_icon_image(&layout.icon, path, icon_name, 21);
@@ -440,7 +473,10 @@ impl ViewState {
         let size_spinner = gtk::Spinner::new();
         size_spinner.add_css_class("properties-size-spinner");
         size_spinner.set_valign(gtk::Align::Center);
-        crate::ui::accessibility::set_label(&size_spinner, "Calculating folder size");
+        crate::ui::accessibility::set_label(
+            &size_spinner,
+            &crate::i18n::tr("Calculating folder size"),
+        );
         size_spinner.set_spinning(measuring_directory);
         size_spinner.set_visible(measuring_directory);
         let size = properties_size_row(&details, &initial_size, &size_spinner);
@@ -454,7 +490,7 @@ impl ViewState {
             properties_row_with_suffix(
                 &details,
                 "CONTAINS",
-                "0 files, 0 folders",
+                &directory_counts_label(&DirectorySummary::default()),
                 Some(measurement_warning.upcast_ref()),
             )
         });
@@ -472,7 +508,7 @@ impl ViewState {
         let hidden = properties_row(
             &details,
             "HIDDEN",
-            if name.starts_with('.') { "Yes" } else { "No" },
+            &crate::i18n::tr(if name.starts_with('.') { "Yes" } else { "No" }),
         );
         let pin_status = self
             .pin_status_handler
@@ -481,12 +517,12 @@ impl ViewState {
             .map_or(PinStatus::Unavailable, |handler| handler(&location));
         let _pinned = properties_row(
             &details,
-            "PINNED",
-            if pin_status == PinStatus::Pinned {
+            "properties.pinned",
+            &crate::i18n::tr(if pin_status == PinStatus::Pinned {
                 "Yes"
             } else {
                 "No"
-            },
+            }),
         );
         layout.body.append(&details);
 
@@ -524,7 +560,7 @@ impl ViewState {
         let permissions = gtk::Box::new(gtk::Orientation::Vertical, 8);
         permissions.add_css_class("properties-permissions");
         let permissions_header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        let permissions_title = gtk::Label::new(Some("PERMISSIONS"));
+        let permissions_title = gtk::Label::new(Some(&crate::i18n::tr("PERMISSIONS")));
         permissions_title.add_css_class("properties-section-title");
         permissions_title.set_xalign(0.0);
         permissions_title.set_hexpand(true);
@@ -534,10 +570,11 @@ impl ViewState {
         permissions_header.append(&permissions_mode);
         permissions.append(&permissions_header);
         let owner = permission_row(&permissions, "Owner");
-        let group = permission_row(&permissions, "Group");
+        let group = permission_row(&permissions, "permissions.group");
         let others = permission_row(&permissions, "Others");
-        let executable_label = "Allow executing file as a program (+x)";
-        let executable = form_check_button(executable_label);
+        let executable_label = crate::i18n::tr("Allow executing file as a program (+x)");
+        let compact_executable_label = crate::i18n::tr("Executable (+x)");
+        let executable = form_check_button(&executable_label);
         executable.add_css_class("properties-executable");
         let responsive_actions = layout.actions.clone();
         let responsive_executable = executable.clone();
@@ -553,13 +590,13 @@ impl ViewState {
                 responsive_actions.set_homogeneous(!compact);
             }
             let visible_label = if compact {
-                "Executable (+x)"
+                compact_executable_label.as_str()
             } else {
-                executable_label
+                executable_label.as_str()
             };
             if responsive_executable.label().as_deref() != Some(visible_label) {
                 responsive_executable.set_label(Some(visible_label));
-                crate::ui::accessibility::set_label(&responsive_executable, executable_label);
+                crate::ui::accessibility::set_label(&responsive_executable, &executable_label);
             }
             glib::ControlFlow::Continue
         });
@@ -632,17 +669,40 @@ impl ViewState {
             rows: [owner.clone(), group.clone(), others.clone()],
             executable: executable.clone(),
         };
-        for (row, masks, subject) in [
-            (&owner, [0o400, 0o200, 0o100], "owner"),
-            (&group, [0o040, 0o020, 0o010], "group"),
-            (&others, [0o004, 0o002, 0o001], "others"),
+        for (row, masks, bits) in [
+            (
+                &owner,
+                [0o400, 0o200, 0o100],
+                [
+                    ("Owner read", "Toggle owner read permission"),
+                    ("Owner write", "Toggle owner write permission"),
+                    ("Owner execute", "Toggle owner execute permission"),
+                ],
+            ),
+            (
+                &group,
+                [0o040, 0o020, 0o010],
+                [
+                    ("Group read", "Toggle group read permission"),
+                    ("Group write", "Toggle group write permission"),
+                    ("Group execute", "Toggle group execute permission"),
+                ],
+            ),
+            (
+                &others,
+                [0o004, 0o002, 0o001],
+                [
+                    ("Others read", "Toggle others read permission"),
+                    ("Others write", "Toggle others write permission"),
+                    ("Others execute", "Toggle others execute permission"),
+                ],
+            ),
         ] {
-            for ((button, mask), permission) in
-                row.bits.iter().zip(masks).zip(["read", "write", "execute"])
-            {
+            for ((button, mask), (label, description)) in row.bits.iter().zip(masks).zip(bits) {
+                crate::ui::accessibility::set_label(button, &crate::i18n::tr(label));
                 crate::ui::accessibility::set_description(
                     button,
-                    Some(&format!("Toggle {subject} {permission} permission")),
+                    Some(&crate::i18n::tr(description)),
                 );
                 let edited_file = gio_file_for_location(&location);
                 let editor = permission_editor.clone();
@@ -721,7 +781,11 @@ impl ViewState {
             match pin_action {
                 Some(PinAction::Pin) => {
                     if let Some(handler) = pin_handler.as_ref() {
-                        handler(pinning_location.clone(), pinning_name.clone());
+                        handler(
+                            pinning_location.clone(),
+                            pinning_name.clone(),
+                            Box::new(|_| {}),
+                        );
                     }
                 }
                 Some(PinAction::Unpin) => {
@@ -738,23 +802,16 @@ impl ViewState {
             if let Some(display) = gtk::gdk::Display::default() {
                 display
                     .clipboard()
-                    .set_text(&copy_path_text(&copied_location, true));
-                button.set_label("Copied");
+                    .set_text(&copy_path_text(&copied_location, is_directory));
+                button.set_label(&crate::i18n::tr("Copied"));
             }
         });
-        let escape = gtk::EventControllerKey::new();
         let escaped_layer = layer.clone();
         let escaped_overlay = window_overlay.clone();
         let escaped_root = blurred_root.clone();
-        escape.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
-                dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
+        close_on_escape(&layer, move || {
+            dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
         });
-        layer.add_controller(escape);
         layer.grab_focus();
 
         if measuring_directory {
@@ -791,7 +848,7 @@ impl ViewState {
             if let Some(time) = info.modification_date_time() {
                 crate::util::set_full_modified_date(&modified, Some(time.to_unix()));
             }
-            hidden.set_text(if info.is_hidden() { "Yes" } else { "No" });
+            hidden.set_text(&crate::i18n::tr(if info.is_hidden() { "Yes" } else { "No" }));
             if let Some(content_type) = info.content_type() {
                 kind.set_text(&gio::content_type_get_description(&content_type));
                 if let Some(app) = gio::AppInfo::default_for_type(&content_type, false) {
@@ -830,8 +887,17 @@ impl ViewState {
             return;
         };
 
-        let title = format!("{} items selected", entries.len());
-        let layout = modal_layout(crate::assets::icons::INFO, &title, "Selection", "Close");
+        let title = rust_i18n::t!(
+            "%{items} selected",
+            items = crate::i18n::count("items", entries.len())
+        )
+        .into_owned();
+        let layout = modal_layout(
+            crate::assets::icons::INFO,
+            &title,
+            &crate::i18n::tr("Selection"),
+            &crate::i18n::tr("Close"),
+        );
         layout.cancel.set_visible(false);
         layout.confirm.set_visible(false);
         layout.actions.set_visible(false);
@@ -841,7 +907,10 @@ impl ViewState {
         let size_spinner = gtk::Spinner::new();
         size_spinner.add_css_class("properties-size-spinner");
         size_spinner.set_valign(gtk::Align::Center);
-        crate::ui::accessibility::set_label(&size_spinner, "Calculating selection size");
+        crate::ui::accessibility::set_label(
+            &size_spinner,
+            &crate::i18n::tr("Calculating selection size"),
+        );
         size_spinner.set_spinning(true);
         let size = properties_size_row(&details, &format_file_size(0), &size_spinner);
         let measurement_warning =
@@ -853,7 +922,7 @@ impl ViewState {
         let items = properties_row_with_suffix(
             &details,
             "CONTAINS",
-            "Calculating…",
+            &crate::i18n::tr("Calculating…"),
             Some(measurement_warning.upcast_ref()),
         );
         layout.body.append(&details);
@@ -870,19 +939,12 @@ impl ViewState {
         close.connect_clicked(move |_| {
             dismiss_modal_layer(&closing_layer, &closing_overlay, closing_root.as_ref());
         });
-        let escape = gtk::EventControllerKey::new();
         let escaped_layer = layer.clone();
         let escaped_overlay = window_overlay.clone();
         let escaped_root = blurred_root.clone();
-        escape.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
-                dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
+        close_on_escape(&layer, move || {
+            dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
         });
-        layer.add_controller(escape);
         layer.grab_focus();
 
         let measurement =

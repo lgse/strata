@@ -1,0 +1,15 @@
+{"scenario":"settings-choice-buttons-expose-value","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":3.0},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Settings choice buttons expose their value as accessible description and update after a pick; only QA check of button description, no unit test; menu options checked in settings-choice-options-expose-chosen"}}
+{"activate":{"role":"button","name":"Settings"}}
+{"wait":{"presented":{"role":"button","name":"Modified date format","rendered":false}},"message":"the General settings page"}
+{"reveal":{"role":"button","name":"Drag & drop to another device"}}
+{"expect":[{"description":{"target":{"role":"button","name":"Drag & drop to another device","rendered":false},"text":"Always ask"}},{"description":{"target":{"role":"toggle button","name":"Drag & drop to another device","within":{"role":"button","name":"Drag & drop to another device","rendered":false}},"text":"Always ask"}}]}
+{"reveal":{"role":"button","name":"Modified date format"}}
+{"expect":[{"description":{"target":{"role":"button","name":"Modified date format","rendered":false},"text":"Relative"}},{"description":{"target":{"role":"toggle button","name":"Modified date format","within":{"role":"button","name":"Modified date format","rendered":false}},"text":"Relative"}}]}
+{"reveal":{"role":"button","name":"Video preview hardware backend"}}
+{"expect":[{"description":{"target":{"role":"button","name":"Video preview hardware backend","rendered":false},"text":"Automatic"}},{"description":{"target":{"role":"toggle button","name":"Video preview hardware backend","within":{"role":"button","name":"Video preview hardware backend","rendered":false}},"text":"Automatic"}}]}
+{"reveal":{"role":"button","name":"Modified date format"}}
+{"open_menu":{"role":"toggle button","name":"Modified date format","within":{"role":"button","name":"Modified date format","rendered":false}},"until":{"present":{"role":"radio menu item","name":"ISO 8601"}},"open_states":["checked","pressed"],"message":"the 'ISO 8601' option of 'Modified date format'"}
+{"click":{"role":"radio menu item","name":"ISO 8601"}}
+{"wait":{"pref":{"key":"date_format","value":"iso"}},"message":"the ISO 8601 date format to be saved"}
+{"reveal":{"role":"button","name":"Modified date format"}}
+{"wait":{"all":[{"description":{"target":{"role":"button","name":"Modified date format","rendered":false},"text":"ISO 8601"}},{"description":{"target":{"role":"toggle button","name":"Modified date format","within":{"role":"button","name":"Modified date format","rendered":false}},"text":"ISO 8601"}}]},"message":"the date format button to describe ISO 8601"}

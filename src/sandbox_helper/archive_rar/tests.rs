@@ -21,11 +21,11 @@ fn excessive_native_dictionary_is_rejected() {
     });
     assert_eq!(
         result.expect_err("large dictionary callback must fail"),
-        LARGE_DICTIONARY
+        Failure::from(LARGE_DICTIONARY)
     );
     assert_eq!(
-        decode_result(ERAR_LARGE_DICT, None).expect_err("large dictionary code must fail"),
-        LARGE_DICTIONARY
+        decode_result(ERAR_LARGE_DICT, false).expect_err("large dictionary code must fail"),
+        Failure::from(LARGE_DICTIONARY)
     );
 }
 
@@ -70,9 +70,19 @@ fn run_streams_the_version_fixture_in_wire_format() {
 
     let mut reader = Cursor::new(buffer);
     wire::read_magic(&mut reader).expect("stream must start with the wire magic");
+    // RAR 2.9 stores 2015-08-07 17:21:08 as DOS local time, passed on unconverted.
+    let date = ((2015 - 1980) << 9) | (8 << 5) | 7;
+    let time = (17 << 11) | (21 << 5) | (8 / 2);
     assert_eq!(
         wire::read_record(&mut reader).expect("real RAR fixture"),
-        Record::File("VERSION".to_owned(), 11)
+        Record::File(
+            "VERSION".to_owned(),
+            11,
+            wire::WireMetadata {
+                mode: Some(0o100_644),
+                modified: Some(wire::WireTime::DosLocal((date << 16) | time)),
+            }
+        )
     );
     let mut body = Vec::new();
     std::io::Read::read_to_end(&mut wire::FileBody::new(&mut reader, 11), &mut body)
@@ -102,16 +112,16 @@ fn run_reports_a_missing_password_as_a_file_trailer_failure() {
 
     let mut reader = Cursor::new(buffer);
     wire::read_magic(&mut reader).expect("real RAR fixture");
-    assert_eq!(
+    assert!(matches!(
         wire::read_record(&mut reader).expect("real RAR fixture"),
-        Record::File(".gitignore".to_owned(), 18)
-    );
+        Record::File(name, 18, _) if name == ".gitignore"
+    ));
     let mut body = Vec::new();
     let error = std::io::Read::read_to_end(&mut wire::FileBody::new(&mut reader, 18), &mut body)
         .expect_err("missing password must fail before yielding contents");
     assert_eq!(
-        error.to_string(),
-        "A password is required to extract this archive."
+        Failure::from_io(error),
+        Failure::new(FailureKind::PasswordRequired, PASSWORD_REQUIRED)
     );
     assert!(body.is_empty());
 }
@@ -125,14 +135,17 @@ fn run_reports_a_wrong_password_as_a_file_trailer_failure() {
 
     let mut reader = Cursor::new(buffer);
     wire::read_magic(&mut reader).expect("real RAR fixture");
-    assert_eq!(
+    assert!(matches!(
         wire::read_record(&mut reader).expect("real RAR fixture"),
-        Record::File(".gitignore".to_owned(), 18)
-    );
+        Record::File(name, 18, _) if name == ".gitignore"
+    ));
     let mut body = Vec::new();
     let error = std::io::Read::read_to_end(&mut wire::FileBody::new(&mut reader, 18), &mut body)
         .expect_err("wrong password must fail before yielding contents");
-    assert_eq!(error.to_string(), MAYBE_BAD_PASSWORD);
+    assert_eq!(
+        Failure::from_io(error),
+        Failure::new(FailureKind::IncorrectPassword, MAYBE_BAD_PASSWORD)
+    );
     assert!(body.is_empty());
 }
 
@@ -144,10 +157,10 @@ fn run_streams_an_encrypted_archive_with_the_correct_password() {
 
     let mut reader = Cursor::new(buffer);
     wire::read_magic(&mut reader).expect("real RAR fixture");
-    assert_eq!(
+    assert!(matches!(
         wire::read_record(&mut reader).expect("real RAR fixture"),
-        Record::File(".gitignore".to_owned(), 18)
-    );
+        Record::File(name, 18, _) if name == ".gitignore"
+    ));
     let mut body = Vec::new();
     std::io::Read::read_to_end(&mut wire::FileBody::new(&mut reader, 18), &mut body)
         .expect("real RAR fixture");
@@ -162,8 +175,14 @@ fn run_streams_an_encrypted_archive_with_the_correct_password() {
 fn run_handles_encrypted_headers() {
     let (_dir, archive) = write_fixture(RAR_ENCRYPTED_HEADERS_FIXTURE);
     for (password, expected) in [
-        (None, "A password is required to extract this archive."),
-        (Some("wrong-password"), MAYBE_BAD_PASSWORD),
+        (
+            None,
+            Failure::new(FailureKind::PasswordRequired, PASSWORD_REQUIRED),
+        ),
+        (
+            Some("wrong-password"),
+            Failure::new(FailureKind::IncorrectPassword, MAYBE_BAD_PASSWORD),
+        ),
     ] {
         let mut buffer = Vec::new();
         run(&archive, password, &mut buffer).expect_err("encrypted headers require a password");
@@ -171,17 +190,17 @@ fn run_handles_encrypted_headers() {
         wire::read_magic(&mut reader).expect("stream magic");
         assert_eq!(
             wire::read_record(&mut reader).expect("error record"),
-            Record::Error(expected.to_owned())
+            Record::Error(expected)
         );
     }
     let mut buffer = Vec::new();
     run(&archive, Some("password"), &mut buffer).expect("correct password");
     let mut reader = Cursor::new(buffer);
     wire::read_magic(&mut reader).expect("stream magic");
-    assert_eq!(
+    assert!(matches!(
         wire::read_record(&mut reader).expect("member"),
-        Record::File(".gitignore".to_owned(), 18)
-    );
+        Record::File(name, 18, _) if name == ".gitignore"
+    ));
     let mut body = Vec::new();
     std::io::Read::read_to_end(&mut wire::FileBody::new(&mut reader, 18), &mut body)
         .expect("member contents");
@@ -198,7 +217,10 @@ fn run_handles_unicode_member_names() {
     let mut names = Vec::new();
     loop {
         match wire::read_record(&mut reader).expect("member record") {
-            Record::File(name, size) => {
+            Record::File(name, size, metadata) => {
+                // RAR 5 stores 2019-12-09 16:34:52.826150193 UTC exactly.
+                let filetime = (1_575_909_292 + 11_644_473_600) * 10_000_000 + 8_261_501;
+                assert_eq!(metadata.modified, Some(wire::WireTime::FileTime(filetime)));
                 names.push(name);
                 std::io::copy(
                     &mut wire::FileBody::new(&mut reader, size),
@@ -206,7 +228,7 @@ fn run_handles_unicode_member_names() {
                 )
                 .expect("member contents");
             }
-            Record::Directory(name) => names.push(name),
+            Record::Directory(name, _) => names.push(name),
             Record::End => break,
             Record::Error(error) => panic!("unexpected error: {error}"),
         }
@@ -231,28 +253,21 @@ fn unrar_decode_error_mapping() {
         when: When::Process,
     };
 
-    assert_eq!(
-        unrar_decode_error(make_err(Code::MissingPassword), false),
-        "A password is required to extract this archive."
-    );
-    assert_eq!(
-        unrar_decode_error(make_err(Code::BadPassword), true),
-        MAYBE_BAD_PASSWORD
-    );
-    assert_eq!(
-        unrar_decode_error(make_err(Code::BadData), true),
-        MAYBE_BAD_PASSWORD
-    );
-    assert_eq!(
-        unrar_decode_error(make_err(Code::BadData), false),
-        INVALID_ARCHIVE
-    );
-    assert_eq!(
-        unrar_decode_error(make_err(Code::BadArchive), false),
-        INVALID_ARCHIVE
-    );
-    assert_eq!(
-        unrar_decode_error(make_err(Code::UnknownFormat), false),
-        INVALID_ARCHIVE
-    );
+    let required = Failure::new(FailureKind::PasswordRequired, PASSWORD_REQUIRED);
+    let incorrect = Failure::new(FailureKind::IncorrectPassword, MAYBE_BAD_PASSWORD);
+    let invalid = Failure::from(INVALID_ARCHIVE);
+    for (code, password_supplied, expected) in [
+        (Code::MissingPassword, false, &required),
+        (Code::BadPassword, true, &incorrect),
+        (Code::BadData, true, &incorrect),
+        (Code::BadData, false, &invalid),
+        (Code::BadArchive, false, &invalid),
+        (Code::UnknownFormat, false, &invalid),
+    ] {
+        assert_eq!(
+            &unrar_decode_error(make_err(code), password_supplied),
+            expected,
+            "{code:?}"
+        );
+    }
 }

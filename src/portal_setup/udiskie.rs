@@ -103,8 +103,13 @@ enum RestartMode {
 }
 
 pub(crate) fn install() -> Result<String, String> {
-    let executable = crate::services::installed_executable()
-        .map_err(|error| format!("Could not locate the Strata executable: {error}"))?;
+    let executable = crate::services::installed_executable().map_err(|error| {
+        rust_i18n::t!(
+            "Could not locate the Strata executable: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
     let context = SetupContext::from_environment()?;
     let config = install_at(&context, &executable)?;
     let restart_warning = restart_udiskie(RestartMode::EnsureRunning);
@@ -125,8 +130,13 @@ pub(crate) fn uninstall() -> Result<String, String> {
 }
 
 pub(crate) fn status() -> Result<UdiskieStatus, String> {
-    let executable = crate::services::installed_executable()
-        .map_err(|error| format!("Could not locate the Strata executable: {error}"))?;
+    let executable = crate::services::installed_executable().map_err(|error| {
+        rust_i18n::t!(
+            "Could not locate the Strata executable: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
     status_at(
         &SetupContext::from_environment()?,
         &executable,
@@ -137,7 +147,7 @@ pub(crate) fn status() -> Result<UdiskieStatus, String> {
 
 fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, String> {
     let executable = secure_executable(executable)?;
-    let executable = utf8_path(&executable)?;
+    let executable = utf8_path(&executable).map_err(|error| crate::i18n::tr(&error))?;
     let hook = managed_event_hook(Path::new(&executable));
 
     let yml = config_yml(context);
@@ -155,7 +165,9 @@ fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, Stri
         .is_some_and(|state| state.source_format == SourceFormat::Json)
         && original_json.is_some()
     {
-        return Err("Refusing to overwrite a JSON configuration created after installation".into());
+        return Err(crate::i18n::tr(
+            "Refusing to overwrite a JSON configuration created after installation",
+        ));
     }
 
     let (source_format, original, yml_existed, parse_as_json) = if existing_state.is_some() {
@@ -184,14 +196,17 @@ fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, Stri
         (SourceFormat::Missing, Vec::new(), false, false)
     };
 
-    let document =
-        if parse_as_json {
-            parse_json(&original)?
-        } else {
-            parse_yaml(std::str::from_utf8(&original).map_err(|_| {
-                format!("udiskie configuration {} is not valid UTF-8", yml.display())
-            })?)?
-        };
+    let document = if parse_as_json {
+        parse_json(&original)?
+    } else {
+        parse_yaml(std::str::from_utf8(&original).map_err(|_| {
+            rust_i18n::t!(
+                "udiskie configuration %{path} is not valid UTF-8",
+                path = yml.display()
+            )
+            .into_owned()
+        })?)?
+    };
     let mut root = into_mapping(document)?;
     let (previous_event_hook, previous_password_prompt) = match &existing_state {
         Some(state) => (
@@ -265,7 +280,12 @@ fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, Stri
             (&state_path, &original_state),
         ] {
             if let Err(rollback) = restore_snapshot(path, snapshot) {
-                return Err(format!("{error}; rollback failed: {rollback}"));
+                return Err(rust_i18n::t!(
+                    "%{error}; rollback failed: %{rollback}",
+                    error = error,
+                    rollback = rollback
+                )
+                .into_owned());
             }
         }
         return Err(error);
@@ -292,16 +312,20 @@ fn uninstall_at(context: &SetupContext) -> Result<(), String> {
             ensure_udiskie_target(&json)?;
             ensure_udiskie_target(&yml)?;
             if json.exists() {
-                return Err(
-                    "Refusing to overwrite a JSON configuration created after installation".into(),
-                );
+                return Err(crate::i18n::tr(
+                    "Refusing to overwrite a JSON configuration created after installation",
+                ));
             }
             let backup = state_directory.join(JSON_BACKUP);
             let (bytes, mode) = if yml.exists() {
                 let mut root = into_mapping(parse_yaml(&read_utf8(&yml)?)?)?;
                 restore_managed(&mut root, &state);
                 let bytes = serde_json::to_vec_pretty(&root).map_err(|error| {
-                    format!("Could not restore udiskie JSON configuration: {error}")
+                    rust_i18n::t!(
+                        "Could not restore udiskie JSON configuration: %{error}",
+                        error = error
+                    )
+                    .into_owned()
                 })?;
                 (bytes, file_mode(&yml))
             } else {
@@ -401,9 +425,7 @@ fn overlay_managed(root: &mut Mapping, hook: Vec<String>) -> Result<bool, String
     if let Some(existing) = root.get("program_options")
         && !existing.is_mapping()
     {
-        return Err(
-            "Refusing to change udiskie configuration: program_options must be a mapping".into(),
-        );
+        return Err(program_options_error());
     }
     if !root.contains_key("program_options") {
         root.insert("program_options".into(), Value::Mapping(Mapping::new()));
@@ -411,9 +433,7 @@ fn overlay_managed(root: &mut Mapping, hook: Vec<String>) -> Result<bool, String
     let options = root
         .get_mut("program_options")
         .and_then(Value::as_mapping_mut)
-        .ok_or_else(|| {
-            "Refusing to change udiskie configuration: program_options must be a mapping".to_owned()
-        })?;
+        .ok_or_else(program_options_error)?;
     options.insert(
         "event_hook".into(),
         Value::Sequence(hook.into_iter().map(Value::String).collect()),
@@ -423,9 +443,7 @@ fn overlay_managed(root: &mut Mapping, hook: Vec<String>) -> Result<bool, String
     if let Some(existing) = root.get("device_config")
         && !matches!(existing, Value::Sequence(_))
     {
-        return Err(
-            "Refusing to change udiskie configuration: device_config must be a sequence".into(),
-        );
+        return Err(device_config_error());
     }
     if !root.contains_key("device_config") {
         root.insert("device_config".into(), Value::Sequence(Vec::new()));
@@ -433,10 +451,16 @@ fn overlay_managed(root: &mut Mapping, hook: Vec<String>) -> Result<bool, String
     let devices = root
         .get_mut("device_config")
         .and_then(Value::as_sequence_mut)
-        .ok_or_else(|| {
-            "Refusing to change udiskie configuration: device_config must be a sequence".to_owned()
-        })?;
+        .ok_or_else(device_config_error)?;
     Ok(ensure_luks_rule(devices))
+}
+
+fn program_options_error() -> String {
+    crate::i18n::tr("Refusing to change udiskie configuration: program_options must be a mapping")
+}
+
+fn device_config_error() -> String {
+    crate::i18n::tr("Refusing to change udiskie configuration: device_config must be a sequence")
 }
 
 fn ensure_luks_rule(devices: &mut Vec<Value>) -> bool {
@@ -503,12 +527,7 @@ fn capture_previous(root: &Mapping) -> Result<(Option<HookValue>, Option<HookVal
     let options = match root.get("program_options") {
         None => return Ok((None, None)),
         Some(value) if value.is_mapping() => value.as_mapping(),
-        Some(_) => {
-            return Err(
-                "Refusing to change udiskie configuration: program_options must be a mapping"
-                    .into(),
-            );
-        }
+        Some(_) => return Err(program_options_error()),
     };
     let Some(options) = options else {
         return Ok((None, None));
@@ -534,17 +553,21 @@ fn hook_from_value(value: &Value, name: &str) -> Result<HookValue, String> {
             let mut list = Vec::with_capacity(items.len());
             for item in items {
                 let Some(text) = item.as_str() else {
-                    return Err(format!(
-                        "Refusing to change udiskie configuration: {name} list entries must be strings"
-                    ));
+                    return Err(rust_i18n::t!(
+                        "Refusing to change udiskie configuration: %{key} list entries must be strings",
+                        key = name
+                    )
+                    .into_owned());
                 };
                 list.push(text.to_owned());
             }
             Ok(HookValue::List(list))
         }
-        _ => Err(format!(
-            "Refusing to change udiskie configuration: {name} must be a boolean, string, or list"
-        )),
+        _ => Err(rust_i18n::t!(
+            "Refusing to change udiskie configuration: %{key} must be a boolean, string, or list",
+            key = name
+        )
+        .into_owned()),
     }
 }
 
@@ -620,7 +643,9 @@ fn into_mapping(value: Value) -> Result<Mapping, String> {
     match value {
         Value::Mapping(mapping) => Ok(mapping),
         Value::Null => Ok(Mapping::new()),
-        _ => Err("Refusing to change udiskie configuration: the document must be a mapping".into()),
+        _ => Err(crate::i18n::tr(
+            "Refusing to change udiskie configuration: the document must be a mapping",
+        )),
     }
 }
 
@@ -628,20 +653,40 @@ fn parse_yaml(text: &str) -> Result<Value, String> {
     if text.trim().is_empty() {
         return Ok(Value::Mapping(Mapping::new()));
     }
-    serde_norway::from_str(text)
-        .map_err(|error| format!("Could not parse udiskie configuration: {error}"))
+    serde_norway::from_str(text).map_err(|error| {
+        rust_i18n::t!(
+            "Could not parse udiskie configuration: %{error}",
+            error = error
+        )
+        .into_owned()
+    })
 }
 
 fn parse_json(bytes: &[u8]) -> Result<Value, String> {
-    let json: serde_json::Value = serde_json::from_slice(bytes)
-        .map_err(|error| format!("Could not parse udiskie JSON configuration: {error}"))?;
-    serde_norway::to_value(json)
-        .map_err(|error| format!("Could not convert udiskie JSON configuration: {error}"))
+    let json: serde_json::Value = serde_json::from_slice(bytes).map_err(|error| {
+        rust_i18n::t!(
+            "Could not parse udiskie JSON configuration: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
+    serde_norway::to_value(json).map_err(|error| {
+        rust_i18n::t!(
+            "Could not convert udiskie JSON configuration: %{error}",
+            error = error
+        )
+        .into_owned()
+    })
 }
 
 fn emit_yaml(root: &Mapping) -> Result<String, String> {
-    serde_norway::to_string(root)
-        .map_err(|error| format!("Could not write udiskie configuration: {error}"))
+    serde_norway::to_string(root).map_err(|error| {
+        rust_i18n::t!(
+            "Could not write udiskie configuration: %{error}",
+            error = error
+        )
+        .into_owned()
+    })
 }
 
 fn emit_managed(root: &Mapping) -> Result<String, String> {
@@ -651,13 +696,15 @@ fn emit_managed(root: &Mapping) -> Result<String, String> {
 fn validate_managed(path: &Path, executable: &Path) -> Result<(), String> {
     let contents = read_utf8(path)?;
     if !contents.starts_with(MANAGED_HEADER) {
-        return Err("The written udiskie configuration is missing the managed header".into());
+        return Err(crate::i18n::tr(
+            "The written udiskie configuration is missing the managed header",
+        ));
     }
     let root = into_mapping(parse_yaml(&contents)?)?;
     if !is_configured(&root, executable) {
-        return Err(
-            "The written udiskie configuration is missing the managed unlock settings".into(),
-        );
+        return Err(crate::i18n::tr(
+            "The written udiskie configuration is missing the managed unlock settings",
+        ));
     }
     Ok(())
 }
@@ -681,10 +728,11 @@ fn restore_snapshot(path: &Path, snapshot: &Option<(Vec<u8>, u32)>) -> Result<()
 fn ensure_udiskie_target(path: &Path) -> Result<(), String> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.is_file() => Ok(()),
-        Ok(_) => Err(format!(
-            "Refusing to replace non-regular udiskie configuration {}",
-            path.display()
-        )),
+        Ok(_) => Err(rust_i18n::t!(
+            "Refusing to replace non-regular udiskie configuration %{path}",
+            path = path.display()
+        )
+        .into_owned()),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(path_error("inspect", path, error)),
     }
@@ -705,8 +753,13 @@ fn state_directory(context: &SetupContext) -> PathBuf {
 fn write_state(directory: &Path, state: &UdiskieInstallState) -> Result<(), String> {
     fs::create_dir_all(directory).map_err(|error| path_error("create", directory, error))?;
     let path = directory.join(STATE_FILE);
-    let contents = toml::to_string(state)
-        .map_err(|error| format!("Could not serialize udiskie installation state: {error}"))?;
+    let contents = toml::to_string(state).map_err(|error| {
+        rust_i18n::t!(
+            "Could not serialize udiskie installation state: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
     crate::storage::atomic_write(&path, contents.as_bytes())
         .map_err(|error| path_error("write", &path, error))
 }
@@ -718,7 +771,13 @@ fn read_state(directory: &Path) -> Result<Option<UdiskieInstallState>, String> {
     }
     let contents = read_utf8(&path)?;
     toml::from_str(&contents)
-        .map_err(|error| format!("Could not read udiskie installation state: {error}"))
+        .map_err(|error| {
+            rust_i18n::t!(
+                "Could not read udiskie installation state: %{error}",
+                error = error
+            )
+            .into_owned()
+        })
         .map(Some)
 }
 

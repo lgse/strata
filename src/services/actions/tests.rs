@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    cell::{Cell, RefCell},
+    cell::Cell,
     ffi::OsString,
     path::{Path, PathBuf},
     rc::Rc,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
 };
+
+use futures_lite::future::block_on;
 
 use crate::model::{ActionDefinition, ActionInput, MenuPlacement};
 
@@ -113,82 +119,167 @@ fn numbered_actions_follow_the_menu_and_stop_at_ten() {
     );
 }
 
+#[test]
+fn listed_actions_keep_their_place_and_run_only_where_they_apply() {
+    let mut unavailable = (*handle("broken", "Broken", true, MenuPlacement::Top)).clone();
+    unavailable.availability = ActionAvailability::Unavailable {
+        reason: "missing".to_owned(),
+    };
+    let catalog = ActionCatalog::new(
+        vec![
+            handle("off", "Off", false, MenuPlacement::Top),
+            Rc::new(unavailable),
+            handle("zebra", "Zebra", true, MenuPlacement::Submenu),
+        ],
+        Vec::new(),
+    );
+    let images = [ActionInput::file("a.png", Some("image/png"))];
+    let listed = |index| {
+        catalog
+            .listed(index, &images)
+            .map(|action| action.id().to_owned())
+    };
+    assert_eq!(listed(0), None, "disabled");
+    assert_eq!(listed(1), None, "unavailable");
+    assert_eq!(
+        listed(2).as_deref(),
+        Some("zebra"),
+        "the third listed, whatever its name"
+    );
+    assert_eq!(listed(3), None, "an empty slot");
+    assert_eq!(catalog.listed(2, &[ActionInput::file("a.txt", None)]), None);
+}
+
 struct FakeStore {
-    catalog: RefCell<ActionCatalog>,
-    writes: Cell<usize>,
-    deletions: Cell<usize>,
-    imports: Cell<usize>,
-    exports: Cell<usize>,
-    fail_write: Cell<bool>,
+    stored: Mutex<StoredActions>,
+    writes: AtomicUsize,
+    deletions: AtomicUsize,
+    imports: AtomicUsize,
+    exports: AtomicUsize,
+    fail_write: AtomicBool,
+    stalled: Mutex<Option<crate::test_support::Gate>>,
 }
 
 impl FakeStore {
-    fn new(catalog: ActionCatalog) -> Rc<Self> {
-        Rc::new(Self {
-            catalog: RefCell::new(catalog),
-            writes: Cell::new(0),
-            deletions: Cell::new(0),
-            imports: Cell::new(0),
-            exports: Cell::new(0),
-            fail_write: Cell::new(false),
+    fn new(actions: Vec<Rc<ActionHandle>>) -> Arc<Self> {
+        Arc::new(Self {
+            stored: Mutex::new(StoredActions {
+                actions: actions.iter().map(|action| (**action).clone()).collect(),
+                failures: Vec::new(),
+            }),
+            writes: AtomicUsize::new(0),
+            deletions: AtomicUsize::new(0),
+            imports: AtomicUsize::new(0),
+            exports: AtomicUsize::new(0),
+            fail_write: AtomicBool::new(false),
+            stalled: Mutex::new(None),
         })
     }
 
+    fn stall(&self) -> crate::test_support::Gate {
+        let gate = crate::test_support::Gate::default();
+        self.stalled
+            .lock()
+            .expect("fake store")
+            .replace(gate.clone());
+        gate
+    }
+
+    fn reach_another_mount(&self) {
+        let gate = self.stalled.lock().expect("fake store").clone();
+        if let Some(gate) = gate {
+            gate.racer()();
+        }
+    }
+
     fn set_actions(&self, actions: Vec<Rc<ActionHandle>>) {
-        let failures = self.catalog.borrow().failures().to_vec();
-        self.catalog.replace(ActionCatalog::new(actions, failures));
+        self.edit(|stored| {
+            stored.actions = actions.iter().map(|action| (**action).clone()).collect();
+        });
+    }
+
+    fn edit(&self, edit: impl FnOnce(&mut StoredActions)) {
+        edit(&mut self.stored.lock().expect("fake store"));
     }
 }
 
 impl ActionStore for FakeStore {
-    fn load(&self) -> ActionCatalog {
-        self.catalog.borrow().clone()
+    fn load(&self) -> StoredActions {
+        self.stored.lock().expect("fake store").clone()
+    }
+
+    fn locate(&self, stored: StoredActions) -> StoredActions {
+        self.reach_another_mount();
+        stored
+    }
+
+    fn definition(&self, id: &str) -> Result<ActionDefinition, ActionStoreError> {
+        self.load()
+            .get(id)
+            .map(|action| action.definition.clone())
+            .ok_or_else(|| ActionStoreError::NotFound(id.to_owned()))
+    }
+
+    fn read(&self, id: &str) -> Result<ActionWriteRequest, ActionStoreError> {
+        Ok(ActionWriteRequest {
+            definition: self.definition(id)?,
+            script: None,
+        })
     }
 
     fn create(&self, request: &ActionWriteRequest) -> Result<(), ActionStoreError> {
-        if self.catalog.borrow().get(&request.definition.id).is_some() {
-            return Err(ActionStoreError::AlreadyExists(
-                request.definition.id.clone(),
-            ));
+        let id = &request.definition.id;
+        if self.load().actions.iter().any(|action| action.id() == id) {
+            return Err(ActionStoreError::AlreadyExists(id.clone()));
         }
         self.write(request)
     }
 
     fn write(&self, request: &ActionWriteRequest) -> Result<(), ActionStoreError> {
-        self.writes.set(self.writes.get() + 1);
-        if self.fail_write.get() {
+        self.writes.fetch_add(1, Ordering::SeqCst);
+        if self.fail_write.load(Ordering::SeqCst) {
             return Err(ActionStoreError::Io("write refused".to_owned()));
         }
-        let mut actions = self.catalog.borrow().actions().to_vec();
-        actions.retain(|action| action.id() != request.definition.id);
-        actions.push(handle_from(&request.definition));
-        self.set_actions(actions);
+        self.edit(|stored| {
+            stored
+                .actions
+                .retain(|action| action.id() != request.definition.id);
+            stored
+                .actions
+                .push((*handle_from(&request.definition)).clone());
+        });
         Ok(())
     }
 
     fn delete(&self, id: &str) -> Result<(), ActionStoreError> {
-        self.deletions.set(self.deletions.get() + 1);
-        let mut actions = self.catalog.borrow().actions().to_vec();
-        actions.retain(|action| action.id() != id);
-        self.set_actions(actions);
+        self.deletions.fetch_add(1, Ordering::SeqCst);
+        self.edit(|stored| stored.actions.retain(|action| action.id() != id));
         Ok(())
     }
 
-    fn read_script(&self, _id: &str) -> Result<Option<ActionScript>, ActionStoreError> {
-        Ok(None)
+    fn read_import(&self, _source: &Path) -> Result<ActionWriteRequest, ActionStoreError> {
+        self.reach_another_mount();
+        Ok(ActionWriteRequest {
+            definition: definition("imported", "Imported", false, "top"),
+            script: None,
+        })
     }
 
-    fn import(&self, _source: &Path) -> Result<String, ActionStoreError> {
-        self.imports.set(self.imports.get() + 1);
-        let mut actions = self.catalog.borrow().actions().to_vec();
-        actions.push(handle("imported", "Imported", false, MenuPlacement::Top));
-        self.set_actions(actions);
-        Ok("imported".to_owned())
+    fn import(&self, request: ActionWriteRequest) -> Result<String, ActionStoreError> {
+        self.imports.fetch_add(1, Ordering::SeqCst);
+        let id = request.definition.id.clone();
+        self.create(&request)?;
+        Ok(id)
     }
 
-    fn export(&self, id: &str, destination: &Path) -> Result<PathBuf, ActionStoreError> {
-        self.exports.set(self.exports.get() + 1);
-        Ok(destination.join(id))
+    fn export(
+        &self,
+        request: &ActionWriteRequest,
+        destination: &Path,
+    ) -> Result<PathBuf, ActionStoreError> {
+        self.reach_another_mount();
+        self.exports.fetch_add(1, Ordering::SeqCst);
+        Ok(destination.join(&request.definition.id))
     }
 }
 
@@ -199,14 +290,19 @@ fn write_request(id: &str) -> ActionWriteRequest {
     }
 }
 
+fn ids(catalog: &ActionCatalog) -> Vec<&str> {
+    catalog.actions().iter().map(|action| action.id()).collect()
+}
+
 #[test]
 fn registry_caches_until_something_changes() {
-    let store = FakeStore::new(ActionCatalog::new(
-        vec![handle("a1", "One", true, MenuPlacement::Top)],
-        Vec::new(),
-    ));
+    let store = FakeStore::new(vec![handle("a1", "One", true, MenuPlacement::Top)]);
     let registry = ActionRegistry::new(store.clone());
-    let first = registry.catalog();
+    assert!(
+        registry.catalog().actions().is_empty(),
+        "nothing is read until a reload runs on the settings writer"
+    );
+    let first = block_on(registry.reload());
     assert!(
         Rc::ptr_eq(&first, &registry.catalog()),
         "the catalog stays cached"
@@ -215,80 +311,130 @@ fn registry_caches_until_something_changes() {
     let notifications = Rc::new(Cell::new(0));
     let counter = notifications.clone();
     let _observer = registry.observe(Rc::new(move || counter.set(counter.get() + 1)));
-    assert!(Rc::ptr_eq(&first, &registry.reload()));
+    assert!(Rc::ptr_eq(&first, &block_on(registry.reload())));
     assert_eq!(notifications.get(), 0);
 
     store.set_actions(vec![handle("a2", "Two", true, MenuPlacement::Top)]);
-    let reloaded = registry.reload();
+    let reloaded = block_on(registry.reload());
     assert_eq!(
         notifications.get(),
         1,
         "a changed catalog notifies observers"
     );
-    assert_eq!(
-        reloaded
-            .actions()
-            .iter()
-            .map(|action| action.id())
-            .collect::<Vec<_>>(),
-        vec!["a2"]
-    );
+    assert_eq!(ids(&reloaded), vec!["a2"]);
+}
+
+#[test]
+fn an_older_answer_never_replaces_a_newer_catalog() {
+    let store = FakeStore::new(vec![handle("old", "Old", true, MenuPlacement::Top)]);
+    let registry = ActionRegistry::new(store.clone());
+    let older = registry.reload();
+    let changed = store.clone();
+    drop(crate::storage::writer::run(move || {
+        changed.set_actions(vec![handle("new", "New", true, MenuPlacement::Top)]);
+    }));
+    let newer = registry.reload();
+
+    assert_eq!(ids(&block_on(newer)), vec!["new"]);
+    assert_eq!(ids(&block_on(older)), vec!["new"]);
 }
 
 #[test]
 fn registry_delegates_edits_and_reloads() {
-    let store = FakeStore::new(ActionCatalog::default());
+    let store = FakeStore::new(Vec::new());
     let registry = ActionRegistry::new(store.clone());
-    registry
-        .write(&write_request("a1"))
-        .expect("write succeeds");
-    assert_eq!(store.writes.get(), 1);
+    block_on(registry.write(write_request("a1"))).expect("write succeeds");
+    assert_eq!(store.writes.load(Ordering::SeqCst), 1);
     assert_eq!(
         registry.catalog().get("a1").map(|action| action.name()),
         Some("Action"),
         "a write refreshes the catalog with the stored definition"
     );
 
-    registry.delete("a1").expect("delete succeeds");
-    assert_eq!(store.deletions.get(), 1);
+    assert_eq!(
+        block_on(registry.export("a1".to_owned(), PathBuf::from("/tmp/destination")))
+            .expect("export succeeds"),
+        PathBuf::from("/tmp/destination/a1")
+    );
+    assert_eq!(store.exports.load(Ordering::SeqCst), 1);
+
+    block_on(registry.delete("a1".to_owned())).expect("delete succeeds");
+    assert_eq!(store.deletions.load(Ordering::SeqCst), 1);
     assert!(
         registry.catalog().get("a1").is_none(),
         "a delete refreshes the catalog"
     );
     assert_eq!(
-        registry
-            .import(Path::new("/tmp/source"))
-            .expect("import succeeds"),
+        block_on(registry.import(PathBuf::from("/tmp/source"))).expect("import succeeds"),
         "imported"
     );
-    assert_eq!(store.imports.get(), 1);
+    assert_eq!(store.imports.load(Ordering::SeqCst), 1);
     assert!(registry.catalog().get("imported").is_some());
-    assert_eq!(
-        registry
-            .export("a1", Path::new("/tmp/destination"))
-            .expect("export succeeds"),
-        PathBuf::from("/tmp/destination/a1")
-    );
-    assert_eq!(store.exports.get(), 1);
 }
 
 #[test]
 fn a_failed_write_leaves_the_catalog_untouched() {
-    let store = FakeStore::new(ActionCatalog::new(
-        vec![handle("a1", "One", true, MenuPlacement::Top)],
-        Vec::new(),
-    ));
+    let store = FakeStore::new(vec![handle("a1", "One", true, MenuPlacement::Top)]);
     let registry = ActionRegistry::new(store.clone());
-    store.fail_write.set(true);
-    assert!(registry.write(&write_request("a2")).is_err());
+    block_on(registry.reload());
+    store.fail_write.store(true, Ordering::SeqCst);
+    assert!(block_on(registry.write(write_request("a2"))).is_err());
     assert_eq!(
-        registry
-            .catalog()
-            .actions()
-            .iter()
-            .map(|action| action.id())
-            .collect::<Vec<_>>(),
+        ids(&registry.catalog()),
         vec!["a1"],
         "a refused write must not appear in the catalog"
+    );
+}
+
+fn drive_until<F: Future>(future: &mut std::pin::Pin<Box<F>>, reached: &crate::test_support::Gate) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !reached.reached() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the stalled call starts"
+        );
+        assert!(
+            block_on(futures_lite::future::poll_once(future.as_mut())).is_none(),
+            "answered before reaching the other mount"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+}
+
+fn writer_answers() -> bool {
+    let (answered, answer) = std::sync::mpsc::channel();
+    drop(crate::storage::writer::run(move || answered.send(()).ok()));
+    answer
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .is_ok()
+}
+
+#[test]
+fn programs_and_picked_folders_never_hold_up_the_settings_writer() {
+    let store = FakeStore::new(vec![handle("a1", "One", true, MenuPlacement::Top)]);
+    let registry = ActionRegistry::new(store.clone());
+
+    let gate = store.stall();
+    let mut reloaded = Box::pin(registry.reload());
+    drive_until(&mut reloaded, &gate);
+    assert!(writer_answers(), "looking up programs");
+    gate.release();
+    assert_eq!(ids(&block_on(reloaded)), vec!["a1"]);
+
+    let gate = store.stall();
+    let mut imported = Box::pin(registry.import(PathBuf::from("/mnt/stopped/incoming")));
+    drive_until(&mut imported, &gate);
+    assert!(writer_answers(), "reading an imported folder");
+    gate.release();
+    assert_eq!(block_on(imported).expect("imported"), "imported");
+
+    let gate = store.stall();
+    let mut exported = Box::pin(registry.export("a1".to_owned(), PathBuf::from("/mnt/stopped")));
+    drive_until(&mut exported, &gate);
+    assert!(writer_answers(), "writing an exported folder");
+    gate.release();
+    assert_eq!(
+        block_on(exported).expect("exported"),
+        PathBuf::from("/mnt/stopped/a1")
     );
 }

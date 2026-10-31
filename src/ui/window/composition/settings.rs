@@ -1,27 +1,36 @@
 // SPDX-License-Identifier: MIT
 
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    path::PathBuf,
+    rc::Rc,
+};
 
 use gtk::{glib, prelude::*};
 
 use crate::{
-    services::{BuildKind, InstallSource, ManagedInstall, ReleaseMetadata, UpdateMethod},
+    model::Location,
+    services::{
+        BuildKind, InstallRequest, InstallSource, ManagedInstall, ReleaseMetadata, UpdateMethod,
+    },
     ui::{
         blur::BlurBin,
+        browser::WeakBrowserView,
+        keys::{self, bindings::SETTINGS},
         preferences::PreferenceManager,
         settings::{self, InstallGuard, UpdateNoticeHandler},
     },
 };
 
 use super::{
-    super::{SidebarView, bind_update_notice_preferences, sidebar_update_label},
+    super::{SidebarView, bind_update_notice_preferences},
     WindowContent,
 };
 
 #[cfg(test)]
 mod tests;
 
-type AvailableUpdate = Rc<RefCell<Option<(ReleaseMetadata, String, UpdateMethod)>>>;
+type AvailableUpdate = Rc<RefCell<Option<(ReleaseMetadata, InstallRequest, UpdateMethod)>>>;
 
 pub(super) fn install(
     window: &gtk::ApplicationWindow,
@@ -33,9 +42,11 @@ pub(super) fn install(
     let guard = settings::install_guard();
     let notice = bind_update_notice(window, &content.sidebar, &guard);
     settings::register_update_notice(&notice);
-    bind_update_notice_preferences(window, preferences, &notice);
+    bind_update_notice_preferences(&content.overlay, preferences, &notice);
     let launcher = Rc::new(SettingsLauncher {
         layer: RefCell::new(None),
+        focus_restore: RefCell::new(None),
+        browser: content.browser.downgrade(),
         button: content.header.settings.clone(),
         blurred_root: content.blurred_root.clone(),
         overlay: content.overlay.clone(),
@@ -44,26 +55,36 @@ pub(super) fn install(
         guard,
         shortcuts: content.footer.shortcuts.clone(),
     });
-    let clicked_settings = launcher.clone();
-    content
-        .header
-        .settings
-        .connect_clicked(move |_| clicked_settings.show());
+    let clicked_settings = Rc::downgrade(&launcher);
+    content.header.settings.connect_clicked(move |_| {
+        if let Some(launcher) = clicked_settings.upgrade() {
+            launcher.show();
+        }
+    });
     let shortcut = gtk::EventControllerKey::new();
-    shortcut.connect_key_pressed(move |_, key, _, modifiers| {
-        if key != gtk::gdk::Key::comma || !modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-        {
+    let active_root = content.overlay.downgrade();
+    keys::on_press(&shortcut, move |_, press| {
+        if !active_root.upgrade().is_some_and(|root| root.is_mapped()) || !press.is(SETTINGS) {
             return glib::Propagation::Proceed;
         }
         launcher.show();
         glib::Propagation::Stop
     });
-    window.add_controller(shortcut);
+    window.add_controller(shortcut.clone());
+    let controller: gtk::EventController = shortcut.upcast();
+    super::super::keyboard::release_controllers_on_close(
+        window.upcast_ref(),
+        &content.overlay,
+        std::slice::from_ref(&controller),
+    );
+    content.key_controllers.borrow_mut().push(controller);
     notice
 }
 
 struct SettingsLauncher {
     layer: RefCell<Option<gtk::Box>>,
+    focus_restore: RefCell<Option<Rc<Cell<bool>>>>,
+    browser: WeakBrowserView,
     button: gtk::Button,
     blurred_root: BlurBin,
     overlay: gtk::Overlay,
@@ -78,30 +99,51 @@ impl SettingsLauncher {
         if let Some(layer) = self.layer.borrow().clone() {
             return layer;
         }
+        let browser = self.browser.clone();
+        let open_folder: settings::OpenFolder = Rc::new(move |path: PathBuf| {
+            if let Some(browser) = browser.upgrade() {
+                browser.navigate_location(Location::local(path));
+            }
+        });
         let layer = settings::build_layer(
             &self.button,
             &self.blurred_root,
             self.preferences.clone(),
             self.notice.clone(),
             self.guard.clone(),
+            open_folder,
         );
         self.overlay.add_overlay(&layer);
+        self.focus_restore
+            .replace(Some(crate::ui::modal::remember_persistent_modal_focus(
+                layer.upcast_ref(),
+            )));
         self.layer.borrow_mut().replace(layer.clone());
         layer
     }
 
     fn show(&self) {
-        let mut child = self.overlay.first_child();
-        while let Some(widget) = child {
-            child = widget.next_sibling();
-            if widget.is_visible() && widget.has_css_class("app-modal-layer") {
-                return;
-            }
+        if self
+            .overlay
+            .root()
+            .and_downcast::<gtk::Window>()
+            .is_some_and(|window| super::super::visible_modal_layer(&window).is_some())
+        {
+            return;
         }
         self.shortcuts.cancel_chord();
+        // Closing Settings returns focus to the file list, not to the gear or other chrome
+        // that opened it; only a focused filter session gets its field or results back.
+        let filter_had_focus = self
+            .browser
+            .upgrade()
+            .is_some_and(|browser| browser.filter_focus().is_some());
         let layer = self.layer();
         self.blurred_root.set_blurred(true);
         layer.set_visible(true);
+        if let Some(restore_origin) = self.focus_restore.borrow().as_ref() {
+            restore_origin.set(filter_had_focus);
+        }
         layer.grab_focus();
         self.button.add_css_class("active");
         crate::ui::browser::animate_in(&layer);
@@ -118,20 +160,13 @@ fn bind_update_notice(
     let parent = window.upcast_ref::<gtk::Window>().downgrade();
     let guard = guard.clone();
     sidebar.update_notice.connect_clicked(move |_| {
-        let Some((release, download_url, update_method)) = available_for_click.borrow().clone()
-        else {
+        let Some((release, install, update_method)) = available_for_click.borrow().clone() else {
             return;
         };
         let Some(parent) = parent.upgrade() else {
             return;
         };
-        settings::show_update_dialog(
-            &parent,
-            &release,
-            download_url,
-            guard.clone(),
-            update_method,
-        );
+        settings::show_update_dialog(&parent, &release, install, guard.clone(), update_method);
     });
     notice_handler(sidebar, available)
 }
@@ -139,20 +174,22 @@ fn bind_update_notice(
 fn notice_handler(sidebar: &SidebarView, available: AvailableUpdate) -> UpdateNoticeHandler {
     let button = sidebar.update_notice.clone();
     let label = sidebar.update_label.clone();
+    let version = sidebar.update_version.clone();
     let area = sidebar.update_area.clone();
     Rc::new(move |release| {
-        if let Some((release, download_url, update_method)) = release {
+        if let Some((release, install, update_method)) = release {
             crate::ui::accessibility::set_description(
                 &button,
                 Some(&update_tooltip(&release, update_method)),
             );
-            label.set_text(&sidebar_update_label(&release));
+            label.set_text(&crate::i18n::tr("Update available"));
+            version.set_text(&format!("v{}", release.version));
             if release.kind == BuildKind::Stable {
                 button.remove_css_class("preview");
             } else {
                 button.add_css_class("preview");
             }
-            *available.borrow_mut() = Some((release, download_url, update_method));
+            *available.borrow_mut() = Some((release, install, update_method));
             area.set_visible(true);
         } else {
             available.borrow_mut().take();
@@ -163,18 +200,27 @@ fn notice_handler(sidebar: &SidebarView, available: AvailableUpdate) -> UpdateNo
 
 fn update_tooltip(release: &ReleaseMetadata, method: UpdateMethod) -> String {
     match method {
-        UpdateMethod::InPlace => format!("Install Strata v{}", release.version),
-        UpdateMethod::Aur => format!(
-            "Strata v{} is available through {}",
-            release.version,
-            InstallSource::detect()
-                .managed()
-                .map(ManagedInstall::manager)
-                .unwrap_or("your package manager")
-        ),
-        UpdateMethod::Omarchy => {
-            format!("Strata v{} is available through Omarchy", release.version)
+        UpdateMethod::InPlace => {
+            rust_i18n::t!("Install Strata v%{value1}", value1 = release.version).into_owned()
         }
-        UpdateMethod::Pacman => format!("Strata v{} is available through pacman", release.version),
+        UpdateMethod::Aur => rust_i18n::t!(
+            "Strata v%{value1} is available through %{value2}",
+            value1 = release.version,
+            value2 = InstallSource::detect().managed().map_or_else(
+                || crate::i18n::tr("your package manager"),
+                ManagedInstall::manager
+            )
+        )
+        .into_owned(),
+        UpdateMethod::Omarchy => rust_i18n::t!(
+            "Strata v%{value1} is available through Omarchy",
+            value1 = release.version
+        )
+        .into_owned(),
+        UpdateMethod::Pacman => rust_i18n::t!(
+            "Strata v%{value1} is available through pacman",
+            value1 = release.version
+        )
+        .into_owned(),
     }
 }

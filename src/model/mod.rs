@@ -2,13 +2,16 @@
 
 use std::{
     cmp::Ordering,
-    ffi::OsString,
-    path::{Path, PathBuf},
+    ffi::{OsStr, OsString},
+    os::unix::ffi::OsStrExt,
+    path::{Component, Path, PathBuf},
+    sync::Arc,
 };
 
 use gio::prelude::*;
 
 pub mod action;
+pub mod hidden_names;
 
 pub use action::{
     ACTION_SCHEMA_VERSION, ActionConditions, ActionDefinition, ActionError, ActionInput,
@@ -20,8 +23,8 @@ pub use action::{
 /// A browsable destination. Native paths remain byte-safe and URI locations remain explicit.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 enum LocationKind {
-    Native(PathBuf),
-    Uri(String),
+    Native(Arc<Path>),
+    Uri(Arc<str>),
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -35,18 +38,150 @@ pub(crate) fn uri_contains_credentials(uri: &gio::glib::Uri) -> bool {
         || uri.user().is_some_and(|user| user.contains([':', ';']))
 }
 
+pub(crate) fn transfer_file_name(file: &gio::File) -> Option<OsString> {
+    let basename = file.basename()?.into_os_string();
+    if !file
+        .parent()
+        .is_some_and(|parent| parent.uri().as_str() == "trash:///")
+    {
+        return Some(basename);
+    }
+    let bytes = basename.as_bytes();
+    // GVfs prefixes escaped home names with `; external names encode a file URI's path.
+    if bytes.starts_with(b"`\\") || bytes.starts_with(b"``") {
+        return Some(OsStr::from_bytes(&bytes[1..]).to_os_string());
+    }
+    if !bytes.starts_with(b"\\") {
+        return Some(basename);
+    }
+    let mut leaf = Vec::new();
+    let mut escaped = false;
+    for &byte in bytes {
+        if escaped {
+            leaf.push(byte);
+            escaped = false;
+        } else if byte == b'`' {
+            escaped = true;
+        } else if byte == b'\\' {
+            leaf.clear();
+        } else {
+            leaf.push(byte);
+        }
+    }
+    if escaped {
+        return None;
+    }
+    let leaf = gio::glib::Uri::unescape_bytes(std::str::from_utf8(&leaf).ok()?, Some("/")).ok()?;
+    let bytes = leaf.as_ref();
+    if bytes.is_empty() || bytes.contains(&0) || bytes == b"." || bytes == b".." {
+        return None;
+    }
+    Some(OsStr::from_bytes(bytes).to_os_string())
+}
+
+/// GIO hands out percent-encoded URIs; keep path, query and fragment encoded so names that are
+/// not valid UTF-8 parse, while userinfo is still decoded for credential detection.
+pub(crate) const GIO_URI_PARSE_FLAGS: gio::glib::UriFlags = gio::glib::UriFlags::HAS_PASSWORD
+    .union(gio::glib::UriFlags::HAS_AUTH_PARAMS)
+    .union(gio::glib::UriFlags::ENCODED_PATH)
+    .union(gio::glib::UriFlags::ENCODED_QUERY)
+    .union(gio::glib::UriFlags::ENCODED_FRAGMENT);
+
+/// Build flags matching `GIO_URI_PARSE_FLAGS`, so already-encoded components are not re-escaped.
+pub(crate) const GIO_URI_BUILD_FLAGS: gio::glib::UriFlags = gio::glib::UriFlags::ENCODED_PATH
+    .union(gio::glib::UriFlags::ENCODED_QUERY)
+    .union(gio::glib::UriFlags::ENCODED_FRAGMENT);
+
+/// Removes user-info (including an SMB domain), query, and fragment from a URI for logs.
+pub fn diagnostic_uri(uri: &str) -> String {
+    parse_display_uri(uri)
+        .map(|uri| {
+            uri.to_string_partial(
+                gio::glib::UriHideFlags::USERINFO
+                    | gio::glib::UriHideFlags::QUERY
+                    | gio::glib::UriHideFlags::FRAGMENT,
+            )
+            .to_string()
+        })
+        .unwrap_or_else(|_| "<invalid-uri>".into())
+}
+
+/// Decoded form when the URI is valid UTF-8, otherwise the percent-encoded form GIO produced.
+/// A path with an encoded slash also stays encoded, because decoding it would turn a name
+/// into a path separator when the displayed text is edited and submitted.
+fn parse_display_uri(uri: &str) -> Result<gio::glib::Uri, gio::glib::Error> {
+    let encoded = gio::glib::Uri::parse(uri, GIO_URI_PARSE_FLAGS);
+    if encoded
+        .as_ref()
+        .is_ok_and(|parsed| path_has_encoded_slash(&parsed.path()))
+    {
+        return encoded;
+    }
+    gio::glib::Uri::parse(
+        uri,
+        gio::glib::UriFlags::HAS_PASSWORD | gio::glib::UriFlags::HAS_AUTH_PARAMS,
+    )
+    .or(encoded)
+}
+
+fn path_has_encoded_slash(path: &str) -> bool {
+    path.as_bytes().windows(3).any(|escape| {
+        escape[0] == b'%' && escape[1] == b'2' && escape[2].eq_ignore_ascii_case(&b'f')
+    })
+}
+
+pub(crate) fn rebase_path(path: &Path, from: &Path, to: &Path) -> Option<PathBuf> {
+    let suffix = path.strip_prefix(from).ok()?;
+    Some(if suffix.as_os_str().is_empty() {
+        to.to_path_buf()
+    } else {
+        to.join(suffix)
+    })
+}
+
+pub(crate) const ADMIN_SCHEME: &str = "admin";
+
+/// Whether GIO can reach GVfs's `admin://` backend in this session.
+pub(crate) fn administrator_access_available() -> bool {
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AVAILABLE.get_or_init(|| {
+        gio::Vfs::default()
+            .supported_uri_schemes()
+            .iter()
+            .any(|scheme| scheme.as_str() == ADMIN_SCHEME)
+    })
+}
+
 fn uri_scheme_eq(uri: &str, scheme: &str) -> bool {
     gio::glib::Uri::parse_scheme(uri).is_some_and(|parsed| parsed.eq_ignore_ascii_case(scheme))
 }
 
+/// Resolves `.` and `..` as text like GIO, without consulting the filesystem;
+/// `..` stops at the root. Callers pass absolute paths.
+pub(crate) fn lexically_normalized(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            other => normalized.push(other),
+        }
+    }
+    normalized
+}
+
 impl Location {
     pub fn local(path: impl Into<PathBuf>) -> Self {
+        let path: PathBuf = path.into();
         Self {
             kind: LocationKind::Native(path.into()),
         }
     }
 
     pub fn uri(uri: impl Into<String>) -> Self {
+        let uri: String = uri.into();
         Self {
             kind: LocationKind::Uri(uri.into()),
         }
@@ -64,6 +199,24 @@ impl Location {
             LocationKind::Native(_) => None,
             LocationKind::Uri(uri) => Some(uri),
         }
+    }
+
+    /// A folder reached through GVfs's polkit-authorized `admin://` backend.
+    pub fn is_administrator(&self) -> bool {
+        self.uri_value()
+            .is_some_and(|uri| uri_scheme_eq(uri, ADMIN_SCHEME))
+    }
+
+    /// The same native folder through `admin://`, which runs every operation as root.
+    pub fn as_administrator(&self) -> Option<Self> {
+        let path = self.native_path().filter(|path| path.is_absolute())?;
+        let uri = gio::glib::filename_to_uri(path, None).ok()?;
+        let rest = uri.strip_prefix("file://")?;
+        Some(Self::uri(format!("{ADMIN_SCHEME}://{rest}")))
+    }
+
+    fn is_administrator_root(&self) -> bool {
+        self.is_administrator() && self.parent().is_none()
     }
 
     /// Directory operations must reject virtual children as well as the root.
@@ -90,9 +243,13 @@ impl Location {
         match &self.kind {
             LocationKind::Native(path) => {
                 let parent = path.parent()?;
-                (parent != path).then(|| Self::local(parent))
+                (parent != path.as_ref()).then(|| Self::local(parent))
             }
-            LocationKind::Uri(uri) if uri == "trash:///" || uri == "network:///" => None,
+            LocationKind::Uri(uri)
+                if uri.as_ref() == "trash:///" || uri.as_ref() == "network:///" =>
+            {
+                None
+            }
             LocationKind::Uri(uri) => {
                 // Walk the URI path. GVfs File::parent() can SIGSEGV on gphoto2
                 // and similar backends when many tests call it concurrently.
@@ -146,10 +303,8 @@ impl Location {
     pub fn file_name(&self) -> Option<OsString> {
         match &self.kind {
             LocationKind::Native(path) => path.file_name().map(OsString::from),
-            LocationKind::Uri(uri) => gio::File::for_uri(uri)
-                .basename()?
-                .file_name()
-                .map(OsString::from),
+            LocationKind::Uri(uri) => transfer_file_name(&gio::File::for_uri(uri))
+                .and_then(|name| Path::new(&name).file_name().map(OsString::from)),
         }
     }
 
@@ -175,28 +330,29 @@ impl Location {
         destination.child(&self.file_name()?)
     }
 
+    /// `to` may be of the other kind, as in a move between a share and a local disk.
     pub fn rebase(&self, from: &Self, to: &Self) -> Option<Self> {
-        match (&self.kind, &from.kind, &to.kind) {
-            (LocationKind::Native(path), LocationKind::Native(from), LocationKind::Native(to)) => {
-                let suffix = path.strip_prefix(from).ok()?;
-                Some(Self::local(if suffix.as_os_str().is_empty() {
-                    to.clone()
-                } else {
-                    to.join(suffix)
-                }))
-            }
-            (LocationKind::Uri(uri), LocationKind::Uri(from), LocationKind::Uri(to)) => {
-                let file = gio::File::for_uri(uri);
-                let from = gio::File::for_uri(from);
-                let to = gio::File::for_uri(to);
-                let relocated = if file.equal(&from) {
-                    to
-                } else {
-                    to.resolve_relative_path(from.relative_path(&file)?)
-                };
-                Some(Self::uri(relocated.uri()))
-            }
-            _ => None,
+        if let (LocationKind::Native(path), LocationKind::Native(from), LocationKind::Native(to)) =
+            (&self.kind, &from.kind, &to.kind)
+        {
+            return rebase_path(path, from, to).map(Self::local);
+        }
+        let (file, from, target) = (self.gio_file(), from.gio_file(), to.gio_file());
+        let relocated = if file.equal(&from) {
+            target
+        } else {
+            target.resolve_relative_path(from.relative_path(&file)?)
+        };
+        match to.kind {
+            LocationKind::Native(_) => relocated.path().map(Self::local),
+            LocationKind::Uri(_) => Some(Self::uri(relocated.uri())),
+        }
+    }
+
+    fn gio_file(&self) -> gio::File {
+        match &self.kind {
+            LocationKind::Native(path) => gio::File::for_path(path),
+            LocationKind::Uri(uri) => gio::File::for_uri(uri),
         }
     }
 
@@ -230,23 +386,11 @@ impl Location {
         }
     }
 
-    /// Returns a debug-only location with URI user-info, query, and fragment removed.
+    /// Returns a location with URI user-info, query, and fragment removed, for logs.
     pub fn diagnostic_path(&self) -> String {
         match &self.kind {
             LocationKind::Native(path) => path.to_string_lossy().into_owned(),
-            LocationKind::Uri(uri) => gio::glib::Uri::parse(
-                uri,
-                gio::glib::UriFlags::HAS_PASSWORD | gio::glib::UriFlags::HAS_AUTH_PARAMS,
-            )
-            .map(|uri| {
-                uri.to_string_partial(
-                    gio::glib::UriHideFlags::USERINFO
-                        | gio::glib::UriHideFlags::QUERY
-                        | gio::glib::UriHideFlags::FRAGMENT,
-                )
-                .to_string()
-            })
-            .unwrap_or_else(|_| "<invalid-uri>".into()),
+            LocationKind::Uri(uri) => diagnostic_uri(uri),
         }
     }
 
@@ -254,19 +398,16 @@ impl Location {
     pub fn display_path(&self) -> String {
         match &self.kind {
             LocationKind::Native(path) => path.to_string_lossy().into_owned(),
-            LocationKind::Uri(uri) => gio::glib::Uri::parse(
-                uri,
-                gio::glib::UriFlags::HAS_PASSWORD | gio::glib::UriFlags::HAS_AUTH_PARAMS,
-            )
-            .map(|uri| {
-                let hidden = if uri_contains_credentials(&uri) {
-                    gio::glib::UriHideFlags::USERINFO
-                } else {
-                    gio::glib::UriHideFlags::empty()
-                };
-                uri.to_string_partial(hidden).to_string()
-            })
-            .unwrap_or_else(|_| "<invalid-uri>".into()),
+            LocationKind::Uri(uri) => parse_display_uri(uri)
+                .map(|uri| {
+                    let hidden = if uri_contains_credentials(&uri) {
+                        gio::glib::UriHideFlags::USERINFO
+                    } else {
+                        gio::glib::UriHideFlags::empty()
+                    };
+                    uri.to_string_partial(hidden).to_string()
+                })
+                .unwrap_or_else(|_| "<invalid-uri>".into()),
         }
     }
 
@@ -288,10 +429,13 @@ impl Location {
 
     pub fn display_name(&self) -> String {
         if self.is_recent_root() {
-            return "Recent".into();
+            return crate::i18n::tr("Recent");
         }
         if self.is_camera_photo_root() {
-            return "Photos".into();
+            return crate::i18n::tr("Photos");
+        }
+        if self.is_administrator_root() {
+            return crate::i18n::tr("Administrator");
         }
         match &self.kind {
             LocationKind::Native(path) => path
@@ -299,7 +443,8 @@ impl Location {
                 .map(|name| name.to_string_lossy().into_owned())
                 .filter(|name| !name.is_empty())
                 .unwrap_or_else(|| path.to_string_lossy().into_owned()),
-            LocationKind::Uri(uri) if uri == "trash:///" => "Trash".into(),
+            LocationKind::Uri(uri) if uri.as_ref() == "trash:///" => crate::i18n::tr("Trash"),
+            LocationKind::Uri(uri) if uri.as_ref() == "network:///" => crate::i18n::tr("Network"),
             LocationKind::Uri(uri) => self
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())
@@ -336,6 +481,15 @@ impl Location {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FolderSort {
+    /// Not remembered per folder (remote, Trash, virtual roots): the column keeps its own sort.
+    Unremembered,
+    /// Remembered per folder but not set: the default sort applies.
+    Default,
+    Saved(SortKey, SortDirection),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SortKey {
     /// Camera-library-local streaming order; never a saved folder default.
     DeviceOrder,
@@ -347,10 +501,49 @@ pub enum SortKey {
     Modified,
 }
 
+impl SortKey {
+    pub(crate) fn from_stored(value: &str) -> Option<Self> {
+        match value {
+            "name" => Some(Self::Name),
+            "size" => Some(Self::Size),
+            "modified" => Some(Self::Modified),
+            "type" => Some(Self::Type),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn stored_name(self) -> Option<&'static str> {
+        match self {
+            Self::Name => Some("name"),
+            Self::Size => Some("size"),
+            Self::Modified => Some("modified"),
+            Self::Type => Some("type"),
+            Self::DeviceOrder | Self::Recency => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SortDirection {
     Ascending,
     Descending,
+}
+
+impl SortDirection {
+    pub(crate) fn from_stored(value: &str) -> Option<Self> {
+        match value {
+            "ascending" => Some(Self::Ascending),
+            "descending" => Some(Self::Descending),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn stored_name(self) -> &'static str {
+        match self {
+            Self::Ascending => "ascending",
+            Self::Descending => "descending",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -359,6 +552,17 @@ pub struct ViewPreferences {
     pub folders_first: bool,
     pub sort_key: SortKey,
     pub sort_direction: SortDirection,
+}
+
+impl ViewPreferences {
+    pub fn sort(&self) -> (SortKey, SortDirection) {
+        (self.sort_key, self.sort_direction)
+    }
+
+    pub fn set_sort(&mut self, (sort_key, sort_direction): (SortKey, SortDirection)) {
+        self.sort_key = sort_key;
+        self.sort_direction = sort_direction;
+    }
 }
 
 impl Default for ViewPreferences {
@@ -400,10 +604,14 @@ pub struct FileEntry {
     pub size: MetadataValue<u64>,
     pub modified_unix_seconds: MetadataValue<i64>,
     pub recent_unix_seconds: MetadataValue<i64>,
+    /// Registry handle for Recent rows; `location` instead identifies the real target.
+    pub recent_uri: Option<String>,
     pub mode: MetadataValue<u32>,
     pub image_dimensions: MetadataValue<(u32, u32)>,
     pub child_count: MetadataValue<u64>,
     pub duration_seconds: MetadataValue<u64>,
+    /// Whether the user may read and enter this native folder; `Unavailable` for other kinds.
+    pub listable: MetadataValue<bool>,
     pub is_hidden: bool,
 }
 
@@ -419,6 +627,15 @@ impl FileEntry {
             self.kind,
             EntryKind::Directory | EntryKind::DirectorySymbolicLink
         )
+    }
+
+    /// A native folder the user can't read or enter, which only `admin://` opens.
+    pub fn is_locked_folder(&self) -> bool {
+        self.is_directory() && self.listable == MetadataValue::Known(false)
+    }
+
+    pub fn is_file(&self) -> bool {
+        matches!(self.kind, EntryKind::File | EntryKind::FileSymbolicLink)
     }
 
     pub fn is_symbolic_link(&self) -> bool {

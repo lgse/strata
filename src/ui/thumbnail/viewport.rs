@@ -20,6 +20,16 @@ struct MetadataTarget {
     details: bool,
 }
 
+impl MetadataTarget {
+    fn resolve(&mut self) -> Option<(Rc<Browser>, FileEntry)> {
+        let browser = self.browser.upgrade()?;
+        let (position, entry) =
+            browser.resolve_entry_at(self.depth, self.position, &self.location)?;
+        self.position = position;
+        Some((browser, entry))
+    }
+}
+
 pub(in crate::ui) fn request_metadata(
     image: &ThumbnailSlot,
     item: &impl IsA<gtk::Widget>,
@@ -51,13 +61,14 @@ pub(super) fn publish_thumbnail_metadata(
     metadata: &crate::sandbox::metadata::MediaMetadata,
 ) {
     let target = METADATA.with(|pending| {
-        let pending = pending.borrow();
-        let target = pending.get(&image_id)?;
+        let mut pending = pending.borrow_mut();
+        let target = pending.get_mut(&image_id)?;
         if target.location.native_path() != Some(path) {
             return None;
         }
+        let (browser, _) = target.resolve()?;
         Some((
-            target.browser.upgrade()?,
+            browser,
             target.depth,
             target.position,
             target.location.clone(),
@@ -81,6 +92,7 @@ pub(super) fn publish_thumbnail_metadata(
             duration_seconds: metadata.duration.map_or(MetadataValue::Unknown, |seconds| {
                 MetadataValue::Known(seconds.round() as u64)
             }),
+            listable: MetadataValue::Unknown,
         },
     );
 }
@@ -91,7 +103,7 @@ pub(super) fn cancel_metadata(image_id: usize) {
     });
 }
 
-pub(super) fn schedule_refresh() {
+pub(in crate::ui) fn schedule_refresh() {
     if REFRESH_PENDING.with(|pending| pending.replace(true)) {
         return;
     }
@@ -101,21 +113,20 @@ pub(super) fn schedule_refresh() {
             let mut pending = pending.borrow_mut();
             let mut ready = Vec::new();
             pending.retain(|_, target| {
-                let (Some(item), Some(browser)) = (target.item.upgrade(), target.browser.upgrade())
-                else {
+                let Some(item) = target.item.upgrade() else {
                     return false;
                 };
-                let Some(entry) = browser
-                    .entry_at(target.depth, target.position)
-                    .filter(|entry| entry.location == target.location)
-                else {
+                let Some((browser, entry)) = target.resolve() else {
                     return false;
                 };
                 if !crate::ui::browser::metadata_needs_fill(&entry)
                     && entry.mode != MetadataValue::Unknown
                     && !(target.details && crate::ui::browser_modes::icon_details_need_fill(&entry))
                 {
-                    return false;
+                    return entry.is_directory();
+                }
+                if entry.is_directory() && Browser::operation_touches(&entry.location) {
+                    return true;
                 }
                 hook_ancestors(&item);
                 ready.push((

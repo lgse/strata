@@ -13,7 +13,7 @@ use gtk::{glib, prelude::*};
 
 use super::{
     BrowserView, ViewState,
-    listing_filter::{Hits, Target, results_step_target, scroll_results_to},
+    listing_filter::{Hits, Target, results_step_target, scroll_results_to, selected_cursor},
 };
 use crate::app::VisualKind;
 
@@ -117,6 +117,45 @@ impl ViewState {
         };
         self.keep_result_fill(fill);
         hits.view.grab_focus();
+        true
+    }
+
+    /// Focuses the showing results of `target` on their cursor without
+    /// rewriting their selection. GTK refocuses the row it last focused, which
+    /// is the cursor over a fill but stays behind when the cursor moves
+    /// without focus, as Find moves it. Returns `false` without results.
+    pub(super) fn focus_results_on_cursor(&self, target: &Target) -> bool {
+        let Some(hits) = target.hits().filter(|hits| hits.view.is_mapped()) else {
+            return false;
+        };
+        let filled = self
+            .result_selection
+            .fill
+            .borrow()
+            .as_ref()
+            .is_some_and(|fill| {
+                fill.owner.upgrade().as_ref() == Some(target.entry())
+                    && fill.written.equals(&hits.selection.selection())
+            });
+        if !hits.view.grab_focus() {
+            return false;
+        }
+        let Some(selected) = selected_cursor(&hits.selection).filter(|_| !filled) else {
+            return true;
+        };
+        let focused_row = hits
+            .view
+            .root()
+            .and_then(|root| root.focus())
+            .is_some_and(|focused| focused.is_ancestor(&hits.view));
+        let on_selection = focused_row
+            && target
+                .hits()
+                .and_then(|hits| hits.cursor)
+                .is_some_and(|cursor| hits.selection.is_selected(cursor));
+        if !on_selection {
+            scroll_results_to(&hits.view, selected, gtk::ListScrollFlags::FOCUS);
+        }
         true
     }
 

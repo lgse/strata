@@ -1,0 +1,15 @@
+{"scenario":"marquee-keeps-preview-closed","modes":["list"],"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"cost":{"list":0.8},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"held marquee over hidden enabled preview must not reopen it; keyboard preview resumes after; release-only checks in empty-name-space-drag-starts-marquee; origin fix 1122"}}
+{"select_with_keyboard":"data.csv"}
+{"key":"space"}
+{"wait":{"preview":"alpha"},"message":"the enabled preview"}
+{"key":"Up"}
+{"wait":{"selected":["folder"]},"message":"the selection to become ['folder']"}
+{"wait":{"preview":null},"message":"the folder to hide preview"}
+{"settle":{"entry":"third.txt"}}
+{"drag":{"from":{"entry":"third.txt"},"from_at":["50%","end+60"],"to":{"entry":"data.csv"},"to_at":[50,"50%"]},"release":false}
+{"wait":{"selected":["data.csv","notes.txt","page.md","third.txt"]},"message":"the selection to become ['data.csv', 'notes.txt', 'page.md', 'third.txt']"}
+{"expect":{"preview":null},"message":"held marquee must not open preview"}
+{"button_up":1}
+{"expect":{"preview":null}}
+{"select_with_keyboard":"notes.txt"}
+{"wait":{"preview":"the quick brown fox"},"message":"keyboard preview to resume"}

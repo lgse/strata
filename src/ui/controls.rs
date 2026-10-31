@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-use std::{cell::Cell, rc::Rc, time::Duration};
+use std::{cell::Cell, ops::Range, rc::Rc, time::Duration};
 
 use gtk::prelude::*;
 
-pub(super) fn stepper(labels: [&str; 3]) -> (gtk::Box, [gtk::Button; 3]) {
+/// `labels` are already translated: decrease, the value, increase.
+pub(super) fn stepper(labels: [String; 3]) -> (gtk::Box, [gtk::Button; 3]) {
     let control = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     control.add_css_class("appearance-text-stepper");
     control.set_hexpand(true);
@@ -14,7 +15,6 @@ pub(super) fn stepper(labels: [&str; 3]) -> (gtk::Box, [gtk::Button; 3]) {
         if index == 1 {
             button.add_css_class("appearance-text-value");
             button.set_hexpand(true);
-            super::accessibility::set_description(&button, Some(labels[index]));
         } else {
             let icon = if index == 0 {
                 crate::assets::icons::MINUS
@@ -26,13 +26,44 @@ pub(super) fn stepper(labels: [&str; 3]) -> (gtk::Box, [gtk::Button; 3]) {
             image.set_valign(gtk::Align::Center);
             button.set_child(Some(&image));
             button.add_css_class("appearance-text-step");
-            super::accessibility::set_label(&button, labels[index]);
-            button.set_tooltip_text(Some(labels[index]));
         }
+        label_stepper_button(&button, &labels[index]);
         control.append(&button);
         button
     });
     (control, buttons)
+}
+
+/// The value button keeps its text and takes `label` as its description; the
+/// icon-only step buttons take it as their name and tooltip.
+pub(super) fn label_stepper_button(button: &gtk::Button, label: &str) {
+    if button.has_css_class("appearance-text-value") {
+        super::accessibility::set_description(button, Some(label));
+    } else {
+        super::accessibility::set_label(button, label);
+        button.set_tooltip_text(Some(label));
+    }
+}
+
+/// A numeric stepper with GTK's native spin actions, decrement before the entry.
+pub(super) fn number_stepper(min: u32, max: u32, step: u32) -> gtk::SpinButton {
+    let control = gtk::SpinButton::with_range(f64::from(min), f64::from(max), f64::from(step));
+    control.set_numeric(true);
+    control.set_width_chars(3);
+    control.set_alignment(0.5);
+    let mut child = control.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        if widget.has_css_class("down") {
+            widget.insert_before(&control, control.first_child().as_ref());
+            break;
+        }
+    }
+    control.set_update_policy(gtk::SpinButtonUpdatePolicy::IfValid);
+    crate::assets::use_bundled_spin_icons(&control);
+    control.add_css_class("form-control");
+    control.add_css_class("text-size-control");
+    control
 }
 
 pub(super) fn pane_header_action(widget: &impl IsA<gtk::Widget>) {
@@ -47,10 +78,18 @@ pub(super) fn form_entry() -> gtk::Entry {
     entry
 }
 
+type LengthMeasure = fn(&str) -> usize;
+
+#[derive(Clone)]
 pub(super) struct FormTextField {
     pub widget: gtk::Box,
     pub entry: gtk::Entry,
     remaining: gtk::Label,
+    measure: Rc<Cell<LengthMeasure>>,
+}
+
+fn character_count(text: &str) -> usize {
+    text.chars().count()
 }
 
 impl FormTextField {
@@ -60,7 +99,7 @@ impl FormTextField {
         let remaining = form_label("");
         remaining.set_halign(gtk::Align::End);
         remaining.set_xalign(1.0);
-        super::accessibility::set_label(&remaining, "Characters remaining");
+        super::accessibility::set_label(&remaining, &crate::i18n::tr("Characters remaining"));
 
         let widget = gtk::Box::new(gtk::Orientation::Vertical, 4);
         widget.append(&entry);
@@ -69,29 +108,81 @@ impl FormTextField {
             widget,
             entry,
             remaining,
+            measure: Rc::new(Cell::new(character_count)),
         };
         field.refresh_remaining();
         let remaining = field.remaining.clone();
+        let measure = field.measure.clone();
         field.entry.connect_changed(move |entry| {
-            Self::update_remaining(entry, &remaining);
+            Self::update_remaining(entry, &remaining, measure.get());
         });
         let remaining = field.remaining.clone();
+        let measure = field.measure.clone();
         field.entry.connect_max_length_notify(move |entry| {
-            Self::update_remaining(entry, &remaining);
+            Self::update_remaining(entry, &remaining, measure.get());
         });
+        field.limit_insertions();
         field
     }
 
-    fn refresh_remaining(&self) {
-        Self::update_remaining(&self.entry, &self.remaining);
+    /// Measures the limit with `measure`, such as bytes or UTF-16 units, and
+    /// trims the current text to fit.
+    pub fn set_limit(&self, max_length: i32, measure: LengthMeasure) {
+        self.measure.set(measure);
+        if self.entry.max_length() != max_length {
+            self.entry.set_max_length(max_length);
+        }
+        let text = self.entry.text();
+        let fitting = fitting_prefix(&text, usize::try_from(max_length).unwrap_or(0), measure);
+        if fitting.len() < text.len() {
+            self.entry.set_text(fitting);
+        }
+        self.refresh_remaining();
     }
 
-    fn update_remaining(entry: &gtk::Entry, remaining: &gtk::Label) {
+    // GTK's own max length counts characters, so it cannot enforce other measures.
+    fn limit_insertions(&self) {
+        let Some(text) = self.entry.delegate().and_downcast::<gtk::Text>() else {
+            return;
+        };
+        let measure = self.measure.clone();
+        text.connect_insert_text(move |text, inserted, position| {
+            let measure = measure.get();
+            let max_length = text.max_length();
+            let room = usize::try_from(max_length)
+                .unwrap_or(0)
+                .saturating_sub(measure(&text.text()));
+            if max_length <= 0 || measure(inserted) <= room {
+                return;
+            }
+            let fitting = fitting_prefix(inserted, room, measure);
+            if !fitting.is_empty() {
+                text.insert_text(fitting, position);
+            }
+            text.stop_signal_emission_by_name("insert-text");
+        });
+    }
+
+    fn refresh_remaining(&self) {
+        Self::update_remaining(&self.entry, &self.remaining, self.measure.get());
+    }
+
+    fn update_remaining(entry: &gtk::Entry, remaining: &gtk::Label, measure: LengthMeasure) {
         let limit = entry.max_length();
         remaining.set_visible(limit > 0);
-        let count = (limit as usize).saturating_sub(entry.text().chars().count());
-        remaining.set_text(&format!("{count} chars remaining"));
+        let count = (limit as usize).saturating_sub(measure(&entry.text()));
+        remaining.set_text(&crate::i18n::count("chars_remaining", count));
     }
+}
+
+fn fitting_prefix(text: &str, room: usize, measure: LengthMeasure) -> &str {
+    let end = text
+        .char_indices()
+        .map(|(start, character)| start + character.len_utf8())
+        .take_while(|&end| measure(&text[..end]) <= room)
+        .last()
+        .unwrap_or(0);
+    &text[..end]
 }
 
 #[cfg(test)]
@@ -110,10 +201,10 @@ pub(super) fn copyable_command(command: &str) -> gtk::Overlay {
     overlay.set_child(Some(&field));
 
     let copy = gtk::Button::builder()
-        .tooltip_text("Copy install command")
         .halign(gtk::Align::End)
         .valign(gtk::Align::Center)
         .build();
+    super::accessibility::set_tooltip_and_label(&copy, &crate::i18n::tr("Copy install command"));
     copy.add_css_class("preview-command-copy");
     copy.set_has_frame(false);
     copy.set_cursor_from_name(Some("pointer"));
@@ -128,14 +219,20 @@ pub(super) fn copyable_command(command: &str) -> gtk::Overlay {
         let generation = feedback_generation.get().saturating_add(1);
         feedback_generation.set(generation);
         crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::CHECK);
-        button.set_tooltip_text(Some("Install command copied"));
+        super::accessibility::set_tooltip_and_label(
+            button,
+            &crate::i18n::tr("Install command copied"),
+        );
         let button = button.clone();
         let copy_icon = copy_icon.clone();
         let feedback_generation = feedback_generation.clone();
         glib::timeout_add_local_once(Duration::from_secs(2), move || {
             if feedback_generation.get() == generation {
                 crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::COPY);
-                button.set_tooltip_text(Some("Copy install command"));
+                super::accessibility::set_tooltip_and_label(
+                    &button,
+                    &crate::i18n::tr("Copy install command"),
+                );
             }
         });
     });
@@ -156,7 +253,7 @@ pub(super) fn progress_summary(caption: &str) -> ProgressSummary {
     header.add_css_class("transfer-progress-header");
     let amount_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
     amount_box.set_hexpand(true);
-    let caption = gtk::Label::new(Some(caption));
+    let caption = gtk::Label::new(Some(&crate::i18n::tr(caption)));
     caption.add_css_class("transfer-progress-caption");
     caption.set_xalign(0.0);
     let amount = gtk::Label::new(None);
@@ -191,7 +288,7 @@ pub(super) fn properties_action(icon: &str, label: &str, tone: ModalTone) -> gtk
         ModalTone::Danger => crate::assets::danger_icon(icon, 14),
     };
     content.append(&image);
-    content.append(&gtk::Label::new(Some(label)));
+    content.append(&gtk::Label::new(Some(&crate::i18n::tr(label))));
     let button = gtk::Button::builder().child(&content).build();
     match tone {
         ModalTone::Accent => button.add_css_class("properties-action"),
@@ -232,11 +329,20 @@ pub(super) fn set_form_field_error(
 ) {
     if let Some(message) = message {
         field.add_css_class("error");
-        helper.set_text(message);
+        helper.set_text(&crate::i18n::tr(message));
         helper.set_visible(true);
     } else {
         field.remove_css_class("error");
         helper.set_visible(false);
+    }
+}
+
+/// Lets a text button wrap between words so a crowded action row can shrink to the window.
+pub(super) fn wrap_button_label(button: &gtk::Button) {
+    if let Some(label) = button.child().and_downcast::<gtk::Label>() {
+        label.set_wrap(true);
+        label.set_wrap_mode(gtk::pango::WrapMode::Word);
+        label.set_justify(gtk::Justification::Center);
     }
 }
 
@@ -247,18 +353,101 @@ pub(super) fn form_check_button(label: &str) -> gtk::CheckButton {
 }
 
 pub(super) fn menu_option(label: &str, selected: bool) -> (gtk::Button, gtk::Image) {
+    checkable_menu_option(label, selected, gtk::AccessibleRole::MenuItemRadio)
+}
+
+pub(super) fn check_menu_option(label: &str, selected: bool) -> (gtk::Button, gtk::Image) {
+    checkable_menu_option(label, selected, gtk::AccessibleRole::MenuItemCheckbox)
+}
+
+const MENU_OPTION_CLASS: &str = "column-menu-option";
+
+pub(super) fn menu_action(label: &str) -> gtk::Button {
+    let action = super::accessibility::menu_item_button();
+    action.set_child(Some(&menu_option_label(label)));
+    action.add_css_class(MENU_OPTION_CLASS);
+    action
+}
+
+fn checkable_menu_option(
+    label: &str,
+    selected: bool,
+    role: gtk::AccessibleRole,
+) -> (gtk::Button, gtk::Image) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let check = crate::assets::primary_icon(crate::assets::icons::CHECK, 16);
     check.set_visible(selected);
-    let label = gtk::Label::new(Some(label));
+    row.append(&menu_option_label(label));
+    row.append(&check);
+    let option = gtk::Button::builder()
+        .child(&row)
+        .accessible_role(role)
+        .has_frame(false)
+        .build();
+    option.add_css_class(MENU_OPTION_CLASS);
+    super::accessibility::sync_checked_with_icon(&option, &check);
+    (option, check)
+}
+
+fn menu_option_label(text: &str) -> gtk::Label {
+    let label = gtk::Label::new(Some(text));
     label.set_xalign(0.0);
     label.set_hexpand(true);
-    row.append(&label);
-    row.append(&check);
-    let option = gtk::Button::builder().child(&row).build();
-    option.add_css_class("column-menu-option");
-    option.set_has_frame(false);
-    (option, check)
+    label
+}
+
+/// A popover's "Make this the default" and "Reset to default" commands.
+#[derive(Clone)]
+pub(super) struct DefaultActions {
+    group: gtk::Box,
+    make_default: gtk::Button,
+    reset: gtk::Button,
+}
+
+impl DefaultActions {
+    pub(super) fn new(
+        popover: &gtk::Popover,
+        (make_default_label, reset_label): (&str, &str),
+        make_default: impl Fn() + 'static,
+        reset: impl Fn() + 'static,
+    ) -> Self {
+        let group = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        let make_default = closing_menu_action(make_default_label, popover, make_default);
+        let reset = closing_menu_action(reset_label, popover, reset);
+        group.append(&make_default);
+        group.append(&reset);
+        Self {
+            group,
+            make_default,
+            reset,
+        }
+    }
+
+    pub(super) fn widget(&self) -> &gtk::Box {
+        &self.group
+    }
+
+    pub(super) fn set_visible(&self, make_default: bool, reset: bool) {
+        self.make_default.set_visible(make_default);
+        self.reset.set_visible(reset);
+        self.group.set_visible(make_default || reset);
+    }
+}
+
+fn closing_menu_action(
+    label: &str,
+    popover: &gtk::Popover,
+    run: impl Fn() + 'static,
+) -> gtk::Button {
+    let action = menu_action(label);
+    let popover = popover.downgrade();
+    action.connect_clicked(move |_| {
+        run();
+        if let Some(popover) = popover.upgrade() {
+            popover.popdown();
+        }
+    });
+    action
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -270,44 +459,163 @@ pub(super) enum ModalTone {
 
 pub(super) const MESSAGE_DIALOG_WIDTH_CHARS: usize = 64;
 
-pub(super) fn wrap_dialog_text(text: &str, max_chars: usize) -> String {
-    let mut wrapped = String::new();
-    let mut line_chars = 0;
-    for word in text.split_whitespace() {
-        let chunks = word
-            .chars()
-            .collect::<Vec<_>>()
-            .chunks(max_chars.max(1))
-            .map(|chunk| chunk.iter().collect::<String>())
+/// Normalizes spacing within each line but keeps explicit line and paragraph breaks;
+/// line wrapping is left to Pango so scripts without spaces break at valid positions.
+pub(super) fn dialog_text(text: &str) -> String {
+    let mut normalized = String::new();
+    let mut pending_blank = false;
+    for line in text.lines() {
+        // No-break spaces (U+00A0, U+202F, U+2007) are typography, not spacing to normalize.
+        let words = line
+            .split([' ', '\t'])
+            .filter(|word| !word.is_empty())
             .collect::<Vec<_>>();
-        for (index, chunk) in chunks.iter().enumerate() {
-            let chunk_chars = chunk.chars().count();
-            if line_chars > 0 && line_chars + 1 + chunk_chars > max_chars {
-                wrapped.push('\n');
-                line_chars = 0;
-            } else if line_chars > 0 {
-                wrapped.push(' ');
-                line_chars += 1;
-            }
-            wrapped.push_str(chunk);
-            line_chars += chunk_chars;
-            if index + 1 < chunks.len() {
-                wrapped.push('\n');
-                line_chars = 0;
-            }
+        if words.is_empty() {
+            pending_blank = !normalized.is_empty();
+            continue;
         }
+        if !normalized.is_empty() {
+            normalized.push_str(if pending_blank { "\n\n" } else { "\n" });
+        }
+        normalized.push_str(&words.join(" "));
+        pending_blank = false;
     }
-    wrapped
+    normalized
 }
 
 pub(super) fn message_dialog_description(text: &str) -> gtk::Label {
-    let label = gtk::Label::new(Some(&wrap_dialog_text(text, MESSAGE_DIALOG_WIDTH_CHARS)));
+    let label = gtk::Label::new(Some(&dialog_text(text)));
     label.add_css_class("action-dialog-description");
     label.set_max_width_chars(MESSAGE_DIALOG_WIDTH_CHARS as i32);
     label.set_wrap(true);
     label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    keep_words_whole(&label);
     label.set_xalign(0.0);
     label
+}
+
+// Longer runs of Hangul, such as file names, stay breakable so they cannot widen a dialog.
+const MAX_KEPT_HANGUL_WORD_CHARS: usize = 12;
+
+fn is_hangul_syllable(character: char) -> bool {
+    ('\u{ac00}'..='\u{d7a3}').contains(&character)
+}
+
+/// Byte ranges of the short space-separated words that contain Hangul, and of the particle
+/// ending a longer word with the character before it. Pango allows a line
+/// break between any two Hangul syllables, but Korean wraps only between words.
+pub(super) fn korean_word_ranges(text: &str) -> Vec<Range<usize>> {
+    let mut ranges = Vec::new();
+    let mut start = None;
+    for (index, character) in text.char_indices().chain([(text.len(), ' ')]) {
+        if !character.is_whitespace() {
+            start.get_or_insert(index);
+            continue;
+        }
+        let Some(word_start) = start.take() else {
+            continue;
+        };
+        let word = &text[word_start..index];
+        let length = word.chars().count();
+        if length > 1
+            && length <= MAX_KEPT_HANGUL_WORD_CHARS
+            && word.chars().any(is_hangul_syllable)
+        {
+            ranges.push(word_start..index);
+        } else if let Some(attached) = attached_particle_start(word) {
+            ranges.push(word_start + attached..index);
+        }
+    }
+    ranges
+}
+
+const MAX_PARTICLE_CHARS: usize = 6;
+
+/// For a long word ending in a particle such as "을(를)", "(으)로" or "에서", the byte offset
+/// of the character the particle attaches to, so the two stay on one line.
+fn attached_particle_start(word: &str) -> Option<usize> {
+    let is_particle_char = |character: char| {
+        is_hangul_syllable(character) || matches!(character, '(' | ')' | ':' | ',' | '.')
+    };
+    let mut suffix_start = word.len();
+    let mut suffix_chars = 0;
+    for (index, character) in word.char_indices().rev() {
+        if !is_particle_char(character) {
+            break;
+        }
+        suffix_start = index;
+        suffix_chars += 1;
+    }
+    let suffix = &word[suffix_start..];
+    if suffix_chars > MAX_PARTICLE_CHARS {
+        return parenthesised_particle_start(word);
+    }
+    if !suffix.chars().any(is_hangul_syllable) {
+        return None;
+    }
+    previous_char_start(word, suffix_start)
+}
+
+fn previous_char_start(word: &str, index: usize) -> Option<usize> {
+    word[..index]
+        .char_indices()
+        .next_back()
+        .map(|(index, _)| index)
+}
+
+/// In a word that is all Hangul, a trailing "X(Y)" or "(X)Y" particle such as "을(를)" or
+/// "(으)로" is the only recognizable boundary, so keep it with the syllable before it.
+fn parenthesised_particle_start(word: &str) -> Option<usize> {
+    let is_short_hangul = |text: &str, min: usize| {
+        (min..=2).contains(&text.chars().count()) && text.chars().all(is_hangul_syllable)
+    };
+    let trimmed = word.trim_end_matches([':', ',', '.']);
+    let close = trimmed.rfind(')')?;
+    let open = trimmed[..close].rfind('(')?;
+    let after = &trimmed[close + 1..];
+    if !is_short_hangul(&trimmed[open + 1..close], 1) || !is_short_hangul(after, 0) {
+        return None;
+    }
+    let particle = if after.is_empty() {
+        previous_char_start(word, open)
+            .filter(|&index| word[index..open].chars().all(is_hangul_syllable))?
+    } else {
+        open
+    };
+    previous_char_start(word, particle)
+}
+
+pub(super) fn no_break_attribute(range: Range<usize>) -> gtk::pango::Attribute {
+    let mut attribute = gtk::pango::AttrInt::new_allow_breaks(false);
+    attribute.set_start_index(range.start as u32);
+    attribute.set_end_index(range.end as u32);
+    attribute.into()
+}
+
+fn apply_word_break_attributes(label: &gtk::Label) {
+    let attributes = label
+        .attributes()
+        .and_then(|attributes| attributes.copy())
+        .unwrap_or_default();
+    let _removed = attributes.filter(|attribute| {
+        matches!(
+            attribute.type_(),
+            gtk::pango::AttrType::AllowBreaks | gtk::pango::AttrType::InsertHyphens
+        )
+    });
+    attributes.insert(gtk::pango::AttrInt::new_insert_hyphens(false));
+    for range in korean_word_ranges(&label.text()) {
+        attributes.insert(no_break_attribute(range));
+    }
+    label.set_attributes(Some(&attributes));
+}
+
+/// Keeps a wrapping label from splitting Korean words or adding hyphens where Pango
+/// has to break inside a word (as in a path before a Korean particle). The text itself,
+/// and therefore the accessible name, stays unchanged.
+pub(super) fn keep_words_whole(label: &gtk::Label) {
+    apply_word_break_attributes(label);
+    label.connect_label_notify(apply_word_break_attributes);
 }
 
 pub(super) struct ModalLayout {
@@ -337,22 +645,48 @@ pub(super) fn focus_button(button: &gtk::Button) {
 
 impl ModalLayout {
     pub fn set_loading(&self, loading: bool, description: Option<&str>) {
-        if loading {
-            crate::ui::accessibility::set_description(
-                &self.loading,
-                description.or(Some("Working…")),
-            );
-            self.loading.set_visible(true);
-            self.loading.start();
-        } else {
-            self.loading.stop();
-            self.loading.set_visible(false);
-            crate::ui::accessibility::set_description(&self.loading, None);
-        }
+        set_modal_loading(&self.loading, loading, description);
     }
 }
 
-/// Builds the shared structure and styling for an action modal.
+fn modal_loading_spinner() -> gtk::Spinner {
+    let loading = gtk::Spinner::new();
+    loading.add_css_class("action-dialog-loading");
+    loading.set_visible(false);
+    loading
+}
+
+/// Starts a dialog spinner that may have run before. GTK 4.24 leaves a spinner
+/// restarted after being hidden blank or frozen, so this swaps in a fresh one
+/// and returns it.
+pub(super) fn restart_modal_loading(
+    spinner: &gtk::Spinner,
+    description: Option<&str>,
+) -> gtk::Spinner {
+    let fresh = modal_loading_spinner();
+    if let Some(parent) = spinner.parent().and_downcast::<gtk::Box>() {
+        parent.insert_child_after(&fresh, Some(spinner));
+        parent.remove(spinner);
+    }
+    set_modal_loading(&fresh, true, description);
+    fresh
+}
+
+/// [`ModalLayout::set_loading`] for a dialog that keeps only its spinner.
+pub(super) fn set_modal_loading(spinner: &gtk::Spinner, loading: bool, description: Option<&str>) {
+    if loading {
+        let description = description.map_or_else(|| crate::i18n::tr("Working…"), str::to_owned);
+        crate::ui::accessibility::set_description(spinner, Some(&description));
+        spinner.set_visible(true);
+        spinner.start();
+    } else {
+        spinner.stop();
+        spinner.set_visible(false);
+        crate::ui::accessibility::set_description(spinner, None);
+    }
+}
+
+/// Builds the shared structure and styling for an action modal from already translated text.
 pub(super) fn modal_layout(
     icon: &str,
     title: &str,
@@ -371,8 +705,8 @@ pub(super) fn message_dialog_layout(
 ) -> ModalLayout {
     let layout = modal_layout_with_tone(
         icon,
-        &wrap_dialog_text(title, MESSAGE_DIALOG_WIDTH_CHARS),
-        &wrap_dialog_text(subtitle, MESSAGE_DIALOG_WIDTH_CHARS),
+        &dialog_text(title),
+        &dialog_text(subtitle),
         confirm_label,
         tone,
     );
@@ -382,8 +716,28 @@ pub(super) fn message_dialog_layout(
         label.set_max_width_chars(MESSAGE_DIALOG_WIDTH_CHARS as i32);
         label.set_wrap(true);
         label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+        keep_words_whole(label);
     }
     layout
+}
+
+/// Stacks the action buttons once the dialog is narrowed to the window, so a row of
+/// long translated labels cannot push the primary button out of view.
+pub(super) fn stack_actions_when_constrained(layout: &ModalLayout) {
+    let actions = layout.actions.downgrade();
+    layout.content.connect_css_classes_notify(move |content| {
+        let Some(actions) = actions.upgrade() else {
+            return;
+        };
+        let orientation = if content.has_css_class("modal-constrained") {
+            gtk::Orientation::Vertical
+        } else {
+            gtk::Orientation::Horizontal
+        };
+        if actions.orientation() != orientation {
+            actions.set_orientation(orientation);
+        }
+    });
 }
 
 pub(super) fn modal_layout_with_tone(
@@ -428,14 +782,13 @@ pub(super) fn modal_layout_with_tone(
     heading.append(&title);
     heading.append(&subtitle);
 
-    let loading = gtk::Spinner::new();
-    loading.add_css_class("action-dialog-loading");
-    loading.set_visible(false);
+    let loading = modal_loading_spinner();
 
     let close = gtk::Button::new();
     close.add_css_class("action-dialog-close");
     close.set_valign(gtk::Align::Center);
-    close.set_tooltip_text(Some("Close dialog"));
+    close.set_tooltip_text(Some(&crate::i18n::tr("Close dialog")));
+    super::accessibility::set_own_label(&close, &crate::i18n::tr("Close dialog"));
     close.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::X,
         16,
@@ -455,7 +808,7 @@ pub(super) fn modal_layout_with_tone(
     actions.add_css_class("action-dialog-actions");
     let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     spacer.set_hexpand(true);
-    let cancel = gtk::Button::with_label("Cancel");
+    let cancel = gtk::Button::with_label(&crate::i18n::tr("Cancel"));
     cancel.add_css_class("action-dialog-cancel");
     let confirm = gtk::Button::with_label(confirm_label);
     confirm.add_css_class("action-dialog-confirm");
@@ -492,7 +845,12 @@ pub(super) fn segmented_control(
 
     let mut buttons = Vec::with_capacity(labels.len());
     for (index, label) in labels.iter().enumerate() {
-        let button = gtk::ToggleButton::with_label(label);
+        let button = gtk::ToggleButton::with_label(&crate::i18n::tr(label));
+        if let Some(label) = button.child().and_downcast::<gtk::Label>() {
+            // Wrapping containers may wrap choices, but never inside a word.
+            label.add_css_class("segmented-control-label");
+            label.set_wrap_mode(gtk::pango::WrapMode::Word);
+        }
         button.add_css_class("segmented-control-option");
         button.set_hexpand(true);
         if let Some(first) = buttons.first() {

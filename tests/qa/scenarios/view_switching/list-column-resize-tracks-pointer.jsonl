@@ -1,0 +1,25 @@
+{"scenario":"list-column-resize-tracks-pointer","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":2.2},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"List header pointer drag shrinks each column; only QA route to list-column resize (columns resize tested elsewhere)"}}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"radio menu item","name":"List"}},"message":"the List option"}
+{"click":{"role":"radio menu item","name":"List"}}
+{"wait":{"view_mode":"List"},"message":"the browser to switch to the List view"}
+{"wait":{"present":{"role":"button","name":"Name","within":{"pane":null}}},"message":"the Name heading to appear"}
+{"remember":{"parent":{"role":"button","name":"Name","within":{"pane":null}}},"as":"cell"}
+{"drag":{"from":{"kept":"cell"},"from_at":[-3,"50%"],"to":{"kept":"cell"},"to_at":[-15,"50%"]}}
+{"wait":{"resized":{"target":{"remembered":"cell"},"since":"cell","width":{"min":-14,"max":-10}}},"message":"the Name column to shrink by the pointer's 12-pixel movement"}
+{"wait":{"present":{"role":"button","name":"Mode","within":{"pane":null}}},"message":"the Mode heading to appear"}
+{"remember":{"parent":{"role":"button","name":"Mode","within":{"pane":null}}},"as":"cell"}
+{"drag":{"from":{"kept":"cell"},"from_at":[-3,"50%"],"to":{"kept":"cell"},"to_at":[-15,"50%"]}}
+{"wait":{"resized":{"target":{"remembered":"cell"},"since":"cell","width":{"min":-14,"max":-10}}},"message":"the Mode column to shrink by the pointer's 12-pixel movement"}
+{"wait":{"present":{"role":"button","name":"Size","within":{"pane":null}}},"message":"the Size heading to appear"}
+{"remember":{"parent":{"role":"button","name":"Size","within":{"pane":null}}},"as":"cell"}
+{"drag":{"from":{"kept":"cell"},"from_at":[-3,"50%"],"to":{"kept":"cell"},"to_at":[-15,"50%"]}}
+{"wait":{"resized":{"target":{"remembered":"cell"},"since":"cell","width":{"min":-14,"max":-10}}},"message":"the Size column to shrink by the pointer's 12-pixel movement"}
+{"wait":{"present":{"role":"button","name":"Type","within":{"pane":null}}},"message":"the Type heading to appear"}
+{"remember":{"parent":{"role":"button","name":"Type","within":{"pane":null}}},"as":"cell"}
+{"drag":{"from":{"kept":"cell"},"from_at":[-3,"50%"],"to":{"kept":"cell"},"to_at":[-15,"50%"]}}
+{"wait":{"resized":{"target":{"remembered":"cell"},"since":"cell","width":{"min":-14,"max":-10}}},"message":"the Type column to shrink by the pointer's 12-pixel movement"}
+{"wait":{"present":{"role":"button","name":"Modified","within":{"pane":null}}},"message":"the Modified heading to appear"}
+{"remember":{"parent":{"role":"button","name":"Modified","within":{"pane":null}}},"as":"cell"}
+{"drag":{"from":{"kept":"cell"},"from_at":[-3,"50%"],"to":{"kept":"cell"},"to_at":[-15,"50%"]}}
+{"wait":{"resized":{"target":{"remembered":"cell"},"since":"cell","width":{"min":-14,"max":-10}}},"message":"the Modified column to shrink by the pointer's 12-pixel movement"}

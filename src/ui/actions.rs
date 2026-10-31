@@ -1,40 +1,51 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    cell::RefCell,
-    path::PathBuf,
-    rc::{Rc, Weak},
+    cell::OnceCell,
+    path::{Path, PathBuf},
+    rc::Rc,
 };
 
-use gtk::{gio, prelude::*};
+use gtk::{glib, prelude::*};
 
 use crate::{
     adapters::LocalActionStore,
     assets::icons,
     model::{ActionInput, FOLDER_CONTENT_TYPE, FileEntry, InputKind, Location},
-    services::{ActionHandle, ActionRegistry, InvocationSource, JobRequest},
+    services::{ActionCatalog, ActionHandle, ActionRegistry, InvocationSource, JobRequest},
     ui::{
         controls::{ModalTone, focus_button, message_dialog_description, message_dialog_layout},
         modal::{
             ModalHost, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer,
-            show_error_dialog,
+            show_error_dialog, show_error_dialog_after_close,
         },
     },
 };
 
 thread_local! {
-    static SHARED_REGISTRY: RefCell<Weak<ActionRegistry>> = const { RefCell::new(Weak::new()) };
+    static SHARED_REGISTRY: OnceCell<Rc<ActionRegistry>> = const { OnceCell::new() };
+}
+
+fn registry() -> Rc<ActionRegistry> {
+    SHARED_REGISTRY.with(|shared| {
+        shared
+            .get_or_init(|| ActionRegistry::new(LocalActionStore::new()))
+            .clone()
+    })
+}
+
+/// The catalog as last loaded, without starting a reload on this thread's
+/// main context.
+pub(crate) fn loaded_catalog() -> Rc<ActionCatalog> {
+    registry().catalog()
 }
 
 pub(crate) fn shared() -> Rc<ActionRegistry> {
-    SHARED_REGISTRY.with(|shared| {
-        if let Some(registry) = shared.borrow().upgrade() {
-            return registry;
-        }
-        let registry = Rc::new(ActionRegistry::new(LocalActionStore::new()));
-        shared.replace(Rc::downgrade(&registry));
-        registry
-    })
+    let registry = registry();
+    if !registry.reload_waiting() {
+        glib::MainContext::default().spawn_local(registry.reload());
+    }
+    registry
 }
 
 /// Manifest slugs paired with bundled Lucide assets.
@@ -115,8 +126,8 @@ fn content_type_for(kind: InputKind, name: &std::ffi::OsStr) -> Option<String> {
     }
     // Menu matching must not read file contents.
     let guessed_name = name.to_string_lossy();
-    let (guessed, _) = gio::content_type_guess(Some(guessed_name.as_ref()), None::<&[u8]>);
-    (!guessed.is_empty()).then(|| guessed.to_string())
+    let (guessed, _) = crate::services::guess_content_type(Path::new(guessed_name.as_ref()));
+    (!guessed.is_empty()).then_some(guessed)
 }
 
 pub(crate) fn native_paths(entries: &[FileEntry]) -> Option<Vec<PathBuf>> {
@@ -134,12 +145,36 @@ pub(crate) fn run_action(
     source: InvocationSource,
     closed: Option<Rc<dyn Fn()>>,
 ) {
-    let jobs = super::jobs::shared();
-    if action.definition.run.confirm {
-        confirm_and_run(anchor, action, paths, parent, source, closed);
-        return;
-    }
-    enqueue(anchor, &jobs, action, paths, parent, source);
+    let current = shared().definition(action.id().to_owned());
+    let anchor = anchor.as_ref().clone();
+    glib::MainContext::default().spawn_local(async move {
+        let refused = match current.await {
+            Ok(definition) if definition == action.definition => None,
+            Ok(_) => Some(crate::i18n::tr("Actions changed")),
+            Err(error) => Some(error.user_message()),
+        };
+        if let Some(reason) = refused {
+            show_error_dialog_after_close(
+                &anchor,
+                &crate::i18n::tr("Unable to run action"),
+                &reason,
+                closed.unwrap_or_else(|| Rc::new(|| {})),
+            );
+            return;
+        }
+        if action.definition.run.confirm {
+            confirm_and_run(&anchor, action, paths, parent, source, closed);
+            return;
+        }
+        enqueue(
+            &anchor,
+            &super::jobs::shared(),
+            action,
+            paths,
+            parent,
+            source,
+        );
+    });
 }
 
 fn enqueue(
@@ -157,7 +192,11 @@ fn enqueue(
         source,
     }) {
         Ok(id) => super::jobs::present_for(anchor, id),
-        Err(error) => show_error_dialog(anchor, "Unable to run action", &error.to_string()),
+        Err(error) => show_error_dialog(
+            anchor,
+            &crate::i18n::tr("Unable to run action"),
+            &error.to_string(),
+        ),
     }
 }
 
@@ -176,25 +215,27 @@ fn confirm_and_run(
     else {
         show_error_dialog(
             anchor,
-            "Unable to confirm action",
-            "Open the action from a browser window.",
+            &crate::i18n::tr("Unable to confirm action"),
+            &crate::i18n::tr("Open the action from a browser window."),
         );
         return;
     };
     let jobs = super::jobs::shared();
     let layout = message_dialog_layout(
         action_icon(action.definition.icon.as_deref()),
-        "Run this action?",
+        &crate::i18n::tr("Run this action?"),
         action.name(),
-        "Run",
+        &crate::i18n::tr("Run"),
         ModalTone::Danger,
     );
     let count = paths.len();
-    layout.body.append(&message_dialog_description(&format!(
-        "This runs “{}” on {}.",
-        action.name(),
-        item_count_label(count)
-    )));
+    layout
+        .body
+        .append(&message_dialog_description(&rust_i18n::t!(
+            "This runs “%{value1}” on %{value2}.",
+            value1 = action.name(),
+            value2 = item_count_label(count)
+        )));
     if let Some(description) = action.definition.description.as_deref() {
         layout.body.append(&message_dialog_description(description));
     }
@@ -236,8 +277,5 @@ fn confirm_and_run(
 }
 
 fn item_count_label(count: usize) -> String {
-    match count {
-        1 => "1 selected item".to_owned(),
-        count => format!("{count} selected items"),
-    }
+    crate::i18n::count("selected_items", count)
 }

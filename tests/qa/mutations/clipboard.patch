@@ -1,0 +1,14 @@
+diff --git a/src/ui/browser.rs b/src/ui/browser.rs
+index ceaf0342..a3798a56 100644
+--- a/src/ui/browser.rs
++++ b/src/ui/browser.rs
+@@ -1590,6 +1590,9 @@ impl BrowserView {
+     }
+ 
+     pub fn paste(&self) {
++        if true {
++            return;
++        }
+         if let Some(location) = self.paste_location() {
+             self.state.paste_into(location);
+         }

@@ -1,0 +1,44 @@
+name: Integrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - integrations/**
+      - scripts/integration_tests.py
+      - .github/workflows/integrations.yml
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - integrations/**
+      - scripts/integration_tests.py
+      - .github/workflows/integrations.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration-tests:
+    name: Bundled integration tests
+    runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the packages integration tests declare
+        run: |
+          packages=$(python3 scripts/integration_tests.py --apt-packages)
+          if [ -n "$packages" ]; then
+            sudo apt-get update
+            # shellcheck disable=SC2086
+            sudo apt-get install -y --no-install-recommends $packages
+          fi
+
+      - name: Compile entries and run each integration's tests
+        run: python3 scripts/integration_tests.py

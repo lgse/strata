@@ -16,12 +16,12 @@ pub(super) fn settings_row() -> gtk::Box {
     row.add_css_class("settings-option");
     let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
     content.set_hexpand(true);
-    let title = gtk::Label::new(Some("Unlock encrypted volumes"));
+    let title = gtk::Label::new(Some(&crate::i18n::tr("Unlock encrypted volumes")));
     title.set_xalign(0.0);
     title.add_css_class("settings-option-title");
-    let description = gtk::Label::new(Some(
+    let description = gtk::Label::new(Some(&crate::i18n::tr(
         "When you plug in an encrypted drive, open Strata with the password prompt instead of udiskie's dialog. On Omarchy this edits `~/.config/udiskie/config.yml` and restarts udiskie.",
-    ));
+    )));
     description.set_xalign(0.0);
     description.set_wrap(true);
     description.add_css_class("settings-option-description");
@@ -72,11 +72,11 @@ impl UdiskieIntegrationStatus {
         actions.add_css_class("settings-integration-actions");
         actions.set_halign(gtk::Align::End);
         actions.set_valign(gtk::Align::Start);
-        let restore = gtk::Button::with_label("Restore default");
+        let restore = gtk::Button::with_label(&crate::i18n::tr("Restore default"));
         restore.add_css_class("action-dialog-cancel");
         restore.set_sensitive(false);
         restore.set_visible(false);
-        let use_strata = gtk::Button::with_label("Checking status…");
+        let use_strata = gtk::Button::with_label(&crate::i18n::tr("Checking status…"));
         use_strata.add_css_class("action-dialog-confirm");
         use_strata.set_sensitive(false);
         actions.append(&restore);
@@ -130,7 +130,11 @@ impl UdiskieIntegrationStatus {
             summary.busy.set(false);
             summary.show_result(match result {
                 Ok(result) => result,
-                Err(error) => Err(format!("Could not check integration status: {error:?}")),
+                Err(error) => Err(rust_i18n::t!(
+                    "Could not check integration status: %{error}",
+                    error = format!("{:?}", error)
+                )
+                .into_owned()),
             });
             if let Some(failure) = failure {
                 summary.message(&failure, true);
@@ -140,10 +144,10 @@ impl UdiskieIntegrationStatus {
 
     pub(crate) fn show_result(&self, result: Result<portal_setup::udiskie::UdiskieStatus, String>) {
         if let Some(button) = self.use_strata.upgrade() {
-            button.set_label("Use Strata");
+            button.set_label(&crate::i18n::tr("Use Strata"));
         }
         if let Some(button) = self.restore.upgrade() {
-            button.set_label("Restore default");
+            button.set_label(&crate::i18n::tr("Restore default"));
         }
         match result {
             Ok(status) => {
@@ -169,7 +173,10 @@ impl UdiskieIntegrationStatus {
                 self.known.set(false);
                 self.indicator.update(None);
                 self.set_sensitive(false);
-                self.message(&format!("Integration status unavailable: {error}"), true);
+                self.message(
+                    &rust_i18n::t!("Integration status unavailable: %{error}", error = error),
+                    true,
+                );
             }
         }
     }
@@ -183,11 +190,11 @@ impl UdiskieIntegrationStatus {
             &self.restore
         };
         if let Some(button) = action.upgrade() {
-            button.set_label(if enable {
+            button.set_label(&crate::i18n::tr(if enable {
                 "Using Strata…"
             } else {
                 "Restoring defaults…"
-            });
+            }));
         }
     }
 
@@ -197,7 +204,9 @@ impl UdiskieIntegrationStatus {
         }
         if SETUP_RUNNING.replace(true) {
             self.message(
-                "Another integration change is running. Try again when it finishes.",
+                &crate::i18n::tr(
+                    "Another integration change is running. Try again when it finishes.",
+                ),
                 true,
             );
             return;
@@ -227,7 +236,13 @@ impl UdiskieIntegrationStatus {
             let failure = match result {
                 Ok(Ok(())) => None,
                 Ok(Err(error)) => Some(error),
-                Err(error) => Some(format!("Integration change failed: {error:?}")),
+                Err(error) => Some(
+                    rust_i18n::t!(
+                        "Integration change failed: %{error}",
+                        error = format!("{:?}", error)
+                    )
+                    .into_owned(),
+                ),
             };
             summary.reload(failure);
         });
@@ -244,7 +259,7 @@ impl IntegrationIndicator {
     fn new(parent: &gtk::Box, name: &'static str) -> Self {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         let icon = crate::assets::primary_icon(icons::X, 16);
-        let label = gtk::Label::new(Some(name));
+        let label = gtk::Label::new(Some(&crate::i18n::tr(name)));
         label.set_xalign(0.0);
         label.set_wrap(true);
         row.append(&icon);
@@ -262,12 +277,8 @@ impl IntegrationIndicator {
         if let Some(row) = self.row.upgrade() {
             row.set_visible(configured.is_some());
             if let Some(configured) = configured {
-                let status = if configured {
-                    "Configured"
-                } else {
-                    "Not configured"
-                };
-                let description = format!("{} — {status}", self.name);
+                let description =
+                    crate::ui::portal_preferences::indicator_description(self.name, configured);
                 row.update_property(&[gtk::accessible::Property::Label(&description)]);
                 if let Some(icon) = self.icon.upgrade() {
                     crate::assets::set_primary_icon(

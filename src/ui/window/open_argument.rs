@@ -8,7 +8,11 @@ use std::{
 
 use gtk::{gio, glib, prelude::*};
 
-use crate::{adapters::location_for_file, model::Location};
+use crate::{
+    adapters::{gio_file_for_location, location_for_file, reveal_target_for_file},
+    model::Location,
+    services::sanitize_failure_message,
+};
 
 use super::{BrowserView, WeakBrowserView, present_target};
 
@@ -18,14 +22,36 @@ pub fn present_open(application: &gtk::Application, file: gio::File) {
     let Some(location) = location_for_file(&file) else {
         return;
     };
+    present_window(application, location, file);
+}
+
+pub(super) fn present_location_window(
+    application: &gtk::Application,
+    location: Location,
+) -> BrowserView {
+    let file = gio_file_for_location(&location);
+    present_window(application, location, file)
+}
+
+fn present_window(
+    application: &gtk::Application,
+    location: Location,
+    file: gio::File,
+) -> BrowserView {
     let browser = present_target(
         application,
         Some(location.clone()),
         Vec::new(),
         false,
         false,
+        false,
     );
-    classify(browser, file, location);
+    classify(browser.clone(), file, location);
+    browser
+}
+
+pub(super) fn route_location(browser: BrowserView, location: Location) {
+    classify(browser, gio_file_for_location(&location), location);
 }
 
 enum Kind {
@@ -104,7 +130,14 @@ fn classify(browser: BrowserView, file: gio::File, location: Location) -> Rc<Ope
         match outcome {
             Ok(Kind::Directory) => browser.navigate_location(location),
             Ok(Kind::File) => reveal_in_parent(&browser, &file, location),
-            Err(_) => show_error(&browser, retry_file, retry_location),
+            Err(error) => {
+                tracing::warn!(
+                    location = %location.diagnostic_path(),
+                    error = %sanitize_failure_message(&error.to_string()),
+                    "target location unavailable"
+                );
+                show_error(&browser, retry_file, retry_location);
+            }
         }
     });
     request
@@ -163,14 +196,8 @@ async fn query_kind(
 }
 
 fn reveal_in_parent(browser: &BrowserView, file: &gio::File, location: Location) {
-    match file.parent().and_then(|parent| location_for_file(&parent)) {
-        Some(parent) => {
-            let name = file
-                .basename()
-                .map(|name| name.to_string_lossy().into_owned());
-            browser.select_after_load(name.into_iter().collect(), false);
-            browser.navigate_location(parent);
-        }
+    match reveal_target_for_file(file) {
+        Some((parent, target)) => browser.reveal_locations(parent, vec![target], false),
         None => browser.navigate_location(location),
     }
 }
@@ -193,7 +220,7 @@ pub(super) fn clear_status(browser: &BrowserView) {
     }
 }
 
-fn connecting_status_container() -> (gtk::Box, gtk::Box) {
+pub(super) fn status_card() -> (gtk::Box, gtk::Box) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     row.add_css_class("open-argument-status");
     row.add_css_class("open-argument-connecting");
@@ -211,7 +238,7 @@ pub(super) fn show_connecting_overlay(
 ) {
     clear_status(browser);
     let overlay = browser.overlay();
-    let (row, content) = connecting_status_container();
+    let (row, content) = status_card();
 
     let spinner = gtk::Spinner::new();
     spinner.start();
@@ -219,9 +246,14 @@ pub(super) fn show_connecting_overlay(
 
     let label = gtk::Label::new(Some(message));
     label.add_css_class("form-message");
+    // Wrap rather than push Cancel past the edge of a narrow pane, but only between words.
+    label.set_wrap(true);
+    label.set_wrap_mode(gtk::pango::WrapMode::Word);
+    label.set_max_width_chars(40);
     content.append(&label);
 
-    let cancel = gtk::Button::with_label("Cancel");
+    let cancel = gtk::Button::with_label(&crate::i18n::tr("Cancel"));
+    cancel.set_valign(gtk::Align::Center);
     content.append(&cancel);
     cancel.connect_clicked(move |_| on_cancel());
 
@@ -237,15 +269,19 @@ fn show_connecting(weak: WeakBrowserView, generation: u64, request: Rc<OpenReque
         return;
     }
     let cancel_browser = browser.downgrade();
-    show_connecting_overlay(&browser, "Connecting to location…", move || {
-        request.abort();
-        if let Some(browser) = cancel_browser.upgrade() {
-            browser.browser().bump_navigation_generation();
-            browser.finish_navigation_cleanup();
-            clear_status(&browser);
-            browser.navigate_location(Location::local(super::home_directory()));
-        }
-    });
+    show_connecting_overlay(
+        &browser,
+        &crate::i18n::tr("Connecting to location…"),
+        move || {
+            request.abort();
+            if let Some(browser) = cancel_browser.upgrade() {
+                browser.browser().bump_navigation_generation();
+                browser.finish_navigation_cleanup();
+                clear_status(&browser);
+                browser.navigate_location(Location::local(super::home_directory()));
+            }
+        },
+    );
 }
 
 fn show_error(browser: &BrowserView, file: gio::File, location: Location) {
@@ -256,9 +292,9 @@ fn show_error(browser: &BrowserView, file: gio::File, location: Location) {
     content.set_halign(gtk::Align::Center);
     content.set_valign(gtk::Align::Center);
 
-    let label = gtk::Label::new(Some(&format!(
-        "The requested location is unavailable\n{}",
-        location.display_path()
+    let label = gtk::Label::new(Some(&rust_i18n::t!(
+        "The requested location is unavailable\n%{value1}",
+        value1 = location.display_path()
     )));
     label.add_css_class("status-message");
     label.add_css_class("error");
@@ -270,7 +306,7 @@ fn show_error(browser: &BrowserView, file: gio::File, location: Location) {
     label.set_max_width_chars(60);
     content.append(&label);
 
-    let retry = gtk::Button::with_label("Retry");
+    let retry = gtk::Button::with_label(&crate::i18n::tr("Retry"));
     retry.add_css_class("retry-button");
     retry.set_halign(gtk::Align::Center);
     content.append(&retry);

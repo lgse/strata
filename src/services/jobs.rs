@@ -79,15 +79,17 @@ pub enum JobEnqueueError {
     Unavailable(String),
 }
 
+/// Shown directly in the "Unable to run action" dialog.
 impl std::fmt::Display for JobEnqueueError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::EmptySelection => write!(formatter, "Select at least one item first"),
-            Self::NotAbsolute(path) => write!(
-                formatter,
-                "“{}” is not an absolute path, so it cannot be passed to an action",
-                path.display()
-            ),
+            Self::EmptySelection => {
+                formatter.write_str(&crate::i18n::tr("Select at least one item first"))
+            }
+            Self::NotAbsolute(path) => formatter.write_str(&rust_i18n::t!(
+                "“%{path}” is not an absolute path, so it cannot be passed to an action",
+                path = path.display()
+            )),
             Self::Unavailable(reason) => write!(formatter, "{reason}"),
         }
     }
@@ -493,7 +495,9 @@ impl JobService {
                 job.in_flight = false;
                 job.status = JobStatus::Cancelled;
                 job.finished_at = Some(now);
-                job.message = Some("Cancelled; the action did not stop cleanly".to_owned());
+                job.message = Some(crate::i18n::tr(
+                    "Cancelled; the action did not stop cleanly",
+                ));
                 changed = true;
             }
         }
@@ -509,13 +513,13 @@ impl JobService {
             JobStatus::Queued => {
                 job.status = JobStatus::Cancelled;
                 job.finished_at = Some(Instant::now());
-                job.message = Some("Removed before starting".to_owned());
+                job.message = Some(crate::i18n::tr("Removed before starting"));
             }
             JobStatus::Running => {
                 job.status = JobStatus::Cancelling;
                 job.cancel_requested = true;
                 job.cancelling_since = Some(Instant::now());
-                job.message = Some("Cancelling…".to_owned());
+                job.message = Some(crate::i18n::tr("Cancelling…"));
                 if let Some(cancel) = job.cancel.take() {
                     cancel();
                 }
@@ -679,7 +683,8 @@ fn finish_invocation(job: &mut Job, code: Option<i32>, signal: Option<i32>) {
     if job.cancel_requested {
         job.status = JobStatus::Cancelled;
         job.finished_at = Some(Instant::now());
-        job.message.get_or_insert_with(|| "Cancelled".to_owned());
+        job.message
+            .get_or_insert_with(|| crate::i18n::tr("Cancelled"));
         return;
     }
     let success = code == Some(0) && signal.is_none();
@@ -721,12 +726,21 @@ fn exit_failure_message(
     code: Option<i32>,
     signal: Option<i32>,
 ) -> String {
-    let detail = match (code, signal) {
-        (Some(code), _) => format!("exited with status {code}"),
-        (None, Some(signal)) => format!("was stopped by signal {signal}"),
-        (None, None) => "could not be started".to_owned(),
-    };
-    format!("{} {detail}", definition.name)
+    let name = &definition.name;
+    match (code, signal) {
+        (Some(code), _) => rust_i18n::t!(
+            "%{name} exited with status %{code}",
+            name = name,
+            code = code
+        ),
+        (None, Some(signal)) => rust_i18n::t!(
+            "%{name} was stopped by signal %{signal}",
+            name = name,
+            signal = signal
+        ),
+        (None, None) => rust_i18n::t!("%{name} could not be started", name = name),
+    }
+    .into_owned()
 }
 
 fn sanitize_message(message: String) -> String {

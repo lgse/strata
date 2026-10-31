@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-//! Removable-drive management: format, rename (volume label), and properties.
-//! Only removable drives are eligible (see `is_eligible`).
+//! Storage metadata, removable-only formatting, and encrypted container locking.
+//! Display labels belong to Strata preferences, not the filesystem.
 
 use std::{
-    future::Future,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -33,8 +32,44 @@ impl FilesystemType {
         match self {
             Self::Fat32 => 11,
             Self::Ntfs => 32,
-            Self::Exfat => 32,
+            Self::Exfat => 11,
         }
+    }
+
+    /// The unit `max_label_len` counts, as libblockdev checks it before UDisks wipes.
+    pub(super) fn label_measure(self) -> fn(&str) -> usize {
+        match self {
+            Self::Fat32 => str::len,
+            Self::Ntfs | Self::Exfat => |label| label.encode_utf16().count(),
+        }
+    }
+
+    pub(super) fn label_fits(self, label: &str) -> bool {
+        self.label_measure()(label) <= self.max_label_len()
+    }
+
+    pub(super) fn label_character_error(self, label: &str) -> Option<String> {
+        let forbidden = match self {
+            Self::Fat32 => "*?.,;:/\\|+=<>[]\"",
+            Self::Exfat => "*?:/\\|<>\"",
+            Self::Ntfs => "",
+        };
+        label.chars().find_map(|character| {
+            if character.is_ascii_control() {
+                Some(crate::i18n::tr("Labels cannot contain control characters."))
+            } else if forbidden.contains(character) {
+                Some(
+                    rust_i18n::t!(
+                        "%{filesystem} labels cannot contain “%{character}”.",
+                        filesystem = self.label(),
+                        character = character
+                    )
+                    .into_owned(),
+                )
+            } else {
+                None
+            }
+        })
     }
 
     /// Candidate executables, in preference order.
@@ -46,54 +81,31 @@ impl FilesystemType {
         }
     }
 
-    /// Command-line arguments (before the device path) for formatting.
-    fn format_args(self, label: &str, quick: bool) -> Vec<String> {
-        let mut args: Vec<String> = match self {
-            Self::Fat32 => {
-                let mut args = vec!["-F".to_owned(), "32".to_owned()];
-                if !quick {
-                    args.push("-c".to_owned());
-                }
-                args
-            }
-            Self::Ntfs => {
-                if quick {
-                    vec!["--quick".to_owned()]
-                } else {
-                    Vec::new()
-                }
-            }
-            Self::Exfat => {
-                if quick {
-                    Vec::new()
-                } else {
-                    vec!["-f".to_owned()]
-                }
-            }
-        };
+    fn format_options(self, label: &str, quick: bool) -> glib::Variant {
+        let options = glib::VariantDict::new(None);
+        options.insert("update-partition-type", true);
         if !label.is_empty() {
-            match self {
-                Self::Fat32 | Self::Exfat => {
-                    args.extend(["-n".to_owned(), label.to_owned()]);
-                }
-                Self::Ntfs => {
-                    args.extend(["-L".to_owned(), label.to_owned()]);
-                }
-            }
+            options.insert("label", label);
         }
-        args
+        if !quick {
+            options.insert("erase", "zero");
+        }
+        if self == Self::Fat32 {
+            options.insert("mkfs-args", vec!["-F", "32"]);
+        }
+        options.end()
+    }
+
+    fn udisks_type(self) -> &'static str {
+        match self {
+            Self::Fat32 => "vfat",
+            Self::Ntfs => "ntfs",
+            Self::Exfat => "exfat",
+        }
     }
 
     fn resolve_mkfs(self) -> Option<PathBuf> {
         self.mkfs_candidates().iter().find_map(|cmd| tool_path(cmd))
-    }
-
-    pub(super) fn label_cmd(self) -> &'static str {
-        match self {
-            Self::Fat32 => "fatlabel",
-            Self::Ntfs => "ntfslabel",
-            Self::Exfat => "exfatlabel",
-        }
     }
 
     pub(super) fn format_tool_name(self) -> &'static str {
@@ -106,10 +118,6 @@ impl FilesystemType {
 
     pub(super) fn available(self) -> bool {
         self.resolve_mkfs().is_some()
-    }
-
-    pub(super) fn label_tool_available(self) -> bool {
-        tool_path(self.label_cmd()).is_some()
     }
 }
 
@@ -131,8 +139,8 @@ pub(super) fn is_eligible(volume: Option<&gio::Volume>) -> bool {
 
 #[derive(Debug)]
 pub(super) enum DriveOpError {
-    ToolNotFound(String),
     CommandFailed(String),
+    MissingInterface(String),
     DeviceNotFound,
     Cancelled,
     InvalidLabel(String),
@@ -142,12 +150,29 @@ pub(super) enum DriveOpError {
 impl std::fmt::Display for DriveOpError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::ToolNotFound(cmd) => write!(f, "Required tool “{cmd}” was not found"),
-            Self::CommandFailed(msg) => write!(f, "{msg}"),
+            Self::CommandFailed(msg) | Self::MissingInterface(msg) => write!(f, "{msg}"),
             Self::DeviceNotFound => f.write_str("Could not identify the drive's block device"),
             Self::Cancelled => f.write_str("Operation cancelled"),
             Self::InvalidLabel(msg) => write!(f, "Invalid label: {msg}"),
             Self::Io(error) => write!(f, "I/O error: {error}"),
+        }
+    }
+}
+
+impl DriveOpError {
+    pub(super) fn user_message(&self) -> String {
+        match self {
+            Self::CommandFailed(message) | Self::MissingInterface(message) => message.clone(),
+            Self::DeviceNotFound => crate::i18n::tr("Could not identify the drive's block device"),
+            Self::Cancelled => crate::i18n::tr("Operation cancelled"),
+            Self::InvalidLabel(reason) => {
+                rust_i18n::t!("Invalid label: %{reason}", reason = reason).into_owned()
+            }
+            Self::Io(error) => rust_i18n::t!(
+                "I/O error: %{error}",
+                error = crate::services::io_error_detail(error)
+            )
+            .into_owned(),
         }
     }
 }
@@ -162,7 +187,9 @@ impl From<std::io::Error> for DriveOpError {
 
 impl From<glib::Error> for DriveOpError {
     fn from(error: glib::Error) -> Self {
-        if error.matches(gio::IOErrorEnum::Cancelled)
+        if gio::DBusError::remote_error(&error)
+            .is_some_and(|name| name == "org.freedesktop.UDisks2.Error.NotAuthorizedDismissed")
+            || error.matches(gio::IOErrorEnum::Cancelled)
             || error.matches(gio::IOErrorEnum::FailedHandled)
         {
             Self::Cancelled
@@ -174,6 +201,7 @@ impl From<glib::Error> for DriveOpError {
 
 /// Locate an executable through `PATH` plus the usual sbin directories.
 fn tool_path(cmd: &str) -> Option<PathBuf> {
+    crate::util::ui_thread::assert_off();
     if cmd.contains('/') {
         let path = PathBuf::from(cmd);
         return is_executable(&path).then_some(path);
@@ -208,19 +236,13 @@ pub(super) fn block_device_for_volume(volume: &gio::Volume) -> Option<PathBuf> {
     if let Some(device) = super::gio_volume_unix_device(volume) {
         return Some(PathBuf::from(device.as_str()));
     }
-    if let Some(drive) = volume.drive()
-        && let Some(id) = drive.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str())
-    {
-        return Some(PathBuf::from(id.as_str()));
-    }
     None
 }
 
 /// Total and available bytes for a mounted path, or `None` when the
 /// filesystem does not report capacity.
 pub(super) fn usage_for_path(path: &Path) -> Option<(u64, u64)> {
-    let file = std::fs::File::open(path).ok()?;
-    let stat = rustix::fs::fstatvfs(&file).ok()?;
+    let stat = rustix::fs::statvfs(path).ok()?;
     if stat.f_blocks == 0 {
         return None;
     }
@@ -235,59 +257,12 @@ pub(super) fn usage_for_path(path: &Path) -> Option<(u64, u64)> {
     ))
 }
 
-fn run_tool_path(exe: &Path, args: &[String]) -> Result<String, DriveOpError> {
-    let output = Command::new(exe)
-        .args(args)
-        .output()
-        .map_err(DriveOpError::Io)?;
-    if !output.status.success() {
-        let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        let message = if detail.is_empty() {
-            format!("“{}” failed without further details", exe.display())
-        } else {
-            detail
-        };
-        return Err(DriveOpError::CommandFailed(message));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+pub(super) fn block_device_for_path(path: &Path) -> Option<PathBuf> {
+    super::devices::block_device_from_mount_table(&crate::adapters::mount_watch::latest(), path)
 }
 
-/// Run a mutating storage tool, elevating through `pkexec` when not root:
-/// block devices are not writable by desktop users. A dismissed
-/// authorization prompt maps to `Cancelled` and stays quiet; genuine
-/// failures keep their stderr.
-fn run_privileged_tool(cmd: &str, args: &[String]) -> Result<String, DriveOpError> {
-    let exe = tool_path(cmd).ok_or_else(|| DriveOpError::ToolNotFound(cmd.to_owned()))?;
-    if rustix::process::geteuid().is_root() {
-        return run_tool_path(&exe, args);
-    }
-    let Some(pkexec) = tool_path("pkexec") else {
-        return run_tool_path(&exe, args);
-    };
-    let mut full_args = vec![exe.to_string_lossy().into_owned()];
-    full_args.extend(args.iter().cloned());
-    match run_tool_path(&pkexec, &full_args) {
-        Err(DriveOpError::CommandFailed(message)) if message.to_lowercase().contains("dismiss") => {
-            Err(DriveOpError::Cancelled)
-        }
-        other => other,
-    }
-}
-
-pub(super) fn filesystem_of_device(device: &Path) -> FilesystemType {
-    let fstype = tool_path("lsblk").and_then(|exe| {
-        Command::new(exe)
-            .args(["-n", "-o", "FSTYPE", &device.to_string_lossy()])
-            .output()
-            .ok()
-            .filter(|output| output.status.success())
-            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
-    });
-    match fstype.as_deref() {
-        Some("ntfs") => FilesystemType::Ntfs,
-        Some("exfat") => FilesystemType::Exfat,
-        _ => FilesystemType::Fat32,
-    }
+pub(super) fn mounted_path_for_device(device: &Path) -> Option<PathBuf> {
+    super::devices::mounted_path_from_table(&crate::adapters::mount_watch::latest(), device)
 }
 
 /// Human-readable filesystem name for a block device.
@@ -356,54 +331,226 @@ pub(super) async fn format_volume(
     label: String,
     quick: bool,
 ) -> Result<(), DriveOpError> {
-    let cmd = fs_type
-        .resolve_mkfs()
-        .ok_or_else(|| DriveOpError::ToolNotFound("mkfs".to_owned()))?;
-    let device = unmount_for_exclusive_access(&parent, &volume).await?;
-    let device_arg = device.to_string_lossy().into_owned();
-    let mut args = fs_type.format_args(&label, quick);
-    args.push(device_arg);
-    let cmd_display = cmd.display().to_string();
-    gio::spawn_blocking(move || run_privileged_tool(&cmd_display, &args).map(|_| ()))
-        .await
-        .map_err(|_| DriveOpError::CommandFailed("Formatting task did not complete".to_owned()))?
-}
-
-/// Persist a new filesystem label. The volume is unmounted first because
-/// the label tools require exclusive access.
-pub(super) async fn rename_volume(
-    parent: gtk::Widget,
-    volume: gio::Volume,
-    label: String,
-) -> Result<(), DriveOpError> {
-    let trimmed = label.trim();
-    if trimmed.is_empty() {
-        return Err(DriveOpError::InvalidLabel(
-            "The label cannot be empty".to_owned(),
-        ));
+    if !is_eligible(Some(&volume)) {
+        return Err(DriveOpError::DeviceNotFound);
     }
-    let device = block_device_for_volume(&volume).ok_or(DriveOpError::DeviceNotFound)?;
-    let fs_type = gio::spawn_blocking({
-        let device = device.clone();
-        move || filesystem_of_device(&device)
-    })
-    .await
-    .map_err(|_| DriveOpError::CommandFailed("Could not inspect the filesystem".to_owned()))?;
-    if trimmed.chars().count() > fs_type.max_label_len() {
-        return Err(DriveOpError::InvalidLabel(format!(
-            "“{}” labels hold at most {} characters",
-            fs_type.label(),
-            fs_type.max_label_len()
+    if !fs_type.label_fits(&label) {
+        return Err(DriveOpError::InvalidLabel(crate::i18n::tr(
+            "Filesystem label is too long.",
         )));
     }
-    let cmd = tool_path(fs_type.label_cmd())
-        .ok_or_else(|| DriveOpError::ToolNotFound(fs_type.label_cmd().to_owned()))?;
+    if let Some(message) = fs_type.label_character_error(&label) {
+        return Err(DriveOpError::InvalidLabel(message));
+    }
     let device = unmount_for_exclusive_access(&parent, &volume).await?;
-    let cmd_display = cmd.display().to_string();
-    let args = vec![device.to_string_lossy().into_owned(), trimmed.to_owned()];
-    gio::spawn_blocking(move || run_privileged_tool(&cmd_display, &args).map(|_| ()))
-        .await
-        .map_err(|_| DriveOpError::CommandFailed("Relabelling task did not complete".to_owned()))?
+    gio::spawn_blocking(move || {
+        let connection = gio::bus_get_sync(gio::BusType::System, gio::Cancellable::NONE)?;
+        format_device(
+            &device,
+            fs_type,
+            &label,
+            quick,
+            |path, interface, method, parameters| {
+                connection
+                    .call_sync(
+                        Some("org.freedesktop.UDisks2"),
+                        path,
+                        interface,
+                        method,
+                        Some(parameters),
+                        None,
+                        gio::DBusCallFlags::NONE,
+                        i32::MAX,
+                        gio::Cancellable::NONE,
+                    )
+                    .map_err(DriveOpError::from)
+            },
+        )
+    })
+    .await
+    .map_err(|_| DriveOpError::CommandFailed(crate::i18n::tr("Formatting task did not complete")))?
+}
+
+fn format_device(
+    device: &Path,
+    fs_type: FilesystemType,
+    label: &str,
+    quick: bool,
+    mut call: impl FnMut(&str, &str, &str, &glib::Variant) -> Result<glib::Variant, DriveOpError>,
+) -> Result<(), DriveOpError> {
+    let device = device.to_str().ok_or(DriveOpError::DeviceNotFound)?;
+    let spec = glib::VariantDict::new(None);
+    spec.insert("path", device);
+    let options = glib::VariantDict::new(None).end();
+    let resolved = call(
+        "/org/freedesktop/UDisks2/Manager",
+        "org.freedesktop.UDisks2.Manager",
+        "ResolveDevice",
+        &glib::Variant::tuple_from_iter([spec.end(), options]),
+    )?;
+    let (paths,) = resolved
+        .get::<(Vec<glib::variant::ObjectPath>,)>()
+        .ok_or(DriveOpError::DeviceNotFound)?;
+    let [path] = paths.as_slice() else {
+        return Err(DriveOpError::DeviceNotFound);
+    };
+    // UDisks updates the partition type and reprobes the new filesystem together.
+    call(
+        path.as_str(),
+        "org.freedesktop.UDisks2.Block",
+        "Format",
+        &glib::Variant::tuple_from_iter([
+            fs_type.udisks_type().to_variant(),
+            fs_type.format_options(label, quick),
+        ]),
+    )?;
+    Ok(())
+}
+
+/// Close the LUKS container behind a volume. `device` may name the container
+/// or its open cleartext mapping; `luks_uuid` is the fallback when the path
+/// leads to no container. Only a block with the `Encrypted` interface is locked.
+pub(super) fn lock_encrypted_device(
+    device: Option<&str>,
+    luks_uuid: Option<&str>,
+    mut call: impl FnMut(&str, &str, &str, &glib::Variant) -> Result<glib::Variant, DriveOpError>,
+) -> Result<(), DriveOpError> {
+    let mut resolve = |key: &str, value: &str| -> Result<Option<String>, DriveOpError> {
+        let spec = glib::VariantDict::new(None);
+        spec.insert(key, value);
+        let resolved = call(
+            "/org/freedesktop/UDisks2/Manager",
+            "org.freedesktop.UDisks2.Manager",
+            "ResolveDevice",
+            &glib::Variant::tuple_from_iter([spec.end(), glib::VariantDict::new(None).end()]),
+        )?;
+        let (paths,) = resolved
+            .get::<(Vec<glib::variant::ObjectPath>,)>()
+            .ok_or(DriveOpError::DeviceNotFound)?;
+        Ok(match paths.as_slice() {
+            [path] => Some(path.as_str().to_owned()),
+            _ => None,
+        })
+    };
+    let mut blocks = Vec::new();
+    if let Some(device) = device {
+        blocks.extend(resolve("path", device)?);
+    }
+    if let Some(uuid) = luks_uuid {
+        blocks.extend(resolve("uuid", uuid)?);
+    }
+    for block in blocks {
+        let backing = udisks_object_property(
+            &mut call,
+            &block,
+            "org.freedesktop.UDisks2.Block",
+            "CryptoBackingDevice",
+        )?
+        .filter(|backing| backing != "/");
+        let container = backing.unwrap_or(block);
+        let cleartext = match udisks_object_property(
+            &mut call,
+            &container,
+            "org.freedesktop.UDisks2.Encrypted",
+            "CleartextDevice",
+        ) {
+            Ok(Some(cleartext)) => cleartext,
+            Ok(None) | Err(DriveOpError::MissingInterface(_)) => continue,
+            Err(error) => return Err(error),
+        };
+        if cleartext != "/" {
+            call(
+                &container,
+                "org.freedesktop.UDisks2.Encrypted",
+                "Lock",
+                &glib::Variant::tuple_from_iter([glib::VariantDict::new(None).end()]),
+            )?;
+        }
+        return Ok(());
+    }
+    Err(DriveOpError::DeviceNotFound)
+}
+
+fn udisks_object_property(
+    call: &mut impl FnMut(&str, &str, &str, &glib::Variant) -> Result<glib::Variant, DriveOpError>,
+    object: &str,
+    interface: &str,
+    property: &str,
+) -> Result<Option<String>, DriveOpError> {
+    let value = call(
+        object,
+        "org.freedesktop.DBus.Properties",
+        "Get",
+        &(interface, property).to_variant(),
+    )?;
+    Ok(value
+        .child_value(0)
+        .as_variant()
+        .and_then(|value| value.get::<glib::variant::ObjectPath>())
+        .map(|path| path.as_str().to_owned()))
+}
+
+/// Run `lock_encrypted_device` against the system bus, letting polkit ask
+/// for authorization when the mapping was opened by another user. Only the
+/// `Lock` call waits indefinitely for that prompt; lookups keep the default
+/// D-Bus timeout so a hung udisksd fails instead of leaving Lock in flight.
+pub(super) async fn lock_encrypted_device_on_system_bus(
+    device: Option<String>,
+    luks_uuid: Option<String>,
+) -> Result<(), glib::Error> {
+    let result = gio::spawn_blocking(move || {
+        let connection = gio::bus_get_sync(gio::BusType::System, gio::Cancellable::NONE)?;
+        lock_encrypted_device(
+            device.as_deref(),
+            luks_uuid.as_deref(),
+            |path, interface, method, parameters| {
+                let timeout_msec = if method == "Lock" { i32::MAX } else { -1 };
+                connection
+                    .call_sync(
+                        Some("org.freedesktop.UDisks2"),
+                        path,
+                        interface,
+                        method,
+                        Some(parameters),
+                        None,
+                        gio::DBusCallFlags::ALLOW_INTERACTIVE_AUTHORIZATION,
+                        timeout_msec,
+                        gio::Cancellable::NONE,
+                    )
+                    .map_err(lock_error)
+            },
+        )
+    })
+    .await
+    .map_err(|_| DriveOpError::CommandFailed(crate::i18n::tr("Locking task did not complete")))
+    .and_then(|result| result);
+    result.map_err(|error| match error {
+        DriveOpError::Cancelled => glib::Error::new(gio::IOErrorEnum::FailedHandled, ""),
+        error => glib::Error::new(gio::IOErrorEnum::Failed, &error.user_message()),
+    })
+}
+
+fn lock_error(mut error: glib::Error) -> DriveOpError {
+    let dismissed = DriveOpError::from(error.clone());
+    if matches!(dismissed, DriveOpError::Cancelled) {
+        return dismissed;
+    }
+    // GDBus answers a property read on an unexported interface with InvalidArgs.
+    let missing_interface = gio::DBusError::remote_error(&error).is_some_and(|name| {
+        matches!(
+            name.as_str(),
+            "org.freedesktop.DBus.Error.InvalidArgs"
+                | "org.freedesktop.DBus.Error.UnknownInterface"
+                | "org.freedesktop.DBus.Error.UnknownProperty"
+        )
+    });
+    gio::DBusError::strip_remote_error(&mut error);
+    let message = error.message().to_owned();
+    if missing_interface {
+        DriveOpError::MissingInterface(message)
+    } else {
+        DriveOpError::CommandFailed(message)
+    }
 }
 
 /// Report the outcome: stay quiet on cancellation and success, and show
@@ -418,70 +565,14 @@ pub(super) fn report_result(
         Err(DriveOpError::Cancelled) => {}
         Err(error) => show_error_dialog(
             parent,
-            &format!("Unable to update {display_name}"),
-            &error.to_string(),
+            &rust_i18n::t!(
+                "Unable to update %{display_name}",
+                display_name = display_name
+            ),
+            &error.user_message(),
         ),
     }
 }
 
-pub(super) fn spawn_drive_task<F, Fut>(parent: gtk::Widget, display_name: String, task: F)
-where
-    F: FnOnce() -> Fut + 'static,
-    Fut: Future<Output = Result<(), DriveOpError>> + 'static,
-{
-    glib::MainContext::default().spawn_local(async move {
-        let result = task().await;
-        report_result(&parent, &display_name, result);
-    });
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn format_args_map_quick_and_full_per_filesystem() {
-        assert_eq!(
-            FilesystemType::Fat32.format_args("", true),
-            vec!["-F", "32"]
-        );
-        assert_eq!(
-            FilesystemType::Fat32.format_args("", false),
-            vec!["-F", "32", "-c"]
-        );
-        assert_eq!(
-            FilesystemType::Fat32.format_args("Stick", true),
-            vec!["-F", "32", "-n", "Stick"]
-        );
-        assert_eq!(FilesystemType::Ntfs.format_args("", true), vec!["--quick"]);
-        assert_eq!(
-            FilesystemType::Ntfs.format_args("Stick", false),
-            vec!["-L", "Stick"]
-        );
-        assert!(FilesystemType::Exfat.format_args("", true).is_empty());
-        assert_eq!(FilesystemType::Exfat.format_args("", false), vec!["-f"]);
-        assert_eq!(
-            FilesystemType::Exfat.format_args("Stick", true),
-            vec!["-n", "Stick"]
-        );
-    }
-
-    #[test]
-    fn tool_path_finds_shell_and_rejects_missing_tools() {
-        assert!(tool_path("sh").is_some());
-        assert!(tool_path("strata-definitely-missing-tool").is_none());
-    }
-
-    #[test]
-    fn filesystem_label_limits_match_backends() {
-        assert_eq!(FilesystemType::Fat32.max_label_len(), 11);
-        assert_eq!(FilesystemType::Ntfs.max_label_len(), 32);
-        assert_eq!(FilesystemType::Exfat.max_label_len(), 32);
-    }
-
-    #[test]
-    fn ineligible_without_removable_drive() {
-        assert!(!is_eligible(None));
-        assert!(!show_mount(None));
-    }
-}
+mod tests;

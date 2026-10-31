@@ -10,12 +10,17 @@ use std::{
 use gio::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::search::{SearchItem, fold_for_search};
+use super::{
+    path_match::{self, Frecency, PathMatcher, PathQuery},
+    search::{SearchItem, fold_for_search},
+};
 
 const HISTORY_VERSION: u32 = 1;
 const MAX_ENTRIES: usize = 1_000;
 const MAX_RESULTS: usize = 100;
 const MAX_TOTAL_RANK: f64 = 10_000.0;
+// Exact names must outrank frecency within the same name-term tier.
+const EXACT_NAME_BONUS: i64 = 1 << 24;
 const HOUR_SECONDS: u64 = 60 * 60;
 const DAY_SECONDS: u64 = 24 * HOUR_SECONDS;
 const WEEK_SECONDS: u64 = 7 * DAY_SECONDS;
@@ -97,9 +102,27 @@ impl NavigationHistory {
         }
         age_entries(&mut entries);
         prune_entries(&mut entries, now);
-        if let Err(error) = save_entries(&self.path, &entries) {
-            tracing::warn!(%error, path = %self.path.display(), "folder history could not be saved");
-        }
+        let entries = entries.clone();
+        crate::storage::writer::save_produced(
+            self.path.clone(),
+            crate::storage::writer::Policy::State,
+            "folder history could not be saved",
+            move || stored_entries(&entries),
+        );
+    }
+
+    pub(crate) fn frecency_within(&self, root: &Path) -> Frecency {
+        self.frecency_within_at(root, unix_time())
+    }
+
+    fn frecency_within_at(&self, root: &Path, now: u64) -> Frecency {
+        Frecency::within(
+            root,
+            self.entries
+                .borrow()
+                .iter()
+                .map(|entry| (entry.path.clone(), frecency_score(entry, now))),
+        )
     }
 
     pub(crate) fn search(&self, query: &str) -> Vec<SearchItem> {
@@ -120,7 +143,9 @@ impl NavigationHistory {
         now: u64,
         excluded: Option<&Path>,
     ) -> Vec<SearchItem> {
-        let query = fold_for_search(query.trim());
+        let query = query.trim();
+        let exact_name = fold_for_search(query);
+        let mut matcher = HistoryMatcher::new(query);
         let mut matches = self
             .entries
             .borrow()
@@ -128,17 +153,19 @@ impl NavigationHistory {
             .filter(|entry| Some(entry.path.as_path()) != excluded)
             .filter_map(|entry| {
                 let item = SearchItem::for_history(entry.path.clone());
-                let text_score = if query.is_empty() {
-                    0
-                } else {
-                    item.fuzzy_score(&query)?
-                };
                 let frecency = frecency_score(entry, now);
-                let frecency_bonus = (frecency.max(0.0).ln_1p() * 256.0).min(2_000.0) as i64;
-                let score = if query.is_empty() {
-                    (frecency * 1_000.0) as i64
-                } else {
-                    text_score + frecency_bonus
+                let score = match matcher.score(&item)? {
+                    None => (frecency * 1_000.0) as i64,
+                    Some(text) => {
+                        let frecency_bonus =
+                            (frecency.max(0.0).ln_1p() * 256.0).min(2_000.0) as i64;
+                        let exact = if item.name_is(&exact_name) {
+                            EXACT_NAME_BONUS
+                        } else {
+                            0
+                        };
+                        path_match::rank(text, frecency_bonus + exact)
+                    }
                 };
                 Some((score, entry.last_accessed, item))
             })
@@ -158,7 +185,7 @@ impl NavigationHistory {
     }
 
     pub(crate) fn recent_excluding(&self, query: &str, excluded: Option<&Path>) -> Vec<SearchItem> {
-        let query = fold_for_search(query.trim());
+        let mut matcher = HistoryMatcher::new(query);
         let mut matches = self
             .entries
             .borrow()
@@ -166,8 +193,8 @@ impl NavigationHistory {
             .filter(|entry| Some(entry.path.as_path()) != excluded)
             .filter_map(|entry| {
                 let item = SearchItem::for_history(entry.path.clone());
-                (query.is_empty() || item.fuzzy_score(&query).is_some())
-                    .then_some((entry.last_accessed, item))
+                matcher.score(&item)?;
+                Some((entry.last_accessed, item))
             })
             .collect::<Vec<_>>();
         matches.sort_unstable_by(|left, right| {
@@ -181,6 +208,22 @@ impl NavigationHistory {
             .take(MAX_RESULTS)
             .map(|(_, item)| item)
             .collect()
+    }
+}
+
+struct HistoryMatcher(Option<PathMatcher>);
+
+impl HistoryMatcher {
+    fn new(query: &str) -> Self {
+        let query = query.trim();
+        Self((!query.is_empty()).then(|| PathMatcher::new(&PathQuery::parse(query))))
+    }
+
+    fn score(&mut self, item: &SearchItem) -> Option<Option<path_match::TextScore>> {
+        match &mut self.0 {
+            None => Some(None),
+            Some(matcher) => item.path_score(matcher).map(Some),
+        }
     }
 }
 
@@ -268,10 +311,7 @@ fn load_entries(contents: &[u8]) -> Vec<HistoryEntry> {
     entries
 }
 
-fn save_entries(path: &Path, entries: &[HistoryEntry]) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
+fn stored_entries(entries: &[HistoryEntry]) -> std::io::Result<Vec<u8>> {
     let stored = StoredHistory {
         version: HISTORY_VERSION,
         entries: entries
@@ -283,8 +323,7 @@ fn save_entries(path: &Path, entries: &[HistoryEntry]) -> std::io::Result<()> {
             })
             .collect(),
     };
-    let contents = serde_json::to_vec(&stored).map_err(std::io::Error::other)?;
-    crate::storage::atomic_write(path, &contents)
+    serde_json::to_vec(&stored).map_err(std::io::Error::other)
 }
 
 #[cfg(test)]

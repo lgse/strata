@@ -65,6 +65,7 @@ pub struct PreviewRequest {
     pub pdf_page: i32,
     pub media_size: MediaPreviewSize,
     pub model_palette: super::ModelPalette,
+    pub model_view: super::ModelView,
     pub archive_password: Option<SecretString>,
 }
 
@@ -75,6 +76,8 @@ pub struct SandboxedMedia {
     pub(crate) size: MediaPreviewSize,
     pub(crate) backend: crate::sandbox::MediaPreviewBackend,
     pub(crate) input_owner: Option<PreviewInputLease>,
+    /// Audio-name hint: skip attached pictures, but preserve any real video found by the probe.
+    pub(crate) audio_only: bool,
 }
 
 impl SandboxedMedia {
@@ -123,8 +126,12 @@ pub enum PreviewContent {
     Rasterized {
         png: Vec<u8>,
     },
+    Route {
+        preview: super::route_preview::RoutePreview,
+    },
     Model {
         png: Vec<u8>,
+        mesh: Option<super::ModelMesh>,
     },
     SandboxedMedia {
         media: SandboxedMedia,
@@ -188,21 +195,13 @@ pub enum ModelPreviewStage {
 }
 
 impl ModelPreviewStage {
+    /// Localized progress text.
     pub fn label(self) -> String {
         match self {
-            Self::Reading => "Reading model…".into(),
-            Self::Thumbnail => "Reading thumbnail…".into(),
-            Self::Finishing => "Finishing preview…".into(),
-            Self::Rendering { triangles } => {
-                let count = if triangles >= 1_000_000 {
-                    format!("{:.1}M", triangles as f64 / 1_000_000.)
-                } else if triangles >= 1_000 {
-                    format!("{:.1}K", triangles as f64 / 1_000.)
-                } else {
-                    triangles.to_string()
-                };
-                format!("Rendering {count} triangles…")
-            }
+            Self::Reading => crate::i18n::tr("Reading model…"),
+            Self::Thumbnail => crate::i18n::tr("Reading thumbnail…"),
+            Self::Finishing => crate::i18n::tr("Finishing preview…"),
+            Self::Rendering { triangles } => crate::i18n::count("rendering_triangles", triangles),
         }
     }
 }
@@ -211,8 +210,25 @@ pub trait PreviewProvider {
     fn load(&self, request: PreviewRequest, emit: Rc<dyn Fn(PreviewEvent)>) -> LoadHandle;
 }
 
-fn content_type_for_path(path: &Path) -> glib::GString {
-    gio::content_type_guess(Some(path), None::<&[u8]>).0
+/// Leading bytes read to decide a local file's preview family.
+pub(crate) const CONTENT_SAMPLE_BYTES: usize = 8 * 1024;
+
+pub(crate) fn guess_content_type(path: &Path) -> (String, bool) {
+    if path
+        .extension()
+        .is_some_and(|extension| extension.as_encoded_bytes().eq_ignore_ascii_case(b"h264"))
+    {
+        return ("video/h264".to_owned(), false);
+    }
+    let (guessed, uncertain) = gio::content_type_guess(Some(path), None::<&[u8]>);
+    if !guessed.starts_with("image/") && crate::sandbox::raw_metadata::is_raw(path) {
+        return ("image/x-dcraw".to_owned(), false);
+    }
+    (guessed.to_string(), uncertain)
+}
+
+fn content_type_for_path(path: &Path) -> String {
+    guess_content_type(path).0
 }
 
 pub(crate) fn is_image_path(path: &Path) -> bool {
@@ -224,6 +240,112 @@ pub(crate) fn is_media_path(path: &Path) -> bool {
     content_type.starts_with("audio/") || content_type.starts_with("video/")
 }
 
+pub(crate) fn read_head_sample(path: &Path) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let file = super::file_activity::open(path)?;
+    let mut sample = Vec::with_capacity(CONTENT_SAMPLE_BYTES);
+    file.take(CONTENT_SAMPLE_BYTES as u64)
+        .read_to_end(&mut sample)?;
+    Ok(sample)
+}
+
+/// Whether a local file's leading bytes still back the visual family its name claims,
+/// so metadata probes skip source files that merely share a media extension.
+pub(crate) fn bytes_support_named_family(path: &Path) -> bool {
+    let Ok(sample) = read_head_sample(path) else {
+        return true;
+    };
+    let mut content_type = content_type_for_path(path).to_string();
+    let mut content = content_family(&content_type);
+    reconcile_with_sample(&mut content_type, &mut content, &sample);
+    !matches!(content, PreviewContent::Text { .. })
+}
+
+/// Text is NUL-free and either valid UTF-8 (allowing a sequence cut by the sample
+/// boundary) or a legacy single-byte encoding with few control bytes; UTF-16 announces
+/// itself with a byte-order mark.
+pub(crate) fn looks_like_text(sample: &[u8]) -> bool {
+    if sample.starts_with(&[0xFF, 0xFE]) || sample.starts_with(&[0xFE, 0xFF]) {
+        return true;
+    }
+    if sample.contains(&0) {
+        return false;
+    }
+    let utf8 = match std::str::from_utf8(sample) {
+        Ok(_) => true,
+        Err(error) => error.error_len().is_none(),
+    };
+    if utf8 {
+        return true;
+    }
+    let control = sample
+        .iter()
+        .filter(|byte| matches!(byte, 0x01..=0x08 | 0x0E..=0x1A | 0x1C..=0x1F))
+        .count();
+    control * 32 < sample.len()
+}
+
+fn content_type_from_bytes(sample: &[u8]) -> (String, bool) {
+    let (content_type, uncertain) = gio::content_type_guess(None::<&Path>, Some(sample));
+    (content_type.to_string(), uncertain)
+}
+
+fn same_family(left: &PreviewContent, right: &PreviewContent) -> bool {
+    std::mem::discriminant(left) == std::mem::discriminant(right)
+}
+
+/// Lets the file's leading bytes override a name-derived preview family: text is never
+/// handed to a media or image decoder and binary data is never shown as text. Visual
+/// families survive only when the bytes carry their signature, or for XML-based images
+/// such as SVG whose source is legitimately text.
+pub(crate) fn reconcile_with_sample(
+    content_type: &mut String,
+    content: &mut PreviewContent,
+    sample: &[u8],
+) {
+    let (from_bytes, bytes_uncertain) = content_type_from_bytes(sample);
+    let bytes_family = content_family(&from_bytes);
+    let is_text = matches!(content, PreviewContent::Text { .. });
+    let is_visual = matches!(
+        content,
+        PreviewContent::Image | PreviewContent::Media | PreviewContent::Pdf { .. }
+    );
+    if looks_like_text(sample) {
+        if is_text {
+            // A text name hides nothing unless the bytes carry a visual signature.
+            if !bytes_uncertain
+                && matches!(
+                    bytes_family,
+                    PreviewContent::Image | PreviewContent::Pdf { .. }
+                )
+            {
+                *content_type = from_bytes;
+                *content = bytes_family;
+            }
+            return;
+        }
+        if is_visual {
+            let bytes_agree = same_family(content, &bytes_family);
+            let xml_image = matches!(content, PreviewContent::Image)
+                && gio::content_type_is_a(content_type, "application/xml");
+            if bytes_agree || xml_image {
+                return;
+            }
+            *content_type = "text/plain".to_owned();
+        }
+        *content = PreviewContent::Text {
+            content: String::new(),
+            truncated: false,
+        };
+    } else if is_text {
+        *content_type = from_bytes;
+        *content = match bytes_family {
+            PreviewContent::Text { .. } => PreviewContent::Unsupported,
+            family => family,
+        };
+    }
+}
+
 pub(crate) fn supports_remote_video(name: &OsStr) -> bool {
     Path::new(name)
         .extension()
@@ -231,8 +353,15 @@ pub(crate) fn supports_remote_video(name: &OsStr) -> bool {
         .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "mov" | "mp4"))
 }
 
-pub(crate) fn is_model(name: &OsStr) -> bool {
-    super::ModelFormat::for_name(name).is_some()
+/// Remote G-code keeps the text preview: its thumbnail is read from the file in place.
+pub(crate) fn model_format(entry: &FileEntry) -> Option<super::ModelFormat> {
+    super::ModelFormat::for_name(&entry.native_name).filter(|format| {
+        *format != super::ModelFormat::Gcode || entry.location.native_path().is_some()
+    })
+}
+
+pub(crate) fn is_model(entry: &FileEntry) -> bool {
+    model_format(entry).is_some()
 }
 
 pub(crate) fn has_plain_text_extension(name: &OsStr) -> bool {
@@ -244,7 +373,7 @@ pub(crate) fn has_plain_text_extension(name: &OsStr) -> bool {
 
 pub(crate) fn normalize_preview_text(text: &str) -> Cow<'_, str> {
     if text.contains('\0') {
-        Cow::Owned(text.replace('\0', "�"))
+        Cow::Owned(text.replace('\0', "\u{FFFD}"))
     } else {
         Cow::Borrowed(text)
     }
@@ -288,6 +417,8 @@ pub(crate) fn content_family(content_type: &str) -> PreviewContent {
                 | "application/javascript"
                 | "application/x-javascript"
                 | "application/x-shellscript"
+                | "application/typescript"
+                | "application/x-typescript"
         )
         || content_type.ends_with("+json")
         || content_type.ends_with("+xml")

@@ -6,35 +6,39 @@ use super::super::*;
 fn custom_text_size_shortcuts_accept_standard_and_keypad_keys_without_stealing_alt_combinations() {
     use gtk::gdk::{Key, ModifierType as M};
     let size = TextSize::new(24);
-    for key in [Key::plus, Key::equal, Key::KP_Add] {
+    let shortcut = |key, modifiers| {
+        size.for_shortcut(&crate::ui::keys::KeyPress::from_signal(key, 0, modifiers))
+    };
+    for key in [Key::plus, Key::equal] {
+        assert_eq!(shortcut(key, M::CONTROL_MASK), Some(TextSize::new(25)));
         assert_eq!(
-            size.for_shortcut(key, M::CONTROL_MASK),
-            Some(TextSize::new(25))
-        );
-        assert_eq!(
-            size.for_shortcut(key, M::CONTROL_MASK | M::SHIFT_MASK),
+            shortcut(key, M::CONTROL_MASK | M::SHIFT_MASK),
             Some(TextSize::new(25))
         );
     }
+    assert_eq!(
+        shortcut(Key::KP_Add, M::CONTROL_MASK),
+        Some(TextSize::new(25))
+    );
+    // Shift types nothing else on the keypad, so it is part of the shortcut there.
+    assert_eq!(shortcut(Key::KP_Add, M::CONTROL_MASK | M::SHIFT_MASK), None);
     for key in [Key::minus, Key::KP_Subtract] {
-        assert_eq!(
-            size.for_shortcut(key, M::CONTROL_MASK),
-            Some(TextSize::new(23))
-        );
+        assert_eq!(shortcut(key, M::CONTROL_MASK), Some(TextSize::new(23)));
     }
     for key in [Key::_0, Key::KP_0] {
-        assert_eq!(
-            size.for_shortcut(key, M::CONTROL_MASK),
-            Some(TextSize::default())
-        );
+        assert_eq!(shortcut(key, M::CONTROL_MASK), Some(TextSize::default()));
     }
+    assert_eq!(
+        shortcut(Key::parenright, M::CONTROL_MASK | M::SHIFT_MASK),
+        None
+    );
     for modifiers in [
         M::empty(),
         M::SHIFT_MASK,
         M::CONTROL_MASK | M::ALT_MASK,
         M::CONTROL_MASK | M::SUPER_MASK,
     ] {
-        assert_eq!(size.for_shortcut(Key::plus, modifiers), None);
+        assert_eq!(shortcut(Key::plus, modifiers), None);
     }
 }
 

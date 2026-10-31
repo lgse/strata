@@ -1,0 +1,38 @@
+{"scenario":"long-rename-keeps-caret","modes":["columns","icons","list"],"prefs":{"single_click_previews":false},"layout":"us","mutation":"rename-caret","known_bug":null,"cost":{"columns":1.0,"icons":1.0,"list":1.0},"quality":{"impact":2,"coverage":2,"criticality":3,"diagnostic":3,"score":10,"note":"Caret stays visible in long rename across End/type/arrows/click; GTK inline_edit/tests/caret.rs pins the pixels, this adds real-window AT-SPI and pointer-click route"}}
+{"fs":{"path":"synthetic-quarterly-report-with-a-very-long-descriptive-basename-2026.txt","write":"keep\n"}}
+{"key":"F5"}
+{"wait":{"entry":"synthetic-quarterly-report-with-a-very-long-descriptive-basename-2026.txt"},"message":"the entry 'synthetic-quarterly-report-with-a-very-long-descriptive-basename-2026.txt' to appear"}
+{"select_with_keyboard":"synthetic-quarterly-report-with-a-very-long-descriptive-basename-2026.txt"}
+{"resize":{"width":420,"height":300},"modes":["columns"]}
+{"resize":{"width":640,"height":300},"modes":["icons","list"]}
+{"wait":{"window_width":420},"message":"a narrow window","modes":["columns"]}
+{"wait":{"window_width":640},"message":"a narrow window","modes":["icons","list"]}
+{"key":"F2"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus"}
+{"remember":{"field":true},"as":"rename"}
+{"expect":{"field":{"of":"rename","selection":[0,69]}}}
+{"expect":{"present":{"field":"rename"}}}
+{"key":"End"}
+{"wait":{"field":{"of":"rename","caret":73}},"message":"End to reach the extension"}
+{"expect":{"field":{"of":"rename","selection":null}}}
+{"expect":{"editor_within_viewport":{"of":"rename"}},"message":"the rename editor to stay inside the viewport"}
+{"type":"-final"}
+{"wait":{"field":{"of":"rename","text":"synthetic-quarterly-report-with-a-very-long-descriptive-basename-2026.txt-final"}},"message":"typing after the extension"}
+{"wait":{"field":{"of":"rename","caret":79}},"message":"the caret to follow typing"}
+{"expect":{"editor_within_viewport":{"of":"rename"}},"message":"the rename editor to stay inside the viewport"}
+{"key":"BackSpace","repeat":6}
+{"wait":{"field":{"of":"rename","text":"synthetic-quarterly-report-with-a-very-long-descriptive-basename-2026.txt"}},"message":"Backspace to remove the appended text"}
+{"key":"Left"}
+{"wait":{"field":{"of":"rename","caret":72}},"message":"Left to move the caret"}
+{"key":"Right"}
+{"wait":{"field":{"of":"rename","caret":73}},"message":"Right to return to the end"}
+{"expect":{"editor_within_viewport":{"of":"rename"}},"message":"the rename editor to stay inside the viewport"}
+{"click":{"field":"rename"}}
+{"wait":{"field":{"of":"rename","caret":{"min":1,"max":72}}},"message":"clicking inside the visible name to move the caret"}
+{"expect":{"editor_within_viewport":{"of":"rename"}},"message":"the rename editor to stay inside the viewport"}
+{"key":"End"}
+{"wait":{"field":{"of":"rename","caret":73}},"message":"End after clicking"}
+{"key":"Return"}
+{"wait":{"absent":{"role":"text","name":"Rename"}},"message":"the name editor to close"}
+{"fs":{"path":"synthetic-quarterly-report-with-a-very-long-descriptive-basename-2026.txt","text":"keep\n"},"timeout_ms":0}
+{"fs":{"path":"synthetic-quarterly-report-with-a-very-long-descriptive-basename-2026.txt-final","exists":false},"timeout_ms":0}

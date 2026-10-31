@@ -2,6 +2,10 @@
 
 use super::*;
 
+fn press(key: gdk::Key, modifiers: gdk::ModifierType) -> KeyPress {
+    KeyPress::from_signal(key, 0, modifiers)
+}
+
 #[test]
 #[ignore = "requires a mapped GTK window; run this test alone"]
 fn footer_tracks_modes_and_shields_files_while_open() {
@@ -92,12 +96,12 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         let depth = view.browser().active_depth().expect("active directory");
         view.browser().set_selection(depth, &[0, 1, 2], Some(2));
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        while footer.count.text() != "1 folder, 2 files selected (6 B)"
+        while footer.count.text() != "1 folder, 2 files selected"
             && std::time::Instant::now() < deadline
         {
             settle();
         }
-        assert_eq!(footer.count.text(), "1 folder, 2 files selected (6 B)");
+        assert_eq!(footer.count.text(), "1 folder, 2 files selected");
         assert!(footer.count.tooltip_text().is_none());
         let folder = (0..3)
             .find(|position| {
@@ -112,6 +116,11 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         view.browser().set_selection(depth, &[folder], Some(folder));
         assert_eq!(footer.count.text(), "1 folder selected");
         view.browser().set_selection(depth, &[file], Some(file));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while footer.count.text() != "1 file selected (3 B)" && std::time::Instant::now() < deadline
+        {
+            settle();
+        }
         assert_eq!(footer.count.text(), "1 file selected (3 B)");
         view.browser().set_selection(depth, &[], None);
         assert_eq!(footer.count.text(), "3 items");
@@ -161,33 +170,34 @@ fn footer_tracks_modes_and_shields_files_while_open() {
     settle();
     assert_eq!(footer.count.text(), "0 items");
     let none = gdk::ModifierType::empty();
-    assert_eq!(footer.handle_key(gdk::Key::Delete, none), None);
+    assert_eq!(footer.handle_key(&press(gdk::Key::Delete, none)), None);
     assert_eq!(
-        footer.handle_key(gdk::Key::F1, gdk::ModifierType::CONTROL_MASK),
+        footer.handle_key(&press(gdk::Key::F1, gdk::ModifierType::CONTROL_MASK)),
         None
     );
     assert_eq!(
-        footer.handle_key(gdk::Key::F1, none),
+        footer.handle_key(&press(gdk::Key::F1, none)),
         Some(glib::Propagation::Stop)
     );
     assert!(footer.session.is_open());
+    settle();
     assert!(footer.panel.child_focus(gtk::DirectionType::TabForward));
     footer.search.grab_focus();
     assert_eq!(
-        footer.handle_key(gdk::Key::Delete, none),
+        footer.handle_key(&press(gdk::Key::Delete, none)),
         Some(glib::Propagation::Proceed)
     );
     assert_eq!(
-        footer.handle_key(gdk::Key::v, gdk::ModifierType::CONTROL_MASK),
+        footer.handle_key(&press(gdk::Key::v, gdk::ModifierType::CONTROL_MASK)),
         Some(glib::Propagation::Proceed)
     );
     footer.scroll.grab_focus();
     assert_eq!(
-        footer.handle_key(gdk::Key::Delete, none),
+        footer.handle_key(&press(gdk::Key::Delete, none)),
         Some(glib::Propagation::Stop)
     );
     assert_eq!(
-        footer.handle_key(gdk::Key::Tab, none),
+        footer.handle_key(&press(gdk::Key::Tab, none)),
         Some(glib::Propagation::Stop)
     );
     assert!(
@@ -196,7 +206,7 @@ fn footer_tracks_modes_and_shields_files_while_open() {
                 || focus.is_ancestor(&footer.search))
     );
     assert_eq!(
-        footer.handle_key(gdk::Key::Escape, none),
+        footer.handle_key(&press(gdk::Key::Escape, none)),
         Some(glib::Propagation::Stop)
     );
     assert!(!footer.session.is_open());
@@ -207,7 +217,7 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         }),
         "closing keyboard help must restore the previous editing or browsing focus"
     );
-    assert_eq!(footer.handle_key(gdk::Key::Delete, none), None);
+    assert_eq!(footer.handle_key(&press(gdk::Key::Delete, none)), None);
     let manager = super::super::preferences::PreferenceManager::shared();
     footer.bind_preferences(&manager);
     let other = ShortcutFooter::new(BrowserMode::Icons);
@@ -217,6 +227,7 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         footer.assert_hints_visible(enabled);
         other.assert_hints_visible(enabled);
     }
+    crate::storage::writer::settle();
     let settings =
         std::path::PathBuf::from(std::env::var_os("XDG_CONFIG_HOME").expect("isolated config"))
             .join("strata/settings.toml");
@@ -224,14 +235,14 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         toml::from_str(&std::fs::read_to_string(settings).expect("saved preferences"))
             .expect("valid preferences");
     assert_eq!(saved["show_keybinding_hints"].as_bool(), Some(false));
-    footer.handle_key(gdk::Key::F1, none);
+    footer.handle_key(&press(gdk::Key::F1, none));
     settle();
     assert!(footer.session.is_open());
-    footer.handle_key(gdk::Key::F1, none);
-    footer.handle_key(gdk::Key::F1, none);
+    footer.handle_key(&press(gdk::Key::F1, none));
+    footer.handle_key(&press(gdk::Key::F1, none));
     settle();
     assert!(footer.session.is_open());
-    footer.handle_key(gdk::Key::F1, none);
+    footer.handle_key(&press(gdk::Key::F1, none));
     settle();
     assert!(!footer.session.is_open());
     footer.assert_hints_visible(false);
@@ -254,6 +265,97 @@ impl ShortcutFooter {
 }
 
 #[test]
+fn localized_reference_names_keys_in_the_interface_language() {
+    crate::test_support::gtk_test(
+        "ui::shortcut_footer::tests::localized_reference_names_keys_in_the_interface_language",
+        || {
+            let manager = super::super::preferences::PreferenceManager::shared();
+            // The shared manager applies the saved startup language first.
+            rust_i18n::set_locale("de");
+            manager.set_tenxer_mode(true);
+            let footer = ShortcutFooter::new(BrowserMode::Columns);
+            footer.bind_preferences(&manager);
+            settle();
+            let labels = reference_labels(&footer);
+            let preview = crate::i18n::tr("Enter its preview; keys move into the drawer");
+            assert!(reference_pairs(&labels, "l / → auf einer Datei", &preview));
+            assert!(labels.iter().any(|label| label == "g g"));
+            assert!(
+                labels
+                    .iter()
+                    .any(|label| label == "Tab in Gehe zu › / Verschieben nach › / Kopieren nach ›")
+            );
+            for (keys, action) in [
+                (
+                    "d / Entf",
+                    "Nach Bestätigung in den Papierkorb verschieben; d d bestätigt",
+                ),
+                (
+                    "Strg+C / Strg+X",
+                    "Ausgewählte Elemente kopieren / ausschneiden",
+                ),
+                (
+                    "Strg+Umschalt+1–9 / 0",
+                    "Tab auswählen (Strg+Umschalt für Zahlen gedrückt halten)",
+                ),
+            ] {
+                assert!(reference_pairs(&labels, keys, action), "{keys}: {labels:?}");
+            }
+            footer.search.set_text("auf einer Datei");
+            settle();
+            let matches = reference_labels(&footer);
+            assert!(reference_pairs(&matches, "l / → auf einer Datei", &preview));
+            assert!(!matches.iter().any(|label| label == "g g"));
+            footer.search.set_text("ctrl+c");
+            settle();
+            let matches = reference_labels(&footer);
+            assert!(
+                matches.iter().any(|label| label == "Strg+C / Strg+X"),
+                "English key names find their German labels: {matches:?}"
+            );
+            assert!(!matches.iter().any(|label| label == "d / Entf"));
+            footer.search.set_text("shift");
+            settle();
+            let matches = reference_labels(&footer);
+            assert!(
+                reference_pairs(
+                    &matches,
+                    ", a / , m / , s / , e",
+                    "Nach Name / Änderung / Größe / Typ sortieren; Umschalt kehrt die Reihenfolge um"
+                ),
+                "English key names find keys named in German action text: {matches:?}"
+            );
+            for query in ["strg+0", "ctrl+0"] {
+                footer.search.set_text(query);
+                settle();
+                let matches = reference_labels(&footer);
+                assert!(
+                    reference_pairs(
+                        &matches,
+                        "Strg++ / − / 0",
+                        "Textgröße erhöhen / verringern / zurücksetzen"
+                    ),
+                    "{query} finds an alternative that shares its modifiers: {matches:?}"
+                );
+            }
+            for (query, keys) in [
+                ("ctrl+-", "Strg++ / − / 0"),
+                ("g -", "g + / g −"),
+                ("1-9", "Strg+Umschalt+1–9 / 0"),
+            ] {
+                footer.search.set_text(query);
+                settle();
+                let matches = reference_labels(&footer);
+                assert!(
+                    matches.iter().any(|label| label == keys),
+                    "a typed - finds {keys}: {matches:?}"
+                );
+            }
+        },
+    );
+}
+
+#[test]
 fn tenxer_reference_follows_the_active_map() {
     crate::test_support::gtk_test(
         "ui::shortcut_footer::tests::tenxer_reference_follows_the_active_map",
@@ -263,9 +365,9 @@ fn tenxer_reference_follows_the_active_map() {
             manager.set_show_keybinding_hints(true);
             let footer = ShortcutFooter::new(BrowserMode::Columns);
             footer.bind_preferences(&manager);
-            let entry = gtk::Entry::new();
+            let files = gtk::Button::new();
             let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
-            root.append(&entry);
+            root.append(&files);
             root.append(footer.widget());
             let overlay = gtk::Overlay::new();
             overlay.set_child(Some(&root));
@@ -275,7 +377,7 @@ fn tenxer_reference_follows_the_active_map() {
                 .default_height(480)
                 .build();
             window.present();
-            entry.grab_focus();
+            files.grab_focus();
             settle();
             let phrase = crate::ui::shortcut_reference::EXPERIMENTAL_LABEL;
             let none = gdk::ModifierType::empty();
@@ -285,7 +387,7 @@ fn tenxer_reference_follows_the_active_map() {
                     .iter()
                     .any(|label| label == "Preview a file, or open a folder")
             );
-            assert_eq!(footer.handle_key(gdk::Key::asciitilde, none), None);
+            assert_eq!(footer.handle_key(&press(gdk::Key::asciitilde, none)), None);
             assert!(!footer.session.is_open());
 
             manager.set_tenxer_mode(true);
@@ -329,6 +431,37 @@ fn tenxer_reference_follows_the_active_map() {
                     .iter()
                     .any(|label| label == "Move spatially between tiles")
             );
+            let mode_category = footer
+                .category_buttons()
+                .into_iter()
+                .find(|button| {
+                    let mut labels = Vec::new();
+                    collect_label_text(button.upcast_ref(), &mut labels);
+                    labels.iter().any(|label| label == "10xer mode")
+                })
+                .expect("10xer category");
+            mode_category.emit_clicked();
+            let mode_shortcuts = reference_labels(&footer);
+            for (keys, action) in [
+                ("v / V", "Visual select / visual unset"),
+                ("g g", "First item"),
+                ("g Space", "Go to a folder, typed path, or URI"),
+                ("s", "Search this folder and its subfolders"),
+                ("f", "Filter this listing"),
+                ("c c / c n", "Copy path / name"),
+                ("M / C", "Move / copy to a typed folder"),
+                ("Ctrl+R", "Invert the selection"),
+                ("Space", "Toggle the focused item and move down"),
+                ("i", "Open the next column for the focused directory"),
+            ] {
+                assert!(reference_pairs(&mode_shortcuts, keys, action), "{keys}");
+            }
+            assert!(
+                !mode_shortcuts
+                    .iter()
+                    .any(|label| label == "Ctrl+C / Ctrl+X")
+            );
+            footer.category_buttons()[0].emit_clicked();
             footer.set_mode(BrowserMode::Icons);
             let icons = reference_labels(&footer);
             assert!(
@@ -352,7 +485,7 @@ fn tenxer_reference_follows_the_active_map() {
                     .any(|label| label == "Open the next column for the focused directory")
             );
 
-            footer.handle_key(gdk::Key::F1, none);
+            footer.handle_key(&press(gdk::Key::F1, none));
             settle();
             assert!(footer.session.is_open());
             assert!(
@@ -412,12 +545,12 @@ fn tenxer_reference_follows_the_active_map() {
             footer.category_buttons()[0].emit_clicked();
             let ctrl = gdk::ModifierType::CONTROL_MASK;
             assert_eq!(
-                footer.handle_key(gdk::Key::b, ctrl),
+                footer.handle_key(&press(gdk::Key::b, ctrl)),
                 Some(glib::Propagation::Stop)
             );
             assert!(footer.category_buttons()[0].has_focus());
             assert_eq!(
-                footer.handle_key(gdk::Key::j, none),
+                footer.handle_key(&press(gdk::Key::j, none)),
                 Some(glib::Propagation::Stop)
             );
             assert!(
@@ -431,7 +564,7 @@ fn tenxer_reference_follows_the_active_map() {
                     .any(|label| label == "Toggle 10xer mode")
             );
             assert_eq!(
-                footer.handle_key(gdk::Key::k, none),
+                footer.handle_key(&press(gdk::Key::k, none)),
                 Some(glib::Propagation::Stop)
             );
             assert!(
@@ -440,28 +573,35 @@ fn tenxer_reference_follows_the_active_map() {
                     .any(|label| label == "Toggle 10xer mode")
             );
             assert_eq!(
-                footer.handle_key(gdk::Key::Right, none),
+                footer.handle_key(&press(gdk::Key::Right, none)),
                 Some(glib::Propagation::Stop)
             );
             assert!(footer.category_buttons()[1].has_focus());
             assert_eq!(
-                footer.handle_key(gdk::Key::h, none),
+                footer.handle_key(&press(gdk::Key::h, none)),
                 Some(glib::Propagation::Stop)
             );
             assert!(footer.category_buttons()[0].has_focus());
             assert_eq!(
-                footer.handle_key(gdk::Key::Tab, none),
+                footer.handle_key(&press(gdk::Key::Tab, none)),
                 Some(glib::Propagation::Stop)
             );
             assert!(footer.scroll.has_focus());
             let before = footer.scroll.vadjustment().value();
             assert_eq!(
-                footer.handle_key(gdk::Key::j, none),
+                footer.handle_key(&press(gdk::Key::j, none)),
                 Some(glib::Propagation::Stop)
             );
             assert!(footer.scroll.vadjustment().value() > before);
+            let scrolled = footer.scroll.vadjustment().value();
+            press_reference(&footer, gdk::Key::h);
             assert_eq!(
-                footer.handle_key(gdk::Key::f, ctrl),
+                footer.scroll.vadjustment().value(),
+                scrolled,
+                "h does not scroll the list"
+            );
+            assert_eq!(
+                footer.handle_key(&press(gdk::Key::f, ctrl)),
                 Some(glib::Propagation::Stop)
             );
             assert!(
@@ -470,20 +610,20 @@ fn tenxer_reference_follows_the_active_map() {
                         || focus.is_ancestor(&footer.search))
             );
             assert_eq!(
-                footer.handle_key(gdk::Key::l, ctrl),
+                footer.handle_key(&press(gdk::Key::l, ctrl)),
                 Some(glib::Propagation::Stop)
             );
             assert!(footer.scroll.has_focus());
             assert_eq!(
-                footer.handle_key(gdk::Key::f, ctrl),
+                footer.handle_key(&press(gdk::Key::f, ctrl)),
                 Some(glib::Propagation::Stop)
             );
             assert_eq!(
-                footer.handle_key(gdk::Key::Tab, gdk::ModifierType::SHIFT_MASK),
+                footer.handle_key(&press(gdk::Key::Tab, gdk::ModifierType::SHIFT_MASK)),
                 Some(glib::Propagation::Stop)
             );
             assert!(footer.scroll.has_focus());
-            entry.grab_focus();
+            files.grab_focus();
             assert!(
                 gtk::prelude::RootExt::focus(&window)
                     .is_some_and(|focus| focus == *footer.search.upcast_ref::<gtk::Widget>()
@@ -505,18 +645,18 @@ fn tenxer_reference_follows_the_active_map() {
                         .is_some_and(|widget| widget.has_css_class("search-backdrop")))
             );
             assert!(gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
-                focus == *entry.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&entry)
+                focus == *files.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&files)
             }));
-            footer.handle_key(gdk::Key::asciitilde, none);
+            footer.handle_key(&press(gdk::Key::asciitilde, none));
             settle();
             assert!(footer.session.is_open());
             footer.search.grab_focus();
             settle();
             assert_eq!(
-                footer.handle_key(gdk::Key::Delete, none),
+                footer.handle_key(&press(gdk::Key::Delete, none)),
                 Some(glib::Propagation::Proceed)
             );
-            footer.handle_key(gdk::Key::Escape, none);
+            footer.handle_key(&press(gdk::Key::Escape, none));
             settle();
             assert!(!footer.session.is_open());
 
@@ -576,6 +716,24 @@ fn tenxer_reference_follows_the_active_map() {
                     "the chooser refuses {unavailable:?}"
                 );
             }
+            chooser
+                .category_buttons()
+                .into_iter()
+                .find(|button| {
+                    let mut labels = Vec::new();
+                    collect_label_text(button.upcast_ref(), &mut labels);
+                    labels.iter().any(|label| label == "10xer mode")
+                })
+                .expect("chooser 10xer category")
+                .emit_clicked();
+            let chooser_mode = reference_labels(&chooser);
+            assert!(reference_pairs(
+                &chooser_mode,
+                "s",
+                "Search this folder and its subfolders"
+            ));
+            assert!(!chooser_mode.iter().any(|label| label == "v / V"));
+            assert!(!chooser_mode.iter().any(|label| label == "M / C"));
             manager.set_tenxer_mode(false);
             settle();
             assert!(!footer.tag.is_visible());
@@ -595,6 +753,73 @@ fn tenxer_reference_follows_the_active_map() {
                 assert!(!labels.iter().any(|label| label == "Toggle 10xer mode"));
             }
             window.destroy();
+        },
+    );
+}
+
+#[test]
+fn reference_follows_keymap_overrides_without_reopening() {
+    crate::test_support::gtk_test(
+        "ui::shortcut_footer::tests::reference_follows_keymap_overrides_without_reopening",
+        || {
+            use crate::ui::keys::{
+                Binding, Map,
+                bindings::{SEARCH, TAB_NEXT},
+            };
+            let manager = super::super::preferences::PreferenceManager::shared();
+            manager.set_tenxer_mode(false);
+            let footer = ShortcutFooter::new(BrowserMode::Columns);
+            footer.bind_preferences(&manager);
+            let labels = reference_labels(&footer);
+            assert!(
+                reference_pairs(&labels, "Ctrl+K", "Open global search"),
+                "{labels:?}"
+            );
+            manager.set_bindings(Map::Default, SEARCH, Vec::new());
+            manager.set_bindings(
+                Map::Default,
+                TAB_NEXT,
+                vec![
+                    Binding::ctrl(gdk::Key::Tab),
+                    Binding::ctrl(gdk::Key::Page_Down),
+                    Binding::alt(gdk::Key::n),
+                ],
+            );
+            let labels = reference_labels(&footer);
+            assert!(
+                !labels.iter().any(|label| label == "Open global search"),
+                "an unbound command has no row: {labels:?}"
+            );
+            assert!(
+                reference_pairs(
+                    &labels,
+                    "Ctrl+Tab / Ctrl+Page Down / Alt+N / Ctrl+Shift+Tab",
+                    "Next / previous tab"
+                ),
+                "{labels:?}"
+            );
+            assert!(
+                reference_pairs(&labels, "Ctrl+Page Up", "Previous / next tab"),
+                "{labels:?}"
+            );
+
+            manager.set_type_to_search(true);
+            manager.set_bindings(
+                Map::Default,
+                SEARCH,
+                vec![Binding::ctrl(gdk::Key::k), Binding::plain(gdk::Key::e)],
+            );
+            let labels = reference_labels(&footer);
+            assert!(
+                reference_pairs(&labels, "Ctrl+K", "Open global search"),
+                "type-to-search types the added key: {labels:?}"
+            );
+            manager.set_type_to_search(false);
+            let labels = reference_labels(&footer);
+            assert!(
+                reference_pairs(&labels, "Ctrl+K / e", "Open global search"),
+                "{labels:?}"
+            );
         },
     );
 }

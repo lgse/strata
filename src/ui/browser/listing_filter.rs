@@ -27,6 +27,10 @@ pub(super) struct FilterState {
     /// first result.
     focus_on_arrival: Cell<bool>,
     notify_scheduled: Cell<bool>,
+    /// Whether a footer prompt that filters this browser, 10xer's **f** or **s**, has focus.
+    footer_focus: RefCell<Option<Rc<dyn Fn() -> bool>>>,
+    /// The search query and the hit the cursor last rested on in its results.
+    cursor_hit: RefCell<Option<(String, PathBuf)>>,
 }
 
 impl FilterState {
@@ -40,9 +44,25 @@ pub(in crate::ui) struct FilterStatus {
     pub query: String,
     pub search: bool,
     pub current: Option<PathBuf>,
+    /// Whether results replace the listing. A typed query has not switched the
+    /// view until its debounce fires, a search has nothing to count until its
+    /// first batch, and a column on a non-local location narrows its own rows
+    /// in place; the counts below describe none of these.
+    pub displayed: bool,
     pub files: usize,
     pub folders: usize,
     pub visual: Option<VisualKind>,
+}
+
+/// Which part of the active pane's filter session holds keyboard focus.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::ui) enum FilterFocus {
+    /// The Ctrl+F field.
+    Entry,
+    /// The rows that replace the listing while the field has text: the results view in
+    /// Icons and List, or a column's rows while it shows recursive hits or narrows in
+    /// place.
+    Results,
 }
 
 impl FilterStatus {
@@ -184,6 +204,13 @@ impl Target {
         }
     }
 
+    fn awaiting_results(&self) -> bool {
+        match self {
+            Self::Column(column) => column.search_session.awaiting_results(),
+            Self::Pane { search, .. } => search.awaiting_results(),
+        }
+    }
+
     pub(super) fn hits(&self) -> Option<Hits> {
         match self {
             Self::Column(column) => column.recursive_search_active.get().then(|| Hits {
@@ -255,6 +282,22 @@ impl Target {
     }
 }
 
+/// Only a revealed funnel counts: a 10xer footer filter leaves it closed and has its
+/// own Escape order.
+pub(super) fn column_filter_focus(
+    column: &ColumnView,
+    focused: &gtk::Widget,
+) -> Option<FilterFocus> {
+    let within = |widget: &gtk::Widget| focused == widget || focused.is_ancestor(widget);
+    if within(column.filter_entry.upcast_ref()) {
+        return Some(FilterFocus::Entry);
+    }
+    (within(column.list.upcast_ref())
+        && column.filter_button.is_active()
+        && (column.recursive_search_active.get() || column.map.has_query()))
+    .then_some(FilterFocus::Results)
+}
+
 pub(super) fn column_cursor(column: &ColumnView) -> Option<u32> {
     let focused = column.list.root().and_then(|root| root.focus());
     focused
@@ -312,26 +355,67 @@ fn step_column_results(
     true
 }
 
-fn filter_status(target: &Target, root: Option<&Path>) -> Option<FilterStatus> {
+fn filter_status(
+    target: &Target,
+    root: Option<&Path>,
+    cursor_hit: &RefCell<Option<(String, PathBuf)>>,
+) -> Option<FilterStatus> {
     let query = target.entry().text();
+    let search = target.searching();
+    if !search {
+        cursor_hit.take();
+    }
     if query.trim().is_empty() {
         return None;
     }
     let results = target.results().unwrap_or_default();
     let folders = results.iter().filter(|item| item.is_directory).count();
-    let search = target.searching();
     let current = search
-        .then(|| target.current_result())
+        .then(|| current_hit(target, &query, &results, cursor_hit))
         .flatten()
         .and_then(|item| Some(item.path.strip_prefix(root?).ok()?.to_path_buf()));
     Some(FilterStatus {
         query: query.to_string(),
         search,
         current,
+        displayed: target.results_view().is_some()
+            && !(results.is_empty() && target.awaiting_results()),
         files: results.len() - folders,
         folders,
         visual: None,
     })
+}
+
+/// The hit under the cursor. With focus outside the results (a menu, the
+/// sidebar, the shortcut reference), the cursor would fall back to the
+/// selection, which over a fill is not where it rested, so the last hit it
+/// rested on stands while it is still listed.
+fn current_hit(
+    target: &Target,
+    query: &str,
+    results: &[SearchItem],
+    cursor_hit: &RefCell<Option<(String, PathBuf)>>,
+) -> Option<SearchItem> {
+    let focused = target.results_view().is_some_and(|view| {
+        view.root()
+            .and_then(|root| root.focus())
+            .is_some_and(|focus| focus == view || focus.is_ancestor(&view))
+    });
+    if focused {
+        let hit = target.current_result();
+        cursor_hit.replace(hit.as_ref().map(|hit| (query.to_owned(), hit.path.clone())));
+        return hit;
+    }
+    let kept = cursor_hit
+        .borrow()
+        .as_ref()
+        .filter(|(kept_query, _)| kept_query == query)
+        .and_then(|(_, path)| results.iter().find(|item| item.path == *path).cloned());
+    kept.or_else(|| target.current_result())
+}
+
+pub(super) fn filter_shows_query(target: &Target) -> bool {
+    !target.entry().text().trim().is_empty()
 }
 
 pub(super) fn set_filter_text(target: &Target, query: &str) {
@@ -373,6 +457,50 @@ impl ViewState {
         )
     }
 
+    /// `None` when the listing, chrome or something outside the panes has focus.
+    pub(super) fn filter_focus(&self) -> Option<FilterFocus> {
+        if self.mode.get() != BrowserMode::Columns {
+            return self.mode_views.borrow().filter_focus();
+        }
+        let focused = self.overlay.root()?.focus()?;
+        self.columns
+            .borrow()
+            .iter()
+            .find_map(|column| column_filter_focus(column, &focused))
+    }
+
+    pub(in crate::ui) fn footer_filter_has_focus(&self) -> bool {
+        self.listing_filter
+            .footer_focus
+            .borrow()
+            .as_ref()
+            .is_some_and(|has_focus| has_focus())
+    }
+
+    /// An outside change never pulls focus out of a focused filter: the pane's field or
+    /// results, or a footer prompt that filters the listing.
+    pub(super) fn outside_change_keeps_focus(&self) -> bool {
+        self.browser.focus_follows_external_change()
+            && (self.filter_focus().is_some() || self.footer_filter_has_focus())
+    }
+
+    /// Focuses the results showing in the pane at `depth` on their cursor, or
+    /// the pane once they are gone.
+    pub(super) fn focus_pane_results(&self, depth: usize) {
+        let target = self
+            .mode_views
+            .borrow()
+            .filter_at(depth)
+            .map(|(entry, button, search)| Target::Pane {
+                entry,
+                button,
+                search,
+            });
+        if !target.is_some_and(|target| self.focus_results_on_cursor(&target)) {
+            self.mode_views.borrow().focus_visible_pane(depth);
+        }
+    }
+
     fn filter_depth(&self) -> Option<usize> {
         if self.mode.get() == BrowserMode::Columns {
             self.focused_column_depth()
@@ -386,6 +514,10 @@ impl ViewState {
 impl BrowserView {
     pub(super) fn filter_target(&self) -> Option<Target> {
         self.state.filter_target()
+    }
+
+    pub(in crate::ui) fn filter_focus(&self) -> Option<FilterFocus> {
+        self.state.filter_focus()
     }
 
     pub(in crate::ui) fn listing_filter(&self) -> Option<String> {
@@ -469,18 +601,20 @@ impl BrowserView {
         }
     }
 
-    /// Returns keyboard focus to the results replacing the listing, on the
-    /// row they last focused, without rewriting their selection. Returns
-    /// `false` without results.
+    /// Returns keyboard focus to the results replacing the listing, on their
+    /// cursor, without rewriting their selection. Returns `false` without
+    /// results.
     pub(in crate::ui) fn focus_results_cursor(&self) -> bool {
-        let Some(view) = self
+        let Some((target, view)) = self
             .filter_target()
-            .and_then(|target| target.results_view())
+            .and_then(|target| target.results_view().map(|view| (target, view)))
         else {
             return false;
         };
         self.keyboard_navigation();
-        view.grab_focus();
+        if !self.state.focus_results_on_cursor(&target) {
+            view.grab_focus();
+        }
         true
     }
 
@@ -538,7 +672,8 @@ impl BrowserView {
             .filter_depth()
             .and_then(|depth| self.state.browser.location_at(depth));
         let root = root.as_ref().and_then(|location| location.native_path());
-        let status = target.and_then(|target| filter_status(&target, root));
+        let status = target
+            .and_then(|target| filter_status(&target, root, &self.state.listing_filter.cursor_hit));
         Some(status.map(|status| FilterStatus {
             visual: self.state.result_visual_kind(),
             ..status
@@ -613,6 +748,13 @@ impl BrowserView {
         self.filter_target()
             .and_then(|target| target.hits())
             .is_some_and(|hits| hits.selection.select_item(position, false))
+    }
+
+    pub(in crate::ui) fn set_footer_filter_focus(&self, has_focus: Rc<dyn Fn() -> bool>) {
+        self.state
+            .listing_filter
+            .footer_focus
+            .replace(Some(has_focus));
     }
 
     pub(in crate::ui) fn connect_filter_results_changed(&self, handler: Rc<dyn Fn()>) {

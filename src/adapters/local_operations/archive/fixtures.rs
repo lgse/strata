@@ -3,15 +3,15 @@
 use super::{
     compression::{compress_7z, compress_tar, compress_zip, inspect_archive_sources},
     decoders::extract_zip_from_archive,
-    extraction::{ArchiveOutcome, ExtractedRoots},
+    extraction::ArchiveOutcome,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
-    services::ArchiveFormat,
+    services::{ArchiveFormat, TransferReport},
 };
 use std::{
     error::Error,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     fs,
     io::{Cursor, Write},
     os::unix::fs::{MetadataExt, PermissionsExt},
@@ -21,6 +21,8 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
+
+pub(super) use super::super::tests::names;
 
 /// GIO cannot trash test fixtures across devices into the home Trash.
 pub(super) fn tempdir_on_home_device() -> Result<tempfile::TempDir, Box<dyn Error>> {
@@ -103,21 +105,26 @@ pub(super) fn test_file_entry(path: &Path) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
+        recent_uri: None,
     }
 }
 
-pub(super) fn compression_stages(destination: &Path) -> Result<Vec<OsString>, Box<dyn Error>> {
+pub(super) const COMPRESSION_STAGE: &str = ".strata-copy-";
+pub(super) const EXTRACTION_STAGE: &str = ".strata-extraction-";
+
+pub(super) fn stages(destination: &Path, prefix: &str) -> Result<Vec<OsString>, Box<dyn Error>> {
     Ok(fs::read_dir(destination)?
         .filter_map(Result::ok)
         .map(|entry| entry.file_name())
-        .filter(|name| name.to_string_lossy().starts_with(".strata-compression-"))
+        .filter(|name| name.to_string_lossy().starts_with(prefix))
         .collect())
 }
 
 pub(super) fn compression_stage_mode(destination: &Path) -> Result<u32, Box<dyn Error>> {
-    let mut stages = compression_stages(destination)?;
-    let name = stages.pop().ok_or("no compression staging file")?;
-    if !stages.is_empty() {
+    let mut found = stages(destination, COMPRESSION_STAGE)?;
+    let name = found.pop().ok_or("no compression staging file")?;
+    if !found.is_empty() {
         return Err("expected a single compression staging file".into());
     }
     Ok(fs::metadata(destination.join(name))?.permissions().mode() & 0o777)
@@ -129,6 +136,15 @@ pub(crate) fn write_compression_fixture(
     format: ArchiveFormat,
     password: Option<&str>,
 ) -> Result<usize, String> {
+    // The filesystem seam asserts it runs off the main thread.
+    if crate::util::ui_thread::is_current() {
+        return std::thread::scope(|scope| {
+            scope
+                .spawn(|| write_compression_fixture(path, entries, format, password))
+                .join()
+                .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+        });
+    }
     let file = fs::File::create(path).map_err(|error| error.to_string())?;
     let progress = Arc::new(AtomicUsize::new(0));
     let cancelled = never_cancelled();
@@ -188,7 +204,7 @@ fn append_raw_tar_entry<W: Write>(
 ) -> Result<(), Box<dyn Error>> {
     let mut header = tar::Header::new_gnu();
     header.as_old_mut().name[..name.len()].copy_from_slice(name.as_bytes());
-    header.set_mode(0o644);
+    header.set_mode(if entry_type.is_dir() { 0o755 } else { 0o644 });
     header.set_size(contents.len() as u64);
     header.set_entry_type(entry_type);
     header.set_cksum();
@@ -227,6 +243,33 @@ pub(super) fn write_tar_entries(
         }
         builder.finish()?;
     }
+    Ok(())
+}
+
+pub(super) fn split_into_gzip_members(path: &Path, split_at: usize) -> Result<(), Box<dyn Error>> {
+    let tar = fs::read(path)?;
+    let mut members = Vec::new();
+    for part in [&tar[..split_at], &tar[split_at..]] {
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(part)?;
+        members.extend(encoder.finish()?);
+    }
+    fs::write(path, members)?;
+    Ok(())
+}
+
+/// Trailer offsets: 8 is CRC32, 4 is ISIZE.
+pub(super) fn corrupt_gzip_trailer(
+    path: &Path,
+    offset_from_end: usize,
+) -> Result<(), Box<dyn Error>> {
+    let mut bytes = fs::read(path)?;
+    let index = bytes
+        .len()
+        .checked_sub(offset_from_end)
+        .ok_or("gzip fixture is shorter than its trailer")?;
+    bytes[index] ^= 0xff;
+    fs::write(path, bytes)?;
     Ok(())
 }
 
@@ -293,24 +336,28 @@ pub(super) fn always_cancelled() -> Arc<AtomicBool> {
 }
 
 pub(super) fn completed_extract(
-    outcome: ArchiveOutcome<ExtractedRoots>,
-) -> Result<Vec<PathBuf>, String> {
+    outcome: ArchiveOutcome<Option<String>>,
+) -> Result<Option<String>, String> {
     match outcome {
-        ArchiveOutcome::Completed(value) => Ok(value.roots),
+        ArchiveOutcome::Completed(first_name) => Ok(first_name),
         ArchiveOutcome::Cancelled { .. } => Err("unexpected cancellation".to_owned()),
     }
 }
 
-pub(super) fn extract_zip(path: &Path, destination: &Path) -> Result<Vec<PathBuf>, String> {
+pub(super) fn extract_zip(path: &Path, destination: &Path) -> Result<Option<String>, String> {
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|error| error.to_string())?;
     completed_extract(
         extract_zip_from_archive(
             &mut archive,
             destination,
+            path.file_name()
+                .and_then(OsStr::to_str)
+                .unwrap_or("archive.zip"),
             None,
             &Arc::new(AtomicUsize::new(0)),
             &never_cancelled(),
+            &mut TransferReport::default(),
         )
         .map_err(|error| error.to_string())?,
     )
@@ -328,5 +375,286 @@ pub(super) fn write_zip_stored(
         writer.write_all(contents)?;
     }
     writer.finish()?;
+    Ok(())
+}
+
+pub(super) enum FixtureMember<'a> {
+    File {
+        name: &'a str,
+        contents: &'a [u8],
+        mode: Option<u32>,
+        modified: Option<u64>,
+    },
+    Directory {
+        name: &'a str,
+        mode: Option<u32>,
+        modified: Option<u64>,
+    },
+    Symlink {
+        name: &'a str,
+        target: &'a [u8],
+    },
+    HardLink {
+        name: &'a str,
+        target: &'a str,
+    },
+}
+
+const S_IFREG: u32 = 0o100_000;
+const S_IFDIR: u32 = 0o040_000;
+const S_IFLNK: u32 = 0o120_000;
+
+/// Info-ZIP extended timestamp (`UT`, `0x5455`) carrying only the modification time.
+pub(super) fn zip_extended_timestamp(seconds: u64) -> Result<Vec<u8>, Box<dyn Error>> {
+    let mut field = vec![1];
+    field.extend_from_slice(&i32::try_from(seconds)?.to_le_bytes());
+    Ok(field)
+}
+
+pub(super) fn write_members(
+    path: &Path,
+    format: ArchiveFormat,
+    members: &[FixtureMember<'_>],
+) -> Result<(), Box<dyn Error>> {
+    match format {
+        ArchiveFormat::Zip => write_zip_members(path, members),
+        ArchiveFormat::Tar => write_tar_members(path, members, false),
+        ArchiveFormat::TarGz => write_tar_members(path, members, true),
+        ArchiveFormat::SevenZ => write_7z_members(path, members),
+        ArchiveFormat::Rar => Err("RAR fixtures cannot be written".into()),
+    }
+}
+
+fn write_zip_members(path: &Path, members: &[FixtureMember<'_>]) -> Result<(), Box<dyn Error>> {
+    let mut writer = zip::ZipWriter::new(fs::File::create(path)?);
+    for member in members {
+        let mut options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored)
+            .last_modified_time(zip::DateTime::DEFAULT)
+            .into_full_options();
+        match member {
+            FixtureMember::File {
+                name,
+                contents,
+                mode,
+                modified,
+            } => {
+                if let Some(mode) = mode {
+                    options = options.unix_permissions(*mode);
+                }
+                if let Some(seconds) = modified {
+                    options.add_extra_field(0x5455, zip_extended_timestamp(*seconds)?, false)?;
+                }
+                writer.start_file(*name, options)?;
+                writer.write_all(contents)?;
+            }
+            FixtureMember::Directory {
+                name,
+                mode,
+                modified,
+            } => {
+                if let Some(mode) = mode {
+                    options = options.unix_permissions(*mode);
+                }
+                if let Some(seconds) = modified {
+                    options.add_extra_field(0x5455, zip_extended_timestamp(*seconds)?, false)?;
+                }
+                writer.add_directory(*name, options)?;
+            }
+            FixtureMember::Symlink { name, target } => {
+                writer.add_symlink(*name, std::str::from_utf8(target)?, options)?;
+            }
+            FixtureMember::HardLink { .. } => return Err("ZIP fixtures have no hard links".into()),
+        }
+    }
+    writer.finish()?;
+    Ok(())
+}
+
+fn tar_member_header(member: &FixtureMember<'_>) -> Result<tar::Header, Box<dyn Error>> {
+    let mut header = tar::Header::new_gnu();
+    let (name, entry_type, mode, modified) = match member {
+        FixtureMember::File {
+            name,
+            mode,
+            modified,
+            ..
+        } => (
+            *name,
+            tar::EntryType::Regular,
+            mode.unwrap_or(0o644),
+            *modified,
+        ),
+        FixtureMember::Directory {
+            name,
+            mode,
+            modified,
+        } => (
+            *name,
+            tar::EntryType::Directory,
+            mode.unwrap_or(0o755),
+            *modified,
+        ),
+        FixtureMember::Symlink { name, target } => {
+            header.set_link_name_literal(target)?;
+            (*name, tar::EntryType::Symlink, 0o777, None)
+        }
+        FixtureMember::HardLink { name, target } => {
+            header.set_link_name_literal(target.as_bytes())?;
+            (*name, tar::EntryType::Link, 0o644, None)
+        }
+    };
+    header.set_path(name)?;
+    header.set_entry_type(entry_type);
+    header.set_mode(mode);
+    header.set_mtime(modified.unwrap_or(0));
+    Ok(header)
+}
+
+fn append_tar_members<W: Write>(
+    builder: &mut tar::Builder<W>,
+    members: &[FixtureMember<'_>],
+) -> Result<(), Box<dyn Error>> {
+    for member in members {
+        let mut header = tar_member_header(member)?;
+        let contents: &[u8] = match member {
+            FixtureMember::File { contents, .. } => contents,
+            _ => &[],
+        };
+        header.set_size(contents.len() as u64);
+        header.set_cksum();
+        builder.append(&header, contents)?;
+    }
+    Ok(())
+}
+
+fn write_tar_members(
+    path: &Path,
+    members: &[FixtureMember<'_>],
+    gzip: bool,
+) -> Result<(), Box<dyn Error>> {
+    let file = fs::File::create(path)?;
+    if gzip {
+        let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(
+            file,
+            flate2::Compression::default(),
+        ));
+        append_tar_members(&mut builder, members)?;
+        builder.into_inner()?.finish()?;
+    } else {
+        let mut builder = tar::Builder::new(file);
+        append_tar_members(&mut builder, members)?;
+        builder.finish()?;
+    }
+    Ok(())
+}
+
+fn seven_z_attributes(entry: &mut sevenz_rust2::ArchiveEntry, st_mode: u32) {
+    entry.has_windows_attributes = true;
+    entry.windows_attributes = 0x8000 | (st_mode << 16);
+}
+
+fn seven_z_modified(
+    entry: &mut sevenz_rust2::ArchiveEntry,
+    modified: Option<u64>,
+) -> Result<(), Box<dyn Error>> {
+    if let Some(seconds) = modified {
+        entry.has_last_modified_date = true;
+        entry.last_modified_date = sevenz_rust2::NtTime::try_from(
+            std::time::UNIX_EPOCH + std::time::Duration::from_secs(seconds),
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    } else {
+        entry.has_last_modified_date = false;
+    }
+    Ok(())
+}
+
+fn write_7z_members(path: &Path, members: &[FixtureMember<'_>]) -> Result<(), Box<dyn Error>> {
+    let mut writer = sevenz_rust2::ArchiveWriter::create(path)?;
+    writer.set_content_methods(vec![sevenz_rust2::EncoderConfiguration::new(
+        sevenz_rust2::EncoderMethod::COPY,
+    )]);
+    for member in members {
+        match member {
+            FixtureMember::File {
+                name,
+                contents,
+                mode,
+                modified,
+            } => {
+                let mut entry = sevenz_rust2::ArchiveEntry::new_file(name);
+                if let Some(mode) = mode {
+                    seven_z_attributes(&mut entry, S_IFREG | mode);
+                }
+                seven_z_modified(&mut entry, *modified)?;
+                writer.push_archive_entry(entry, Some(Cursor::new(*contents)))?;
+            }
+            FixtureMember::Directory {
+                name,
+                mode,
+                modified,
+            } => {
+                let mut entry = sevenz_rust2::ArchiveEntry::new_directory(name);
+                if let Some(mode) = mode {
+                    seven_z_attributes(&mut entry, S_IFDIR | mode);
+                }
+                seven_z_modified(&mut entry, *modified)?;
+                writer.push_archive_entry::<&[u8]>(entry, None)?;
+            }
+            FixtureMember::Symlink { name, target } => {
+                let mut entry = sevenz_rust2::ArchiveEntry::new_file(name);
+                seven_z_attributes(&mut entry, S_IFLNK | 0o777);
+                seven_z_modified(&mut entry, None)?;
+                writer.push_archive_entry(entry, Some(Cursor::new(*target)))?;
+            }
+            FixtureMember::HardLink { .. } => return Err("7z fixtures have no hard links".into()),
+        }
+    }
+    writer.finish()?;
+    Ok(())
+}
+
+/// Overwrites the external attributes of every central-directory record;
+/// `0` makes `ZipFile::unix_mode()` report no mode.
+pub(super) fn patch_zip_external_attributes(path: &Path, value: u32) -> Result<(), Box<dyn Error>> {
+    const CENTRAL_DIRECTORY_SIGNATURE: [u8; 4] = [0x50, 0x4b, 0x01, 0x02];
+    const EXTERNAL_ATTRIBUTES_OFFSET: usize = 38;
+    let mut bytes = fs::read(path)?;
+    let records = bytes
+        .windows(CENTRAL_DIRECTORY_SIGNATURE.len())
+        .enumerate()
+        .filter(|(_, window)| *window == CENTRAL_DIRECTORY_SIGNATURE)
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    if records.is_empty() {
+        return Err("zip fixture has no central directory record".into());
+    }
+    for record in records {
+        let field = record + EXTERNAL_ATTRIBUTES_OFFSET;
+        bytes[field..field + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    fs::write(path, bytes)?;
+    Ok(())
+}
+
+pub(super) fn expected_mode(mode: u32) -> u32 {
+    mode & 0o777 & !super::destination::process_umask()
+}
+
+pub(super) fn set_times_without_following(path: &Path, seconds: i64) -> Result<(), Box<dyn Error>> {
+    let time = rustix::fs::Timespec {
+        tv_sec: seconds,
+        tv_nsec: 0,
+    };
+    rustix::fs::utimensat(
+        rustix::fs::CWD,
+        path,
+        &rustix::fs::Timestamps {
+            last_access: time,
+            last_modification: time,
+        },
+        rustix::fs::AtFlags::SYMLINK_NOFOLLOW,
+    )?;
     Ok(())
 }

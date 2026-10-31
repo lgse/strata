@@ -3,6 +3,7 @@
 use gtk::prelude::*;
 
 mod layout;
+mod name_tooltip;
 
 pub(super) const MIN_ICONS_THUMBNAIL_SIZE: i32 = 32;
 pub(super) const MAX_ICONS_THUMBNAIL_SIZE: i32 = 256;
@@ -24,6 +25,7 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
     card.set_valign(gtk::Align::Start);
 
     let icon = super::thumbnail::ThumbnailSlot::new(slot);
+    icon.set_icon_context(crate::assets::IconContext::Grid);
     icon.set_content_inset(0);
     icon.set_margin_top(ICONS_CARD_ICON_PADDING);
     icon.set_margin_bottom(ICONS_CARD_ICON_PADDING);
@@ -58,6 +60,7 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
     card.append(&icon_frame);
     card.append(&labels);
     layout::install(&card, &label);
+    name_tooltip::install(&card);
     set_slot(&card, slot);
     card
 }
@@ -106,7 +109,7 @@ pub(super) fn ensure_rename_field(card: &impl IsA<gtk::Widget>) -> Option<gtk::E
     let labels = card.last_child()?.downcast::<gtk::Box>().ok()?;
     let field = gtk::Entry::new();
     field.add_css_class("inline-rename");
-    crate::ui::accessibility::set_label(&field, "Rename");
+    crate::ui::accessibility::set_label(&field, &crate::i18n::tr("Rename"));
     field.set_width_chars(1);
     field.set_hexpand(true);
     gtk::prelude::EntryExt::set_alignment(&field, 0.5);

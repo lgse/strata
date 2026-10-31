@@ -1,0 +1,13 @@
+{"scenario":"row-padding-drag-view-policy","modes":["columns","list"],"prefs":{"single_click_previews":true},"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"top","vars":{"edge":"top"}},{"id":"bottom","vars":{"edge":"bottom"}},{"id":"airy","modes":["list"],"prefs":{"browser_density":"airy"},"vars":{"edge":"top"}}],"cost":{"columns-top":0.6,"list-top":1.0,"columns-bottom":0.6,"list-bottom":1.0,"list-airy":1.0},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Row-padding drag: Columns starts marquee, List moves file (top/bottom/airy); Columns half overlaps empty-name-space-drag-starts-marquee"}}
+{"drag":{"from":{"point":[{"of":{"entry":"todo.txt","part":"label"},"at":"2/3"},{"of":{"entry":"todo.txt"},"at":"1/6"}]},"to":{"entry":"archive"}},"variants":["top","airy"]}
+{"drag":{"from":{"point":[{"of":{"entry":"todo.txt","part":"label"},"at":"2/3"},{"of":{"entry":"todo.txt"},"at":"end-1/6"}]},"to":{"entry":"archive"}},"variants":["bottom"]}
+{"wait":{"selected":{"contains":["archive","todo.txt"]}},"message":"name-column whitespace to select files rather than move one"}
+{"fs":{"path":"todo.txt","exists":true},"timeout_ms":0}
+{"fs":{"path":"archive/todo.txt","exists":false},"timeout_ms":0}
+{"expect":{"preview":null}}
+{"select_with_keyboard":"todo.txt","modes":["list"]}
+{"drag":{"from":{"point":[{"of":{"entry":"todo.txt","part":"metadata"},"at":4},{"of":{"entry":"todo.txt"},"at":"1/6"}]},"to":{"entry":"archive"}},"modes":["list"],"variants":["top","airy"]}
+{"drag":{"from":{"point":[{"of":{"entry":"todo.txt","part":"metadata"},"at":4},{"of":{"entry":"todo.txt"},"at":"end-1/6"}]},"to":{"entry":"archive"}},"modes":["list"],"variants":["bottom"]}
+{"fs":{"path":"archive/todo.txt","exists":true},"message":"the file dragged from $edge row padding to arrive in archive","modes":["list"]}
+{"fs":{"path":"todo.txt","exists":false},"message":"the file dragged from $edge row padding to leave its source directory","modes":["list"]}
+{"expect":{"preview":null},"modes":["list"]}

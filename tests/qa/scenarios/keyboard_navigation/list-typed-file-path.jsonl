@@ -1,0 +1,23 @@
+{"scenario":"list-typed-file-path","modes":["list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"list":2.2},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"Typed file path in List selects and focuses the file over the restored position and opens Quick Preview; typed-path-navigates covers folders only, in Columns"}}
+{"fs":{"path":"documents/zz-typed-target.txt","write":"typed target\n"}}
+{"click":{"entry":"documents"},"count":2}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"wait":{"focused":"notes.txt"},"message":"keyboard focus to reach 'notes.txt'"}
+{"key":"Down"}
+{"wait":{"focused":"report.md"},"message":"keyboard focus to reach 'report.md'"}
+{"key":"alt+Left"}
+{"wait":{"directory":"$root"},"message":"the browser to be working in '$root'"}
+{"settle":{"pane":"$root"}}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"location"}
+{"key":"ctrl+a"}
+{"type":"$fixture/documents/zz-typed-target.txt"}
+{"wait":{"field":{"of":"location","text":"$fixture/documents/zz-typed-target.txt"}},"message":"the typed file path"}
+{"key":"Return"}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"wait":{"selected":["zz-typed-target.txt"]},"message":"the selection to become ['zz-typed-target.txt']"}
+{"wait":{"focused":"zz-typed-target.txt"},"message":"keyboard focus to reach 'zz-typed-target.txt'"}
+{"wait":{"preview":"typed target"},"message":"Quick Preview to open the typed file"}

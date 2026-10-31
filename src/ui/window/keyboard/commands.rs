@@ -3,7 +3,6 @@
 use std::rc::Rc;
 
 use gtk::{
-    gdk::{Key, ModifierType as Modifiers},
     glib::{self, Propagation},
     prelude::*,
 };
@@ -13,11 +12,10 @@ use crate::{
     app::Browser,
     ui::{
         browser::BrowserView,
+        keys::{Map, SHORTCUT_MODIFIERS, bindings::*},
         window::{
             apply_browser_mode, browser_mode_for_digit, is_browser_navigation_key,
-            is_context_menu_shortcut, is_native_editing_shortcut, is_open_terminal_shortcut,
-            is_redo_shortcut, is_refresh_shortcut, is_rename_shortcut, is_sidebar_focus_shortcut,
-            is_toggle_hidden_shortcut, is_undo_shortcut, type_to_search_query,
+            type_to_search_query,
         },
     },
 };
@@ -32,10 +30,8 @@ fn entry_for(widget: &gtk::Widget) -> Option<gtk::Entry> {
 
 impl Dispatcher {
     pub(super) fn window_commands(&self, event: &KeyEvent) -> KeyResult {
-        if event.control()
-            && (!event.text_has_focus() || self.view.filter_has_focus())
-            && event.without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK)
-            && let Some(mode) = browser_mode_for_digit(event.key)
+        if (!event.text_has_focus() || self.view.filter_has_focus())
+            && let Some(mode) = browser_mode_for_digit(&event.press)
         {
             apply_browser_mode(
                 &self.view,
@@ -47,26 +43,21 @@ impl Dispatcher {
         if event.text_has_focus() {
             return None;
         }
-        if event.control()
-            && event.without(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
-            && matches!(event.key, Key::k | Key::K)
-        {
-            let (action, label) = if event.shift() {
-                ("win.jump-folder", "folder jump")
-            } else {
-                ("win.search", "global search")
-            };
-            if let Err(error) = gtk::prelude::WidgetExt::activate_action(&self.window, action, None)
-            {
-                tracing::warn!(%error, "unable to activate {label} shortcut");
-            }
-            return Some(Propagation::Stop);
+        let (action, label) = if event.press.is(SEARCH) {
+            ("win.search", "global search")
+        } else if event.press.is(JUMP_TO_FOLDER.in_map(Map::Default)) {
+            ("win.jump-folder", "folder jump")
+        } else {
+            return None;
+        };
+        if let Err(error) = gtk::prelude::WidgetExt::activate_action(&self.window, action, None) {
+            tracing::warn!(%error, "unable to activate {label} shortcut");
         }
-        None
+        Some(Propagation::Stop)
     }
 
     pub(super) fn inline_editing(&self, event: &KeyEvent) -> KeyResult {
-        if is_rename_shortcut(event.key, event.modifiers)
+        if event.press.is(RENAME.in_map(Map::Default))
             && (self.view.filter_has_focus()
                 || !event
                     .focused
@@ -76,16 +67,15 @@ impl Dispatcher {
         {
             return Some(Propagation::Stop);
         }
-        if event.key == Key::Escape && (self.view.cancel_new_entry() || self.view.cancel_rename()) {
+        if event.press.is(ESCAPE_ANY) && (self.view.cancel_new_entry() || self.view.cancel_rename())
+        {
             return Some(Propagation::Stop);
         }
         if !self.inline_editing_active() {
             return None;
         }
         // Stop Ctrl+A before the collection view also applies its select-all binding.
-        if event.control()
-            && event.without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK)
-            && event.key == Key::a
+        if event.press.is(SELECT_ALL)
             && let Some(field) = self.view.active_rename_field()
         {
             field.select_region(0, -1);
@@ -95,14 +85,8 @@ impl Dispatcher {
     }
 
     pub(super) fn filter_and_location_commands(&self, event: &KeyEvent) -> KeyResult {
-        if event.key == Key::space
-            && event.without(
-                Modifiers::CONTROL_MASK
-                    | Modifiers::ALT_MASK
-                    | Modifiers::SUPER_MASK
-                    | Modifiers::SHIFT_MASK,
-            )
-            && let Some(entry) = self.view.selected_search_result()
+        if event.press.is(PREVIEW.in_map(Map::Default))
+            && let Some(entry) = self.view.search_result_for_space()
         {
             if self.view.activate_directory_on_space() {
                 return Some(Propagation::Stop);
@@ -113,17 +97,15 @@ impl Dispatcher {
             );
             return Some(Propagation::Stop);
         }
-        if event.key == Key::Escape && self.view.dismiss_focused_filter() {
-            return Some(Propagation::Stop);
-        }
-        if event.control()
-            && event.without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK)
-            && matches!(event.key, Key::f | Key::F)
-            && self.view.show_filter()
+        if event.press.is(ESCAPE_ANY)
+            && (self.view.dismiss_focused_filter() || self.dismiss_direct_search(event))
         {
             return Some(Propagation::Stop);
         }
-        if event.control() && event.key == Key::l {
+        if event.press.is(FILTER.in_map(Map::Default)) && self.view.show_filter() {
+            return Some(Propagation::Stop);
+        }
+        if event.press.is(LOCATION) {
             self.view.begin_location_edit();
             return Some(Propagation::Stop);
         }
@@ -134,7 +116,7 @@ impl Dispatcher {
         if !self.sidebar.contains(&event.focused)
             && !self.top_bar.has_focus()
             && !event.text_has_focus()
-            && self.preview.handle_video_key(event.key, event.modifiers)
+            && self.preview.handle_video_key(&event.press)
         {
             return Some(Propagation::Stop);
         }
@@ -143,8 +125,9 @@ impl Dispatcher {
 
     pub(super) fn sidebar_commands(&self, browser: &Browser, event: &KeyEvent) -> KeyResult {
         let toggle = self.top_bar.sidebar_toggle();
-        if is_sidebar_focus_shortcut(event.key, event.modifiers) {
-            if self.type_to_search.preferences.tenxer_mode() {
+        let tenxer = self.type_to_search.preferences.tenxer_mode();
+        if event.press.is(SIDEBAR_FOCUS) {
+            if tenxer {
                 if !toggle.is_active() {
                     return Some(Propagation::Stop);
                 }
@@ -171,17 +154,8 @@ impl Dispatcher {
             }
             return Some(Propagation::Stop);
         }
-        let toggles_sidebar = if self.type_to_search.preferences.tenxer_mode() {
-            matches!(event.key, Key::n | Key::N)
-        } else {
-            matches!(event.key, Key::b | Key::B)
-        };
-        if event.control()
-            && !event.shift()
-            && event.without(Modifiers::ALT_MASK)
-            && toggles_sidebar
-        {
-            toggle.set_active(!toggle.is_active());
+        if event.press.is(SIDEBAR) {
+            toggle.emit_clicked();
             return Some(Propagation::Stop);
         }
         None
@@ -189,14 +163,11 @@ impl Dispatcher {
 
     pub(super) fn text_input(&self, event: &KeyEvent) -> KeyResult {
         if self.view.location_has_focus() {
-            if event.key == Key::Escape {
+            if event.press.is(ESCAPE_ANY) {
                 self.view.cancel_location_edit();
                 return Some(Propagation::Stop);
             }
-            if event.control()
-                && event
-                    .without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
-                && event.key == Key::a
+            if event.press.is(SELECT_ALL)
                 && let Some(entry) = event.focused.as_ref().and_then(entry_for)
             {
                 entry.select_region(0, -1);
@@ -204,25 +175,19 @@ impl Dispatcher {
             }
             return Some(Propagation::Proceed);
         }
-        if !event.text_has_focus()
-            && is_undo_shortcut(event.key, event.modifiers)
-            && self.view.undo_last_operation()
-        {
+        if !event.text_has_focus() && event.press.is(UNDO) && self.view.undo_last_operation() {
             return Some(Propagation::Stop);
         }
-        if !event.text_has_focus()
-            && is_redo_shortcut(event.key, event.modifiers)
-            && self.view.redo_last_operation()
-        {
+        if !event.text_has_focus() && event.press.is(REDO) && self.view.redo_last_operation() {
             return Some(Propagation::Stop);
         }
         if self.view.item_view_has_focus()
-            && let Some(query) = type_to_search_query(event.key, event.modifiers)
+            && let Some(query) = type_to_search_query(&event.press)
             && self.type_to_search.show(query)
         {
             return Some(Propagation::Stop);
         }
-        if !event.text_has_focus() && is_browser_navigation_key(event.key, event.modifiers) {
+        if !event.text_has_focus() && is_browser_navigation_key(&event.press) {
             self.view.keyboard_navigation();
         }
         None
@@ -230,9 +195,9 @@ impl Dispatcher {
 
     pub(super) fn properties_command(&self, event: &KeyEvent) -> KeyResult {
         if !event.text_has_focus()
-            && event.alt()
-            && event.without(Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK)
-            && matches!(event.key, Key::Return | Key::KP_Enter)
+            && event
+                .press
+                .is(PROPERTIES.ignoring(gtk::gdk::ModifierType::SUPER_MASK))
             && self.view.show_focused_properties()
         {
             return Some(Propagation::Stop);
@@ -241,15 +206,11 @@ impl Dispatcher {
     }
 
     pub(super) fn file_commands(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
-        if event.control() && event.shift() && matches!(event.key, Key::n | Key::N) {
+        if event.press.is(NEW_FOLDER) {
             self.view.create_new_folder();
             return Some(Propagation::Stop);
         }
-        if event.control()
-            && event.alt()
-            && event.without(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
-            && matches!(event.key, Key::n | Key::N)
-        {
+        if event.press.is(NEW_FOLDER_WITH_SELECTION) {
             if !self.view.create_new_folder_for_selection() {
                 self.view.create_new_folder();
             }
@@ -260,27 +221,29 @@ impl Dispatcher {
     }
 
     pub(super) fn clipboard_command(&self, event: &KeyEvent) -> KeyResult {
-        if !event.control() || event.shift() {
-            return None;
-        }
-        let action: fn(&BrowserView) -> bool = match event.key {
-            Key::v => |view| {
+        let press = &event.press;
+        let action: fn(&BrowserView) -> bool = if press.is(PASTE) {
+            |view| {
                 view.paste();
                 true
-            },
-            Key::c => BrowserView::copy_selection,
-            Key::d | Key::D => BrowserView::duplicate_selection,
-            Key::x => BrowserView::cut_selection,
-            Key::a => |view| {
+            }
+        } else if press.is(COPY) {
+            BrowserView::copy_selection
+        } else if press.is(DUPLICATE.in_map(Map::Default)) {
+            BrowserView::duplicate_selection
+        } else if press.is(CUT) {
+            BrowserView::cut_selection
+        } else if press.is(SELECT_ALL) {
+            |view| {
                 view.select_all();
                 true
-            },
-            _ => return None,
+            }
+        } else {
+            return None;
         };
         if self.view.filter_has_focus()
             || event.text_has_focus()
-            || (self.preview_has_focus(event)
-                && is_native_editing_shortcut(event.key, event.modifiers))
+            || (self.preview_has_focus(event) && press.is_any(&[SELECT_ALL, COPY, PASTE, CUT]))
         {
             return Some(Propagation::Proceed);
         }
@@ -296,7 +259,7 @@ impl Dispatcher {
     }
 
     pub(super) fn context_menu_command(&self, event: &KeyEvent) -> KeyResult {
-        if is_context_menu_shortcut(event.key, event.modifiers)
+        if event.press.is(CONTEXT_MENU)
             && !event.text_has_focus()
             && (super::sidebar::open_sidebar_context_menu(&self.sidebar.widget)
                 || self.view.open_focused_context_menu())
@@ -307,11 +270,11 @@ impl Dispatcher {
     }
 
     fn browser_commands(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
-        if is_toggle_hidden_shortcut(event.key, event.modifiers) {
+        if event.press.is(HIDDEN_FILES.in_map(Map::Default)) {
             browser.toggle_hidden();
-        } else if is_open_terminal_shortcut(event.key, event.modifiers) {
+        } else if event.press.is(TERMINAL) {
             self.view.open_terminal();
-        } else if is_refresh_shortcut(event.key) {
+        } else if event.press.is(REFRESH.ignoring(SHORTCUT_MODIFIERS)) {
             self.view.refresh();
         } else {
             return None;

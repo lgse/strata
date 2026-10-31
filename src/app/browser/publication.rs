@@ -7,12 +7,15 @@ use std::{
 
 use gio::glib;
 
-use super::{Browser, BrowserEvent, RequestId};
+use super::{Browser, BrowserEvent, RequestId, SelectionUpdate};
 
 /// Rows exposed immediately; larger publications continue within idle budgets.
 const FIRST_PUBLISH_COUNT: usize = 128;
 const STAGE_INLINE_LIMIT: usize = 512;
-const PUBLISH_TAIL_CHUNK: usize = 2048;
+const INITIAL_PUBLISH_CHUNK: usize = 512;
+const MIN_PUBLISH_CHUNK: usize = 128;
+const MAX_PUBLISH_CHUNK: usize = 2048;
+const PUBLISH_CHUNK_BUDGET: Duration = Duration::from_millis(12);
 const PUBLISH_SLICE_BUDGET: Duration = Duration::from_millis(8);
 
 pub(super) enum PublishTerminal {
@@ -28,6 +31,7 @@ pub(super) struct PublicationPlan {
     pub(super) total: usize,
     pub(super) focused: Option<usize>,
     pub(super) positions: Vec<usize>,
+    pub(super) take_focus: bool,
     pub(super) terminal: PublishTerminal,
 }
 
@@ -35,20 +39,47 @@ pub(super) struct PublicationPlan {
 pub(super) struct StagedPublish {
     plan: PublicationPlan,
     published: usize,
+    chunk_size: usize,
+    measured_chunks: usize,
 }
 
 impl StagedPublish {
+    fn finishes_sorting(&self) -> bool {
+        matches!(self.plan.terminal, PublishTerminal::SortingFinished)
+    }
+
     fn next_chunk(&self, available: usize) -> (usize, usize) {
-        let end = (self.published + PUBLISH_TAIL_CHUNK)
+        let end = (self.published + self.chunk_size)
             .min(available)
             .min(self.plan.total);
         (self.published, end.saturating_sub(self.published))
     }
 }
 
+fn adjusted_chunk_size(current: usize, elapsed: Duration) -> usize {
+    if elapsed > PUBLISH_CHUNK_BUDGET {
+        (current / 2).max(MIN_PUBLISH_CHUNK)
+    } else if elapsed < PUBLISH_CHUNK_BUDGET / 2 {
+        current.saturating_mul(2).min(MAX_PUBLISH_CHUNK)
+    } else {
+        current
+    }
+}
+
 impl Browser {
     pub(super) fn publish_staged(self: &Rc<Self>, depth: usize, plan: PublicationPlan) {
         self.drain_publish(depth);
+        if self.preserving_refreshes.borrow_mut().remove(&depth) {
+            if self.state.borrow().columns.get(depth).is_none() {
+                return;
+            }
+            self.emit(BrowserEvent::EntriesReplaced {
+                depth,
+                count: plan.total,
+            });
+            self.complete_publication(depth, plan);
+            return;
+        }
         if plan.total <= STAGE_INLINE_LIMIT {
             if self.state.borrow().columns.get(depth).is_none() {
                 return;
@@ -70,19 +101,30 @@ impl Browser {
             depth,
             count: published,
         });
-        self.staged_publishes
-            .borrow_mut()
-            .insert(depth, StagedPublish { plan, published });
+        self.staged_publishes.borrow_mut().insert(
+            depth,
+            StagedPublish {
+                plan,
+                published,
+                chunk_size: INITIAL_PUBLISH_CHUNK,
+                measured_chunks: 0,
+            },
+        );
         self.arm_publish_timer();
     }
 
     fn complete_publication(self: &Rc<Self>, depth: usize, plan: PublicationPlan) {
+        tracing::debug!(
+            depth,
+            entries = plan.total,
+            "directory publication finished"
+        );
         if let Some(focused) = plan.focused {
             self.emit(BrowserEvent::SelectionSetChanged {
                 depth,
-                positions: plan.positions,
+                selection: SelectionUpdate::Positions(plan.positions),
                 focused,
-                take_focus: false,
+                take_focus: plan.take_focus,
             });
         }
         match plan.terminal {
@@ -90,13 +132,14 @@ impl Browser {
                 truncated,
                 retry_metadata,
             } => {
+                self.note_listing_finished(depth);
                 self.emit(BrowserEvent::LoadFinished { depth, truncated });
                 self.report_unresolved_location_reveal(depth, plan.request_id);
                 if retry_metadata {
                     self.ensure_sorted_after_load(depth);
                 }
             }
-            PublishTerminal::SortingFinished => self.emit(BrowserEvent::SortingFinished { depth }),
+            PublishTerminal::SortingFinished => self.finish_sorting(depth),
         }
     }
 
@@ -120,8 +163,32 @@ impl Browser {
         self.complete_publication(depth, staged.plan);
     }
 
+    pub(super) fn publishing_sort(&self, depth: usize) -> bool {
+        self.staged_publishes
+            .borrow()
+            .get(&depth)
+            .is_some_and(StagedPublish::finishes_sorting)
+    }
+
+    /// An applied sort finishes when its rows publish, so dropping them
+    /// before the last ends the sort.
+    pub(super) fn drop_staged_publish(&self, depth: usize) {
+        let staged = self.staged_publishes.borrow_mut().remove(&depth);
+        if staged.as_ref().is_some_and(StagedPublish::finishes_sorting)
+            && self.pending_sort_applied.get()
+            && self
+                .pending_sort
+                .get()
+                .is_some_and(|(_, pending_depth)| pending_depth == depth)
+        {
+            self.pending_sort.set(None);
+            self.finish_sorting(depth);
+        }
+    }
+
     pub(super) fn cancel_publish(&self, depth: usize) {
-        self.staged_publishes.borrow_mut().remove(&depth);
+        self.drop_staged_publish(depth);
+        self.preserving_refreshes.borrow_mut().remove(&depth);
         if self.staged_publishes.borrow().is_empty()
             && let Some(source) = self.publish_timer.borrow_mut().take()
         {
@@ -173,7 +240,7 @@ impl Browser {
         let stale =
             current.is_some_and(|id| self.state.borrow().request_id_for_depth(depth) != Some(id));
         if stale {
-            self.staged_publishes.borrow_mut().remove(&depth);
+            self.drop_staged_publish(depth);
         }
         stale
     }
@@ -193,9 +260,7 @@ impl Browser {
 
     fn publish_next_chunk(self: &Rc<Self>, depth: usize) {
         match self.next_publication_chunk(depth) {
-            None => {
-                self.staged_publishes.borrow_mut().remove(&depth);
-            }
+            None => self.drop_staged_publish(depth),
             Some((_, 0)) => {
                 let staged = self.staged_publishes.borrow_mut().remove(&depth);
                 if let Some(staged) = staged {
@@ -203,13 +268,19 @@ impl Browser {
                 }
             }
             Some((position, count)) => {
+                let started = Instant::now();
                 self.emit(BrowserEvent::EntriesPublished {
                     depth,
                     position,
                     count,
                 });
+                let elapsed = started.elapsed();
                 if let Some(staged) = self.staged_publishes.borrow_mut().get_mut(&depth) {
                     staged.published += count;
+                    if staged.measured_chunks > 0 {
+                        staged.chunk_size = adjusted_chunk_size(staged.chunk_size, elapsed);
+                    }
+                    staged.measured_chunks += 1;
                 }
             }
         }

@@ -1,0 +1,32 @@
+{"scenario":"columns-preview-reopens-after-closing","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"cost":{"columns":1.6},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"Reopen after close; unique Preview panel reservation across close; reopen shared with space-opens-and-closes-preview"}}
+{"select":{"entry":"folder"}}
+{"wait":{"directory":"folder"},"message":"the browser to be working in 'folder'"}
+{"settle":{"pane":"folder"}}
+{"wait":{"entries":["inner.txt","nested-notes.txt"],"dir":"folder"},"message":"the pane to list ['inner.txt', 'nested-notes.txt']"}
+{"select_with_keyboard":"inner.txt"}
+{"key":"space"}
+{"wait":{"preview":"inner"},"message":"the nested preview"}
+{"click":{"role":"button","name":"Close preview (Space)","within":{"preview":true}}}
+{"wait":{"preview":null},"message":"the preview to close"}
+{"select":{"entry":"nested-notes.txt"}}
+{"expect":{"preview":null},"message":"closing the content must stop automatic previews"}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"toggle button","name":"Preview panel"}},"message":"the preview toggle"}
+{"expect":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":true}},"message":"closing a preview must keep its space reserved"}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"select":{"entry":"inner.txt"}}
+{"key":"space"}
+{"wait":{"preview":"inner"},"message":"the preview to reopen"}
+{"key":"space"}
+{"wait":{"preview":null},"message":"Space to dismiss the preview content"}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"toggle button","name":"Preview panel"}},"message":"the retained preview toggle"}
+{"expect":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":true}}}
+{"click":{"role":"toggle button","name":"Preview panel"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"toggle button","name":"Preview panel"}},"message":"the disabled preview toggle"}
+{"expect":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":false}},"message":"Appearance explicitly releases the preview reservation"}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"the menu to close"}

@@ -30,25 +30,49 @@ use crate::{
 const MAX_RESTORE_PATH_BYTES: usize = 4096;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+enum RestoreTargetErrorKind {
+    /// English catalog key describing why the restore was refused.
+    Reason(&'static str),
+    /// System error text, shown verbatim.
+    System(String),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RestoreTargetError {
-    message: String,
+    kind: RestoreTargetErrorKind,
 }
 
 impl RestoreTargetError {
-    fn new(message: impl Into<String>) -> Self {
+    fn new(reason: &'static str) -> Self {
         Self {
-            message: message.into(),
+            kind: RestoreTargetErrorKind::Reason(reason),
+        }
+    }
+
+    fn system(message: String) -> Self {
+        Self {
+            kind: RestoreTargetErrorKind::System(message),
         }
     }
 
     pub(crate) fn message(&self) -> &str {
-        &self.message
+        match &self.kind {
+            RestoreTargetErrorKind::Reason(reason) => reason,
+            RestoreTargetErrorKind::System(message) => message,
+        }
+    }
+
+    pub(crate) fn user_message(&self) -> String {
+        match &self.kind {
+            RestoreTargetErrorKind::Reason(reason) => crate::i18n::tr(reason),
+            RestoreTargetErrorKind::System(message) => message.clone(),
+        }
     }
 }
 
 impl std::fmt::Display for RestoreTargetError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(&self.message)
+        formatter.write_str(self.message())
     }
 }
 
@@ -68,11 +92,11 @@ pub(crate) struct RestoreContext {
 }
 
 impl RestoreContext {
-    pub(crate) fn current() -> Self {
+    pub(crate) async fn current() -> Self {
         Self {
             home_trash_root: glib::user_data_dir().join("Trash"),
             uid: rustix::process::getuid().as_raw(),
-            mounts: MountTable::current(),
+            mounts: super::volume::mount_watch::fresh().await,
         }
     }
 }
@@ -213,7 +237,7 @@ pub(crate) async fn plan_restore_for_location(
 pub(crate) async fn restore_destinations_for_locations(
     items: Vec<(Location, Option<PathBuf>)>,
 ) -> Vec<Result<PathBuf, RestoreTargetError>> {
-    let context = RestoreContext::current();
+    let context = RestoreContext::current().await;
     resolve_batch(items, |(location, physical_path)| {
         let context = &context;
         async move {
@@ -425,7 +449,7 @@ async fn query_gio_trash_item(location: &Location) -> Result<GioTrashItem, Resto
             glib::Priority::DEFAULT,
         )
         .await
-        .map_err(|error| RestoreTargetError::new(error.to_string()))?;
+        .map_err(|error| RestoreTargetError::system(crate::services::gio_error_message(&error)))?;
     let Some(original) = info.attribute_byte_string("trash::orig-path") else {
         return Err(RestoreTargetError::new(
             "The original location is unavailable",
@@ -474,7 +498,6 @@ fn find_trash_item_by_orig_path(
 ) -> Option<DiscoveredTrashItem> {
     let info_root = trash_root.join("info");
     let files_root = trash_root.join("files");
-    let topdir = topdir_for_trash_root(trash_root)?;
     let wanted = lexically_normalize(orig_path)?;
     let infos = std::fs::read_dir(info_root).ok()?;
     for info in infos.flatten() {
@@ -485,15 +508,9 @@ fn find_trash_item_by_orig_path(
         let Some(file_name) = name.as_bytes().strip_suffix(b".trashinfo") else {
             continue;
         };
-        let Some(path) = orig_path_from_trashinfo(&info_path) else {
-            continue;
-        };
-        let path = if path.is_absolute() {
-            path
-        } else {
-            topdir.join(path)
-        };
-        if lexically_normalize(&path).as_deref() != Some(wanted.as_path()) {
+        let path = orig_path_from_trashinfo(&info_path)
+            .and_then(|path| absolute_original(trash_root, path));
+        if path.as_ref() != Some(&wanted) {
             continue;
         }
         let source_path = files_root.join(OsStr::from_bytes(file_name));
@@ -509,7 +526,19 @@ fn find_trash_item_by_orig_path(
     None
 }
 
-fn candidate_trash_roots(context: &RestoreContext, orig_path: Option<&Path>) -> Vec<PathBuf> {
+pub(crate) fn absolute_original(trash_root: &Path, recorded: PathBuf) -> Option<PathBuf> {
+    let path = if recorded.is_absolute() {
+        recorded
+    } else {
+        topdir_for_trash_root(trash_root)?.join(recorded)
+    };
+    lexically_normalize(&path)
+}
+
+pub(crate) fn candidate_trash_roots(
+    context: &RestoreContext,
+    orig_path: Option<&Path>,
+) -> Vec<PathBuf> {
     let mut roots = vec![context.home_trash_root.clone()];
     let mounts: Vec<&Path> = if let Some(orig) = orig_path.filter(|path| path.is_absolute()) {
         context.mounts.mount_point_for(orig).into_iter().collect()
@@ -517,14 +546,21 @@ fn candidate_trash_roots(context: &RestoreContext, orig_path: Option<&Path>) -> 
         context.mounts.trash_scan_mounts().collect()
     };
     for mount in mounts {
-        roots.push(mount.join(format!(".Trash-{}", context.uid)));
-        if let Some(shared) = valid_shared_trash_dir(mount, context.uid) {
-            roots.push(shared);
-        }
+        let per_user = mount.join(format!(".Trash-{}", context.uid));
+        roots.extend(
+            valid_shared_trash_dir(mount, context.uid)
+                .into_iter()
+                .chain([per_user])
+                .filter(|root| owned_folder(root, context.uid)),
+        );
     }
     roots.sort();
     roots.dedup();
     roots
+}
+
+fn owned_folder(path: &Path, uid: u32) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_dir() && meta.uid() == uid)
 }
 
 fn valid_shared_trash_dir(mount: &Path, uid: u32) -> Option<PathBuf> {

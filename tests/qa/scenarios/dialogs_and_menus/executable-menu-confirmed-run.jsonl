@@ -1,0 +1,22 @@
+{"scenario":"executable-menu-confirmed-run","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"run-me","write":"#!/bin/sh\nprintf executed > $fixture/run-me.executed\n"}},{"fs":{"path":"run-me","chmod":"755"}}],"cost":{"columns":1.5},"quality":{"impact":5,"coverage":4,"criticality":4,"diagnostic":4,"score":63,"note":"Context-menu Run route and Cancel-must-not-launch check; the dialog itself is covered by executable-requires-confirmation (double-click, Close)"}}
+{"click":{"entry":"run-me"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'run-me'"}
+{"expect":{"menu_items":{"contains":["Open","Open With…","Run"]}}}
+{"wait":{"present":{"menu_item":"Run"}},"message":"the menu item 'Run'"}
+{"settle":{"menu_item":"Run"}}
+{"click":{"menu_item":"Run"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"expect":{"mentions":{"target":{"dialog":true},"text":"Run this program?"}}}
+{"click":{"dialog_button":"Cancel"}}
+{"wait":{"dialog":null},"message":"the cancelled run dialog to close"}
+{"fs":{"path":"run-me.executed","exists":false},"timeout_ms":0,"message":"Cancel must not launch the program"}
+{"click":{"entry":"run-me"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'run-me'"}
+{"wait":{"present":{"menu_item":"Run"}},"message":"the menu item 'Run'"}
+{"settle":{"menu_item":"Run"}}
+{"click":{"menu_item":"Run"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"click":{"dialog_button":"Run"}}
+{"wait":{"dialog":null},"message":"the confirmed program to launch"}
+{"fs":{"path":"run-me.executed","exists":true},"message":"the confirmed program to create its marker"}

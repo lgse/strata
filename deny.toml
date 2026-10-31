@@ -2,7 +2,15 @@
 all-features = true
 
 [advisories]
-ignore = []
+# Remove once upstream catches up (#1732).
+ignore = [
+  { id = "RUSTSEC-2026-0367", reason = "zip 8 only via calamine and docx-rs, which never call extract" },
+  { id = "RUSTSEC-2026-0368", reason = "zip 8 only via calamine and docx-rs, which never call extract" },
+  { id = "RUSTSEC-2026-0369", reason = "zip 8 only via calamine and docx-rs, which never call extract" },
+  { id = "RUSTSEC-2026-0370", reason = "zbus 5 is required by ashpd 0.13" },
+  { id = "RUSTSEC-2026-0371", reason = "zbus 5 is required by ashpd 0.13" },
+  { id = "RUSTSEC-2026-0372", reason = "zbus 5 is required by ashpd 0.13" },
+]
 
 [licenses]
 confidence-threshold = 0.8

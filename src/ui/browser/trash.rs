@@ -3,21 +3,30 @@
 use crate::adapters::directory_summary::{DirectorySummary, summarize_directory};
 use crate::adapters::trash::{EmptyTrashOutcome, empty_trash};
 use crate::adapters::trash_restore::restore_destinations_for_locations;
-use crate::model::{FileEntry, Location};
+use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 use crate::services::{LoadHandle, RestoreTrashItem};
 use crate::ui::blur::BlurBin;
+use crate::ui::browser::ViewState;
 use crate::ui::browser::entry::{
-    aggregate_directory_summary, entry_icon, entry_kind_summary, format_file_size, item_count_label,
+    aggregate_directory_summary, delete_entry_size, entry_icon, entry_kind_summary,
+    format_file_size, item_count_label,
 };
-use crate::ui::browser::{ViewState, vim_focus_direction};
 use crate::ui::controls::{
     ModalTone, focus_button, message_dialog_description, message_dialog_layout, modal_layout,
 };
-use crate::ui::modal::{
-    ModalHost, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer, show_error_dialog,
+use crate::ui::focus_navigation::vim_focus_direction;
+use crate::ui::keys::{
+    self, KeyPress,
+    bindings::{ENTER_ANY, ESCAPE_ANY, LEFT, RIGHT, TENXER_DELETE_CONFIRM},
 };
+use crate::ui::modal::{
+    ModalHost, close_on_escape, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer,
+    remember_modal_focus_for_listing, show_error_dialog,
+};
+use gtk::gdk::ModifierType as Modifiers;
 use gtk::prelude::*;
 use gtk::{gio, glib};
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -29,18 +38,20 @@ pub(super) struct TrashLoadingView {
 }
 
 fn empty_trash_error_summary(outcome: &EmptyTrashOutcome) -> String {
-    let mut summary = format!(
-        "{} could not be deleted. The remaining items were processed.",
-        item_count_label(outcome.failed)
-    );
+    let mut summary = rust_i18n::t!(
+        "%{items} could not be deleted. The remaining items were processed.",
+        items = item_count_label(outcome.failed)
+    )
+    .into_owned();
     for error in &outcome.errors {
         summary.push_str("\n\n• ");
         summary.push_str(error);
     }
     if outcome.failed > outcome.errors.len() {
-        summary.push_str(&format!(
-            "\n\n…and {} more",
-            outcome.failed - outcome.errors.len()
+        summary.push_str("\n\n");
+        summary.push_str(&crate::i18n::count(
+            "more_items",
+            outcome.failed - outcome.errors.len(),
         ));
     }
     summary
@@ -61,14 +72,14 @@ pub(super) fn retryable_delete_entries(
 }
 
 fn restore_confirmation_title(count: usize) -> String {
-    format!("Restore {}?", item_count_label(count))
+    rust_i18n::t!("Restore %{value1}?", value1 = item_count_label(count)).into_owned()
 }
 
 fn restore_confirmation_confirm_label(count: usize) -> String {
     if count == 1 {
-        "Restore".to_owned()
+        crate::i18n::tr("Restore")
     } else {
-        format!("Restore {}", item_count_label(count))
+        rust_i18n::t!("Restore %{value1}", value1 = item_count_label(count)).into_owned()
     }
 }
 
@@ -80,7 +91,11 @@ fn restore_error_summary(errors: &[String]) -> String {
     let mut summary = if errors.len() == 1 {
         errors[0].clone()
     } else {
-        format!("{} could not be restored.", item_count_label(errors.len()))
+        rust_i18n::t!(
+            "%{items} could not be restored.",
+            items = item_count_label(errors.len())
+        )
+        .into_owned()
     };
     if errors.len() > 1 {
         for error in errors.iter().take(8) {
@@ -88,16 +103,98 @@ fn restore_error_summary(errors: &[String]) -> String {
             summary.push_str(error);
         }
         if errors.len() > 8 {
-            summary.push_str(&format!("\n\n…and {} more", errors.len() - 8));
+            summary.push_str("\n\n");
+            summary.push_str(&crate::i18n::count("more_items", errors.len() - 8));
         }
     }
     summary
 }
 
+/// How far a deletion that bypasses Trash reaches. A network or cloud
+/// provider may keep its own copy, so only local storage is "permanent".
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum DeletionReach {
+    /// Includes `fuseblk` drives and local FUSE overlays such as mergerfs.
+    Local,
+    Remote,
+}
+
+/// A mixed selection uses the stronger local warning.
+pub(super) fn deletion_reach(entries: &[FileEntry]) -> DeletionReach {
+    let mounts = crate::adapters::mount_watch::latest();
+    let remote = |location: &Location| match location.native_path() {
+        Some(path) => {
+            mounts.is_network_path(path)
+                && !mounts
+                    .fs_type_for(path)
+                    .is_some_and(crate::adapters::is_local_fuse_overlay)
+        }
+        None => {
+            !location.is_administrator()
+                && !location
+                    .uri_value()
+                    .and_then(glib::Uri::parse_scheme)
+                    .is_some_and(|scheme| scheme.eq_ignore_ascii_case("trash"))
+        }
+    };
+    if !entries.is_empty() && entries.iter().all(|entry| remote(&entry.location)) {
+        DeletionReach::Remote
+    } else {
+        DeletionReach::Local
+    }
+}
+
+/// The partial-failure dialog's button that opens the confirmation.
+pub(super) fn delete_retry_label(entries: &[FileEntry]) -> String {
+    crate::i18n::tr(match deletion_reach(entries) {
+        DeletionReach::Local => "Delete Permanently",
+        DeletionReach::Remote => "Delete without Trash",
+    })
+}
+
+fn reach_description(reach: DeletionReach, single: bool) -> String {
+    crate::i18n::tr(match (reach, single) {
+        (DeletionReach::Local, true) => {
+            "This item will be permanently deleted. This action cannot be undone."
+        }
+        (DeletionReach::Local, false) => {
+            "These items will be permanently deleted. This action cannot be undone."
+        }
+        (DeletionReach::Remote, true) => {
+            "This item will be deleted without using Trash. Strata can't undo this; whether it can be recovered depends on the storage provider."
+        }
+        (DeletionReach::Remote, false) => {
+            "These items will be deleted without using Trash. Strata can't undo this; whether they can be recovered depends on the storage provider."
+        }
+    })
+}
+
+/// Names the mount a failed trash attempt recorded, when the dialog's first
+/// item is on one.
+fn trash_unavailable_reason(entries: &[FileEntry]) -> Option<String> {
+    let first = &entries.first()?.location;
+    if first.is_administrator() {
+        return Some(crate::i18n::tr(
+            "Trash isn't available when browsing as administrator.",
+        ));
+    }
+    let parent = first.parent()?;
+    let (mount, _) = crate::adapters::trash_support::unsupported_reason_for(parent.native_path()?)?;
+    Some(
+        rust_i18n::t!(
+            "Trash isn't available on %{mount_point} (%{fs_type}).",
+            mount_point = mount.mount_point.display(),
+            fs_type = mount.fs_type
+        )
+        .into_owned(),
+    )
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum DeleteDialog {
     Permanent,
-    PermanentCancelFirst,
+    /// Permanent fallback the user did not ask for: Trash is unsupported here.
+    TrashUnavailable,
     Trash,
 }
 
@@ -107,11 +204,14 @@ enum DeleteConfirmationFocus {
     Confirm,
 }
 
-fn delete_confirmation_focus_target(key: gtk::gdk::Key) -> Option<DeleteConfirmationFocus> {
-    match key {
-        gtk::gdk::Key::Left | gtk::gdk::Key::h => Some(DeleteConfirmationFocus::Cancel),
-        gtk::gdk::Key::Right | gtk::gdk::Key::l => Some(DeleteConfirmationFocus::Confirm),
-        _ => None,
+fn delete_confirmation_focus_target(press: &KeyPress) -> Option<DeleteConfirmationFocus> {
+    const ARROW_MODIFIERS: Modifiers = Modifiers::SHIFT_MASK.union(Modifiers::SUPER_MASK);
+    if press.is(LEFT.ignoring(ARROW_MODIFIERS).or_alternates()) {
+        Some(DeleteConfirmationFocus::Cancel)
+    } else if press.is(RIGHT.ignoring(ARROW_MODIFIERS).or_alternates()) {
+        Some(DeleteConfirmationFocus::Confirm)
+    } else {
+        None
     }
 }
 
@@ -127,13 +227,14 @@ fn delete_confirmation_rows(entries: &[FileEntry]) -> (&[FileEntry], usize) {
 
 /// Summary for the hidden remainder, or nothing when everything is shown.
 fn delete_confirmation_overflow_label(hidden: usize) -> Option<String> {
-    (hidden > 0).then(|| {
-        format!(
-            "… and {} more {}",
-            hidden,
-            if hidden == 1 { "item" } else { "items" }
-        )
-    })
+    (hidden > 0).then(|| crate::i18n::count("more_items", hidden))
+}
+
+fn delete_confirmation_file_size(size: &MetadataValue<u64>) -> String {
+    match size {
+        MetadataValue::Known(size) => format_file_size(*size),
+        MetadataValue::Unknown | MetadataValue::Unavailable => "—".to_owned(),
+    }
 }
 
 impl ViewState {
@@ -148,7 +249,7 @@ impl ViewState {
                         if let Some(state) = weak.upgrade() {
                             show_error_dialog(
                                 &state.overlay,
-                                "Unable to move to Trash",
+                                &crate::i18n::tr("Unable to move to Trash"),
                                 &error.to_string(),
                             );
                         }
@@ -174,8 +275,27 @@ impl ViewState {
         }
     }
 
+    /// A docked deletion keeps the dissolve it claimed until its own terminal event.
     pub(super) fn clear_delete_animation(&self) {
+        if self.delete_dissolve_request.get().is_none() {
+            self.pending_delete_dissolve.take();
+        }
+        self.pending_file_operation_animation.take();
+    }
+
+    /// Frees the animation slots for an operation about to start, taking them
+    /// from a docked deletion too.
+    fn reset_delete_animation(&self) {
+        self.delete_dissolve_request.set(None);
         self.pending_delete_dissolve.take();
+        self.pending_file_operation_animation.take();
+    }
+
+    pub(super) fn play_pending_file_operation_animation(&self) {
+        let Some(animation) = self.pending_file_operation_animation.take() else {
+            return;
+        };
+        animation.play(|| {});
     }
 
     pub(super) fn delete_animation_defers_empty_state(&self, depth: usize) -> bool {
@@ -188,7 +308,7 @@ impl ViewState {
 
     /// Safe to call more than once: whichever of cancel or completion runs first leaves the
     /// other a no-op.
-    fn clear_empty_trash(&self) {
+    fn clear_empty_trash(self: &Rc<Self>) {
         self.pending_empty_trash.borrow_mut().take();
         self.dismiss_file_operation_progress();
     }
@@ -252,7 +372,7 @@ impl ViewState {
                         state.clear_trash_loading();
                         show_error_dialog(
                             &state.overlay,
-                            "Unable to read Trash",
+                            &crate::i18n::tr("Unable to read Trash"),
                             &error.to_string(),
                         );
                     }
@@ -281,17 +401,23 @@ impl ViewState {
         else {
             show_error_dialog(
                 &self.overlay,
-                "Unable to continue",
-                "The operation could not be confirmed.",
+                &crate::i18n::tr("Unable to continue"),
+                &crate::i18n::tr("The operation could not be confirmed."),
             );
             return false;
         };
 
-        let layout = modal_layout(crate::assets::icons::TRASH, title, "", action);
-        layout.set_loading(true, Some(title));
+        let title = crate::i18n::tr(title);
+        let layout = modal_layout(
+            crate::assets::icons::TRASH,
+            &title,
+            "",
+            &crate::i18n::tr(action),
+        );
+        layout.set_loading(true, Some(&title));
         layout.subtitle.set_visible(false);
         layout.confirm.set_visible(false);
-        let explanation = message_dialog_description(detail);
+        let explanation = message_dialog_description(&crate::i18n::tr(detail));
         layout.body.append(&explanation);
         let content = layout.content;
         let cancel = layout.cancel;
@@ -318,20 +444,13 @@ impl ViewState {
                 }
             });
         }
-        let escape = gtk::EventControllerKey::new();
         let weak_escape = Rc::downgrade(self);
-        escape.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
+        if let Some(view) = self.trash_loading.borrow().as_ref() {
+            close_on_escape(&view.layer, move || {
                 if let Some(state) = weak_escape.upgrade() {
                     state.clear_trash_loading();
                 }
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
-        });
-        if let Some(view) = self.trash_loading.borrow().as_ref() {
-            view.layer.add_controller(escape);
+            });
         }
         cancel.grab_focus();
         true
@@ -362,20 +481,22 @@ impl ViewState {
 
         let layout = message_dialog_layout(
             crate::assets::icons::TRASH,
-            "Empty Trash?",
-            &format!(
-                "{}{} · {}{} will be reclaimed",
-                if summary.truncated() { "At least " } else { "" },
-                item_count_label(summary.item_count),
-                if summary.truncated() { "at least " } else { "" },
-                format_file_size(summary.total_size)
+            &crate::i18n::tr("Empty Trash?"),
+            &rust_i18n::t!(
+                if summary.truncated() {
+                    "At least %{items} · at least %{size} will be reclaimed"
+                } else {
+                    "%{items} · %{size} will be reclaimed"
+                },
+                items = item_count_label(summary.item_count),
+                size = format_file_size(summary.total_size)
             ),
-            "Empty Trash",
+            &crate::i18n::tr("Empty Trash"),
             ModalTone::Danger,
         );
-        let explanation = message_dialog_description(
+        let explanation = message_dialog_description(&crate::i18n::tr(
             "Everything in Trash will be permanently deleted. This action cannot be undone.",
-        );
+        ));
         layout.body.append(&explanation);
         let content = layout.content;
         let close = layout.close;
@@ -441,9 +562,8 @@ impl ViewState {
                         // keep this operation's own state bounded too.
                         finish_browser.refresh_columns_at(&Location::uri("trash:///"));
                         if outcome.failed > 0 {
-                            show_error_dialog(
+                            crate::ui::modal::show_partial_failure_dialog(
                                 &error_overlay,
-                                "Completed with errors",
                                 &empty_trash_error_summary(&outcome),
                             );
                         }
@@ -456,7 +576,7 @@ impl ViewState {
                         );
                         show_error_dialog(
                             &error_overlay,
-                            "Unable to empty Trash",
+                            &crate::i18n::tr("Unable to empty Trash"),
                             &error.to_string(),
                         );
                     }
@@ -476,15 +596,12 @@ impl ViewState {
         let escape_overlay = window_overlay.clone();
         let escape_root = blurred_root.clone();
         let escape_browser = self.browser.clone();
-        keys.connect_key_pressed(move |_, key, _, modifiers| {
-            if key == gtk::gdk::Key::Escape {
+        keys::on_press(&keys, move |_, press| {
+            if press.is(ESCAPE_ANY) {
                 dismiss_modal_layer(&escape_layer, &escape_overlay, escape_root.as_ref());
                 escape_browser.focus_active();
                 glib::Propagation::Stop
-            } else if !modifiers
-                .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK)
-                && let Some(direction) = vim_focus_direction(key)
-            {
+            } else if let Some(direction) = vim_focus_direction(press) {
                 focused_layer.child_focus(direction);
                 glib::Propagation::Stop
             } else {
@@ -521,7 +638,14 @@ impl ViewState {
             {
                 match destination {
                     Ok(destination) => resolved.push((entry, destination)),
-                    Err(error) => errors.push(format!("{}: {error}", entry.display_name)),
+                    Err(error) => errors.push(
+                        rust_i18n::t!(
+                            "%{name}: %{error}",
+                            name = entry.display_name.as_str(),
+                            error = crate::services::error_detail(error.user_message())
+                        )
+                        .into_owned(),
+                    ),
                 }
             }
             let Some(state) = weak.upgrade() else {
@@ -531,7 +655,7 @@ impl ViewState {
             if resolved.is_empty() {
                 show_error_dialog(
                     &state.overlay,
-                    "Unable to restore",
+                    &crate::i18n::tr("Unable to restore"),
                     &restore_error_summary(&errors),
                 );
                 return;
@@ -554,8 +678,8 @@ impl ViewState {
         else {
             show_error_dialog(
                 &self.overlay,
-                "Unable to restore",
-                "The restore destinations could not be confirmed.",
+                &crate::i18n::tr("Unable to restore"),
+                &crate::i18n::tr("The restore destinations could not be confirmed."),
             );
             return;
         };
@@ -607,8 +731,11 @@ impl ViewState {
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
         layout.body.append(&file_scroller);
-        let mut explanation =
-            "These items will be moved back to the original locations shown above.".to_owned();
+        let mut explanation = crate::i18n::tr(if count == 1 {
+            "This item will be moved back to the original location shown above."
+        } else {
+            "These items will be moved back to the original locations shown above."
+        });
         if !skipped.is_empty() {
             explanation.push_str("\n\n");
             explanation.push_str(&restore_error_summary(&skipped));
@@ -658,17 +785,17 @@ impl ViewState {
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
             );
-            if let Some(state) = confirmed_state.upgrade()
-                && let Some(trash_button) = state.trash_button.borrow().as_ref()
-            {
-                let entries = items
-                    .iter()
-                    .map(|item| item.entry.clone())
-                    .collect::<Vec<_>>();
-                let source = state
-                    .delete_animation_source()
-                    .unwrap_or_else(|| state.overlay.clone().upcast());
-                super::fly_to_trash::fly_from_trash(&source, &entries, trash_button, || {});
+            if let Some(state) = confirmed_state.upgrade() {
+                let source = state.delete_animation_source();
+                let trash_button = state.trash_button.upgrade();
+                let animation = source.zip(trash_button).and_then(|(source, trash_button)| {
+                    super::fly_to_trash::prepare_fly_from_trash(
+                        &source,
+                        items.iter().map(|item| &item.entry),
+                        &trash_button,
+                    )
+                });
+                state.pending_file_operation_animation.replace(animation);
             }
             browser.restore(items.clone());
             browser.focus_active();
@@ -680,15 +807,12 @@ impl ViewState {
         let escaped_root = blurred_root;
         let escaped_browser = self.browser.clone();
         let focused_layer = layer.clone();
-        keys.connect_key_pressed(move |_, key, _, modifiers| {
-            if key == gtk::gdk::Key::Escape {
+        keys::on_press(&keys, move |_, press| {
+            if press.is(ESCAPE_ANY) {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
                 escaped_browser.focus_active();
                 glib::Propagation::Stop
-            } else if !modifiers
-                .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK)
-                && let Some(direction) = vim_focus_direction(key)
-            {
+            } else if let Some(direction) = vim_focus_direction(press) {
                 focused_layer.child_focus(direction);
                 glib::Propagation::Stop
             } else {
@@ -708,6 +832,8 @@ impl ViewState {
         }
         if permanent {
             self.show_delete_confirmation(entries);
+        } else if self.trash_unsupported_for(&entries) {
+            self.show_trash_unavailable_confirmation(entries);
         } else {
             self.move_to_trash(entries);
         }
@@ -725,7 +851,9 @@ impl ViewState {
             return;
         }
         let kind = if permanent {
-            DeleteDialog::PermanentCancelFirst
+            DeleteDialog::Permanent
+        } else if self.trash_unsupported_for(&entries) {
+            DeleteDialog::TrashUnavailable
         } else {
             DeleteDialog::Trash
         };
@@ -734,23 +862,51 @@ impl ViewState {
 
     fn move_to_trash(self: &Rc<Self>, entries: Vec<FileEntry>) {
         self.pending_delete_entries.replace(entries.clone());
-        if let Some(trash_button) = self.trash_button.borrow().as_ref() {
-            let source = self
-                .delete_animation_source()
-                .unwrap_or_else(|| self.overlay.clone().upcast());
-            super::fly_to_trash::fly_to_trash(&source, &entries, trash_button, || {});
-        }
+        let source = self.delete_animation_source();
+        let trash_button = self.trash_button.upgrade();
+        let animation = source.zip(trash_button).and_then(|(source, trash_button)| {
+            super::fly_to_trash::prepare_fly_to_trash(&source, entries.iter(), &trash_button)
+        });
+        self.pending_file_operation_animation.replace(animation);
         self.browser.delete(entries, false);
         self.browser.focus_active();
+    }
+
+    /// Only a column reporting delete-but-not-trash qualifies; read-only folders also
+    /// report no trash, so they, `None`, and entries outside open columns keep the
+    /// trash attempt and its fallback (#179).
+    fn trash_unsupported_for(&self, entries: &[FileEntry]) -> bool {
+        !entries.is_empty()
+            && entries.iter().all(|entry| {
+                if entry.location.is_administrator() {
+                    return true;
+                }
+                let parent = entry.location.parent();
+                (0..)
+                    .map_while(|depth| {
+                        self.browser
+                            .location_at(depth)
+                            .map(|location| (depth, location))
+                    })
+                    .find(|(_, location)| Some(location) == parent.as_ref())
+                    .is_some_and(|(depth, _)| {
+                        self.browser.can_trash_at(depth) == Some(false)
+                            && self.browser.can_delete_at(depth) == Some(true)
+                    })
+            })
     }
 
     pub(super) fn show_delete_confirmation(self: &Rc<Self>, entries: Vec<FileEntry>) {
         self.show_delete_dialog(entries, DeleteDialog::Permanent);
     }
 
+    pub(super) fn show_trash_unavailable_confirmation(self: &Rc<Self>, entries: Vec<FileEntry>) {
+        self.show_delete_dialog(entries, DeleteDialog::TrashUnavailable);
+    }
+
     fn show_delete_dialog(self: &Rc<Self>, entries: Vec<FileEntry>, kind: DeleteDialog) {
         let trash = kind == DeleteDialog::Trash;
-        let cancel_first = kind == DeleteDialog::PermanentCancelFirst;
+        let cancel_first = kind == DeleteDialog::TrashUnavailable;
         let Some(ModalHost {
             overlay: window_overlay,
             blurred_root,
@@ -759,17 +915,23 @@ impl ViewState {
             return;
         };
 
+        let reach = deletion_reach(&entries);
+        let entries = Rc::new(entries);
         let count = entries.len();
-        let (title, confirm_label) = if trash {
-            (
-                format!("Move {} to Trash?", item_count_label(count)),
-                "Move to Trash".to_owned(),
-            )
-        } else {
-            (
-                format!("Permanently delete {}?", item_count_label(count)),
-                format!("Permanently delete {}", item_count_label(count)),
-            )
+        let items = item_count_label(count);
+        let (title, confirm_label) = match (trash, reach) {
+            (true, _) => (
+                rust_i18n::t!("Move %{value1} to Trash?", value1 = items),
+                crate::i18n::tr("Move to Trash").into(),
+            ),
+            (false, DeletionReach::Local) => (
+                rust_i18n::t!("Permanently delete %{value1}?", value1 = items),
+                rust_i18n::t!("Permanently delete %{value1}", value1 = items),
+            ),
+            (false, DeletionReach::Remote) => (
+                rust_i18n::t!("Delete %{value1} without Trash?", value1 = items),
+                rust_i18n::t!("Delete %{value1}", value1 = items),
+            ),
         };
         let layout = message_dialog_layout(
             crate::assets::icons::TRASH,
@@ -783,11 +945,12 @@ impl ViewState {
             },
         );
         if !trash {
-            layout.set_loading(true, Some("Calculating total size…"));
+            layout.set_loading(true, Some(&crate::i18n::tr("Calculating total size…")));
         }
         let files = gtk::Box::new(gtk::Orientation::Vertical, 3);
         files.add_css_class("delete-confirmation-files");
         let (visible, hidden) = delete_confirmation_rows(&entries);
+        let mut metadata_labels = Vec::with_capacity(visible.len());
         for entry in visible {
             let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
             row.add_css_class("delete-confirmation-file");
@@ -797,15 +960,20 @@ impl ViewState {
             name.set_hexpand(true);
             name.set_xalign(0.0);
             crate::ui::accessibility::set_description(&name, Some(&entry.location.display_path()));
-            let metadata = gtk::Label::new(Some(&if entry.is_directory() {
-                "Folder".to_owned()
-            } else {
-                match entry.size {
-                    crate::model::MetadataValue::Known(size) => format_file_size(size),
-                    crate::model::MetadataValue::Unknown
-                    | crate::model::MetadataValue::Unavailable => "—".to_owned(),
-                }
-            }));
+            let metadata =
+                gtk::Label::new(Some(&if entry.kind == EntryKind::DirectorySymbolicLink {
+                    crate::i18n::tr("Folder link")
+                } else if entry.is_directory() {
+                    crate::i18n::tr("Folder")
+                } else {
+                    let size = if entry.kind == EntryKind::FileSymbolicLink {
+                        &MetadataValue::Unknown
+                    } else {
+                        &entry.size
+                    };
+                    delete_confirmation_file_size(size)
+                }));
+            metadata_labels.push(metadata.downgrade());
             metadata.add_css_class("delete-confirmation-file-metadata");
             row.append(&icon);
             row.append(&name);
@@ -831,51 +999,63 @@ impl ViewState {
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
         layout.body.append(&file_scroller);
-        let explanation = message_dialog_description(if trash {
-            "These items can be restored from Trash."
-        } else {
-            "These items will be permanently deleted. This action cannot be undone."
-        });
-        layout.body.append(&explanation);
+        let single = count == 1;
+        let paragraphs = match kind {
+            DeleteDialog::Trash => vec![crate::i18n::tr(if single {
+                "This item can be restored from Trash."
+            } else {
+                "These items can be restored from Trash."
+            })],
+            DeleteDialog::TrashUnavailable => [
+                Some(crate::i18n::tr("This location doesn't support Trash.")),
+                trash_unavailable_reason(&entries),
+                Some(reach_description(reach, single)),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
+            DeleteDialog::Permanent => vec![reach_description(reach, single)],
+        };
+        for paragraph in paragraphs {
+            layout.body.append(&message_dialog_description(&paragraph));
+        }
         let content = layout.content;
         let close = layout.close;
         let cancel = layout.cancel;
         let confirm = layout.confirm;
         let subtitle = layout.subtitle;
         let spinner = layout.loading;
-        confirm.set_sensitive(trash);
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+        remember_modal_focus_for_listing(&layer, &window_overlay);
         window_overlay.add_overlay(&layer);
         let cancelled_layer = layer.clone();
         let cancelled_overlay = window_overlay.clone();
         let cancelled_root = blurred_root.clone();
-        let cancelled_browser = self.browser.clone();
         cancel.connect_clicked(move |_| {
             dismiss_modal_layer(
                 &cancelled_layer,
                 &cancelled_overlay,
                 cancelled_root.as_ref(),
             );
-            cancelled_browser.focus_active();
         });
         let closed_layer = layer.clone();
         let closed_overlay = window_overlay.clone();
         let closed_root = blurred_root.clone();
-        let closed_browser = self.browser.clone();
         close.connect_clicked(move |_| {
             dismiss_modal_layer(&closed_layer, &closed_overlay, closed_root.as_ref());
-            closed_browser.focus_active();
         });
         let confirmed_layer = layer.clone();
         let confirmed_overlay = window_overlay.clone();
         let confirmed_root = blurred_root.clone();
         let browser = self.browser.clone();
-        let entries_for_dissolve = entries.clone();
+        let pending_entries = Rc::new(RefCell::new(Some(entries.clone())));
         let weak_ui = Rc::downgrade(self);
         confirm.connect_clicked(move |_| {
+            let Some(entries_for_dissolve) = pending_entries.borrow_mut().take() else {
+                return;
+            };
             let browser = browser.clone();
-            let entries_for_dissolve = entries_for_dissolve.clone();
             let weak_ui = weak_ui.clone();
             dismiss_modal_layer_then(
                 &confirmed_layer,
@@ -884,12 +1064,14 @@ impl ViewState {
                 move || {
                     if trash {
                         if let Some(ui) = weak_ui.upgrade() {
-                            ui.move_to_trash(entries_for_dissolve);
+                            let entries = Rc::try_unwrap(entries_for_dissolve)
+                                .unwrap_or_else(|shared| shared.as_ref().clone());
+                            ui.move_to_trash(entries);
                         }
                         return;
                     }
                     if let Some(ui) = weak_ui.upgrade() {
-                        ui.clear_delete_animation();
+                        ui.reset_delete_animation();
                         let dissolve = ui.delete_animation_source().and_then(|source| {
                             super::dissolve_delete::prepare_dissolve(&source, &entries_for_dissolve)
                         });
@@ -898,7 +1080,9 @@ impl ViewState {
                             ui.pending_delete_dissolve.replace(Some((depth, dissolve)));
                         }
                     }
-                    browser.delete(entries_for_dissolve, true);
+                    let entries = Rc::try_unwrap(entries_for_dissolve)
+                        .unwrap_or_else(|shared| shared.as_ref().clone());
+                    browser.delete_permanently(entries, reach == DeletionReach::Remote);
                     browser.focus_active();
                 },
             );
@@ -908,17 +1092,15 @@ impl ViewState {
         let escaped_layer = layer.clone();
         let escaped_overlay = window_overlay;
         let escaped_root = blurred_root;
-        let escaped_browser = self.browser.clone();
         let focused_cancel = cancel.clone();
         let focused_cancel_initial = cancel.clone();
         let focused_confirm = confirm.clone();
         let enter_buttons = [cancel, confirm.clone(), close];
-        keys.connect_key_pressed(move |_, key, _, modifiers| {
-            if key == gtk::gdk::Key::Escape {
+        keys::on_press(&keys, move |_, press| {
+            if press.is(ESCAPE_ANY) {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
-                escaped_browser.focus_active();
                 glib::Propagation::Stop
-            } else if key == gtk::gdk::Key::Return || key == gtk::gdk::Key::KP_Enter {
+            } else if press.is(ENTER_ANY) {
                 if let Some(button) = enter_buttons.iter().find(|button| button.has_focus()) {
                     button.emit_clicked();
                     glib::Propagation::Stop
@@ -926,23 +1108,15 @@ impl ViewState {
                     glib::Propagation::Proceed
                 }
             } else if trash
-                && key == gtk::gdk::Key::d
-                && !modifiers.intersects(
-                    gtk::gdk::ModifierType::CONTROL_MASK
-                        | gtk::gdk::ModifierType::ALT_MASK
-                        | gtk::gdk::ModifierType::SUPER_MASK,
-                )
+                && press.is(TENXER_DELETE_CONFIRM)
                 && crate::ui::preferences::PreferenceManager::shared().tenxer_mode()
             {
                 focused_confirm.emit_clicked();
                 glib::Propagation::Stop
-            } else if !modifiers
-                .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK)
-            {
-                match delete_confirmation_focus_target(key) {
-                    Some(DeleteConfirmationFocus::Cancel) => focused_cancel.grab_focus(),
-                    Some(DeleteConfirmationFocus::Confirm) => focused_confirm.grab_focus(),
-                    None => return glib::Propagation::Proceed,
+            } else if let Some(target) = delete_confirmation_focus_target(press) {
+                match target {
+                    DeleteConfirmationFocus::Cancel => focused_cancel.grab_focus(),
+                    DeleteConfirmationFocus::Confirm => focused_confirm.grab_focus(),
                 };
                 if let Some(window) = focused_cancel.root().and_downcast::<gtk::Window>() {
                     window.set_focus_visible(true);
@@ -958,35 +1132,52 @@ impl ViewState {
         } else {
             focus_button(&confirm);
         }
-        if trash {
+        if trash
+            && !visible
+                .iter()
+                .any(|entry| entry.kind == EntryKind::FileSymbolicLink)
+        {
             return;
         }
-
         let weak_subtitle = subtitle.downgrade();
-        let weak_confirm = confirm.downgrade();
         let weak_spinner = spinner.downgrade();
         let task = glib::MainContext::default().spawn_local(async move {
-            let summary = aggregate_directory_summary(&entries).await;
-            let (Some(subtitle), Some(confirm), Some(spinner)) = (
-                weak_subtitle.upgrade(),
-                weak_confirm.upgrade(),
-                weak_spinner.upgrade(),
-            ) else {
+            let update_symlink_size = |index: usize, size: &MetadataValue<u64>| {
+                if let Some(label) = metadata_labels.get(index).and_then(|label| label.upgrade()) {
+                    label.set_label(&delete_confirmation_file_size(size));
+                }
+            };
+            if trash {
+                for (index, entry) in entries.iter().take(metadata_labels.len()).enumerate() {
+                    if entry.kind == EntryKind::FileSymbolicLink {
+                        update_symlink_size(index, &delete_entry_size(entry).await);
+                    }
+                }
+                return;
+            }
+            let summary = aggregate_directory_summary(&entries, update_symlink_size).await;
+            let (Some(subtitle), Some(spinner)) = (weak_subtitle.upgrade(), weak_spinner.upgrade())
+            else {
                 return;
             };
-            subtitle.set_label(&format!(
-                "{}{} · {}{} will be permanently deleted",
-                if summary.truncated() { "At least " } else { "" },
-                item_count_label(summary.item_count),
-                if summary.truncated() { "at least " } else { "" },
-                format_file_size(summary.total_size)
+            subtitle.set_label(&rust_i18n::t!(
+                match (reach, summary.truncated()) {
+                    (DeletionReach::Local, true) => {
+                        "At least %{items} · at least %{size} will be permanently deleted"
+                    }
+                    (DeletionReach::Local, false) => {
+                        "%{items} · %{size} will be permanently deleted"
+                    }
+                    (DeletionReach::Remote, true) => {
+                        "At least %{items} · at least %{size} will be deleted"
+                    }
+                    (DeletionReach::Remote, false) => "%{items} · %{size} will be deleted",
+                },
+                items = item_count_label(summary.item_count),
+                size = format_file_size(summary.total_size)
             ));
-            confirm.set_sensitive(true);
             spinner.stop();
             spinner.set_visible(false);
-            if !cancel_first {
-                confirm.grab_focus();
-            }
         });
         let task = Rc::new(task);
         let closing_task = task.clone();

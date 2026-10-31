@@ -1,0 +1,19 @@
+{"scenario":"filtered-control-selection-group","modes":["list"],"layout":"us","mutation":null,"known_bug":null,"tree":{"match-note.txt":"root decoy\n","alpha":{"match-note.txt":"alpha source\n"},"beta":{"only-match.txt":"beta source\n"},"match-note-other.md":"other match\n"},"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":3,"score":52,"note":"Ctrl-click add/remove in List filter results, group drag to sidebar Home moves only that pair; only multi-selection operation on filter results"}}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"type":"match"}
+{"wait":{"matches":{"count":4}},"message":"all recursive matches"}
+{"click":{"result":"beta/only-match.txt"},"mods":["ctrl"]}
+{"click":{"result":"match-note-other.md"},"mods":["ctrl"]}
+{"click":{"result":"alpha/match-note.txt"},"mods":["ctrl"]}
+{"wait":{"state":{"target":{"result":"alpha/match-note.txt"},"selected":true}},"message":"Ctrl-click to add a third result to the selection"}
+{"click":{"result":"alpha/match-note.txt"},"mods":["ctrl"]}
+{"wait":{"state":{"target":{"result":"alpha/match-note.txt"},"selected":false}},"message":"Ctrl-click to deselect a result"}
+{"expect":{"all":[{"state":{"target":{"result":"beta/only-match.txt"},"selected":true}},{"state":{"target":{"result":"match-note-other.md"},"selected":true}}]},"message":"the other two Ctrl-clicked results to stay selected"}
+{"drag":{"from":{"result":"beta/only-match.txt"},"to":{"sidebar":"Home"}},"steps":8}
+{"fs":{"path":"$home/only-match.txt","text":"beta source\n"},"message":"dragging the group to Home to move the dragged result"}
+{"fs":{"path":"$home/match-note-other.md","text":"other match\n"},"message":"dragging the group to Home to move the other selected result"}
+{"fs":{"path":"beta/only-match.txt","exists":false},"timeout_ms":0}
+{"fs":{"path":"match-note-other.md","exists":false},"timeout_ms":0}
+{"fs":{"path":"alpha/match-note.txt","text":"alpha source\n"},"timeout_ms":0,"message":"the deselected result to stay out of the dragged group"}
+{"fs":{"path":"$home/match-note.txt","exists":false},"timeout_ms":0,"message":"no unselected result to reach Home"}

@@ -1,0 +1,15 @@
+{"scenario":"copying-directory-copies-contents","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.9},"quality":{"impact":4,"coverage":2,"criticality":3,"diagnostic":4,"score":16,"note":"Context-menu Copy of a folder then paste keeps nested contents; recursive copy is unit-tested in copy.rs, GUI directory route only here"}}
+{"click":{"entry":"documents"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'documents'"}
+{"wait":{"present":{"menu_item":"Copy"}},"message":"the menu item 'Copy'"}
+{"settle":{"menu_item":"Copy"}}
+{"click":{"menu_item":"Copy"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"select":{"entry":"archive"}}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
+{"settle":{"pane":"archive"}}
+{"move":{"pane":"archive"}}
+{"key":"ctrl+v"}
+{"fs":{"path":"archive/documents/notes.txt","exists":true},"message":"the directory copy to include its contents"}
+{"fs":{"path":"archive/documents","names":["notes.txt","report.md","spreadsheet.csv"]},"timeout_ms":0}
+{"fs":{"path":"documents/notes.txt","exists":true},"timeout_ms":0}

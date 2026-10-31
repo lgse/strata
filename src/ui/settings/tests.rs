@@ -1,3 +1,107 @@
 // SPDX-License-Identifier: MIT
 
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    sync::mpsc,
+    time::{Duration, Instant},
+};
+
+use gtk::{glib, prelude::*};
+
+use super::{InstallCancel, InstallLauncher, InstallRequest, UpdateInstall};
+
+mod dismissal;
 mod general;
+mod release_picker;
+mod restart;
+mod update_dialog;
+mod updates;
+
+const GUARD_REJECTION: &str = "Another install is already running — try again shortly.";
+
+fn offered_request() -> InstallRequest {
+    InstallRequest {
+        tag: "v99.0.0".to_owned(),
+        asset_name: format!(
+            "strata-99.0.0-{}-unknown-linux-gnu.tar.gz",
+            std::env::consts::ARCH
+        ),
+        advertised_url: "http://127.0.0.1:9/strata.tar.gz".to_owned(),
+    }
+}
+
+#[derive(Default)]
+struct FakeInstaller {
+    launches: Rc<RefCell<Vec<(InstallRequest, InstallCancel)>>>,
+    progress: Rc<RefCell<Option<mpsc::Sender<UpdateInstall>>>>,
+}
+
+impl FakeInstaller {
+    fn launcher(&self) -> InstallLauncher {
+        let launches = self.launches.clone();
+        let progress = self.progress.clone();
+        Rc::new(move |request, cancel| {
+            launches.borrow_mut().push((request, cancel));
+            let (sender, receiver) = mpsc::channel();
+            progress.replace(Some(sender));
+            receiver
+        })
+    }
+
+    fn requests(&self) -> Vec<InstallRequest> {
+        self.launches
+            .borrow()
+            .iter()
+            .map(|(request, _)| request.clone())
+            .collect()
+    }
+
+    fn report(&self, event: UpdateInstall) {
+        self.progress
+            .borrow()
+            .as_ref()
+            .expect("a started install")
+            .send(event)
+            .expect("the dialog or row is still listening");
+    }
+
+    fn cancel_requested(&self) -> bool {
+        self.launches
+            .borrow()
+            .last()
+            .is_some_and(|(_, cancel)| cancel.is_cancelled())
+    }
+
+    fn commit(&self) {
+        let launches = self.launches.borrow();
+        let (_, cancel) = launches.last().expect("a started install");
+        assert!(cancel.try_commit(), "the install was already cancelled");
+    }
+
+    fn disconnect(&self) {
+        drop(self.progress.take().expect("a started install"));
+    }
+}
+
+fn wait_until(what: &str, condition: impl Fn() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !condition() {
+        assert!(Instant::now() < deadline, "timed out waiting for {what}");
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
+pub(super) fn page_text(root: &gtk::Widget) -> String {
+    let mut text = Vec::new();
+    if let Ok(label) = root.clone().downcast::<gtk::Label>() {
+        text.push(label.text().to_string());
+    }
+    let mut child = root.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        text.push(page_text(&widget));
+    }
+    text.join("\n")
+}

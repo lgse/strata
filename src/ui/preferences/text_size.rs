@@ -2,6 +2,11 @@
 
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::ui::keys::{
+    KeyPress,
+    bindings::{TEXT_LARGER, TEXT_RESET, TEXT_SMALLER},
+};
+
 /// Interface size in logical pixels; monitor scaling remains GTK's responsibility.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
@@ -24,24 +29,15 @@ impl TextSize {
         Self::new(self.0.saturating_add_signed(delta))
     }
 
-    pub fn for_shortcut(
-        self,
-        key: gtk::gdk::Key,
-        modifiers: gtk::gdk::ModifierType,
-    ) -> Option<Self> {
-        use gtk::gdk::{Key, ModifierType as Modifiers};
-        if !modifiers.contains(Modifiers::CONTROL_MASK)
-            || modifiers.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
-        {
-            return None;
-        }
-        match key {
-            Key::plus | Key::equal | Key::KP_Add => Some(self.stepped(1)),
-            Key::minus | Key::KP_Subtract => Some(self.stepped(-1)),
-            Key::_0 | Key::KP_0 if !modifiers.contains(Modifiers::SHIFT_MASK) => {
-                Some(Self::default())
-            }
-            _ => None,
+    pub(in crate::ui) fn for_shortcut(self, press: &KeyPress) -> Option<Self> {
+        if press.is(TEXT_LARGER) {
+            Some(self.stepped(1))
+        } else if press.is(TEXT_SMALLER) {
+            Some(self.stepped(-1))
+        } else if press.is(TEXT_RESET) {
+            Some(Self::default())
+        } else {
+            None
         }
     }
 }

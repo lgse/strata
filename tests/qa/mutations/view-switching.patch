@@ -1,0 +1,14 @@
+diff --git a/src/ui/browser.rs b/src/ui/browser.rs
+index ceaf0342..bc72f2f9 100644
+--- a/src/ui/browser.rs
++++ b/src/ui/browser.rs
+@@ -1071,6 +1071,9 @@ impl BrowserView {
+     }
+ 
+     pub fn set_view_mode(&self, mode: BrowserMode) {
++        if true {
++            return;
++        }
+         let previous = self.state.mode.get();
+         if mode == previous {
+             return;

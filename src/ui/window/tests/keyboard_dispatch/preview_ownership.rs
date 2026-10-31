@@ -65,7 +65,7 @@ impl PreviewProvider for OwnershipPreview {
     }
 }
 
-fn ownership_fixture() -> KeyboardFixture {
+pub(super) fn ownership_fixture() -> KeyboardFixture {
     let fixture = KeyboardFixture::with_provider(Rc::new(OwnershipPreview));
     let root = fixture._directory.path();
     std::fs::write(root.join("long.txt"), b"long").expect("long document");
@@ -190,9 +190,15 @@ fn columns_preview_archives_without_taking_navigation() {
             let opened = record_opens(&browser);
             let before = directory_names(fixture._directory.path());
 
-            for key in [Key::Right, Key::Return, Key::space] {
-                fixture.preview.close();
+            for (round, key) in [Key::Right, Key::Return, Key::space]
+                .into_iter()
+                .enumerate()
+            {
                 select_named(&fixture, "b.txt");
+                if round > 0 && !fixture.preview.is_enabled() {
+                    fixture.press(Key::space, ModifierType::empty());
+                    wait_until(|| fixture.preview.is_open());
+                }
                 fixture.press(Key::Down, ModifierType::empty());
                 wait_until(|| focused_name(&browser) == "bundle.zip");
                 wait_until(|| {
@@ -280,6 +286,22 @@ fn tenxer_preview_owns_document_keys_until_returned() {
                 assert_eq!(fixture.selected(), selection, "{mode:?}");
                 assert_eq!(browser.active_location(), origin, "{mode:?}");
 
+                fixture.press(Key::slash, ModifierType::empty());
+                let find = widget_with_class(&fixture.preview.widget(), "preview-find")
+                    .expect("preview find bar");
+                assert!(find.is_visible());
+                let focused =
+                    gtk::prelude::RootExt::focus(&fixture.window).expect("find entry focus");
+                assert!(focused.is_ancestor(&find));
+                fixture.press(Key::Escape, ModifierType::empty());
+                assert!(!find.is_visible());
+                assert!(fixture.preview.is_open() && preview_has_focus(&fixture));
+                assert_eq!(
+                    fixture.selected(),
+                    selection,
+                    "{mode:?} find keeps selection"
+                );
+
                 let top = document_scroll(&fixture);
                 for (key, modifiers) in [
                     (Key::j, ModifierType::empty()),
@@ -296,6 +318,10 @@ fn tenxer_preview_owns_document_keys_until_returned() {
                         "{mode:?} {key:?} scrolls down"
                     );
                 }
+                assert!(
+                    !find.is_visible(),
+                    "{mode:?} Ctrl+F pages instead of finding"
+                );
                 for (key, modifiers) in [
                     (Key::k, ModifierType::empty()),
                     (Key::Up, ModifierType::empty()),
@@ -453,6 +479,7 @@ fn tenxer_preview_owns_document_keys_until_returned() {
                 move_to_named(&fixture, &browser, "long.txt");
                 fixture.press(Key::l, ModifierType::empty());
                 wait_until(|| preview_has_focus(&fixture));
+                wait_document(&fixture);
             };
             for (key, modifiers) in [
                 (Key::BackSpace, ModifierType::empty()),
@@ -462,7 +489,7 @@ fn tenxer_preview_owns_document_keys_until_returned() {
                 assert!(fixture.press(key, modifiers), "{key:?}");
                 wait_loaded(&browser, 0);
                 assert_ne!(browser.active_location(), origin, "{key:?} goes up");
-                assert!(fixture.view.item_view_has_focus(), "{key:?}");
+                wait_until(|| fixture.view.item_view_has_focus());
                 fixture.press(Key::H, ModifierType::SHIFT_MASK);
                 wait_loaded(&browser, 0);
                 assert_eq!(browser.active_location(), origin);
@@ -476,8 +503,8 @@ fn tenxer_preview_owns_document_keys_until_returned() {
             assert!(fixture.view.item_view_has_focus(), "g 3 is a place chord");
 
             enter_document();
-            assert!(fixture.press(Key::slash, ModifierType::empty()));
-            assert!(fixture.shortcuts.prompt_has_focus(), "/ opens find");
+            assert!(fixture.press(Key::question, ModifierType::SHIFT_MASK));
+            assert!(fixture.shortcuts.prompt_has_focus(), "? opens listing find");
             fixture.press(Key::Escape, ModifierType::empty());
             wait_until(|| fixture.view.item_view_has_focus());
 
@@ -558,6 +585,42 @@ fn tenxer_preview_owns_document_keys_until_returned() {
 }
 
 #[test]
+fn default_editing_keys_reach_a_focused_preview() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::preview_ownership::default_editing_keys_reach_a_focused_preview",
+        || {
+            use crate::ui::browser::{ClipboardMark, clipboard_mark};
+            let fixture = ownership_fixture();
+            PreferenceManager::shared().set_tenxer_mode(false);
+            let names = directory_names(fixture._directory.path());
+            select_named(&fixture, "long.txt");
+            let selection = fixture.selected();
+            assert!(fixture.press(Key::space, ModifierType::empty()));
+            let document = || {
+                widget_with_class(&fixture.preview.widget(), "preview-virtual-list")
+                    .filter(gtk::Widget::is_mapped)
+            };
+            wait_until(|| document().is_some());
+            assert!(document().expect("document").grab_focus());
+            for key in [Key::a, Key::c, Key::v, Key::x] {
+                assert!(
+                    !fixture.press(key, ModifierType::CONTROL_MASK),
+                    "Ctrl+{key:?} goes to the document"
+                );
+                assert!(preview_has_focus(&fixture), "{key:?}");
+            }
+            assert_eq!(fixture.selected(), selection, "Ctrl+A selects no files");
+            assert_eq!(
+                clipboard_mark(&Location::local(fixture._directory.path().join("long.txt"))),
+                ClipboardMark::None,
+                "Ctrl+C and Ctrl+X mark no files"
+            );
+            assert_eq!(directory_names(fixture._directory.path()), names);
+        },
+    );
+}
+
+#[test]
 fn default_archive_keys_follow_pane_focus() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::preview_ownership::default_archive_keys_follow_pane_focus",
@@ -604,7 +667,11 @@ fn default_archive_keys_follow_pane_focus() {
                 assert!(fixture.preview.archive_at_root());
                 assert!(archive_has_focus(&fixture));
                 assert_eq!(fixture.selected(), selection);
-                assert!(!fixture.preview.archive_key(Key::Left));
+                assert!(
+                    !fixture
+                        .preview
+                        .archive_key(crate::ui::preview::ArchiveMove::Parent)
+                );
                 fixture.press(Key::Left, ModifierType::empty());
                 wait_until(|| fixture.view.item_view_has_focus());
                 assert!(!owner_bar(&fixture));
@@ -789,6 +856,15 @@ fn tenxer_interactive_previews_keep_a_defined_key_owner() {
             );
             fixture.press(Key::k, ModifierType::empty());
             assert_eq!(focused_name(&browser), "locked.zip");
+            wait_until(|| {
+                widget_with_class(&fixture.preview.widget(), "preview-archive-password").is_some()
+            });
+            assert!(
+                fixture.view.item_view_has_focus(),
+                "navigating onto a locked archive leaves focus in the list"
+            );
+            assert!(!owner_bar(&fixture));
+            fixture.press(Key::l, ModifierType::empty());
             wait_until(|| password_has_focus(&fixture));
             assert!(
                 owner_bar(&fixture),
@@ -806,6 +882,14 @@ fn tenxer_interactive_previews_keep_a_defined_key_owner() {
 
             move_to_named(&fixture, &browser, "locked.zip");
             fixture.press(Key::i, ModifierType::empty());
+            wait_until(|| {
+                widget_with_class(&fixture.preview.widget(), "preview-archive-password").is_some()
+            });
+            assert!(
+                fixture.view.item_view_has_focus(),
+                "i leaves focus in the list"
+            );
+            fixture.press(Key::l, ModifierType::empty());
             wait_until(|| password_has_focus(&fixture));
             assert!(owner_bar(&fixture));
             fixture.press(Key::Escape, ModifierType::empty());

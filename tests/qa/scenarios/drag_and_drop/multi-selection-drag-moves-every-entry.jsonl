@@ -1,0 +1,9 @@
+{"scenario":"multi-selection-drag-moves-every-entry","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.0},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":4,"score":33,"note":"Dragging a Shift-extended two-file selection moves every entry (columns); only multi-entry drag route, single-file drags covered by drag-file-onto-folder and drop-keeps-selection-at-destination; fs checks name each file"}}
+{"select":{"entry":"readme.md"}}
+{"key":"shift+Down"}
+{"wait":{"selected":["readme.md","todo.txt"]},"message":"both files to be selected"}
+{"drag":{"from":{"entry":"todo.txt"},"to":{"entry":"archive"}}}
+{"fs":{"path":"archive/todo.txt","exists":true},"message":"both dragged files to arrive in archive"}
+{"fs":{"path":"archive/readme.md","exists":true},"message":"both dragged files to arrive in archive"}
+{"fs":{"path":"todo.txt","exists":false},"timeout_ms":0}
+{"fs":{"path":"readme.md","exists":false},"timeout_ms":0}

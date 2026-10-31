@@ -13,7 +13,7 @@ fn pasted_images_preserve_collisions_and_dangling_symlinks() {
     std::fs::create_dir(dir.path().join("image (1).png")).expect("existing directory");
     std::fs::write(dir.path().join("image (2).png"), b"original").expect("existing image");
 
-    let path = write_pasted_image(dir.path(), b"pasted").expect("paste image");
+    let path = write_pasted_image(dir.path(), "image", b"pasted").expect("paste image");
 
     assert_eq!(path, dir.path().join("image (3).png"));
     assert_eq!(std::fs::read(path).expect("pasted image"), b"pasted");
@@ -35,7 +35,8 @@ fn concurrent_image_pastes_keep_every_payload() {
                 let barrier = &barrier;
                 scope.spawn(move || {
                     barrier.wait();
-                    let path = write_pasted_image(dir, &[value]).expect("concurrent paste");
+                    let path =
+                        write_pasted_image(dir, "image", &[value]).expect("concurrent paste");
                     (path, value)
                 })
             })
@@ -57,7 +58,7 @@ fn concurrent_image_pastes_keep_every_payload() {
 fn image_paste_reports_missing_destination() {
     let dir = tempfile::tempdir().expect("temporary directory");
     assert_eq!(
-        write_pasted_image(&dir.path().join("missing"), b"image")
+        write_pasted_image(&dir.path().join("missing"), "image", b"image")
             .expect_err("missing destination must fail")
             .kind(),
         std::io::ErrorKind::NotFound
@@ -107,6 +108,71 @@ fn incoming_file_lists_sanitize_remote_credentials() {
             "smb://user@host/share",
             "sftp://user@host/home/user/video.mp4",
         ]
+    );
+}
+
+fn texture_has_painted_pixels(texture: &gtk::gdk::Texture) -> bool {
+    let stride = texture.width() as usize * 4;
+    let mut data = vec![0u8; stride * texture.height() as usize];
+    texture.download(&mut data, stride);
+    data.iter().any(|&byte| byte != 0)
+}
+
+#[test]
+fn drag_preview_icon_renders_single_and_multiple_entries() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::drag_preview_icon_renders_single_and_multiple_entries",
+        || {
+            use crate::model::{EntryKind, MetadataValue};
+            use std::ffi::OsString;
+            fn entry(name: &str, kind: EntryKind) -> FileEntry {
+                FileEntry {
+                    thumbnail_path: None,
+                    location: Location::local(format!("/fixture/{name}")),
+                    native_name: OsString::from(name),
+                    display_name: name.into(),
+                    kind,
+                    size: MetadataValue::Unknown,
+                    modified_unix_seconds: MetadataValue::Unknown,
+                    recent_unix_seconds: MetadataValue::Unknown,
+                    recent_uri: None,
+                    is_hidden: false,
+                    mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
+                }
+            }
+
+            let themes = crate::ui::theme::ThemeManager::shared();
+            themes.select_theme("tokyo-night");
+            let window = gtk::Window::new();
+            let base = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            window.set_child(Some(&base));
+            window.present();
+            pump_main_loop_until(std::time::Duration::from_secs(5), || {
+                base.native().is_some()
+            });
+            assert!(
+                base.native().is_some(),
+                "headless stage must realize widgets"
+            );
+
+            let (texture, _, _) = drag_preview_icon(&base, &[entry("photo.png", EntryKind::File)])
+                .expect("single file preview renders");
+            assert!(texture_has_painted_pixels(&texture));
+
+            let entries = [
+                entry("photo.png", EntryKind::File),
+                entry("notes.txt", EntryKind::File),
+                entry("archive", EntryKind::Directory),
+            ];
+            let (texture, _, _) =
+                drag_preview_icon(&base, &entries).expect("multi file preview renders");
+            assert!(texture_has_painted_pixels(&texture));
+            window.destroy();
+        },
     );
 }
 
@@ -279,25 +345,42 @@ fn file_drop_action_hover_matches_cross_volume_strategy() {
 }
 
 #[test]
-fn file_drop_commit_rejects_the_recent_collection() {
+fn file_drop_commit_waits_for_the_volume_answer_and_rejects_the_recent_collection() {
     crate::test_support::gtk_test(
-        "ui::browser::clipboard::tests::file_drop_commit_rejects_the_recent_collection",
+        "ui::browser::clipboard::tests::file_drop_commit_waits_for_the_volume_answer_and_rejects_the_recent_collection",
         || {
-            let recent = Location::uri("recent:///");
-            let prepared = prepare_file_drop_target({
-                let recent = recent.clone();
-                move || Some(recent.clone())
-            });
-
-            assert_eq!(
+            let root = tempfile::tempdir().expect("fixture");
+            std::fs::create_dir(root.path().join("folder")).expect("folder");
+            std::fs::write(root.path().join("note.txt"), b"x").expect("source");
+            for (destination, source, expected) in [
+                (
+                    Location::uri("recent:///"),
+                    Location::local("/fixture/source.txt"),
+                    crate::services::DropCommit::Forbidden,
+                ),
+                (
+                    Location::local(root.path().join("folder")),
+                    Location::local(root.path().join("note.txt")),
+                    crate::services::DropCommit::Move,
+                ),
+            ] {
+                let prepared = prepare_file_drop_target({
+                    let destination = destination.clone();
+                    move || Some(destination.clone())
+                });
+                let committed = Rc::new(Cell::new(None));
+                let sink = committed.clone();
                 file_drop_commit(
                     &prepared.target,
-                    &recent,
-                    &[Location::local("/fixture/source.txt")],
+                    destination.clone(),
+                    vec![source],
                     &prepared.state,
-                ),
-                crate::services::DropCommit::Forbidden
-            );
+                    move |_, _, commit| sink.set(Some(commit)),
+                );
+                prepared.state.reset();
+                pump_main_loop_until(Duration::from_secs(5), || committed.get().is_some());
+                assert_eq!(committed.get(), Some(expected), "{destination:?}");
+            }
         },
     );
 }
@@ -648,6 +731,25 @@ fn cleared_shared_cut_is_not_revived_by_stale_view_state() {
 }
 
 #[test]
+fn row_marks_match_gio_equivalent_representations() {
+    let native = Location::local("/fixture/first");
+    let uri = Location::uri("file:///fixture/first");
+
+    set_shared_marks(std::slice::from_ref(&native), &[]);
+    assert_eq!(clipboard_mark(&uri), ClipboardMark::Copy);
+
+    set_shared_marks(&[], std::slice::from_ref(&uri));
+    assert_eq!(clipboard_mark(&native), ClipboardMark::Cut);
+    assert_eq!(
+        clipboard_mark(&Location::local("/fixture/other")),
+        ClipboardMark::None
+    );
+
+    clear_shared_marks();
+    assert_eq!(clipboard_mark(&native), ClipboardMark::None);
+}
+
+#[test]
 fn completed_moves_match_gio_equivalent_cut_entries() {
     let mut cut = vec![Location::local("/fixture/first")];
 
@@ -708,5 +810,339 @@ fn shell_escape_path_preserves_newlines_and_single_quotes() {
     assert_eq!(
         shell_escape_path(Path::new("/tmp/line\nbob's notes")),
         "'/tmp/line\nbob'\\''s notes'"
+    );
+}
+
+#[test]
+fn shell_escape_path_quotes_only_non_utf8_components() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    for (path, expected) in [
+        (
+            &b"/mnt/Mass 1/bad\xff.txt"[..],
+            "/mnt/Mass\\ 1/$'bad\\xff.txt'",
+        ),
+        (b"/path/to/caf\xc3\xa9\xff.txt", "/path/to/$'café\\xff.txt'"),
+        (b"bad\xff it's\\.txt", "$'bad\\xff it\\'s\\\\.txt'"),
+        (
+            b"/tmp/line\nbreak/bad\xff\xc2\x85",
+            "/tmp/$'line\\x0abreak'/$'bad\\xff\\xc2\\x85'",
+        ),
+    ] {
+        assert_eq!(
+            shell_escape_path(Path::new(OsStr::from_bytes(path))),
+            expected
+        );
+    }
+    assert_eq!(
+        copy_path_text(
+            &Location::local(Path::new(OsStr::from_bytes(b"/path/to/bad\xff"))),
+            true
+        ),
+        "/path/to/$'bad\\xff'/"
+    );
+}
+
+#[test]
+fn copied_non_utf8_paths_resolve_in_bash() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let directory = dir.path().join(OsStr::from_bytes(b"line\nbreak \xfe"));
+    std::fs::create_dir(&directory).expect("create directory");
+    let file = directory.join(OsStr::from_bytes(b"bad\xff it's\x85.txt"));
+    std::fs::write(&file, b"content").expect("write file");
+
+    for (path, is_directory) in [(&directory, true), (&file, false)] {
+        let copied = copy_path_text(&Location::local(path), is_directory);
+        let status = std::process::Command::new("bash")
+            .arg("-c")
+            .arg(format!("test -e {copied}"))
+            .status()
+            .expect("run bash");
+        assert!(status.success(), "bash could not resolve {copied:?}");
+    }
+}
+
+fn pump_main_loop_until(timeout: Duration, condition: impl Fn() -> bool) {
+    let deadline = std::time::Instant::now() + timeout;
+    let _waker = glib::timeout_add_local_once(timeout, || {});
+    while !condition() && std::time::Instant::now() < deadline {
+        glib::MainContext::default().iteration(true);
+    }
+}
+
+fn spring_load_target(destination: &Location) -> PreparedFileDrop {
+    let destination = destination.clone();
+    prepare_file_drop_target(move || Some(destination.clone()))
+}
+
+#[test]
+fn spring_load_motion_does_not_restart_the_delay() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::spring_load_motion_does_not_restart_the_delay",
+        || {
+            let destination = Location::local("/fixture/spring");
+            let prepared = spring_load_target(&destination);
+            let navigated = Rc::new(RefCell::new(Vec::new()));
+            let reached = navigated.clone();
+            prepared.state.schedule_spring_load_navigation(
+                || true,
+                destination.clone(),
+                Duration::from_millis(20),
+                move |location| reached.borrow_mut().push(location),
+            );
+            let restarted = navigated.clone();
+            prepared.state.schedule_spring_load_navigation(
+                || true,
+                destination.clone(),
+                Duration::from_secs(2),
+                move |location| restarted.borrow_mut().push(location),
+            );
+
+            pump_main_loop_until(Duration::from_secs(1), || !navigated.borrow().is_empty());
+
+            assert_eq!(*navigated.borrow(), vec![destination]);
+        },
+    );
+}
+
+#[test]
+fn arming_without_an_active_drag_never_navigates() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::arming_without_an_active_drag_never_navigates",
+        || {
+            let destination = Location::local("/fixture/spring");
+            let prepared = spring_load_target(&destination);
+            let navigated = Rc::new(RefCell::new(Vec::new()));
+            let reached = navigated.clone();
+            let navigate: Rc<dyn Fn(Location)> =
+                Rc::new(move |location| reached.borrow_mut().push(location));
+            arm_spring_load_navigation(&prepared.state, &prepared.target, &navigate);
+
+            pump_main_loop_until(Duration::from_millis(300), || {
+                !navigated.borrow().is_empty()
+            });
+
+            assert!(
+                navigated.borrow().is_empty(),
+                "arming without an active drag must not navigate"
+            );
+        },
+    );
+}
+
+#[test]
+fn leaving_before_the_delay_cancels_spring_load_navigation() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::leaving_before_the_delay_cancels_spring_load_navigation",
+        || {
+            let destination = Location::local("/fixture/spring");
+            let prepared = spring_load_target(&destination);
+            let navigated = Rc::new(RefCell::new(Vec::new()));
+            let reached = navigated.clone();
+            prepared.state.schedule_spring_load_navigation(
+                || true,
+                destination,
+                Duration::from_millis(50),
+                move |location| reached.borrow_mut().push(location),
+            );
+            prepared.state.cancel_spring_load_navigation();
+
+            pump_main_loop_until(Duration::from_millis(300), || {
+                !navigated.borrow().is_empty()
+            });
+
+            assert!(
+                navigated.borrow().is_empty(),
+                "leaving the folder must cancel the pending navigation"
+            );
+        },
+    );
+}
+
+#[test]
+fn hover_without_an_active_drag_does_not_navigate() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::hover_without_an_active_drag_does_not_navigate",
+        || {
+            let destination = Location::local("/fixture/spring");
+            let prepared = spring_load_target(&destination);
+            let navigated = Rc::new(RefCell::new(Vec::new()));
+            let reached = navigated.clone();
+            prepared.state.schedule_spring_load_navigation(
+                || false,
+                destination,
+                Duration::from_millis(20),
+                move |location| reached.borrow_mut().push(location),
+            );
+
+            pump_main_loop_until(Duration::from_millis(300), || {
+                !navigated.borrow().is_empty()
+            });
+
+            assert!(
+                navigated.borrow().is_empty(),
+                "plain hover without a drag must not navigate"
+            );
+        },
+    );
+}
+
+#[test]
+fn spring_load_fires_exactly_once() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::spring_load_fires_exactly_once",
+        || {
+            let destination = Location::local("/fixture/spring");
+            let prepared = spring_load_target(&destination);
+            let navigated = Rc::new(RefCell::new(Vec::new()));
+            let reached = navigated.clone();
+            prepared.state.schedule_spring_load_navigation(
+                || true,
+                destination.clone(),
+                Duration::from_millis(20),
+                move |location| reached.borrow_mut().push(location),
+            );
+
+            pump_main_loop_until(Duration::from_secs(2), || !navigated.borrow().is_empty());
+            pump_main_loop_until(Duration::from_millis(200), || navigated.borrow().len() > 1);
+
+            assert_eq!(*navigated.borrow(), vec![destination]);
+        },
+    );
+}
+
+#[test]
+fn hovering_another_folder_replaces_the_pending_navigation() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::hovering_another_folder_replaces_the_pending_navigation",
+        || {
+            let first = Location::local("/fixture/first");
+            let second = Location::local("/fixture/second");
+            let hovered = Rc::new(RefCell::new(first.clone()));
+            let prepared = {
+                let hovered = hovered.clone();
+                prepare_file_drop_target(move || Some(hovered.borrow().clone()))
+            };
+            let navigated = Rc::new(RefCell::new(Vec::new()));
+            let reached_first = navigated.clone();
+            prepared.state.schedule_spring_load_navigation(
+                || true,
+                first,
+                Duration::from_millis(50),
+                move |location| reached_first.borrow_mut().push(location),
+            );
+            *hovered.borrow_mut() = second.clone();
+            let reached_second = navigated.clone();
+            prepared.state.schedule_spring_load_navigation(
+                || true,
+                second.clone(),
+                Duration::from_millis(20),
+                move |location| reached_second.borrow_mut().push(location),
+            );
+
+            pump_main_loop_until(Duration::from_secs(2), || !navigated.borrow().is_empty());
+
+            assert_eq!(*navigated.borrow(), vec![second]);
+        },
+    );
+}
+
+#[test]
+fn recycling_the_hovered_row_does_not_open_its_previous_folder() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::recycling_the_hovered_row_does_not_open_its_previous_folder",
+        || {
+            let first = Location::local("/fixture/first");
+            let hovered = Rc::new(RefCell::new(Some(first.clone())));
+            let prepared = {
+                let hovered = hovered.clone();
+                prepare_file_drop_target(move || hovered.borrow().clone())
+            };
+            let navigated = Rc::new(Cell::new(false));
+            let observed = navigated.clone();
+            prepared.state.schedule_spring_load_navigation(
+                || true,
+                first,
+                Duration::from_millis(20),
+                move |_| observed.set(true),
+            );
+            *hovered.borrow_mut() = Some(Location::local("/fixture/second"));
+            pump_main_loop_until(Duration::from_millis(100), || navigated.get());
+            assert!(!navigated.get());
+        },
+    );
+}
+
+#[test]
+fn directory_drag_snapshot_uses_entry_metadata_without_touching_paths() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::directory_drag_snapshot_uses_entry_metadata_without_touching_paths",
+        || {
+            use crate::model::EntryKind;
+            let fixture = tempfile::tempdir().expect("fixture");
+            for (kinds, expected) in [
+                (
+                    vec![EntryKind::Directory, EntryKind::DirectorySymbolicLink],
+                    true,
+                ),
+                (vec![EntryKind::File], false),
+                (vec![EntryKind::Directory, EntryKind::File], false),
+            ] {
+                let entries = kinds
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, kind)| {
+                        let mut entry = crate::test_support::operations::entry(Location::local(
+                            fixture.path().join(index.to_string()),
+                        ));
+                        entry.kind = kind;
+                        entry.display_name = format!("Display {index}");
+                        entry
+                    })
+                    .collect::<Vec<_>>();
+                let content =
+                    file_drag_content(&gtk::DragSource::new(), &entries).expect("drag content");
+                let snapshot = drag_snapshot_for_content(&content).expect("trusted snapshot");
+                assert_eq!(
+                    &*snapshot.locations,
+                    entries
+                        .iter()
+                        .map(|entry| entry.location.clone())
+                        .collect::<Vec<_>>()
+                );
+                assert_eq!(
+                    snapshot.folders.as_deref(),
+                    expected
+                        .then(|| {
+                            entries
+                                .iter()
+                                .map(|entry| (entry.location.clone(), entry.display_name.clone()))
+                                .collect::<Vec<_>>()
+                        })
+                        .as_deref()
+                );
+                let foreign = gtk::gdk::ContentProvider::for_value(&"foreign".to_value());
+                assert!(drag_snapshot_for_content(&foreign).is_none());
+            }
+        },
+    );
+}
+
+#[test]
+fn a_cached_internal_drag_never_replaces_another_drops_sources() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::a_cached_internal_drag_never_replaces_another_drops_sources",
+        || {
+            let dragged = crate::test_support::operations::entry(Location::local("/fixture/a.txt"));
+            let _content =
+                file_drag_content(&gtk::DragSource::new(), &[dragged]).expect("drag content");
+            let prepared = prepare_file_drop_target(|| Some(Location::local("/fixture/dest")));
+
+            assert!(prepared.state.sources(&prepared.target).is_empty());
+        },
     );
 }

@@ -484,7 +484,7 @@ fn relative_trashinfo_path_matches_the_topdir_resolved_orig_path() {
 #[test]
 fn orig_path_match_is_preferred_over_a_basename_collision() {
     let fixture = tempfile::tempdir().expect("fixture");
-    let uid = 1000;
+    let uid = rustix::process::getuid().as_raw();
     let home_trash = fixture.path().join("home-trash");
     fs::create_dir_all(home_trash.join("files")).expect("home files");
     fs::create_dir_all(home_trash.join("info")).expect("home info");
@@ -520,31 +520,61 @@ fn orig_path_match_is_preferred_over_a_basename_collision() {
 }
 
 #[test]
-fn shared_trash_dir_requires_sticky_bit_and_rejects_symlinks() -> std::io::Result<()> {
+fn volume_trash_roots_are_only_real_folders_the_user_owns() -> std::io::Result<()> {
     let fixture = tempfile::tempdir()?;
-    let uid = 1000;
-    let unsticky = fixture.path().join(".Trash");
-    fs::create_dir(&unsticky)?;
-    assert_eq!(valid_shared_trash_dir(fixture.path(), uid), None);
+    let uid = rustix::process::getuid().as_raw();
+    let other = uid + 1;
+    let home = fixture.path().join("home-trash");
+    let roots = |uid| {
+        candidate_trash_roots(
+            &context_for(&home, uid, fixture.path()),
+            Some(&fixture.path().join("report.txt")),
+        )
+    };
+    let expected = |mut roots: Vec<PathBuf>| {
+        roots.push(home.clone());
+        roots.sort();
+        roots
+    };
+    let shared = fixture.path().join(".Trash");
+    let per_user = |uid: u32| fixture.path().join(format!(".Trash-{uid}"));
+    for uid in [uid, other] {
+        fs::create_dir_all(shared.join(uid.to_string()))?;
+        fs::create_dir(per_user(uid))?;
+    }
+    assert_eq!(roots(uid), expected(vec![per_user(uid)]), "unsticky .Trash");
 
-    let mut permissions = fs::metadata(&unsticky)?.permissions();
-    permissions.set_mode(0o1777);
-    fs::set_permissions(&unsticky, permissions)?;
+    fs::set_permissions(&shared, fs::Permissions::from_mode(0o1777))?;
     assert_eq!(
-        valid_shared_trash_dir(fixture.path(), uid).as_deref(),
-        Some(unsticky.join(uid.to_string()).as_path())
+        roots(uid),
+        expected(vec![shared.join(uid.to_string()), per_user(uid)])
+    );
+    assert_eq!(
+        roots(other),
+        expected(Vec::new()),
+        "folders of another user"
     );
 
-    fs::remove_dir(&unsticky)?;
-    symlink("/tmp", &unsticky)?;
-    assert_eq!(valid_shared_trash_dir(fixture.path(), uid), None);
+    let elsewhere = fixture.path().join("elsewhere");
+    fs::create_dir(&elsewhere)?;
+    fs::remove_dir(shared.join(uid.to_string()))?;
+    symlink(&elsewhere, shared.join(uid.to_string()))?;
+    fs::remove_dir(per_user(uid))?;
+    symlink(&elsewhere, per_user(uid))?;
+    assert_eq!(roots(uid), expected(Vec::new()), "linked Trash folders");
+
+    fs::remove_file(shared.join(uid.to_string()))?;
+    fs::create_dir(shared.join(uid.to_string()))?;
+    fs::rename(&shared, fixture.path().join("moved"))?;
+    symlink(fixture.path().join("moved"), &shared)?;
+    assert_eq!(roots(uid), expected(Vec::new()), "linked .Trash");
     Ok(())
 }
 
 #[test]
 fn gvfs_named_volume_item_is_discovered_from_its_relative_trashinfo() {
     let fixture = tempfile::tempdir().expect("fixture");
-    let uid = 1000;
+    let uid = rustix::process::getuid().as_raw();
     let trash = volume_trash(fixture.path(), uid);
     fs::write(trash.join("files/report.txt"), b"ok").expect("source");
     fs::write(

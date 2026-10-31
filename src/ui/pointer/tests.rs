@@ -171,6 +171,56 @@ fn icons_rename_click_zone_is_the_caption_not_the_thumbnail() {
     );
 }
 
+#[test]
+fn list_column_reordering_preserves_name_gutter_hit_testing() {
+    gtk_test(
+        "ui::pointer::tests::list_column_reordering_preserves_name_gutter_hit_testing",
+        || {
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            row.add_css_class("list-row");
+            let name_cell = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            name_cell.add_css_class("list-name-cell");
+            let icon = super::super::thumbnail::ThumbnailSlot::new(18);
+            let name = gtk::Label::new(Some("file.txt"));
+            name.set_xalign(0.0);
+            name.set_hexpand(true);
+            name_cell.append(&icon);
+            name_cell.append(&name);
+            let metadata = gtk::Label::new(Some("1 KB"));
+            row.append(&name_cell);
+            row.append(&metadata);
+            let window = gtk::Window::builder()
+                .child(&row)
+                .default_width(500)
+                .build();
+            window.present();
+            pump_until(|| name.width() > 200);
+            let hit = |widget: &gtk::Widget, x: f32| {
+                let point = widget
+                    .compute_point(
+                        &row,
+                        &gtk::graphene::Point::new(x, widget.height() as f32 / 2.0),
+                    )
+                    .expect("point in row");
+                hits_list_item_content(row.upcast_ref(), f64::from(point.x()), f64::from(point.y()))
+            };
+            for name_first in [true, false] {
+                if !name_first {
+                    row.reorder_child_after(&name_cell, Some(&metadata));
+                }
+                assert!(hit(icon.upcast_ref(), 9.0));
+                assert!(hit(name.upcast_ref(), 4.0));
+                assert!(hit(metadata.upcast_ref(), 4.0));
+                assert!(
+                    !hit(name.upcast_ref(), name.width() as f32 - 4.0),
+                    "empty Name space must remain a marquee origin after reordering"
+                );
+            }
+            window.close();
+        },
+    );
+}
+
 fn pump_until(ready: impl Fn() -> bool) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
     while !ready() {

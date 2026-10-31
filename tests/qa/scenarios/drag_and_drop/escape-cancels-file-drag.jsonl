@@ -1,0 +1,25 @@
+{"scenario":"escape-cancels-file-drag","modes":["columns","icons","list"],"variants":[{"id":"ordinary","prefs":{"tenxer_mode":false}},{"id":"tenxer","prefs":{"tenxer_mode":true}},{"id":"preview","modes":["columns"]},{"id":"before-target","modes":["columns"]}],"cost":{"columns-ordinary":1.2,"icons-ordinary":1.1,"list-ordinary":1.1,"columns-tenxer":1.1,"icons-tenxer":1.1,"list-tenxer":1.1,"columns-preview":1.2,"columns-before-target":1.2}}
+{"select":{"entry":"todo.txt","dir":"$root"}}
+{"wait":{"selected":["todo.txt"],"dir":"$root"},"message":"the drag source to be selected"}
+{"fs":{"path":".","remember":"before"}}
+{"key":"space","variants":["preview"]}
+{"wait":{"preview":"todo"},"variants":["preview"],"message":"the preview header is available as a drag source"}
+{"drag":{"from":{"entry":"todo.txt","dir":"$root"},"to":{"entry":"archive","dir":"$root"}},"release":false,"variants":["ordinary","tenxer"]}
+{"drag":{"from":{"role":"label","name":"todo.txt","within":{"preview":true}},"to":{"entry":"archive","dir":"$root"}},"release":false,"variants":["preview"]}
+{"drag":{"from":{"entry":"todo.txt","dir":"$root"},"to":{"window":true},"to_at":["end+60","end+40"]},"release":false,"variants":["before-target"]}
+{"key":"Escape"}
+{"expect":{"selected":["todo.txt"],"dir":"$root"},"message":"Escape cancels the drag without clearing its selection"}
+{"expect":{"preview":"todo"},"variants":["preview"],"message":"cancelling a preview-header drag must not close the preview"}
+{"move":{"entry":"archive","dir":"$root"},"variants":["before-target"]}
+{"button_up":1}
+{"during":{"all":[{"file":{"path":"$fixture/todo.txt","exists":true}},{"file":{"path":"$fixture/archive/todo.txt","exists":false}}]},"ms":500,"message":"releasing a cancelled drag must not transfer the file"}
+{"fs":{"path":".","unchanged":"before"},"timeout_ms":0,"message":"Escape must leave every fixture file in place"}
+{"key":"Escape","variants":["preview"]}
+{"wait":{"preview":null},"variants":["preview"],"message":"a later Escape without a drag still closes the preview"}
+{"key":"Escape"}
+{"wait":{"selected":[],"dir":"$root"},"message":"a later Escape without a drag still clears the selection"}
+{"select":{"entry":"todo.txt","dir":"$root"}}
+{"wait":{"selected":["todo.txt"],"dir":"$root"},"message":"the file can be selected for another drag"}
+{"drag":{"from":{"entry":"todo.txt","dir":"$root"},"to":{"entry":"archive","dir":"$root"}}}
+{"fs":{"path":"archive/todo.txt","text":"todo\n"},"message":"an ordinary drag still moves the file after cancellation"}
+{"fs":{"path":"todo.txt","exists":false},"timeout_ms":0,"message":"the ordinary move removes the source"}

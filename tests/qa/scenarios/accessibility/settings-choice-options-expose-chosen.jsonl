@@ -1,0 +1,17 @@
+{"scenario":"settings-choice-options-expose-chosen","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"date-format","vars":{"id":"date-format"}},{"id":"drag-drop","vars":{"id":"drag-drop"}}],"cost":{"columns-date-format":2.0,"columns-drag-drop":1.9},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Settings choice menus expose the checked option; only checked-state check outside Appearance menu, settings-choice-buttons covers button value"}}
+{"activate":{"role":"button","name":"Settings"},"variants":["date-format"]}
+{"wait":{"presented":{"role":"button","name":"Modified date format","rendered":false}},"message":"the General settings page","variants":["date-format"]}
+{"reveal":{"role":"button","name":"Modified date format"},"variants":["date-format"]}
+{"open_menu":{"role":"toggle button","name":"Modified date format","within":{"role":"button","name":"Modified date format","rendered":false}},"until":{"present":{"role":"radio menu item","name":"Relative"}},"open_states":["checked","pressed"],"message":"the 'Relative' option of 'Modified date format'","variants":["date-format"]}
+{"wait":{"present":{"role":"radio menu item","name":"Relative"}},"message":"the 'Relative' option","variants":["date-format"]}
+{"expect":{"state":{"target":{"role":"radio menu item","name":"Relative"},"checked":true}},"variants":["date-format"]}
+{"wait":{"present":{"role":"radio menu item","name":"ISO 8601"}},"message":"the 'ISO 8601' option","variants":["date-format"]}
+{"expect":{"state":{"target":{"role":"radio menu item","name":"ISO 8601"},"checked":false}},"variants":["date-format"]}
+{"activate":{"role":"button","name":"Settings"},"variants":["drag-drop"]}
+{"wait":{"presented":{"role":"button","name":"Modified date format","rendered":false}},"message":"the General settings page","variants":["drag-drop"]}
+{"reveal":{"role":"button","name":"Drag & drop to another device"},"variants":["drag-drop"]}
+{"open_menu":{"role":"toggle button","name":"Drag & drop to another device","within":{"role":"button","name":"Drag & drop to another device","rendered":false}},"until":{"present":{"role":"radio menu item","name":"Always ask"}},"open_states":["checked","pressed"],"message":"the 'Always ask' option of 'Drag & drop to another device'","variants":["drag-drop"]}
+{"wait":{"present":{"role":"radio menu item","name":"Always ask"}},"message":"the 'Always ask' option","variants":["drag-drop"]}
+{"expect":{"state":{"target":{"role":"radio menu item","name":"Always ask"},"checked":true}},"variants":["drag-drop"]}
+{"wait":{"present":{"role":"radio menu item","name":"Always copy"}},"message":"the 'Always copy' option","variants":["drag-drop"]}
+{"expect":{"state":{"target":{"role":"radio menu item","name":"Always copy"},"checked":false}},"variants":["drag-drop"]}

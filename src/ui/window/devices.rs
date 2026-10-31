@@ -1,60 +1,57 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::HashMap,
-    os::unix::ffi::OsStringExt,
+    cell::{Cell, OnceCell, RefCell},
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
+    rc::{Rc, Weak},
 };
 
 use gtk::{gio, prelude::*};
 
-fn system_mounted_devices() -> Vec<PathBuf> {
-    // MountEntry bindings require GLib 2.84; retain compatibility with GLib 2.72.
-    std::fs::read("/proc/self/mountinfo")
-        .map(|table| mounted_devices_from_table(&table))
-        .unwrap_or_default()
-}
+use crate::adapters::MountTable;
 
-fn mounted_devices_from_table(table: &[u8]) -> Vec<PathBuf> {
+fn mounted_devices(table: &MountTable) -> Vec<PathBuf> {
     table
-        .split(|byte| *byte == b'\n')
-        .filter_map(|line| {
-            let fields: Vec<_> = line.split(|byte| *byte == b' ').collect();
-            let separator = fields.iter().position(|field| *field == b"-")?;
-            if separator < 6 {
-                return None;
-            }
-            let root = mount_path(fields[4])?;
-            let source = mount_path(fields.get(separator + 2)?)?;
-            if !source.starts_with("/dev")
-                || !root.is_absolute()
-                || gio_unix::functions::is_mount_path_system_internal(&root)
-            {
-                return None;
-            }
-            Some(root)
+        .sources()
+        .filter(|(point, source)| {
+            source.starts_with("/dev")
+                && point.is_absolute()
+                && !gio_unix::functions::is_mount_path_system_internal(point)
         })
+        .map(|(point, _)| point.to_owned())
         .collect()
 }
 
-fn mount_path(encoded: &[u8]) -> Option<PathBuf> {
-    let mut decoded = Vec::with_capacity(encoded.len());
-    let mut bytes = encoded.iter().copied();
-    while let Some(byte) = bytes.next() {
-        if byte == b'\\' {
-            let escape = [bytes.next()?, bytes.next()?, bytes.next()?];
-            decoded.push(match &escape {
-                b"040" => b' ',
-                b"011" => b'\t',
-                b"012" => b'\n',
-                b"134" => b'\\',
-                _ => return None,
-            });
-        } else {
-            decoded.push(byte);
+pub(super) fn block_device_from_mount_table(table: &MountTable, path: &Path) -> Option<PathBuf> {
+    table
+        .source_for(path)
+        .filter(|source| source.starts_with("/dev"))
+        .map(Path::to_owned)
+}
+
+pub(super) fn mounted_path_from_table(table: &MountTable, device: &Path) -> Option<PathBuf> {
+    let device = device
+        .canonicalize()
+        .unwrap_or_else(|_| device.to_path_buf());
+    table.sources().find_map(|(point, source)| {
+        if !source.starts_with("/dev") {
+            return None;
         }
-    }
-    Some(std::ffi::OsString::from_vec(decoded).into())
+        let source = source.canonicalize().unwrap_or_else(|_| source.to_owned());
+        (source == device).then(|| point.to_owned())
+    })
+}
+
+pub(super) fn label_identity(uuid: Option<&str>, root_uri: Option<&str>) -> Option<String> {
+    [("volume", uuid), ("root", root_uri)]
+        .into_iter()
+        .find_map(|(namespace, value)| {
+            value
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| format!("{namespace}:{value}"))
+        })
 }
 
 pub(super) fn device_identity(
@@ -84,16 +81,10 @@ struct RemovableMountFacts {
     shadowed: bool,
     native_root: bool,
     removable: bool,
-    writable: bool,
-    existing_directory: bool,
 }
 
 fn removable_mount_is_eligible(facts: RemovableMountFacts) -> bool {
-    !facts.shadowed
-        && facts.native_root
-        && facts.removable
-        && facts.writable
-        && facts.existing_directory
+    !facts.shadowed && facts.native_root && facts.removable
 }
 
 fn send_to_device_identity(
@@ -152,29 +143,12 @@ fn send_to_mount_identity(mount: &gio::Mount) -> Option<String> {
     )
 }
 
-fn root_is_writable_directory(root: &gio::File) -> bool {
-    root.query_info(
-        "standard::type,access::can-write",
-        gio::FileQueryInfoFlags::NONE,
-        None::<&gio::Cancellable>,
-    )
-    .is_ok_and(|info| {
-        info.file_type() == gio::FileType::Directory && info.boolean("access::can-write")
-    })
-}
-
-fn destination_for_mount(mount: &gio::Mount) -> Option<RemovableDestination> {
-    let root_file = mount.root();
-    let root = root_file.path()?;
-    let volume = mount.volume();
-    let removable =
-        super::mount_can_unplug(mount) || volume.as_ref().is_some_and(super::volume_can_unplug);
+fn candidate_for_mount(mount: &gio::Mount) -> Option<RemovableDestination> {
+    let root = mount.root().path();
     let facts = RemovableMountFacts {
         shadowed: mount.is_shadowed(),
-        native_root: true,
-        removable,
-        writable: root_is_writable_directory(&root_file),
-        existing_directory: root.is_dir(),
+        native_root: root.is_some(),
+        removable: crate::adapters::mount_is_removable(mount),
     };
     if !removable_mount_is_eligible(facts) {
         return None;
@@ -182,7 +156,7 @@ fn destination_for_mount(mount: &gio::Mount) -> Option<RemovableDestination> {
     Some(RemovableDestination {
         id: send_to_mount_identity(mount)?,
         name: mount.name().to_string(),
-        root,
+        root: root?,
     })
 }
 
@@ -208,25 +182,323 @@ fn sort_removable_destinations(destinations: &mut [RemovableDestination]) {
     });
 }
 
-pub(in crate::ui) fn removable_destinations() -> Vec<RemovableDestination> {
-    let monitor = gio::VolumeMonitor::get();
-    let mut destinations = without_ambiguous_destinations(
-        monitor
-            .mounts()
-            .iter()
-            .filter_map(destination_for_mount)
-            .collect(),
-    );
-    sort_removable_destinations(&mut destinations);
-    destinations
+type Watcher = (u64, Weak<dyn Fn()>);
+
+#[derive(Default)]
+struct RemovableCache {
+    candidates: RefCell<Vec<RemovableDestination>>,
+    writable: RefCell<HashMap<PathBuf, (u64, bool)>>,
+    unanswered: RefCell<HashSet<PathBuf>>,
+    destinations: RefCell<Vec<RemovableDestination>>,
+    recent_folders: RefCell<HashMap<String, (u64, HashSet<PathBuf>)>>,
+    generation: Cell<u64>,
+    refresh_queued: Cell<bool>,
+    watchers: RefCell<Vec<Watcher>>,
+    next_watcher: Cell<u64>,
+    monitor: OnceCell<gio::VolumeMonitor>,
+    #[cfg(test)]
+    offered_for_test: RefCell<Option<Vec<RemovableDestination>>>,
 }
 
-pub(in crate::ui) fn resolve_removable_destination(id: &str) -> Option<PathBuf> {
-    let destination = removable_destinations()
+thread_local! {
+    static REMOVABLE: RemovableCache = RemovableCache::default();
+}
+
+pub(in crate::ui) struct RemovableWatch {
+    id: u64,
+    _changed: Rc<dyn Fn()>,
+}
+
+impl Drop for RemovableWatch {
+    fn drop(&mut self) {
+        REMOVABLE.with(|cache| {
+            cache.watchers.borrow_mut().retain(|(id, _)| *id != self.id);
+        });
+    }
+}
+
+pub(in crate::ui) fn watch_removable_destinations(changed: impl Fn() + 'static) -> RemovableWatch {
+    start_removable_destinations();
+    let changed: Rc<dyn Fn()> = Rc::new(changed);
+    let id = REMOVABLE.with(|cache| {
+        let id = cache.next_watcher.get() + 1;
+        cache.next_watcher.set(id);
+        cache
+            .watchers
+            .borrow_mut()
+            .push((id, Rc::downgrade(&changed)));
+        id
+    });
+    RemovableWatch {
+        id,
+        _changed: changed,
+    }
+}
+
+pub(in crate::ui) fn removable_destinations() -> Vec<RemovableDestination> {
+    start_removable_destinations();
+    probe_unanswered_roots();
+    REMOVABLE.with(|cache| cache.destinations.borrow().clone())
+}
+
+pub(in crate::ui) fn send_to_recent_folders(destination: &RemovableDestination) -> Vec<PathBuf> {
+    let remembered = crate::ui::preferences::PreferenceManager::shared()
+        .send_to_recent_destinations(&destination.id);
+    if remembered.is_empty() {
+        return remembered;
+    }
+    let previous = REMOVABLE.with(|cache| {
+        cache
+            .recent_folders
+            .borrow()
+            .get(&destination.id)
+            .map(|(_, found)| found.clone())
+            .unwrap_or_default()
+    });
+    let mut unlisted = previous.clone();
+    let listed = remembered
+        .iter()
+        .filter(|relative| unlisted.remove(*relative))
+        .cloned()
+        .collect();
+    check_recent_folders(destination.clone(), remembered, previous);
+    listed
+}
+
+fn check_recent_folders(
+    destination: RemovableDestination,
+    remembered: Vec<PathBuf>,
+    previous: HashSet<PathBuf>,
+) {
+    let generation = REMOVABLE.with(next_generation);
+    gtk::glib::MainContext::default().spawn_local(async move {
+        let Some(found) = folders_inside(&destination.root, &remembered, &previous).await else {
+            return;
+        };
+        let changed = REMOVABLE.with(|cache| {
+            let mut known = cache.recent_folders.borrow_mut();
+            if known
+                .get(&destination.id)
+                .is_some_and(|(checked, _)| *checked > generation)
+            {
+                return false;
+            }
+            known
+                .insert(destination.id, (generation, found.clone()))
+                .map_or(!found.is_empty(), |(_, previous)| previous != found)
+        });
+        if changed {
+            notify_removable_watchers();
+        }
+    });
+}
+
+async fn folders_inside(
+    root: &Path,
+    remembered: &[PathBuf],
+    previous: &HashSet<PathBuf>,
+) -> Option<HashSet<PathBuf>> {
+    use crate::{adapters::probes, services::LocationValidationError};
+    let unanswered =
+        |error: &LocationValidationError| matches!(error, LocationValidationError::Unavailable(_));
+    let root = match probes::destination_folder(root).await {
+        Ok(root) => root,
+        Err(error) if unanswered(&error) => return None,
+        Err(_) => return Some(HashSet::new()),
+    };
+    let mut folders = HashSet::new();
+    let mut found = HashSet::new();
+    for relative in remembered
+        .iter()
+        .filter(|relative| crate::ui::preferences::is_valid_send_to_relative_path(relative))
+    {
+        match probes::destination_folder(&root.join(relative)).await {
+            Ok(folder) if folder != root && folder.starts_with(&root) => {
+                if folders.insert(folder) {
+                    found.insert(relative.clone());
+                }
+            }
+            Err(error) if unanswered(&error) && previous.contains(relative) => {
+                found.insert(relative.clone());
+            }
+            _ => {}
+        }
+        if found.len() == crate::ui::preferences::SEND_TO_RECENT_DESTINATIONS_LIMIT {
+            break;
+        }
+    }
+    Some(found)
+}
+
+pub(in crate::ui) fn removable_destination_root(id: &str) -> Option<PathBuf> {
+    removable_destinations()
         .into_iter()
-        .find(|destination| destination.id == id)?;
-    let root = std::fs::canonicalize(destination.root).ok()?;
-    root_is_writable_directory(&gio::File::for_path(&root)).then_some(root)
+        .find(|destination| destination.id == id)
+        .map(|destination| destination.root)
+}
+
+fn start_removable_destinations() {
+    let started = REMOVABLE.with(|cache| {
+        if cache.monitor.get().is_some() {
+            return false;
+        }
+        let monitor = gio::VolumeMonitor::get();
+        monitor.connect_mount_added(|_, _| queue_removable_refresh());
+        monitor.connect_mount_removed(|_, _| queue_removable_refresh());
+        monitor.connect_mount_changed(|_, _| queue_removable_refresh());
+        monitor.connect_volume_added(|_, _| queue_removable_refresh());
+        monitor.connect_volume_removed(|_, _| queue_removable_refresh());
+        monitor.connect_volume_changed(|_, _| queue_removable_refresh());
+        monitor.connect_drive_connected(|_, _| queue_removable_refresh());
+        monitor.connect_drive_disconnected(|_, _| queue_removable_refresh());
+        monitor.connect_drive_changed(|_, _| queue_removable_refresh());
+        cache.monitor.set(monitor).is_ok()
+    });
+    if started {
+        queue_removable_refresh();
+    }
+}
+
+fn queue_removable_refresh() {
+    if REMOVABLE.with(|cache| cache.refresh_queued.replace(true)) {
+        return;
+    }
+    gtk::glib::idle_add_local_once(|| {
+        REMOVABLE.with(|cache| cache.refresh_queued.set(false));
+        refresh_removable_destinations();
+    });
+}
+
+fn removable_candidates() -> Vec<RemovableDestination> {
+    #[cfg(test)]
+    if let Some(offered) = REMOVABLE.with(|cache| cache.offered_for_test.borrow().clone()) {
+        return offered;
+    }
+    gio::VolumeMonitor::get()
+        .mounts()
+        .iter()
+        .filter_map(candidate_for_mount)
+        .collect()
+}
+
+fn next_generation(cache: &RemovableCache) -> u64 {
+    let generation = cache.generation.get() + 1;
+    cache.generation.set(generation);
+    generation
+}
+
+fn refresh_removable_destinations() {
+    let candidates = removable_candidates();
+    let roots: HashSet<PathBuf> = candidates
+        .iter()
+        .map(|candidate| candidate.root.clone())
+        .collect();
+    let generation = REMOVABLE.with(|cache| {
+        cache
+            .writable
+            .borrow_mut()
+            .retain(|root, _| roots.contains(root));
+        cache.unanswered.borrow_mut().clear();
+        cache.candidates.replace(candidates);
+        next_generation(cache)
+    });
+    publish_removable_destinations();
+    for root in roots {
+        probe_removable_root(root, generation);
+    }
+}
+
+fn probe_unanswered_roots() {
+    let roots = REMOVABLE.with(|cache| cache.unanswered.take());
+    if roots.is_empty() {
+        return;
+    }
+    let generation = REMOVABLE.with(next_generation);
+    for root in roots {
+        probe_removable_root(root, generation);
+    }
+}
+
+fn probe_removable_root(root: PathBuf, generation: u64) {
+    gtk::glib::MainContext::default().spawn_local(async move {
+        let answer = crate::adapters::probes::writable_folder(&root).await;
+        let learned = REMOVABLE.with(|cache| {
+            let offered = cache
+                .candidates
+                .borrow()
+                .iter()
+                .any(|candidate| candidate.root == root);
+            if !offered {
+                return false;
+            }
+            let Ok(folder) = answer else {
+                cache.unanswered.borrow_mut().insert(root);
+                return false;
+            };
+            let mut known = cache.writable.borrow_mut();
+            if known
+                .get(&root)
+                .is_some_and(|(checked, _)| *checked > generation)
+            {
+                return false;
+            }
+            cache.unanswered.borrow_mut().remove(&root);
+            known.insert(root, (generation, folder.is_some()));
+            true
+        });
+        if learned {
+            publish_removable_destinations();
+        }
+    });
+}
+
+fn publish_removable_destinations() {
+    let changed = REMOVABLE.with(|cache| {
+        let writable = cache.writable.borrow();
+        let mut destinations = without_ambiguous_destinations(
+            cache
+                .candidates
+                .borrow()
+                .iter()
+                .filter(|candidate| {
+                    writable
+                        .get(&candidate.root)
+                        .is_some_and(|(_, writable)| *writable)
+                })
+                .cloned()
+                .collect(),
+        );
+        sort_removable_destinations(&mut destinations);
+        if *cache.destinations.borrow() == destinations {
+            return false;
+        }
+        cache.destinations.replace(destinations);
+        true
+    });
+    if changed {
+        notify_removable_watchers();
+    }
+}
+
+fn notify_removable_watchers() {
+    let watchers: Vec<_> = REMOVABLE.with(|cache| {
+        cache
+            .watchers
+            .borrow()
+            .iter()
+            .filter_map(|(_, changed)| changed.upgrade())
+            .collect()
+    });
+    for changed in watchers {
+        changed();
+    }
+}
+
+#[cfg(test)]
+pub(in crate::ui) fn offer_removable_destinations_for_test(offered: Vec<RemovableDestination>) {
+    REMOVABLE.with(|cache| cache.offered_for_test.replace(Some(offered)));
+    start_removable_destinations();
+    queue_removable_refresh();
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -235,6 +507,8 @@ pub(super) struct BlockCryptoHint {
     pub id_fs_usage: Option<String>,
     pub id_fs_type: Option<String>,
     pub crypto_uuid: Option<String>,
+    /// The device is, or is held by, an open dm-crypt mapping.
+    pub cleartext_open: bool,
 }
 
 impl BlockCryptoHint {
@@ -270,7 +544,13 @@ pub(super) fn is_encrypted_device(
         || block_indicates_crypto(block)
 }
 
-pub(super) fn encrypted_device_is_locked(icon_names: &[&str], has_mount: bool) -> bool {
+/// GVfs' padlock emblem wins; without it, an open mapping whose filesystem is
+/// unmounted (for example an fstab entry) still counts as unlocked.
+pub(super) fn encrypted_device_is_locked(
+    icon_names: &[&str],
+    has_mount: bool,
+    cleartext_open: bool,
+) -> bool {
     let mut padlock_locked = false;
     let mut padlock_unlocked = false;
     for name in icon_names {
@@ -285,11 +565,82 @@ pub(super) fn encrypted_device_is_locked(icon_names: &[&str], has_mount: bool) -
     } else if padlock_unlocked {
         false
     } else {
-        !has_mount
+        !has_mount && !cleartext_open
     }
 }
 
-pub(super) fn probe_block_crypto(unix_device: &str) -> BlockCryptoHint {
+#[derive(Default)]
+struct CryptoHints {
+    known: RefCell<HashMap<String, BlockCryptoHint>>,
+    pending: RefCell<HashSet<String>>,
+    monitor: OnceCell<gio::VolumeMonitor>,
+}
+
+thread_local! {
+    static CRYPTO_HINTS: CryptoHints = CryptoHints::default();
+}
+
+pub(super) fn block_crypto_hint(unix_device: &str) -> BlockCryptoHint {
+    block_crypto_hint_with(unix_device, probe_block_crypto)
+}
+
+fn block_crypto_hint_with(
+    unix_device: &str,
+    probe: fn(&str) -> BlockCryptoHint,
+) -> BlockCryptoHint {
+    CRYPTO_HINTS.with(|hints| {
+        hints.monitor.get_or_init(|| {
+            let monitor = gio::VolumeMonitor::get();
+            let recheck = move || recheck_crypto_hints(probe);
+            monitor.connect_volume_added(move |_, _| recheck());
+            monitor.connect_volume_removed(move |_, _| recheck());
+            monitor.connect_volume_changed(move |_, _| recheck());
+            monitor.connect_drive_connected(move |_, _| recheck());
+            monitor.connect_drive_disconnected(move |_, _| recheck());
+            monitor.connect_drive_changed(move |_, _| recheck());
+            monitor
+        });
+    });
+    let known = CRYPTO_HINTS.with(|hints| hints.known.borrow().get(unix_device).cloned());
+    known.unwrap_or_else(|| {
+        probe_crypto_hint(unix_device.to_owned(), probe);
+        BlockCryptoHint::default()
+    })
+}
+
+fn recheck_crypto_hints(probe: fn(&str) -> BlockCryptoHint) {
+    let devices: Vec<String> =
+        CRYPTO_HINTS.with(|hints| hints.known.borrow().keys().cloned().collect());
+    for device in devices {
+        probe_crypto_hint(device, probe);
+    }
+}
+
+fn probe_crypto_hint(unix_device: String, probe: fn(&str) -> BlockCryptoHint) {
+    if !CRYPTO_HINTS.with(|hints| hints.pending.borrow_mut().insert(unix_device.clone())) {
+        return;
+    }
+    gtk::glib::MainContext::default().spawn_local(async move {
+        let device = unix_device.clone();
+        let hint = gio::spawn_blocking(move || probe(&device))
+            .await
+            .unwrap_or_default();
+        let changed = CRYPTO_HINTS.with(|hints| {
+            hints.pending.borrow_mut().remove(&unix_device);
+            let seen = hints
+                .known
+                .borrow_mut()
+                .insert(unix_device, hint.clone())
+                .unwrap_or_default();
+            seen != hint
+        });
+        if changed {
+            super::device_release::refresh_sidebars();
+        }
+    });
+}
+
+fn probe_block_crypto(unix_device: &str) -> BlockCryptoHint {
     let unix_device = unix_device.trim();
     if unix_device.is_empty() {
         return BlockCryptoHint::default();
@@ -313,12 +664,29 @@ pub(super) fn probe_block_crypto(unix_device: &str) -> BlockCryptoHint {
         .or_else(|| luks_uuid_from_unix_device(unix_device))
         .or_else(|| udev.as_deref().and_then(udev_crypto_uuid))
         .or_else(|| slave_crypto_uuid(&sysfs));
+    let cleartext_open =
+        dm_uuid.as_deref().is_some_and(dm_uuid_is_crypt) || holder_is_crypt_mapping(&sysfs);
     BlockCryptoHint {
         dm_uuid,
         id_fs_usage,
         id_fs_type,
         crypto_uuid,
+        cleartext_open,
     }
+}
+
+fn holder_is_crypt_mapping(sysfs: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(sysfs.join("holders")) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        read_trimmed(
+            Path::new("/sys/class/block")
+                .join(entry.file_name())
+                .join("dm/uuid"),
+        )
+        .is_some_and(|uuid| dm_uuid_is_crypt(&uuid))
+    })
 }
 
 // An unlocked volume exposes the filesystem UUID, not the saved passphrase's LUKS UUID.
@@ -518,7 +886,7 @@ pub(super) fn global_search_roots() -> Vec<PathBuf> {
         .into_iter()
         .filter(|mount| !mount.is_shadowed())
         .filter_map(|mount| mount.root().path())
-        .chain(system_mounted_devices());
+        .chain(mounted_devices(&crate::adapters::mount_watch::latest()));
     search_roots(&super::home_directory(), roots)
 }
 

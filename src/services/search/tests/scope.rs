@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::services::search::{
-    SearchCoverage, SharedIndex, append_index_items, filter_score_normalized, index_filter,
-    start_search_session,
+    SearchCoverage, SearchLimits, SearchScorer, SharedIndex, append_index_items,
+    filter_score_normalized, index_filter, start_search_session,
 };
 use std::sync::Arc;
 
@@ -18,7 +18,7 @@ fn directory_filter_keeps_immediate_files_and_folders_without_traversing_childre
         fs::write(root.join(name), "fixture").expect("file");
     }
     fs::write(root.join(".ignore"), "needle.txt\n").expect("ignore file");
-    let (search, events) = index_filter(root.to_path_buf(), false, false);
+    let (search, events) = index_filter(root.to_path_buf(), false, false, SearchLimits::default());
     search.query("node_modules");
     let SearchEvent::Results { items, .. } =
         wait_for_results(&events).expect("generated folder match");
@@ -26,7 +26,12 @@ fn directory_filter_keeps_immediate_files_and_folders_without_traversing_childre
     assert!(items[0].is_directory);
 
     for show_hidden in [false, true] {
-        let (search, events) = index_filter(root.to_path_buf(), show_hidden, false);
+        let (search, events) = index_filter(
+            root.to_path_buf(),
+            show_hidden,
+            false,
+            SearchLimits::default(),
+        );
         search.query("needle");
         let SearchEvent::Results {
             items, coverage, ..
@@ -58,7 +63,12 @@ fn wildcard_filters_match_basenames_within_the_selected_scope() {
         fixture_file(root, name);
     }
     for recursive in [false, true] {
-        let (search, events) = index_filter(root.to_path_buf(), false, recursive);
+        let (search, events) = index_filter(
+            root.to_path_buf(),
+            false,
+            recursive,
+            SearchLimits::default(),
+        );
         for (query, mut expected) in [
             ("*.MOV", vec!["album.MOV", "clip.MOV", "IMG_001.MOV"]),
             ("IMG*", vec!["IMG_001.MOV", "IMG_001.jpg"]),
@@ -102,7 +112,7 @@ fn wildcard_filters_match_basenames_within_the_selected_scope() {
             assert_eq!(actual, expected, "recursive={recursive}, query={query}");
         }
     }
-    let (search, events) = index_filter(root.to_path_buf(), true, false);
+    let (search, events) = index_filter(root.to_path_buf(), true, false, SearchLimits::default());
     search.query("*.MOV");
     let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("hidden results");
     assert!(items.iter().any(|item| item.name == ".hidden.MOV"));
@@ -124,7 +134,12 @@ fn plain_filters_rank_literal_names_above_typos_and_reject_scattered_or_path_mat
         fixture_file(fixture.path(), name);
     }
     for recursive in [false, true] {
-        let (search, events) = index_filter(fixture.path().into(), false, recursive);
+        let (search, events) = index_filter(
+            fixture.path().into(),
+            false,
+            recursive,
+            SearchLimits::default(),
+        );
         for query in ["trash", "trahs"] {
             search.query(query);
             let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
@@ -148,15 +163,79 @@ fn plain_filters_rank_literal_names_above_typos_and_reject_scattered_or_path_mat
 }
 
 #[test]
+fn multi_word_filters_rank_phrase_hits_above_scattered_words() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    for name in [
+        "ducks_in_the_pool.txt",
+        "duck.md",
+        "goose.txt",
+        "nested/duck txt notes.md",
+    ] {
+        fixture_file(fixture.path(), name);
+    }
+    for recursive in [false, true] {
+        let (search, events) = index_filter(
+            fixture.path().into(),
+            false,
+            recursive,
+            SearchLimits::default(),
+        );
+        search.query("duck txt");
+        let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
+        let names: Vec<_> = items.iter().map(|item| item.name.as_str()).collect();
+        let expected: &[&str] = if recursive {
+            &["duck txt notes.md", "ducks_in_the_pool.txt"]
+        } else {
+            &["ducks_in_the_pool.txt"]
+        };
+        assert_eq!(names, expected, "recursive={recursive}");
+    }
+}
+
+#[test]
+fn global_search_matches_multi_word_queries_and_ranks_phrase_above_scattered_words() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    for name in [
+        "ducks_in_the_pool.txt",
+        "duck.md",
+        "goose.txt",
+        "nested/duck txt notes.md",
+        "nested/subfolder/notes.txt",
+    ] {
+        fixture_file(fixture.path(), name);
+    }
+    let (global, events) = index_trees_with_exclusions(
+        vec![fixture.path().into()],
+        false,
+        Vec::new(),
+        SearchLimits::default(),
+    );
+    global.query("duck txt");
+    let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
+    let names: Vec<_> = items.iter().map(|item| item.name.as_str()).collect();
+    assert_eq!(names, &["duck txt notes.md", "ducks_in_the_pool.txt"]);
+
+    global.query("subfolder txt");
+    let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
+    let names: Vec<_> = items.iter().map(|item| item.name.as_str()).collect();
+    assert_eq!(names, &["notes.txt"]);
+}
+
+#[test]
 fn wildcard_scoring_is_session_local_and_applies_to_new_index_batches() {
     let index = Arc::new(SharedIndex::new());
-    let (filter, events) = start_search_session(index.clone(), filter_score_normalized);
+    let (filter, events) =
+        start_search_session(index.clone(), SearchScorer::Name(filter_score_normalized));
     filter.query("*.MOV");
     let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("empty index");
     assert!(items.is_empty());
+    let fixture = tempfile::tempdir().expect("fixture");
     let mut batch: Vec<_> = ["clip.MOV", "clip.MOV.bak", "*.MOV", "IMG_001.jpg"]
         .into_iter()
-        .map(|name| SearchItem::for_test(PathBuf::from("/fixture").join(name), false))
+        .map(|name| {
+            fs::write(fixture.path().join(name), b"").expect("fixture file");
+            SearchItem::for_test(fixture.path().join(name), false)
+        })
         .collect();
     append_index_items(&index, &mut batch, false, SearchCoverage::default());
     index.broadcast_change();
@@ -168,7 +247,8 @@ fn wildcard_scoring_is_session_local_and_applies_to_new_index_batches() {
     let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("rescored results");
     assert_eq!(items, expected);
 
-    let (global, global_events) = start_search_session(index, fuzzy_score_normalized);
+    let (global, global_events) =
+        start_search_session(index, SearchScorer::Name(fuzzy_score_normalized));
     global.query("*.MOV");
     let SearchEvent::Results { items, .. } =
         wait_for_results(&global_events).expect("global results");
@@ -182,8 +262,9 @@ fn recursive_and_directory_filters_never_share_the_wrong_scope() {
     fs::create_dir(fixture.path().join("nested")).expect("folder");
     fs::write(fixture.path().join("nested/needle.txt"), "fixture").expect("file");
     let root = fixture.path().to_path_buf();
-    let (recursive, recursive_events) = index_filter(root.clone(), false, true);
-    let (local, local_events) = index_filter(root.clone(), false, false);
+    let (recursive, recursive_events) =
+        index_filter(root.clone(), false, true, SearchLimits::default());
+    let (local, local_events) = index_filter(root.clone(), false, false, SearchLimits::default());
     let (global, _) = index_tree(root, false);
     assert!(!std::sync::Arc::ptr_eq(&recursive.index, &local.index));
     assert!(std::sync::Arc::ptr_eq(&recursive.index, &global.index));
@@ -214,11 +295,12 @@ fn recursive_filter_stays_below_its_root_while_other_roots_are_indexed() {
     let (parent_search, parent_events) = index_tree(parent.to_path_buf(), false);
     parent_search.query("needle");
     wait_for_results(&parent_events).expect("parent index");
-    let (sibling_search, sibling_events) = index_filter(parent.join("sibling"), false, true);
+    let (sibling_search, sibling_events) =
+        index_filter(parent.join("sibling"), false, true, SearchLimits::default());
     sibling_search.query("needle");
     wait_for_results(&sibling_events).expect("sibling index");
 
-    let (search, events) = index_filter(current.clone(), false, true);
+    let (search, events) = index_filter(current.clone(), false, true, SearchLimits::default());
     search.query("needle");
     let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("current results");
     let actual: HashSet<_> = items.iter().map(|item| item.path.clone()).collect();

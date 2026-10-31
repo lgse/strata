@@ -10,6 +10,7 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 use tempfile::NamedTempFile;
 
+use crate::adapters::gio_close::CancelOnDrop;
 use crate::model::{FileEntry, MetadataValue};
 
 const MAX_REMOTE_PREVIEW_BYTES: u64 = 64 * 1024 * 1024;
@@ -34,7 +35,7 @@ struct StagingPermit;
 impl StagingPermit {
     fn acquire() -> Result<Self, String> {
         STAGED_PREVIEWS
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
                 (active < MAX_STAGED_PREVIEWS).then_some(active + 1)
             })
             .map(|_| Self)
@@ -45,14 +46,6 @@ impl StagingPermit {
 impl Drop for StagingPermit {
     fn drop(&mut self) {
         STAGED_PREVIEWS.fetch_sub(1, Ordering::AcqRel);
-    }
-}
-
-struct CancelOnDrop(gio::Cancellable);
-
-impl Drop for CancelOnDrop {
-    fn drop(&mut self) {
-        self.0.cancel();
     }
 }
 
@@ -70,10 +63,7 @@ async fn stage_with_limit(
     timeout: Duration,
 ) -> Result<StagedPreview, String> {
     if matches!(entry.size, MetadataValue::Known(size) if size > byte_limit) {
-        return Err(format!(
-            "Remote preview exceeds the {} MiB download limit",
-            byte_limit / (1024 * 1024)
-        ));
+        return Err(limit_exceeded(byte_limit));
     }
     let file = crate::adapters::gio_file_for_location(&entry.location);
     let suffix = Path::new(&entry.native_name)
@@ -87,7 +77,7 @@ async fn stage_with_limit(
     transfer(suffix, timeout, move |staged, cancellation| {
         let stream = file
             .read(Some(cancellation))
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| crate::services::gio_error_message(&error))?;
         copy_bounded(&stream, staged, byte_limit, cancellation)
     })
     .await
@@ -107,7 +97,7 @@ async fn transfer(
                 .prefix("strata-remote-preview-")
                 .suffix(&suffix)
                 .tempfile()
-                .map_err(|error| error.to_string())?,
+                .map_err(|error| crate::services::io_error_message(&error))?,
             _permit: permit,
         };
         if cancellation.is_cancelled() {
@@ -150,21 +140,26 @@ fn copy_bounded(
         let count = CHUNK_BYTES.min(remaining.saturating_add(1) as usize);
         let bytes = stream
             .read_bytes(count, Some(cancellation))
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| crate::services::gio_error_message(&error))?;
         if bytes.is_empty() {
             return Ok(());
         }
         if bytes.len() as u64 > remaining {
-            return Err(format!(
-                "Remote preview exceeds the download limit ({} MiB maximum)",
-                byte_limit / (1024 * 1024)
-            ));
+            return Err(limit_exceeded(byte_limit));
         }
         output
             .write_all(&bytes)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| crate::services::io_error_message(&error))?;
         total += bytes.len() as u64;
     }
+}
+
+fn limit_exceeded(byte_limit: u64) -> String {
+    rust_i18n::t!(
+        "Remote preview exceeds the %{limit} download limit",
+        limit = crate::i18n::file_size(byte_limit)
+    )
+    .into_owned()
 }
 
 #[cfg(test)]

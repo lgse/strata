@@ -1,0 +1,7 @@
+{"scenario":"cross-volume-plain-copy","modes":["columns"],"prefs":{"cross_volume_drop_strategy":"always-copy"},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.7},"quality":{"impact":5,"coverage":3,"criticality":4,"diagnostic":4,"score":42,"note":"always-copy drag to another volume copies without prompt and keeps source; only always-copy route, enter-choice covers always-ask; strategy mapping unit-tested in transfer_action"}}
+{"fs":{"path":"drop-volume","volume":"/dev/shm"}}
+{"drag":{"from":{"entry":"todo.txt"},"to":{"entry":"drop-volume"}}}
+{"fs":{"path":"drop-volume/todo.txt","exists":true},"message":"the cross-device copy"}
+{"fs":{"path":"todo.txt","text":"todo\n"},"timeout_ms":0}
+{"fs":{"path":"drop-volume/todo.txt","text":"todo\n"},"timeout_ms":0}
+{"expect":{"dialog":null}}

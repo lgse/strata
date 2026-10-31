@@ -16,7 +16,9 @@ use crate::{
     ui::{
         browser::{BrowserView, show_error_dialog},
         controls::{message_dialog_description, modal_layout},
-        modal::{ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus},
+        modal::{
+            ModalHost, close_on_escape, dismiss_modal_layer, modal_layer, remember_modal_focus,
+        },
     },
 };
 
@@ -37,12 +39,12 @@ pub(super) enum ReleaseKind {
 }
 
 impl ReleaseKind {
-    fn title(self) -> &'static str {
-        match self {
+    fn title(self) -> String {
+        crate::i18n::tr(match self {
             Self::Unmount => "Unmounting",
             Self::Eject => "Ejecting",
             Self::Lock => "Locking volume",
-        }
+        })
     }
 
     fn icon(self) -> &'static str {
@@ -176,7 +178,7 @@ pub(super) fn watch_sidebars(rebuild: impl Fn() + 'static) -> SidebarWatch {
     SidebarWatch { id, _hook: hook }
 }
 
-fn refresh_sidebars() {
+pub(super) fn refresh_sidebars() {
     let hooks: Vec<Rc<RebuildHook>> = REBUILDERS.with(|hooks| {
         hooks
             .borrow()
@@ -242,10 +244,11 @@ pub(super) fn unmatched_pending(live: &[DeviceIds]) -> Vec<ReleaseKey> {
 
 pub(super) fn pending_device_shell(row: &gtk::Button) -> gtk::Box {
     row.set_sensitive(false);
-    row.update_property(&[gtk::accessible::Property::Label(RELEASE_ROW_TOOLTIP)]);
+    let busy_label = crate::i18n::tr(RELEASE_ROW_TOOLTIP);
+    crate::ui::accessibility::set_own_label(row, &busy_label);
     let spinner = gtk::Spinner::new();
     spinner.add_css_class("sidebar-device-spinner");
-    spinner.update_property(&[gtk::accessible::Property::Label(RELEASE_ROW_TOOLTIP)]);
+    spinner.update_property(&[gtk::accessible::Property::Label(&busy_label)]);
     spinner.set_hexpand(false);
     spinner.set_halign(gtk::Align::Center);
     spinner.set_valign(gtk::Align::Center);
@@ -490,8 +493,10 @@ pub(super) fn note_unmount_progress(
 
 fn body_for_progress(message: Option<&str>) -> String {
     match message.map(str::trim).filter(|message| !message.is_empty()) {
-        Some(message) => format!("{message}\nDo not unplug it."),
-        None => RELEASE_BODY.to_owned(),
+        Some(message) => {
+            rust_i18n::t!("%{message}\nDo not unplug it.", message = message).into_owned()
+        }
+        None => crate::i18n::tr(RELEASE_BODY),
     }
 }
 
@@ -536,7 +541,7 @@ pub(super) fn decide_gio(
             safe_to_remove: false,
         },
         Err(error) => {
-            let mut message = error.to_string();
+            let mut message = crate::services::gio_error_message(&error);
             if let Some(progress) = progress.map(str::trim).filter(|line| !line.is_empty()) {
                 message.push('\n');
                 message.push_str(progress);
@@ -655,9 +660,10 @@ pub(super) fn present_release_overlay(parent: &gtk::Widget, key: &ReleaseKey) {
     let Some(host) = ModalHost::blurred_for(parent) else {
         return;
     };
-    let layout = modal_layout(kind.icon(), kind.title(), &display_name, "Hide");
+    let title = kind.title();
+    let layout = modal_layout(kind.icon(), &title, &display_name, &crate::i18n::tr("Hide"));
     layout.content.add_css_class("compact");
-    layout.set_loading(true, Some(kind.title()));
+    layout.set_loading(true, Some(&title));
     layout.cancel.set_visible(false);
     let body = message_dialog_description(&body_for_progress(progress.as_deref()));
     layout.body.append(&body);
@@ -689,16 +695,7 @@ pub(super) fn present_release_overlay(parent: &gtk::Widget, key: &ReleaseKey) {
     layout.confirm.connect_clicked(move |_| hide_clicked());
     let hide_closed = hide.clone();
     layout.close.connect_clicked(move |_| hide_closed());
-    let escape = gtk::EventControllerKey::new();
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
-            hide();
-            glib::Propagation::Stop
-        } else {
-            glib::Propagation::Proceed
-        }
-    });
-    layer.add_controller(escape);
+    close_on_escape(&layer, move || hide());
     layout.confirm.grab_focus();
 
     let stored = with_releases(|releases| {
@@ -802,7 +799,7 @@ fn apply_decision(key: &ReleaseKey, decision: ReleaseDecision) {
                     entry.error_count = entry.error_count.saturating_add(1);
                 }
             });
-            show_error_dialog(parent, title, message);
+            show_error_dialog(parent, &crate::i18n::tr(title), message);
         }
     }
     if decision.clear_pending {
@@ -813,14 +810,15 @@ fn apply_decision(key: &ReleaseKey, decision: ReleaseDecision) {
 
 fn show_safe_to_remove(overlay: &ReleaseOverlay, display_name: &str) {
     overlay.mode.set(OverlayMode::Dismiss);
-    overlay.title.set_text("Safe to remove");
+    overlay.title.set_text(&crate::i18n::tr("Safe to remove"));
     overlay.loading.stop();
     overlay.loading.set_visible(false);
     crate::ui::accessibility::set_description(&overlay.loading, None);
-    overlay
-        .body
-        .set_text(&format!("{display_name} can be unplugged."));
-    overlay.confirm.set_label("Close");
+    overlay.body.set_text(&rust_i18n::t!(
+        "%{display_name} can be unplugged.",
+        display_name = display_name
+    ));
+    overlay.confirm.set_label(&crate::i18n::tr("Close"));
 }
 
 #[expect(
@@ -846,7 +844,8 @@ where
     if release_is_pending(&key) {
         return false;
     }
-    let activity = view.map(|view| view.begin_global_activity("Writing to device…"));
+    let activity =
+        view.map(|view| view.begin_global_activity(crate::i18n::tr("Writing to device…")));
     let inserted = with_releases(|releases| {
         if releases.iter().any(|entry| keys_match(&entry.key, &key)) {
             return false;
@@ -886,6 +885,12 @@ where
                 .and_then(|browser| browser.active_location());
             #[cfg(test)]
             note_release_before_flush(browser.as_ref());
+            let operation = crate::adapters::ActiveOperation::begin([]);
+            if let Some(root) = sync_root.clone() {
+                operation
+                    .release_lexically(vec![root], &gio::Cancellable::new())
+                    .await;
+            }
             let flush_root = sync_root.clone();
             let flush = flush_mount(sync_root).await;
             let decision = match flush {
@@ -895,8 +900,9 @@ where
                         previous.as_ref(),
                         left_at.as_ref(),
                         flush_root.as_deref(),
-                    );
-                    decide_flush(kind, Err(error))
+                    )
+                    .await;
+                    decide_flush(kind, Err(crate::services::io_error_message(&error)))
                 }
                 Ok(()) => {
                     enter_releasing(&key);
@@ -908,7 +914,8 @@ where
                             previous.as_ref(),
                             left_at.as_ref(),
                             flush_root.as_deref(),
-                        );
+                        )
+                        .await;
                     }
                     let (progress, unplug) = RELEASES.with(|releases| {
                         let releases = releases.borrow();
@@ -928,13 +935,18 @@ where
     true
 }
 
-fn restore_previous_if_mounted(
+async fn restore_previous_if_mounted(
     browser: Option<&Rc<Browser>>,
     previous: Option<&crate::model::Location>,
     left_at: Option<&crate::model::Location>,
     root: Option<&Path>,
 ) {
-    if root.is_some_and(volume_still_mounted)
+    let Some(root) = root else {
+        return;
+    };
+    if crate::adapters::mount_watch::fresh()
+        .await
+        .is_mount_point(root)
         && let (Some(browser), Some(previous)) = (browser, previous)
         && browser.active_location().as_ref() == left_at
         && left_at != Some(previous)
@@ -955,16 +967,6 @@ fn blocking_join_message(error: Box<dyn std::any::Any + Send>) -> String {
         .unwrap_or_else(|| "filesystem sync panicked".to_owned())
 }
 
-fn volume_still_mounted(root: &Path) -> bool {
-    #[cfg(test)]
-    if let Some(forced) = MOUNTED_ROOTS.with(|slot| slot.borrow().clone()) {
-        return forced
-            .iter()
-            .any(|mount| root == mount || root.starts_with(mount));
-    }
-    crate::adapters::MountTable::current().is_mount_point(root)
-}
-
 async fn flush_mount(root: Option<PathBuf>) -> Result<(), io::Error> {
     let Some(root) = root else {
         return Ok(());
@@ -980,7 +982,6 @@ async fn flush_mount(root: Option<PathBuf>) -> Result<(), io::Error> {
 thread_local! {
     static LOCATION_AT_FLUSH: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
     static SYNCS_BEFORE_FLUSH: Cell<usize> = const { Cell::new(0) };
-    static MOUNTED_ROOTS: RefCell<Option<Vec<PathBuf>>> = const { RefCell::new(None) };
 }
 
 #[cfg(test)]
@@ -1001,11 +1002,6 @@ pub(super) fn location_at_flush_for_test() -> Option<PathBuf> {
 #[cfg(test)]
 pub(super) fn syncs_before_flush_for_test() -> usize {
     SYNCS_BEFORE_FLUSH.with(|slot| slot.get())
-}
-
-#[cfg(test)]
-pub(super) fn set_mounted_roots_for_test(roots: Option<Vec<PathBuf>>) {
-    MOUNTED_ROOTS.with(|slot| *slot.borrow_mut() = roots);
 }
 
 pub(super) fn mount_operation(parent: &gtk::Widget, key: &ReleaseKey) -> gtk::MountOperation {

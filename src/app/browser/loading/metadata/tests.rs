@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use super::super::super::ViewportFill;
+use super::super::super::{SortOrigin, ViewportFill};
 use super::super::tests::Fixture;
 use super::*;
 use crate::{
@@ -34,6 +34,7 @@ fn install_fill(fixture: &Fixture, full_sort: bool) -> RequestId {
         fixture.browser.sort_awaiting_fill.replace(Some(SortFill {
             generation: 1,
             depth: 0,
+            origin: SortOrigin::Chosen,
             fill_request: request_id,
             directory_request: fixture.request(),
             preferences: fixture.browser.preferences(),
@@ -51,6 +52,7 @@ fn update(fixture: &Fixture, name: &str) -> MetadataUpdate {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
     }
 }
 
@@ -170,12 +172,14 @@ fn positioned_updates_keep_token_membership_and_update_order() {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
     };
     let other = MetadataUpdate {
         location: Location::local("/fixture/other"),
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         ..update.clone()
     };
     let later = MetadataUpdate {
@@ -183,6 +187,7 @@ fn positioned_updates_keep_token_membership_and_update_order() {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         ..update.clone()
     };
     let positioned = position_updates(

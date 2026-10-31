@@ -1,0 +1,6 @@
+{"scenario":"columns-keyboard-respects-disabled-previews","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"cost":{"columns":0.4},"quality":{"impact":2,"coverage":2,"criticality":3,"diagnostic":3,"score":10,"note":"keyboard selection does not auto-preview with single-click previews off, then Space opens it; space-opens-and-closes-preview keyboard-columns covers Space; only the negative gate is unique"}}
+{"select_with_keyboard":"data.csv"}
+{"settle":{"entry":"data.csv"}}
+{"expect":{"preview":null}}
+{"key":"space"}
+{"wait":{"preview":"alpha"},"message":"Space to open the preview"}

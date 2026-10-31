@@ -5,11 +5,21 @@ use super::*;
 #[test]
 fn directory_index_reports_budgets_and_unreadable_roots() {
     let fixture = tempfile::tempdir().expect("fixture");
-    std::fs::write(fixture.path().join("one"), "fixture").expect("file");
-    std::fs::write(fixture.path().join("two"), "fixture").expect("file");
-    for (root, max_entries, time_budget, expected) in [
+    let folder = fixture.path().join("folder");
+    std::fs::create_dir(&folder).expect("folder");
+    std::fs::write(folder.join("one"), "fixture").expect("file");
+    std::fs::write(folder.join("two"), "fixture").expect("file");
+    let alias = fixture.path().join("alias");
+    std::os::unix::fs::symlink(&folder, &alias).expect("alias");
+    let real = folder.canonicalize().expect("real folder");
+    let unreadable = SearchCoverage {
+        unreadable: true,
+        ..Default::default()
+    };
+    for (root, fenced, max_entries, time_budget, expected) in [
         (
-            fixture.path().to_path_buf(),
+            folder.clone(),
+            None,
             1,
             Duration::from_secs(10),
             SearchCoverage {
@@ -18,7 +28,8 @@ fn directory_index_reports_budgets_and_unreadable_roots() {
             },
         ),
         (
-            fixture.path().to_path_buf(),
+            folder.clone(),
+            None,
             10,
             Duration::ZERO,
             SearchCoverage {
@@ -27,20 +38,35 @@ fn directory_index_reports_budgets_and_unreadable_roots() {
             },
         ),
         (
-            fixture.path().join("missing"),
+            folder.join("missing"),
+            None,
             10,
             Duration::from_secs(10),
-            SearchCoverage {
-                unreadable: true,
-                ..Default::default()
-            },
+            unreadable,
         ),
+        (
+            folder.clone(),
+            Some(folder.clone()),
+            10,
+            Duration::from_secs(10),
+            unreadable,
+        ),
+        (alias, Some(real), 10, Duration::from_secs(10), unreadable),
     ] {
+        let operation = file_activity::begin(file_activity::OperationScope::default());
+        let _fence = fenced.map(|folder| operation.fence([folder]));
         let index = SharedIndex::new();
-        build_index(&index, vec![root], false, max_entries, time_budget);
+        build_index(
+            &index,
+            vec![root.clone()],
+            false,
+            max_entries,
+            time_budget,
+            &SearchExclusions::default(),
+        );
         let data = index.state.read().expect("index data");
         assert!(!data.indexing);
-        assert_eq!(data.coverage, expected);
+        assert_eq!(data.coverage, expected, "{}", root.display());
         assert!(data.items.len() <= max_entries);
     }
 }
@@ -57,6 +83,7 @@ fn cancelled_directory_index_never_publishes_results() {
         false,
         10,
         Duration::from_secs(10),
+        &SearchExclusions::default(),
     );
     assert!(index.state.read().expect("index data").items.is_empty());
 }
@@ -76,6 +103,7 @@ fn directory_index_follows_symlinks_to_directories() {
         false,
         usize::MAX,
         Duration::from_secs(10),
+        &SearchExclusions::default(),
     );
     let data = index.state.read().expect("index data");
     let alias = data
@@ -102,6 +130,7 @@ fn directory_index_honours_gio_hidden_file_entries() {
         false,
         usize::MAX,
         Duration::from_secs(10),
+        &SearchExclusions::default(),
     );
     assert!(
         !index
@@ -121,6 +150,7 @@ fn directory_index_honours_gio_hidden_file_entries() {
         true,
         usize::MAX,
         Duration::from_secs(10),
+        &SearchExclusions::default(),
     );
     assert!(
         index

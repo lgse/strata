@@ -1,0 +1,12 @@
+{"scenario":"ctrl-drop-on-tab-copies","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.3},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":4,"score":33,"note":"Ctrl-drop onto a tab must copy and leave the source; only GUI check of the Ctrl copy route to a tab (move route in drop-on-tab-moves-files, folder copy in ctrl-drag-copies-selection); copy kind unit-tested"}}
+{"key":"ctrl+t"}
+{"select":{"entry":"archive"}}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
+{"settle":{"pane":"archive"}}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"active tab archive"}
+{"key":"ctrl+shift+1"}
+{"wait":{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}},"message":"active tab $root"}
+{"select":{"entry":"todo.txt"}}
+{"drag":{"from":{"entry":"todo.txt"},"to":{"role":"page tab","name":"archive"}},"mods":["ctrl"]}
+{"fs":{"path":"archive/todo.txt","exists":true},"message":"file copied across tabs"}
+{"fs":{"path":"archive/todo.txt","copy_of":"todo.txt"},"timeout_ms":0}

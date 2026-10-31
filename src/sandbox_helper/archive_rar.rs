@@ -11,7 +11,10 @@ use std::{ffi::CString, io::Write, os::unix::ffi::OsStrExt, path::Path, ptr};
 
 use unrar_sys as native;
 
-use crate::rar_extraction as wire;
+use crate::{
+    adapters::{MAYBE_BAD_PASSWORD, PASSWORD_REQUIRED},
+    rar_extraction::{self as wire, Failure, FailureKind},
+};
 
 #[cfg(test)]
 mod tests;
@@ -19,9 +22,21 @@ mod tests;
 // UnRAR 7.01 defines these in dll.hpp, but unrar_sys 0.5.8 omits them.
 const UCM_LARGEDICT: native::UINT = 5;
 const ERAR_LARGE_DICT: i32 = 25;
+// UnRAR reports every non-Windows host as HOST_UNIX (headers.hpp).
+const HOST_UNIX: native::UINT = 3;
+const S_IFMT: native::UINT = 0o170_000;
+// RAR 5 headers report unpack version 50 or 70 (headers.hpp VER_PACK5/VER_PACK7).
+const RAR5_UNPACK_VERSION: native::UINT = 50;
+// unrar_sys 0.5.8 omits dll.hpp's `#pragma pack(1)`, so every field after
+// `comment_buffer` sits 4 bytes later than UnRAR writes it: UnRAR's MtimeLow
+// lands in `dir_target` and its MtimeHigh in `mtime_low`. Fail the build if
+// that layout changes.
+const _: () = assert!(
+    std::mem::offset_of!(native::HeaderDataEx, comment_buffer)
+        == std::mem::offset_of!(native::HeaderDataEx, file_attr) + 8
+);
 const LARGE_DICTIONARY: &str = "RAR dictionary exceeds the decoder's memory limit";
 const INVALID_ARCHIVE: &str = "This file is not a valid archive or is damaged.";
-const MAYBE_BAD_PASSWORD: &str = "The password may be incorrect.";
 
 struct Archive(*const native::Handle);
 
@@ -39,7 +54,12 @@ type MemberSink<'a> = dyn FnMut(&[u8]) -> Result<(), String> + 'a;
 struct CallbackState<'a, 'b> {
     sink: Option<&'a mut MemberSink<'b>>,
     password: Option<&'a str>,
-    error: Option<String>,
+    error: Option<Failure>,
+}
+
+/// The user can shorten the password in the retry dialog.
+fn password_too_long() -> Failure {
+    Failure::new(FailureKind::IncorrectPassword, "RAR password is too long")
 }
 
 extern "C" fn callback(
@@ -52,10 +72,10 @@ extern "C" fn callback(
     let state = unsafe { &mut *(user as *mut CallbackState<'_, '_>) };
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match message {
-            UCM_LARGEDICT => return Err(LARGE_DICTIONARY.to_owned()),
+            UCM_LARGEDICT => return Err(LARGE_DICTIONARY.into()),
             native::UCM_PROCESSDATA => {
                 if p2 < 0 || (p1 == 0 && p2 != 0) {
-                    return Err("Invalid RAR output buffer".to_owned());
+                    return Err("Invalid RAR output buffer".into());
                 }
                 if p2 != 0
                     && let Some(sink) = state.sink.as_mut()
@@ -65,11 +85,11 @@ extern "C" fn callback(
                 }
             }
             native::UCM_NEEDPASSWORD | native::UCM_NEEDPASSWORDW => {
-                let password = state
-                    .password
-                    .ok_or_else(|| "A password is required to extract this archive.".to_owned())?;
+                let password = state.password.ok_or_else(|| {
+                    Failure::new(FailureKind::PasswordRequired, PASSWORD_REQUIRED)
+                })?;
                 if p1 == 0 || p2 <= 0 {
-                    return Err("Invalid RAR password buffer".to_owned());
+                    return Err("Invalid RAR password buffer".into());
                 }
                 if message == native::UCM_NEEDPASSWORDW {
                     let chars: Vec<native::WCHAR> = password
@@ -78,7 +98,7 @@ extern "C" fn callback(
                         .chain([0])
                         .collect();
                     if chars.len() > p2 as usize {
-                        return Err("RAR password is too long".to_owned());
+                        return Err(password_too_long());
                     }
                     // SAFETY: UnRAR supplies p2 writable wide characters, including the terminator.
                     unsafe {
@@ -92,7 +112,7 @@ extern "C" fn callback(
                     let password = CString::new(password).map_err(|error| error.to_string())?;
                     let bytes = password.as_bytes_with_nul();
                     if bytes.len() > p2 as usize {
-                        return Err("RAR password is too long".to_owned());
+                        return Err(password_too_long());
                     }
                     // SAFETY: UnRAR supplies p2 writable bytes, including the terminator.
                     unsafe {
@@ -101,7 +121,7 @@ extern "C" fn callback(
                 }
             }
             native::UCM_CHANGEVOLUME | native::UCM_CHANGEVOLUMEW if p2 == native::RAR_VOL_ASK => {
-                return Err("The next RAR volume is missing".to_owned());
+                return Err("The next RAR volume is missing".into());
             }
             _ => {}
         }
@@ -114,7 +134,7 @@ extern "C" fn callback(
             -1
         }
         Err(_) => {
-            state.error = Some("RAR output callback failed".to_owned());
+            state.error = Some("RAR output callback failed".into());
             -1
         }
     }
@@ -124,7 +144,7 @@ fn call<'a, 'b>(
     password: Option<&'a str>,
     sink: Option<&'a mut MemberSink<'b>>,
     invoke: impl FnOnce(native::LPARAM) -> i32,
-) -> Result<i32, String> {
+) -> Result<i32, Failure> {
     let mut state = CallbackState {
         sink,
         password,
@@ -137,12 +157,12 @@ fn call<'a, 'b>(
     }
 }
 
-fn decode_result(code: i32, password: Option<&str>) -> Result<(), String> {
+fn decode_result(code: i32, decrypting: bool) -> Result<(), Failure> {
     if code == native::ERAR_SUCCESS {
         return Ok(());
     }
     if code == ERAR_LARGE_DICT {
-        return Err(LARGE_DICTIONARY.to_owned());
+        return Err(LARGE_DICTIONARY.into());
     }
     let code = unrar::error::Code::from(code).unwrap_or(unrar::error::Code::Unknown);
     Err(unrar_decode_error(
@@ -150,18 +170,20 @@ fn decode_result(code: i32, password: Option<&str>) -> Result<(), String> {
             code,
             when: unrar::error::When::Process,
         },
-        password.is_some(),
+        decrypting,
     ))
 }
 
-fn unrar_decode_error(error: unrar::error::UnrarError, password_supplied: bool) -> String {
+fn unrar_decode_error(error: unrar::error::UnrarError, decrypting: bool) -> Failure {
     use unrar::error::Code;
     match error.code {
-        Code::MissingPassword => "A password is required to extract this archive.".to_owned(),
-        Code::BadPassword => MAYBE_BAD_PASSWORD.to_owned(),
-        Code::BadData if password_supplied => MAYBE_BAD_PASSWORD.to_owned(),
-        Code::BadArchive | Code::UnknownFormat | Code::BadData => INVALID_ARCHIVE.to_owned(),
-        _ => error.to_string(),
+        Code::MissingPassword => Failure::new(FailureKind::PasswordRequired, PASSWORD_REQUIRED),
+        Code::BadPassword => Failure::new(FailureKind::IncorrectPassword, MAYBE_BAD_PASSWORD),
+        Code::BadData if decrypting => {
+            Failure::new(FailureKind::IncorrectPassword, MAYBE_BAD_PASSWORD)
+        }
+        Code::BadArchive | Code::UnknownFormat | Code::BadData => INVALID_ARCHIVE.into(),
+        _ => error.to_string().into(),
     }
 }
 
@@ -173,9 +195,9 @@ pub(super) fn run(
     wire::write_magic(writer).map_err(|error| error.to_string())?;
     match extract(archive_path, password, writer) {
         Ok(()) => Ok(()),
-        Err(error) => {
-            wire::write_error(writer, &error).map_err(|error| error.to_string())?;
-            Err(error)
+        Err(failure) => {
+            wire::write_error(writer, &failure).map_err(|error| error.to_string())?;
+            Err(failure.message)
         }
     }
 }
@@ -184,13 +206,14 @@ fn extract(
     archive_path: &Path,
     password: Option<&str>,
     writer: &mut impl Write,
-) -> Result<(), String> {
+) -> Result<(), Failure> {
     let path =
         CString::new(archive_path.as_os_str().as_bytes()).map_err(|error| error.to_string())?;
     if password.is_some_and(|value| value.contains('\0')) {
-        return Err("RAR password contains a NUL character".to_owned());
+        return Err("RAR password contains a NUL character".into());
     }
     let mut handle = ptr::null();
+    let mut headers_encrypted = false;
     let opened = call(password, None, |user| {
         let mut data = native::OpenArchiveDataEx::new(path.as_ptr(), native::RAR_OM_EXTRACT);
         data.callback = Some(callback);
@@ -199,8 +222,10 @@ fn extract(
         unsafe {
             handle = native::RAROpenArchiveEx(&raw mut data);
         }
+        headers_encrypted = data.flags & native::ROADF_ENCHEADERS != 0;
         data.open_result as i32
     })?;
+    let decrypting_headers = password.is_some() && headers_encrypted;
     let archive = if handle.is_null() {
         None
     } else {
@@ -212,7 +237,7 @@ fn extract(
             native::RARSetCallback(archive.0, None, 0);
         }
     }
-    decode_result(opened, password)?;
+    decode_result(opened, decrypting_headers)?;
     let archive = archive.ok_or_else(|| "Unable to open RAR archive".to_owned())?;
     loop {
         let mut header = native::HeaderDataEx::default();
@@ -233,7 +258,7 @@ fn extract(
             wire::write_end(writer).map_err(|error| error.to_string())?;
             return Ok(());
         }
-        decode_result(code, password)?;
+        decode_result(code, decrypting_headers)?;
         let name: String = header
             .filename_w
             .iter()
@@ -241,7 +266,9 @@ fn extract(
             .map(|ch| char::from_u32(*ch as u32).unwrap_or(char::REPLACEMENT_CHARACTER))
             .collect();
         let directory = header.flags & native::RHDF_DIRECTORY != 0;
+        let decrypting = password.is_some() && header.flags & native::RHDF_ENCRYPTED != 0;
         let size = u64::from(header.unp_size) | (u64::from(header.unp_size_high) << 32);
+        let metadata = member_metadata(&header);
         let process = |sink: &mut MemberSink<'_>| {
             let code = call(password, Some(sink), |user| {
                 // SAFETY: The handle and exclusive callback state remain live throughout this call.
@@ -267,20 +294,19 @@ fn extract(
                 }
                 result
             })?;
-            decode_result(code, password)
+            decode_result(code, decrypting)
         };
         if directory {
-            wire::write_directory(writer, &name).map_err(|error| error.to_string())?;
+            wire::write_directory(writer, &name, metadata).map_err(|error| error.to_string())?;
             process(&mut |_| Ok(()))?;
         } else {
-            wire::write_file_header(writer, &name, size).map_err(|error| error.to_string())?;
+            wire::write_file_header(writer, &name, size, metadata)
+                .map_err(|error| error.to_string())?;
             let mut written = 0u64;
             let outcome = process(&mut |bytes| {
                 let length = bytes.len() as u64;
                 if length > size.saturating_sub(written) {
-                    return Err(format!(
-                        "Archive member `{name}` declared {size} bytes but produced more"
-                    ));
+                    return Err(INVALID_ARCHIVE.to_owned());
                 }
                 wire::write_chunk(writer, bytes).map_err(|error| error.to_string())?;
                 written += length;
@@ -290,20 +316,35 @@ fn extract(
                 if written == size {
                     Ok(())
                 } else {
-                    Err(format!(
-                        "Archive member `{name}` declared {size} bytes but produced {written} bytes"
-                    ))
+                    Err(INVALID_ARCHIVE.into())
                 }
             });
             match outcome {
                 Ok(()) => wire::write_file_ok(writer).map_err(|error| error.to_string())?,
-                Err(message) => {
+                Err(failure) => {
                     // The trailer reports this error; a second error record would desynchronize the stream.
-                    wire::write_file_failed(writer, &message).map_err(|error| error.to_string())?;
+                    wire::write_file_failed(writer, &failure).map_err(|error| error.to_string())?;
                     return Ok(());
                 }
             }
         }
+    }
+}
+
+/// Unknown hosts are also reported as Unix, so a mode without file-type bits
+/// is not trusted. Older formats store DOS local time, which UnRAR would
+/// convert with this sandbox's zone (UTC), so it is passed on unconverted.
+fn member_metadata(header: &native::HeaderDataEx) -> wire::WireMetadata {
+    let modified = if header.unp_ver >= RAR5_UNPACK_VERSION {
+        let filetime = (u64::from(header.mtime_low) << 32) | u64::from(header.dir_target);
+        (filetime != 0).then_some(wire::WireTime::FileTime(filetime))
+    } else {
+        (header.file_time != 0).then_some(wire::WireTime::DosLocal(header.file_time))
+    };
+    wire::WireMetadata {
+        mode: (header.host_os == HOST_UNIX && header.file_attr & S_IFMT != 0)
+            .then_some(header.file_attr),
+        modified,
     }
 }
 
@@ -333,7 +374,7 @@ pub(super) fn cover_image(path: &Path) -> Result<Vec<u8>, String> {
                 native::RARSetCallback(archive.0, None, 0);
             }
         }
-        decode_result(opened?, None)?;
+        decode_result(opened?, false)?;
         let archive = archive.ok_or("Unable to open RAR archive")?;
         let mut complete = false;
         for _ in 0..MAX_ENTRIES {
@@ -346,7 +387,7 @@ pub(super) fn cover_image(path: &Path) -> Result<Vec<u8>, String> {
                 }
                 return Err("Comic cover is missing".into());
             }
-            decode_result(code, None)?;
+            decode_result(code, false)?;
             let name: String = header
                 .filename_w
                 .iter()
@@ -398,7 +439,7 @@ pub(super) fn cover_image(path: &Path) -> Result<Vec<u8>, String> {
                     code
                 },
             )?;
-            decode_result(code, None)?;
+            decode_result(code, false)?;
             if chosen {
                 if bytes.len() as u64 != size {
                     return Err("Comic cover size mismatch".into());
@@ -422,7 +463,7 @@ pub(super) fn cover_image(path: &Path) -> Result<Vec<u8>, String> {
 }
 
 fn read_cover_header(archive: &Archive, header: &mut native::HeaderDataEx) -> Result<i32, String> {
-    call(None, None, |user| {
+    Ok(call(None, None, |user| {
         // SAFETY: The handle, header and callback state remain live for this call.
         unsafe { native::RARSetCallback(archive.0, Some(callback), user) };
         // SAFETY: The handle and exclusive header remain live until this read returns.
@@ -430,5 +471,5 @@ fn read_cover_header(archive: &Archive, header: &mut native::HeaderDataEx) -> Re
         // SAFETY: The handle is live; clear the callback before its state expires.
         unsafe { native::RARSetCallback(archive.0, None, 0) };
         code
-    })
+    })?)
 }

@@ -1,0 +1,50 @@
+{"scenario":"created-entry-completion-keeps-focus","modes":["columns"],"layout":"us","quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Columns new-entry rename completion by sibling click, Enter, sidebar keeps focus and child path; only focus-after-creation check, fix #760"}}
+{"wait":{"focused":"archive"},"message":"keyboard focus on 'archive' at launch"}
+{"key":"Down"}
+{"wait":{"panes":["$root","documents"]},"message":"Down to 'documents' to open its child column"}
+{"click":{"background":true,"dir":"$root"},"button":3}
+{"wait":{"present":{"menu_item":"New File"}},"message":"the menu item 'New File'"}
+{"settle":{"menu_item":"New File"}}
+{"click":{"menu_item":"New File"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor in the parent column to take focus on the new file"}
+{"remember":{"field":true},"as":"file"}
+{"wait":{"field":{"of":"file","text":"new file"}},"message":"the default name 'new file' in the editor"}
+{"fs":{"path":"new file","is":"file"},"timeout_ms":0,"message":"the parent column's menu to create the file beside 'documents'"}
+{"wait":{"all":[{"selected":["new file"],"dir":"$root"},{"panes":["$root"]}]},"message":"the new file selected with the stale 'documents' child column closed"}
+{"type":"n"}
+{"wait":{"field":{"of":"file","text":"n"}},"message":"typing to replace the default name"}
+{"click":{"entry":"readme.md","dir":"$root"}}
+{"fs":{"path":"n","is":"file"},"message":"clicking the sibling 'readme.md' to commit the new file as 'n'"}
+{"wait":{"absent":{"role":"text","name":"Rename"}},"message":"the name editor to close"}
+{"wait":{"all":[{"selected":["readme.md"],"dir":"$root"},{"focused":"readme.md"},{"focused_pane":"$root"},{"directory":"$root"}]},"message":"keyboard focus and selection to follow the click to the sibling 'readme.md' in the parent column"}
+{"expect":{"dialog":null},"message":"no dialog from opening the brand-new file"}
+{"key":"ctrl+shift+n"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor in the parent column to take focus on the new folder"}
+{"remember":{"field":true},"as":"folder"}
+{"wait":{"field":{"of":"folder","text":"new folder"}},"message":"the default name 'new folder' in the editor"}
+{"fs":{"path":"new folder","is":"dir"},"timeout_ms":0,"message":"Ctrl+Shift+N to create the folder beside 'readme.md'"}
+{"wait":{"all":[{"selected":["new folder"],"dir":"$root"},{"panes":["$root","new folder"]}]},"message":"the new folder selected with its child column open"}
+{"type":"f"}
+{"wait":{"field":{"of":"folder","text":"f"}},"message":"typing to replace the default name"}
+{"key":"Return"}
+{"fs":{"path":"f","is":"dir"},"message":"Return to commit the new folder as 'f'"}
+{"wait":{"absent":{"role":"text","name":"Rename"}},"message":"the name editor to close"}
+{"wait":{"all":[{"selected":["f"],"dir":"$root"},{"panes":["$root","f"]},{"directory":"$root"}]},"message":"'f' to stay selected in the parent column with its child column open"}
+{"settle":{"pane":"$root"}}
+{"key":"F2"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"F2 to rename 'f', proving focus stayed in the parent column"}
+{"remember":{"field":true},"as":"reopened"}
+{"expect":{"field":{"of":"reopened","text":"f"}},"message":"F2 to rename the committed folder, not another entry"}
+{"key":"Escape"}
+{"wait":{"absent":{"role":"text","name":"Rename"}},"message":"Escape to close the second editor"}
+{"key":"ctrl+shift+n"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor in the parent column to take focus on another new folder"}
+{"remember":{"field":true},"as":"navigate"}
+{"wait":{"field":{"of":"navigate","text":"new folder"}},"message":"the default name 'new folder' in the editor"}
+{"type":"h"}
+{"wait":{"field":{"of":"navigate","text":"h"}},"message":"typing to replace the default name"}
+{"click":{"sidebar":"Home"}}
+{"fs":{"path":"h","is":"dir"},"message":"a sidebar click to commit the new folder as 'h'"}
+{"fs":{"path":"new folder","exists":false},"timeout_ms":0}
+{"wait":{"all":[{"directory":"home"},{"panes":{"excludes":["$root"]}}]},"message":"the sidebar click to go on to open 'home' in place of the fixture's columns"}

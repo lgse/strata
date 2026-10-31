@@ -1,0 +1,24 @@
+{"scenario":"new-item-first-free-number","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.8},"quality":{"impact":5,"coverage":3,"criticality":2,"diagnostic":4,"score":33,"note":"New File proposes first free name past occupied file, dangling link and dir without overwrite; adapter unit tests pin numbering, GUI editor proposal unique"}}
+{"fs":{"path":"new file","write":"keep\n"}}
+{"fs":{"path":"new file (1)","symlink":"missing"}}
+{"fs":{"path":"new file (2)","mkdir":true}}
+{"key":"F5"}
+{"wait":{"entry":"new file"},"message":"the entry 'new file' to appear"}
+{"wait":{"entry":"new file (1)"},"message":"the entry 'new file (1)' to appear"}
+{"wait":{"entry":"new file (2)"},"message":"the entry 'new file (2)' to appear"}
+{"select_with_keyboard":"readme.md"}
+{"click":{"background":true},"button":3}
+{"wait":{"present":{"menu_item":"New File"}},"message":"the menu item 'New File'"}
+{"settle":{"menu_item":"New File"}}
+{"click":{"menu_item":"New File"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus"}
+{"remember":{"field":true},"as":"rename"}
+{"wait":{"field":{"of":"rename","text":"new file (3)"}},"message":"the first available numbered name"}
+{"fs":{"path":"new file (3)","is":"file"},"timeout_ms":0}
+{"key":"Escape"}
+{"wait":{"absent":{"role":"text","name":"Rename"}},"message":"the name editor to close"}
+{"fs":{"path":"new file","text":"keep\n"},"timeout_ms":0}
+{"fs":{"path":"new file (1)","is":"symlink"},"timeout_ms":0}
+{"fs":{"path":"new file (2)","is":"dir"},"timeout_ms":0}
+{"fs":{"path":"new file (3)","exists":true},"timeout_ms":0}

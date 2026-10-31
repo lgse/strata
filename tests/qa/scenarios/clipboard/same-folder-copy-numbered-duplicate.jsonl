@@ -1,0 +1,9 @@
+{"scenario":"same-folder-copy-numbered-duplicate","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"file","vars":{"source":"todo.txt","duplicate":"todo (1).txt"}},{"id":"folder","vars":{"source":"documents","duplicate":"documents (1)"}}],"cost":{"columns-file":0.5,"columns-folder":0.4},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Ctrl+D same-folder duplicate names a numbered copy; only scenario on the Ctrl+D route, numbering is unit-tested"}}
+{"select_with_keyboard":"$source"}
+{"wait":{"panes":{"contains":["documents"]}},"message":"the keyboard cursor's documents column to open","variants":["folder"]}
+{"key":"ctrl+d"}
+{"fs":{"path":"$duplicate","exists":true},"message":"the numbered copy"}
+{"wait":{"entry":"$duplicate","dir":"$root"},"message":"the entry '$duplicate' in '$root' to appear"}
+{"fs":{"path":"$source","exists":true},"timeout_ms":0}
+{"fs":{"path":"documents (1)/notes.txt","copy_of":"documents/notes.txt"},"message":"the numbered copy's contents to finish copying","variants":["folder"]}
+{"fs":{"path":"todo (1).txt","text":"todo\n"},"message":"the numbered copy's contents to finish copying","variants":["file"]}

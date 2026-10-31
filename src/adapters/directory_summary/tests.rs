@@ -147,6 +147,7 @@ fn directory_summary_treats_a_directory_removed_before_measurement_as_truncated_
             max_depth: MAX_DEPTH,
             total: Cell::default(),
             reported: Cell::default(),
+            stopped: Default::default(),
             on_progress: Box::new(|_| {}),
         }),
     ));
@@ -168,9 +169,7 @@ fn directory_summary_treats_a_directory_removed_before_measurement_as_truncated_
 fn aborting_a_directory_measurement_stops_it_mid_flight() {
     let root = unique_fixture_root("abort-mid-flight");
     std::fs::create_dir_all(&root).expect("the directory fixture should be created");
-    // `next_files_future` batches 64 entries at a time, so 200 files force several suspension
-    // points, giving a real window to observe partial progress before the walk would finish.
-    let total_files = 200;
+    let total_files = ENUMERATION_BATCH_SIZE as usize + 88;
     for index in 0..total_files {
         std::fs::write(root.join(format!("file-{index}.txt")), b"content")
             .expect("the directory fixture file should be written");
@@ -194,6 +193,7 @@ fn aborting_a_directory_measurement_stops_it_mid_flight() {
                 max_depth: MAX_DEPTH,
                 total: Cell::default(),
                 reported: Cell::default(),
+                stopped: Default::default(),
                 on_progress: Box::new(|_| {}),
             });
             let task = context.spawn_local(measure_entry(
@@ -204,10 +204,6 @@ fn aborting_a_directory_measurement_stops_it_mid_flight() {
                 budget.clone(),
             ));
 
-            // Drive the loop only until the walk has made some real progress (at least one batch
-            // beyond the root directory itself), then abort immediately -- this is genuinely
-            // mid-flight since one batch (64) is far short of the full tree (1 + 200), regardless
-            // of exactly how many main-loop iterations it took to get there.
             for _ in 0..1_000 {
                 if budget.total.get().item_count > 1 {
                     break;
@@ -240,9 +236,7 @@ fn aborting_a_directory_measurement_stops_it_mid_flight() {
 fn directory_summary_stops_enumerating_the_root_once_the_measurement_budget_is_reached() {
     let root = unique_fixture_root("root-budget-stop");
     std::fs::create_dir_all(&root).expect("the directory fixture should be created");
-    // More than one `next_files_future` batch (64 entries), so a walk that kept fetching
-    // further batches after the budget was spent would still show up as a much larger count.
-    let total_files = 150;
+    let total_files = ENUMERATION_BATCH_SIZE as usize + 88;
     for index in 0..total_files {
         std::fs::write(root.join(format!("file-{index}.txt")), b"content")
             .expect("the directory fixture file should be written");
@@ -271,10 +265,7 @@ fn directory_summary_stops_enumerating_the_root_once_the_measurement_budget_is_r
 #[test]
 fn directory_summary_does_not_stop_enumerating_siblings_after_one_branch_is_depth_truncated() {
     let root = unique_fixture_root("sibling-depth-truncation");
-    let sibling_count = 80;
-    // Nested one level under "parent" so these are children of a directory that
-    // `measure_children` recurses into, not top-level entries of `root` itself (which
-    // are always fully enumerated regardless of budget after the earlier deletion-worklist fix).
+    let sibling_count = ENUMERATION_BATCH_SIZE as usize + 16;
     for index in 0..sibling_count {
         std::fs::create_dir_all(
             root.join("parent")
@@ -284,11 +275,6 @@ fn directory_summary_does_not_stop_enumerating_siblings_after_one_branch_is_dept
         .expect("the directory fixture should be created");
     }
 
-    // With max_depth 1, every "sub-N" directory individually hits the depth cap when deciding
-    // whether to recurse into its own "inner" child -- that is a branch-local condition, unrelated
-    // to its siblings. It used to be conflated with the shared budget being spent, which stopped
-    // scanning further `next_files_future` batches entirely: with 80 siblings and a 64-entry batch
-    // size, that undercounted "parent" to 1 (itself) + 64 (first batch only) = 65.
     let summary = glib::MainContext::new().block_on(summarize_directory_with_budget(
         &gio::File::for_path(&root),
         1,
@@ -303,4 +289,119 @@ fn directory_summary_does_not_stop_enumerating_siblings_after_one_branch_is_dept
         "every sibling should be counted (1 for \"parent\" plus one per sub-N directory), \
          not just the first next_files_future batch"
     );
+}
+
+#[test]
+fn measure_entry_reads_no_unset_optional_attributes() {
+    let root = unique_fixture_root("missing-attributes");
+    std::fs::create_dir_all(&root).expect("the directory fixture should be created");
+    let critical_logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let recorded = critical_logs.clone();
+    let handler = glib::log_set_handler(
+        Some("GLib-GIO"),
+        glib::LogLevels::LEVEL_CRITICAL,
+        false,
+        false,
+        move |_, _, message| {
+            if message.contains("standard::") || message.contains("gfileinfo.c") {
+                recorded
+                    .lock()
+                    .expect("the critical log should be lockable")
+                    .push(message.to_owned());
+            }
+        },
+    );
+
+    let measure = |file_type| {
+        let info = gio::FileInfo::new();
+        info.set_name("entry");
+        info.set_file_type(file_type);
+        glib::MainContext::new()
+            .block_on(measure_entry(
+                gio::File::for_path(&root),
+                info,
+                0,
+                false,
+                Rc::new(MeasurementBudget {
+                    deadline: Instant::now() + TIME_BUDGET,
+                    max_depth: MAX_DEPTH,
+                    total: Cell::default(),
+                    reported: Cell::default(),
+                    stopped: Default::default(),
+                    on_progress: Box::new(|_| {}),
+                }),
+            ))
+            .expect("an entry without optional attributes should be measured")
+    };
+    let file = measure(gio::FileType::Regular);
+    let folder = measure(gio::FileType::Directory);
+    glib::log_remove_handler(Some("GLib-GIO"), handler);
+    std::fs::remove_dir_all(&root).expect("the directory fixture should be removed");
+
+    assert_eq!(
+        critical_logs
+            .lock()
+            .expect("the critical log should be lockable")
+            .as_slice(),
+        &[] as &[String]
+    );
+    assert_eq!((file.visible_file_count, file.total_size), (1, 0));
+    assert_eq!(folder.visible_folder_count, 1);
+    assert!(!folder.truncated());
+}
+
+#[test]
+fn a_file_operation_ends_the_measurement_of_a_folder_it_changes_as_incomplete() {
+    for row in [
+        "changing when the walk reaches it",
+        "changed while it is walked",
+    ] {
+        let root = unique_fixture_root("released");
+        std::fs::create_dir_all(root.join("sub")).expect("the directory fixture should be created");
+        for index in 0..100 {
+            std::fs::write(root.join(format!("file-{index}.txt")), b"content")
+                .expect("the directory fixture file should be written");
+        }
+        std::fs::write(root.join("sub/inner.txt"), b"content")
+            .expect("the directory fixture file should be written");
+        let operation = crate::services::file_activity::begin(Default::default());
+        let fences = Rc::new(std::cell::RefCell::new(Vec::new()));
+        let changing = fences.clone();
+        let fenced = root.clone();
+        let on_progress: Box<dyn Fn(DirectorySummary)> = match row {
+            "changing when the walk reaches it" => {
+                fences
+                    .borrow_mut()
+                    .push(operation.fence([root.join("sub")]));
+                Box::new(|_| {})
+            }
+            _ => Box::new(move |partial: DirectorySummary| {
+                if partial.item_count > 0 && changing.borrow().is_empty() {
+                    let fence = operation.fence([fenced.clone()]);
+                    fence.stop_reads();
+                    changing.borrow_mut().push(fence);
+                }
+            }),
+        };
+
+        let summary = glib::MainContext::new()
+            .block_on(super::summarize_directory_with_budget(
+                &gio::File::for_path(&root),
+                MAX_DEPTH,
+                TIME_BUDGET,
+                on_progress,
+            ))
+            .expect("a plain directory tree should measure without error");
+        fences.borrow_mut().clear();
+        std::fs::remove_dir_all(&root).expect("the directory fixture should be removed");
+
+        assert!(summary.issues.unreadable, "{row}: {summary:?}");
+        match row {
+            "changing when the walk reaches it" => assert!(
+                summary.item_count < 102,
+                "a refusal ends the walk before the folder's content: {summary:?}"
+            ),
+            _ => assert!(summary.item_count < 100, "the walk ends: {summary:?}"),
+        }
+    }
 }

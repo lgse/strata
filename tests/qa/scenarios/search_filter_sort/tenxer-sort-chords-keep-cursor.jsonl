@@ -1,0 +1,26 @@
+{"scenario":"tenxer-sort-chords-keep-cursor","modes":["columns","icons","list"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false,"filter_include_subfolders":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.7,"icons":0.6,"list":0.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"10xer ,-chord sort and . hidden toggle keep cursor on readme.md; file_verbs unit test covers sort logic, GUI cursor retention is unique"}}
+{"select_with_keyboard":"readme.md"}
+{"key":","}
+{"wait":{"present":{"role":"label","name":",-"}},"message":"the armed sort chord"}
+{"key":"s"}
+{"wait":{"entries":{"ends_with":["todo.txt","readme.md"]},"dir":"$root"},"message":", s to sort by size"}
+{"key":","}
+{"key":"S"}
+{"wait":{"entries":{"ends_with":["readme.md","todo.txt"]},"dir":"$root"},"message":", S to reverse the size sort"}
+{"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
+{"note":"entries","dir":"$root","as":"before"}
+{"key":","}
+{"key":"n"}
+{"wait":{"present":{"role":"label","name":"Unknown chord"}},"message":", n to cancel"}
+{"expect":{"entries":"$before","dir":"$root"}}
+{"expect":{"not":{"field":{}}}}
+{"key":","}
+{"key":"a"}
+{"wait":{"entries":["archive","documents","pictures","readme.md","todo.txt"],"dir":"$root"},"message":", a to sort by name"}
+{"expect":{"not":{"field":{}}},"message":", a creates nothing"}
+{"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
+{"key":"."}
+{"wait":{"entries":{"contains":[".hidden.txt"]},"dir":"$root"},"message":". to show hidden files"}
+{"key":"."}
+{"wait":{"entries":{"excludes":[".hidden.txt"]},"dir":"$root"},"message":". to hide them again"}
+{"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}

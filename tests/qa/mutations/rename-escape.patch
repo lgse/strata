@@ -1,0 +1,17 @@
+diff --git a/src/ui/window/keyboard/commands.rs b/src/ui/window/keyboard/commands.rs
+index bf80b368..8a7c0766 100644
+--- a/src/ui/window/keyboard/commands.rs
++++ b/src/ui/window/keyboard/commands.rs
+@@ -67,6 +67,12 @@ impl Dispatcher {
+         {
+             return Some(Propagation::Stop);
+         }
++        if event.press.is(ESCAPE_ANY)
++            && let Some(field) = self.view.active_rename_field()
++        {
++            field.emit_activate();
++            return Some(Propagation::Stop);
++        }
+         if event.press.is(ESCAPE_ANY) && (self.view.cancel_new_entry() || self.view.cancel_rename())
+         {
+             return Some(Propagation::Stop);

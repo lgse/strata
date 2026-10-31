@@ -1,0 +1,13 @@
+diff --git a/src/ui/collection_interaction.rs b/src/ui/collection_interaction.rs
+index d70b46c4..f2687f35 100644
+--- a/src/ui/collection_interaction.rs
++++ b/src/ui/collection_interaction.rs
+@@ -27,7 +27,7 @@ pub(super) fn pointer_selection(
+     let selected = if !multiple {
+         gtk::Bitset::new_range(position, 1)
+     } else if shift {
+-        let anchor = anchor.unwrap_or(position);
++        let anchor = position;
+         gtk::Bitset::new_range(anchor.min(position), anchor.abs_diff(position) + 1)
+     } else if control {
+         let selected = previous.copy();

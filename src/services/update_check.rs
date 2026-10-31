@@ -10,16 +10,24 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use super::update_install::{
-    UpdateMethod, aur_repository_version, omarchy_repository_version, package_repository_version,
+    InstallRequest, UPDATE_MANIFEST_ASSETS, UpdateMethod, aur_repository_version,
+    omarchy_repository_version, package_repository_version,
 };
 use super::{
-    DocumentBlock, parse_markdown,
-    release_channel::{BuildKind, Channel, ReleaseSummary, Version, best_update, rollback_target},
+    DocumentBlock,
+    network_error::NetworkError,
+    parse_markdown,
+    release_channel::{
+        BuildKind, Channel, ReleaseSummary, Version, best_update, installable_releases,
+        rollback_target,
+    },
 };
 
 const API_ROOT: &str = "https://api.github.com/repos/lgse/strata/releases";
 const COMMITS_ROOT: &str = "https://api.github.com/repos/lgse/strata/commits";
 const RELEASES_URL: &str = "https://github.com/lgse/strata/releases";
+/// GitHub does not count requests to this endpoint against the API rate limit.
+const CONNECTION_TEST_URL: &str = "https://api.github.com/rate_limit";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// Minimum interval between automatic checks against the same channel.
 const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
@@ -28,6 +36,23 @@ const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 /// installed one, so a bounded page is safe: an update this page cannot
 /// reach is older than one it can.
 const PREVIEW_PAGE_SIZE: u32 = 30;
+/// GitHub's largest page.
+const RELEASE_LIST_PAGE_SIZE: u32 = 100;
+/// Keeps one menu open well inside GitHub's unauthenticated rate limit.
+const RELEASE_LIST_MAX_PAGES: u32 = 5;
+
+impl BuildKind {
+    /// The build kind's name in the app language, for display.
+    pub(crate) fn localized_label(self) -> String {
+        crate::i18n::tr(match self {
+            BuildKind::Stable => "Stable",
+            BuildKind::Nightly => "build_kind.nightly",
+            BuildKind::Alpha => "Alpha",
+            BuildKind::Beta => "Beta",
+            BuildKind::Rc => "Release candidate",
+        })
+    }
+}
 
 /// Everything the update/rollback dialogs need to identify and describe a
 /// release before installing it: what build it is, its exact tag and
@@ -47,13 +72,23 @@ pub struct ReleaseMetadata {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "one result per background check, not stored in bulk"
+)]
 pub enum UpdateCheck {
     UpToDate,
     Available {
         release: ReleaseMetadata,
-        download_url: String,
+        install: InstallRequest,
     },
     Failed(String),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReleaseChoice {
+    pub release: ReleaseMetadata,
+    pub install: InstallRequest,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -90,7 +125,7 @@ struct ReleaseAsset {
 }
 
 /// The asset naming convention published by `.github/workflows/release.yml`.
-fn archive_name(version: &str) -> String {
+pub(super) fn archive_name(version: &str) -> String {
     format!(
         "strata-{version}-{}-unknown-linux-gnu.tar.gz",
         std::env::consts::ARCH
@@ -112,6 +147,18 @@ fn request_json<T: serde::de::DeserializeOwned>(url: &str) -> Result<T, ureq::Er
         .header("User-Agent", "strata-file-manager")
         .call()
         .and_then(|mut response| response.body_mut().read_json::<T>())
+}
+
+/// Reaches the update server the way an update check does, without using its rate limit.
+pub(super) fn test_connection() -> Result<(), NetworkError> {
+    agent()
+        .get(CONNECTION_TEST_URL)
+        .header("Accept", "application/vnd.github+json")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .header("User-Agent", "strata-file-manager")
+        .call()
+        .map(drop)
+        .map_err(|error| NetworkError::from_ureq(&error))
 }
 
 /// Converts a GitHub API release into [`release_channel`]'s pure
@@ -204,17 +251,7 @@ fn fetch_preview(etag: Option<&str>) -> ChannelFetch {
     }
 }
 
-/// Resolves `tag` to the commit SHA it points at.
-///
-/// A release's own `target_commitish` cannot be used for this: GitHub
-/// ignores that value when the tag already exists, which is how
-/// `release.yml` publishes every release, so it comes back as the default
-/// branch name rather than a SHA. `/commits/{tag}` dereferences the
-/// annotated tag and returns the real commit.
-///
-/// `None` on any failure -- the dialog's identity block falls back to
-/// "Unknown", since an offered update must not hinge on a lookup that only
-/// feeds one display row.
+// Release target_commitish can be a branch name; the commits API dereferences annotated tags.
 fn fetch_commit(tag: &str) -> Option<String> {
     request_json::<CommitResponse>(&format!("{COMMITS_ROOT}/{tag}"))
         .ok()
@@ -315,12 +352,16 @@ struct UpdateCheckCache {
     etag: Option<String>,
     #[serde(default)]
     releases: Vec<CachedRelease>,
+    /// Older versions cached the failure already translated; such a cache is stale.
+    #[serde(default, rename = "error", skip_serializing)]
+    legacy_error: Option<String>,
     #[serde(default)]
-    error: Option<String>,
+    failure: Option<NetworkError>,
 }
 
 fn cache_is_fresh(cache: &UpdateCheckCache, channel: Channel, force: bool, now: u64) -> bool {
     !force
+        && cache.legacy_error.is_none()
         && cache.channel == channel.as_str()
         && now.saturating_sub(cache.checked_at) < CHECK_INTERVAL.as_secs()
 }
@@ -365,13 +406,77 @@ enum ChannelFetch {
 /// unreachable, since every caller of this function has already filtered
 /// through [`is_eligible`], but this avoids ever unwrapping the `Option`.
 fn available_check(release: &ReleaseSummary) -> UpdateCheck {
-    match &release.download_url {
-        Some(download_url) => UpdateCheck::Available {
+    match install_request(release) {
+        Some(install) => UpdateCheck::Available {
             release: release_metadata(release),
-            download_url: download_url.clone(),
+            install,
         },
         None => UpdateCheck::UpToDate,
     }
+}
+
+fn install_request(release: &ReleaseSummary) -> Option<InstallRequest> {
+    Some(InstallRequest {
+        tag: release.tag.clone(),
+        asset_name: archive_name(&release.version.to_string()),
+        advertised_url: release.download_url.clone()?,
+    })
+}
+
+fn has_update_manifest(release: &ReleaseResponse) -> bool {
+    UPDATE_MANIFEST_ASSETS
+        .iter()
+        .all(|name| release.assets.iter().any(|asset| asset.name == *name))
+}
+
+/// The releases `channel` offers that this machine can install, newest first.
+fn release_choices(channel: Channel, releases: &[ReleaseResponse]) -> Vec<ReleaseChoice> {
+    let summaries: Vec<_> = releases
+        .iter()
+        .filter(|release| has_update_manifest(release))
+        .filter_map(to_release_summary)
+        .collect();
+    installable_releases(channel, &summaries)
+        .into_iter()
+        .filter_map(|release| {
+            Some(ReleaseChoice {
+                install: install_request(release)?,
+                release: release_metadata(release),
+            })
+        })
+        .collect()
+}
+
+/// Unlike the update check, Stable also enumerates every release: GitHub has
+/// no final-only listing, so [`is_eligible`] alone drops the prereleases.
+fn fetch_release_choices(channel: Channel) -> Result<Vec<ReleaseChoice>, String> {
+    signed_release_pages(|page| {
+        request_json::<Vec<ReleaseResponse>>(&format!(
+            "{API_ROOT}?per_page={RELEASE_LIST_PAGE_SIZE}&page={page}"
+        ))
+    })
+    .map(|releases| release_choices(channel, &releases))
+    .map_err(|error| request_error_message(&error))
+}
+
+/// Pages through releases, newest first, until a page ends on a release
+/// published before signed manifests existed: everything after it is older still.
+fn signed_release_pages<E>(
+    mut fetch_page: impl FnMut(u32) -> Result<Vec<ReleaseResponse>, E>,
+) -> Result<Vec<ReleaseResponse>, E> {
+    let mut releases = Vec::new();
+    for page in 1..=RELEASE_LIST_MAX_PAGES {
+        let batch = fetch_page(page)?;
+        let last = batch.len() < RELEASE_LIST_PAGE_SIZE as usize
+            || batch
+                .last()
+                .is_none_or(|release| !has_update_manifest(release));
+        releases.extend(batch);
+        if last {
+            break;
+        }
+    }
+    Ok(releases)
 }
 
 /// The pure selection step of [`check_for_updates`], split out so it can be
@@ -448,8 +553,8 @@ fn check_from_cache(
     channel: Channel,
     installed: &Version,
 ) -> UpdateCheck {
-    match &cache.error {
-        Some(error) => UpdateCheck::Failed(error.clone()),
+    match &cache.failure {
+        Some(failure) => UpdateCheck::Failed(request_failure_message(failure)),
         None => select_cached_update(channel, installed, &cache.releases),
     }
 }
@@ -485,7 +590,8 @@ fn fetch_update(channel: Channel, installed: &Version, force: bool) -> UpdateChe
                     checked_at: now,
                     etag,
                     releases: cached_releases(&releases, &check),
-                    error: None,
+                    legacy_error: None,
+                    failure: None,
                 },
             );
             check
@@ -501,13 +607,15 @@ fn fetch_update(channel: Channel, installed: &Version, force: bool) -> UpdateChe
                     checked_at: now,
                     etag: same_channel.and_then(|cache| cache.etag.clone()),
                     releases: cached_releases.clone(),
-                    error: None,
+                    legacy_error: None,
+                    failure: None,
                 },
             );
             select_cached_update(channel, installed, &cached_releases)
         }
         ChannelFetch::Failed(error) => {
-            let message = request_error_message(&error);
+            let failure = NetworkError::from_ureq(&error);
+            let message = request_failure_message(&failure);
             // Keep prior data for conditional retries, but preserve the failure outcome.
             write_cache_file(
                 &path,
@@ -518,7 +626,8 @@ fn fetch_update(channel: Channel, installed: &Version, force: bool) -> UpdateChe
                     releases: same_channel
                         .map(|cache| cache.releases.clone())
                         .unwrap_or_default(),
-                    error: Some(message.clone()),
+                    legacy_error: None,
+                    failure: Some(failure),
                 },
             );
             UpdateCheck::Failed(message)
@@ -543,13 +652,10 @@ fn fetch_package_update(
         Ok(response) => match package_update_from_response(&available, &response) {
             UpdateCheck::Available {
                 mut release,
-                download_url,
+                install,
             } => {
                 resolve_commit(&mut release);
-                UpdateCheck::Available {
-                    release,
-                    download_url,
-                }
+                UpdateCheck::Available { release, install }
             }
             check => check,
         },
@@ -564,9 +670,9 @@ fn package_update_from_response(available: &Version, response: &ReleaseResponse)
         release.version == *available && (!release.prerelease || accepts_prerelease)
     }) {
         Some(summary) => available_check(&summary),
-        None => UpdateCheck::Failed(
-            "package repository version has no matching stable release".to_owned(),
-        ),
+        None => UpdateCheck::Failed(crate::i18n::tr(
+            "package repository version has no matching stable release",
+        )),
     }
 }
 
@@ -611,10 +717,20 @@ fn fetch_exact_release(tag: &str) -> ReleaseNotes {
 }
 
 fn request_error_message(error: &ureq::Error) -> String {
-    match error {
-        ureq::Error::StatusCode(403 | 429) => "GitHub API rate limit reached".to_owned(),
-        ureq::Error::StatusCode(code) => format!("GitHub API returned HTTP {code}"),
-        _ => format!("Network request failed: {error}"),
+    request_failure_message(&NetworkError::from_ureq(error))
+}
+
+fn request_failure_message(failure: &NetworkError) -> String {
+    match failure {
+        NetworkError::Status { code: 403 | 429 } => {
+            crate::i18n::tr("GitHub API rate limit reached")
+        }
+        NetworkError::Status { code } => {
+            rust_i18n::t!("GitHub API returned HTTP %{code}", code = code).into_owned()
+        }
+        other => {
+            rust_i18n::t!("Network request failed: %{error}", error = other.detail()).into_owned()
+        }
     }
 }
 
@@ -645,6 +761,31 @@ pub fn check_for_updates(
                 }
             };
             let _sent = sender.send(result);
+        });
+    drop(spawned);
+    receiver
+}
+
+/// Lists the releases `channel` lets the user install, off the GTK thread.
+pub fn fetch_releases(channel: Channel) -> Receiver<Result<Vec<ReleaseChoice>, String>> {
+    let (sender, receiver) = mpsc::channel();
+    let spawned = std::thread::Builder::new()
+        .name("strata-release-list".into())
+        .spawn(move || {
+            let _sent = sender.send(fetch_release_choices(channel));
+        });
+    drop(spawned);
+    receiver
+}
+
+/// Resolves the source commit of a picked release, off the GTK thread.
+pub fn resolve_release_commit(mut release: ReleaseMetadata) -> Receiver<ReleaseMetadata> {
+    let (sender, receiver) = mpsc::channel();
+    let spawned = std::thread::Builder::new()
+        .name("strata-release-commit".into())
+        .spawn(move || {
+            resolve_commit(&mut release);
+            let _sent = sender.send(release);
         });
     drop(spawned);
     receiver

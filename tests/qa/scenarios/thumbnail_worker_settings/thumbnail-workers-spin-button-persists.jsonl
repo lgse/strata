@@ -1,0 +1,17 @@
+{"scenario":"thumbnail-workers-spin-button-persists","modes":["columns"],"prefs":{"thumbnail_workers":16},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.4},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Settings spin button writes thumbnail_workers live from its steps, holds at the maximum, and saves a typed value; GUI route unique, unit tests pin only the preference"}}
+{"activate":{"role":"button","name":"Settings"}}
+{"wait":{"present":{"role":"text","name":"Search settings"}},"message":"settings search"}
+{"click":{"role":"text","name":"Search settings"}}
+{"type":"thumbnail workers"}
+{"wait":{"present":{"role":"spin button","name":"Thumbnail workers"}},"message":"thumbnail workers spin button"}
+{"click":{"role":"spin button","name":"Thumbnail workers"},"at":["1/8","50%"]}
+{"wait":{"pref":{"key":"thumbnail_workers","value":15}},"message":"worker count saved as 15"}
+{"click":{"role":"spin button","name":"Thumbnail workers"},"at":["7/8","50%"]}
+{"wait":{"pref":{"key":"thumbnail_workers","value":16}},"message":"worker count saved as 16"}
+{"click":{"role":"spin button","name":"Thumbnail workers"},"at":["7/8","50%"]}
+{"wait":{"pref":{"key":"thumbnail_workers","value":16}},"message":"worker count to stay 16 at the maximum"}
+{"click":{"role":"spin button","name":"Thumbnail workers"}}
+{"key":"ctrl+a"}
+{"type":"4"}
+{"key":"Return"}
+{"wait":{"pref":{"key":"thumbnail_workers","value":4}},"message":"typed worker count saved as 4"}

@@ -1,7 +1,14 @@
 use gtk::prelude::*;
 
 mod delay;
+mod surface;
 pub(crate) use delay::DelayedLoading;
+pub(crate) use surface::{DirectorySurface, focus_surface_or, surface_takes_focus};
+
+/// Directory stack pages shared by the panes and columns.
+pub(crate) const CONTENT_PAGE: &str = "content";
+pub(crate) const PENDING_PAGE: &str = "pending";
+pub(crate) const LOADING_PAGE: &str = "loading";
 
 pub(super) const ROW_COUNT: u32 = 18;
 
@@ -23,7 +30,9 @@ pub(super) fn container() -> gtk::Box {
     container.add_css_class("loading-skeleton");
     container.set_can_target(false);
     container.set_focusable(false);
-    container.update_property(&[gtk::accessible::Property::Label("Loading directory")]);
+    container.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
+        "Loading directory",
+    ))]);
     container
 }
 

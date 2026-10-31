@@ -2,7 +2,6 @@
 
 use crate::services::{BuildKind, Version};
 
-pub const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const COMMIT: &str = env!("STRATA_BUILD_COMMIT");
 pub const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
@@ -43,6 +42,26 @@ pub fn build_kind() -> BuildKind {
     }
 }
 
+/// Whether this build includes the in-app updater. Distribution packages turn it
+/// off with `STRATA_UPDATER=disabled`; their package manager delivers updates.
+pub fn updater_enabled() -> bool {
+    #[cfg(test)]
+    if UPDATER_DISABLED_FOR_TEST.load(std::sync::atomic::Ordering::Relaxed) {
+        return false;
+    }
+    !cfg!(strata_updater_disabled)
+}
+
+#[cfg(test)]
+static UPDATER_DISABLED_FOR_TEST: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Process-wide, so only for isolated GTK test processes.
+#[cfg(test)]
+pub(crate) fn disable_updater_for_test() {
+    UPDATER_DISABLED_FOR_TEST.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// The version this build identifies as, for update-channel comparisons.
 ///
 /// Parses [`RELEASE_TAG`] first, since that -- not `Cargo.toml` -- is where
@@ -63,6 +82,15 @@ pub fn installed_version() -> Version {
                 "\"0.0.0\" is exactly the bare MAJOR.MINOR.PATCH form Version::parse accepts",
             )
         })
+}
+
+pub fn displayed_version() -> String {
+    let version = installed_version().to_string();
+    if cfg!(debug_assertions) {
+        format!("{version}+debug")
+    } else {
+        version
+    }
 }
 
 #[cfg(test)]

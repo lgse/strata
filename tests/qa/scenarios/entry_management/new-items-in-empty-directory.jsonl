@@ -1,0 +1,37 @@
+{"scenario":"new-items-in-empty-directory","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"file","vars":{"kind":"file"}},{"id":"folder","vars":{"kind":"folder"}}],"cost":{"columns-file":1.5,"columns-folder":1.1},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"New file and folder in an empty directory via shortcut and context menu, rename-on-create and discard; GUI empty-state path, fs creation unit-tested in create_entry.rs"}}
+{"select":{"entry":"archive"}}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
+{"settle":{"pane":"archive"}}
+{"key":"ctrl+shift+n","variants":["folder"]}
+{"wait":{"field":{}},"message":"an editable field to take focus","variants":["folder"]}
+{"click":{"background":true},"button":3,"variants":["file"]}
+{"wait":{"present":{"menu_item":"New File"}},"message":"the menu item 'New File'","variants":["file"]}
+{"settle":{"menu_item":"New File"},"variants":["file"]}
+{"click":{"menu_item":"New File"},"variants":["file"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["file"]}
+{"wait":{"field":{}},"message":"an editable field to take focus","variants":["file"]}
+{"remember":{"field":true},"as":"field","variants":["file"]}
+{"wait":{"field":{"of":"field","text":{"starts_with":"new file"}}},"message":"the created file's editor","variants":["file"]}
+{"type":"discarded"}
+{"key":"Escape"}
+{"wait":{"entry":"new folder","dir":"archive"},"message":"the entry 'new folder' in 'archive' to appear","variants":["folder"]}
+{"wait":{"entry":"new file","dir":"archive"},"message":"the entry 'new file' in 'archive' to appear","variants":["file"]}
+{"key":"ctrl+shift+n","variants":["folder"]}
+{"wait":{"field":{}},"message":"an editable field to take focus","variants":["folder"]}
+{"remember":{"field":true},"as":"field","variants":["folder"]}
+{"click":{"background":true},"button":3,"variants":["file"]}
+{"wait":{"present":{"menu_item":"New File"}},"message":"the menu item 'New File'","variants":["file"]}
+{"settle":{"menu_item":"New File"},"variants":["file"]}
+{"click":{"menu_item":"New File"},"variants":["file"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["file"]}
+{"wait":{"field":{}},"message":"an editable field to take focus","variants":["file"]}
+{"remember":{"field":true},"as":"field","variants":["file"]}
+{"wait":{"field":{"of":"field","text":{"starts_with":"new file"}}},"message":"the created file's editor","variants":["file"]}
+{"type":"kept"}
+{"wait":{"field":{"of":"field","text":"kept"}},"message":"the replacement name to appear"}
+{"key":"Return"}
+{"fs":{"path":"archive/kept","exists":true},"message":"the renamed item on disk"}
+{"fs":{"path":"archive/kept","is":"dir"},"timeout_ms":0,"variants":["folder"]}
+{"fs":{"path":"archive/kept","is":"file"},"timeout_ms":0,"variants":["file"]}
+{"wait":{"entry":"kept","dir":"archive"},"message":"the entry 'kept' in 'archive' to appear"}
+{"fs":{"path":"archive/discarded","exists":false},"timeout_ms":0}

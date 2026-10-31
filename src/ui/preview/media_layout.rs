@@ -2,11 +2,16 @@
 
 use gtk::{gdk, glib, graphene, gsk, prelude::*, subclass::prelude::*};
 
-pub(super) const MAX_CONTENT_WIDTH: i32 = 1280;
+pub(in crate::ui) const MAX_CONTENT_WIDTH: i32 = 1280;
 const MAX_UPSCALE: f64 = 2.0;
 const MEDIA_MARGIN: i32 = 12;
 
-fn fitted_size(width: i32, height: i32, intrinsic_width: i32, intrinsic_height: i32) -> (i32, i32) {
+pub(super) fn fitted_size(
+    width: i32,
+    height: i32,
+    intrinsic_width: i32,
+    intrinsic_height: i32,
+) -> (i32, i32) {
     let width = width.max(0);
     let height = height.max(0);
     if intrinsic_width <= 0 || intrinsic_height <= 0 {
@@ -133,6 +138,110 @@ glib::wrapper! {
     pub struct MediaLayout(ObjectSubclass<imp::MediaLayout>) @extends gtk::LayoutManager;
 }
 
+fn column_width(child: &gtk::Widget, available: i32) -> i32 {
+    let minimum = child.measure(gtk::Orientation::Horizontal, -1).0;
+    available.min(MAX_CONTENT_WIDTH).max(minimum)
+}
+
+fn laid_out_children(widget: &gtk::Widget) -> impl Iterator<Item = gtk::Widget> {
+    std::iter::successors(widget.first_child(), |child| child.next_sibling())
+        .filter(|child| child.should_layout())
+}
+
+mod column_imp {
+    use super::*;
+
+    #[derive(Default)]
+    pub struct ContentColumn {
+        pub(super) start_aligned: std::cell::Cell<bool>,
+    }
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for ContentColumn {
+        const NAME: &'static str = "StrataPreviewContentColumn";
+        type Type = super::ContentColumn;
+        type ParentType = gtk::LayoutManager;
+    }
+
+    impl ObjectImpl for ContentColumn {}
+
+    impl LayoutManagerImpl for ContentColumn {
+        fn request_mode(&self, _: &gtk::Widget) -> gtk::SizeRequestMode {
+            gtk::SizeRequestMode::HeightForWidth
+        }
+
+        fn measure(
+            &self,
+            widget: &gtk::Widget,
+            orientation: gtk::Orientation,
+            for_size: i32,
+        ) -> (i32, i32, i32, i32) {
+            let mut minimum = 0;
+            let mut natural = 0;
+            for child in laid_out_children(widget) {
+                if orientation == gtk::Orientation::Horizontal {
+                    let (min, nat, _, _) = child.measure(orientation, -1);
+                    minimum = minimum.max(min);
+                    natural = natural.max(nat.min(MAX_CONTENT_WIDTH).max(min));
+                } else {
+                    let width = if for_size < 0 {
+                        -1
+                    } else {
+                        column_width(&child, for_size)
+                    };
+                    let (min, nat, _, _) = child.measure(orientation, width);
+                    minimum += min;
+                    natural += nat;
+                }
+            }
+            (minimum, natural, -1, -1)
+        }
+
+        fn allocate(&self, widget: &gtk::Widget, width: i32, _: i32, _: i32) {
+            let mut y = 0;
+            for child in laid_out_children(widget) {
+                let child_width = column_width(&child, width);
+                let height = child.measure(gtk::Orientation::Vertical, child_width).1;
+                let x = if self.start_aligned.get() {
+                    0
+                } else {
+                    (width - child_width).max(0) / 2
+                };
+                allocate_at(&child, child_width, height, x, y);
+                y += height;
+            }
+        }
+    }
+}
+
+glib::wrapper! {
+    pub struct ContentColumn(ObjectSubclass<column_imp::ContentColumn>) @extends gtk::LayoutManager;
+}
+
+impl ContentColumn {
+    pub(in crate::ui) fn new() -> Self {
+        glib::Object::new()
+    }
+
+    /// Unwrapped rows can be wider than the viewport; centring each one in
+    /// the widest row's width would scatter them, so they share a left edge.
+    pub(in crate::ui) fn set_start_aligned(&self, start_aligned: bool) {
+        if self.imp().start_aligned.replace(start_aligned) != start_aligned {
+            self.layout_changed();
+        }
+    }
+}
+
+impl MediaLayout {
+    pub(super) fn new() -> Self {
+        glib::Object::new()
+    }
+
+    pub(super) fn set_paintable(&self, paintable: Option<&gdk::Paintable>) {
+        self.imp().paintable.set(paintable);
+    }
+}
+
 pub(super) fn section(
     media: &impl IsA<gtk::Widget>,
     paintable: &impl IsA<gdk::Paintable>,
@@ -140,8 +249,8 @@ pub(super) fn section(
     let section = gtk::Box::new(gtk::Orientation::Vertical, 0);
     section.set_hexpand(true);
     section.set_vexpand(true);
-    let layout: MediaLayout = glib::Object::new();
-    layout.imp().paintable.set(Some(paintable.as_ref()));
+    let layout = MediaLayout::new();
+    layout.set_paintable(Some(paintable.as_ref()));
     section.set_layout_manager(Some(layout));
     media.set_margin_start(MEDIA_MARGIN);
     media.set_margin_end(MEDIA_MARGIN);

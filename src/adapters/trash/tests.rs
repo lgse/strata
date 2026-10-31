@@ -133,3 +133,66 @@ fn deletion_caps_errors_and_still_processes_successful_siblings() {
         12
     );
 }
+
+#[test]
+fn emptying_the_trash_releases_a_preview_of_a_trashed_file() {
+    let mounts = MountTable::parse(
+        "22 1 8:2 / / rw - ext4 /dev/sda2 rw\n\
+         40 22 0:36 / /mnt/nas rw - nfs4 server:/export rw,vers=4.2\n\
+         41 22 0:37 / /tmp rw - tmpfs tmpfs rw\n\
+         75 22 8:33 / /run/media/me/USB rw - vfat /dev/sdc2 rw,flush\n\
+         76 22 8:49 / /run/media/me/STICK rw - fuseblk /dev/sdd1 rw\n",
+    );
+    let home_trash = Path::new("/home/me/.local/share/Trash");
+    assert_eq!(
+        trash_file_roots(home_trash, &mounts, 1000),
+        [
+            "/home/me/.local/share/Trash/files",
+            "/.Trash-1000/files",
+            "/.Trash/1000/files",
+            "/mnt/nas/.Trash-1000/files",
+            "/mnt/nas/.Trash/1000/files",
+            "/run/media/me/USB/.Trash-1000/files",
+            "/run/media/me/USB/.Trash/1000/files",
+            "/run/media/me/STICK/.Trash-1000/files",
+            "/run/media/me/STICK/.Trash/1000/files",
+        ]
+        .map(PathBuf::from),
+        "every mounted volume's Trash, network and FUSE ones included, never a virtual one"
+    );
+
+    let root = unique_fixture_root("empty-trash-release");
+    std::fs::create_dir_all(&root).expect("the trash fixture should be created");
+    let trashed = root.join("song.ogg");
+    std::fs::write(&trashed, b"held").expect("the trashed file should be written");
+    let (stop, stopped) = std::sync::mpsc::channel();
+    let present = trashed.clone();
+    let hold = crate::services::file_activity::hold([&trashed], move || {
+        let _ = stop.send(present.exists());
+    })
+    .expect("a preview outside any operation");
+    let reader = std::thread::spawn(move || {
+        let present = stopped
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .ok();
+        drop(hold);
+        present
+    });
+
+    let outcome = glib::MainContext::new()
+        .block_on(empty_releasing(
+            &gio::File::for_path(&root),
+            vec![root.clone()],
+            |_| {},
+        ))
+        .expect("a plain directory tree should empty without error");
+    let present = reader.join().expect("the preview's worker");
+    std::fs::remove_dir_all(&root).expect("the trash fixture root should be removed");
+
+    assert_eq!(
+        present,
+        Some(true),
+        "the preview stops before anything is deleted"
+    );
+    assert_eq!((outcome.deleted, outcome.failed), (1, 0));
+}

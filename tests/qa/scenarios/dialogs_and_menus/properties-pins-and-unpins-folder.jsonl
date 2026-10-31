@@ -1,0 +1,26 @@
+{"scenario":"properties-pins-and-unpins-folder","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.5},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Pin then Unpin via the Properties dialog, sidebar row added and removed; only QA check of folder pin and unpin from Properties (file-properties-describes-and-closes asserts Pin is absent for files); removal and restore rules unit-tested in src/adapters/bookmarks and src/ui/window/bookmarks"}}
+{"click":{"entry":"documents"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'documents'"}
+{"wait":{"present":{"menu_item":"Properties"}},"message":"the menu item 'Properties'"}
+{"settle":{"menu_item":"Properties"}}
+{"click":{"menu_item":"Properties"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"expect":{"present":{"role":"button","name":"Pin","within":{"dialog":true}}}}
+{"expect":{"state":{"target":{"role":"button","name":"Pin","within":{"dialog":true}},"sensitive":true}}}
+{"activate":{"role":"button","name":"Pin","within":{"dialog":true}}}
+{"wait":{"dialog":null},"message":"the dialog to close after pinning"}
+{"wait":{"present":{"role":"button","name":"documents"}},"message":"the pinned sidebar row"}
+{"click":{"entry":"documents"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'documents'"}
+{"wait":{"present":{"menu_item":"Properties"}},"message":"the menu item 'Properties'"}
+{"settle":{"menu_item":"Properties"}}
+{"click":{"menu_item":"Properties"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"expect":{"present":{"role":"button","name":"Unpin","within":{"dialog":true}}},"message":"Properties must offer Unpin for a pinned folder"}
+{"expect":{"state":{"target":{"role":"button","name":"Unpin","within":{"dialog":true}},"sensitive":true}},"message":"the Unpin control must stay readable"}
+{"expect":{"absent":{"role":"button","name":"Pin","within":{"dialog":true}}}}
+{"activate":{"role":"button","name":"Unpin","within":{"dialog":true}}}
+{"wait":{"dialog":null},"message":"the dialog to close after unpinning"}
+{"wait":{"absent":{"role":"button","name":"documents"}},"message":"the sidebar row to disappear"}

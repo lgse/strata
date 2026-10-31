@@ -1,0 +1,25 @@
+{"scenario":"column-background-click-focuses-parent","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"content","vars":{"surface":"content"}},{"id":"header","vars":{"surface":"header"}}],"cost":{"columns-content":1.2,"columns-header":1.0},"quality":{"impact":2,"coverage":3,"criticality":4,"diagnostic":3,"score":25,"note":"background click in a column focuses and reveals the parent and clears selection, header label click only focuses; reveal shared with parent-pane-anchors-first-entry, header label route unique; GUI gesture in columns.rs with no unit test"}}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"toggle button","name":"Preview panel"}},"message":"the preview panel toggle"}
+{"key":"Escape","when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":false}}}
+{"click":{"role":"toggle button","name":"Preview panel"},"when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":true}}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location editor to take focus"}
+{"key":"Escape"}
+{"wait":{"focused_pane":true},"message":"focus to return to the file listing"}
+{"select":{"entry":"documents"}}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"note":"selected","as":"selected","dir":"$root"}
+{"click":{"background":true,"dir":"$root"},"variants":["content"]}
+{"expect":{"present":{"role":"label","name":"$root","description":"$fixture"}},"variants":["header"]}
+{"click":{"role":"label","name":"$root","description":"$fixture"},"variants":["header"]}
+{"wait":{"directory":"$root"},"message":"the browser to be working in '$root'"}
+{"settle":{"pane":"$root"}}
+{"wait":{"selected":["archive"],"dir":"$root"},"message":"the selection to become ['archive']","variants":["content"]}
+{"click":{"background":true,"dir":"$root"},"variants":["content"]}
+{"wait":{"all_selected":[]},"message":"active background click to clear selection","variants":["content"]}
+{"expect":{"panes":{"excludes":["documents"]}},"variants":["content"]}
+{"expect":{"selected":"$selected","dir":"$root"},"variants":["header"]}
+{"expect":{"panes":{"contains":["documents"]}},"variants":["header"]}

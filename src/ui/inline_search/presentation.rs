@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::collection::ResultKind;
+use super::collection::{NameHighlights, ResultKind};
 use crate::{
     model::Location,
     services::SearchItem,
@@ -58,7 +58,7 @@ impl ResultWidgets {
                 labels.append(&origin);
                 let field = gtk::Entry::new();
                 field.add_css_class("inline-rename");
-                accessibility::set_label(&field, "Rename");
+                accessibility::set_label(&field, &crate::i18n::tr("Rename"));
                 field.set_hexpand(true);
                 field.set_width_chars(1);
                 field.set_visible(false);
@@ -100,6 +100,7 @@ impl ResultWidgets {
         result: &SearchItem,
         root: &Path,
         recursive: bool,
+        highlights: &NameHighlights,
     ) {
         let entry = browser::search_result_entry(result);
         self.edit.bind(&entry.location);
@@ -128,6 +129,7 @@ impl ResultWidgets {
                 origin.set_visible(recursive);
             }
         }
+        highlights.apply(&self.rename_label(), &result.path);
         if result.is_directory {
             thumbnail::show_customized_icon(
                 &self.icon,
@@ -139,7 +141,7 @@ impl ResultWidgets {
             thumbnail::set_thumbnail_or_icon_for_path(
                 &self.icon,
                 &result.path,
-                crate::assets::icons::DOCUMENTS,
+                browser::icon_for_name(&result.name),
                 size,
                 size,
             );

@@ -27,7 +27,7 @@ const EVENT_TIMEOUT: Duration = Duration::from_secs(10);
 struct Fixture {
     _directory: tempfile::TempDir,
     root: PathBuf,
-    store: Rc<LocalActionStore>,
+    store: std::sync::Arc<LocalActionStore>,
     runner: Rc<LocalActionRunner>,
 }
 
@@ -85,13 +85,19 @@ impl Fixture {
             file_name: file_name.to_owned(),
             contents: contents.to_owned(),
         });
+        let request = ActionWriteRequest { definition, script };
+        match self.store.create(&request) {
+            Err(crate::services::actions::ActionStoreError::AlreadyExists(_)) => {
+                self.store.write(&request)
+            }
+            created => created,
+        }
+        .expect("action writes");
         self.store
-            .write(&ActionWriteRequest { definition, script })
-            .expect("action writes");
-        self.store
-            .load()
+            .locate(self.store.load())
             .get(id)
             .cloned()
+            .map(Rc::new)
             .unwrap_or_else(|| panic!("action {id} loads"))
     }
 }
@@ -561,6 +567,46 @@ fn the_private_run_directory_is_owner_only() {
         directory,
         "each invocation gets its own directory"
     );
+}
+
+#[test]
+fn a_run_started_on_the_ui_thread_prepares_its_private_folder_off_it() {
+    for planted in [false, true] {
+        let outcome = std::thread::spawn(move || {
+            let fixture = Fixture::new();
+            let action = fixture.action(
+                "hello",
+                &script(ActionRuntime::Bash, "run.sh", "#!/bin/bash\necho ran\n"),
+                ExecutionMode::WholeSelection,
+            );
+            if !action.is_available() {
+                return None;
+            }
+            if planted {
+                fs::create_dir_all(fixture.path().join("runtime")).expect("runtime root");
+                fs::write(fixture.path().join("runtime/actions"), b"").expect("planted file");
+            }
+            crate::util::ui_thread::mark();
+            Some(run(&fixture.runner, request(action, &[], fixture.path())))
+        })
+        .join()
+        .expect("the run starts without a file call on the UI thread");
+        let Some(outcome) = outcome else {
+            eprintln!("skipping: bash is not installed");
+            return;
+        };
+        if planted {
+            assert!(
+                matches!(outcome.events.as_slice(), [ActionRunEvent::Failed(message)]
+                    if message.contains("private working directory")),
+                "{:?}",
+                outcome.events
+            );
+        } else {
+            let (code, _, log) = outcome.ended();
+            assert_eq!(code, Some(0), "{log}");
+        }
+    }
 }
 
 fn noop_sink() -> ActionEventSink {

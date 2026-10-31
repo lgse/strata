@@ -52,15 +52,39 @@ fn breadcrumbs_preserve_each_native_ancestor() {
 }
 
 #[test]
-fn uri_locations_remain_explicit_and_have_one_breadcrumb() {
-    let trash = Location::uri("trash:///");
+fn lexical_normalization_resolves_dot_segments_without_touching_the_filesystem() {
+    for (input, expected) in [
+        (
+            &b"/fixture/documents/../pictures"[..],
+            &b"/fixture/pictures"[..],
+        ),
+        (b"/tmp/./../tmp", b"/tmp"),
+        (b"/..", b"/"),
+        (b"/../..", b"/"),
+        (b"/a/b/../../..", b"/"),
+        (b"/fixture/\xff\xfe/../\xfd", b"/fixture/\xfd"),
+    ] {
+        let input = Path::new(OsStr::from_bytes(input));
+        assert_eq!(
+            lexically_normalized(input).as_os_str(),
+            OsStr::from_bytes(expected),
+            "{input:?}"
+        );
+    }
+}
 
-    assert_eq!(trash.native_path(), None);
-    assert_eq!(trash.uri_value(), Some("trash:///"));
-    assert_eq!(trash.display_name(), "Trash");
-    assert_eq!(trash.display_path(), "trash:///");
-    assert_eq!(trash.breadcrumbs(), vec![trash.clone()]);
-    assert_eq!(trash.parent(), None);
+#[test]
+fn uri_locations_remain_explicit_and_have_one_breadcrumb() {
+    for (uri, name) in [("trash:///", "Trash"), ("network:///", "Network")] {
+        let location = Location::uri(uri);
+
+        assert_eq!(location.native_path(), None, "{uri}");
+        assert_eq!(location.uri_value(), Some(uri));
+        assert_eq!(location.display_name(), name, "{uri}");
+        assert_eq!(location.display_path(), uri);
+        assert_eq!(location.breadcrumbs(), vec![location.clone()], "{uri}");
+        assert_eq!(location.parent(), None, "{uri}");
+    }
 }
 
 #[test]
@@ -108,6 +132,57 @@ fn non_recent_locations_are_not_mistaken_for_the_collection() {
 }
 
 #[test]
+fn native_folders_reopen_through_admin_with_their_path_escaped() {
+    use std::os::unix::ffi::OsStrExt;
+
+    for (path, uri) in [
+        (
+            std::ffi::OsStr::new("/run/media/user/drive/backups"),
+            "admin:///run/media/user/drive/backups",
+        ),
+        (
+            std::ffi::OsStr::new("/run/media/user/Photos RAW/100%"),
+            "admin:///run/media/user/Photos%20RAW/100%25",
+        ),
+        (
+            std::ffi::OsStr::from_bytes(b"/srv/caf\xe9"),
+            "admin:///srv/caf%E9",
+        ),
+    ] {
+        let administrator = Location::local(path).as_administrator().expect(uri);
+        assert_eq!(administrator.uri_value(), Some(uri));
+        assert!(administrator.is_administrator());
+        assert!(!Location::local(path).is_administrator());
+    }
+    for location in [
+        Location::local("relative/backups"),
+        Location::uri("sftp://host/backups"),
+        Location::uri("admin:///backups"),
+    ] {
+        assert_eq!(location.as_administrator(), None, "{location:?}");
+    }
+}
+
+#[test]
+fn admin_locations_walk_up_to_a_named_administrator_root() {
+    let backups = Location::uri("admin:///run/media/user/backups");
+
+    assert_eq!(
+        backups.breadcrumbs(),
+        [
+            "admin:///",
+            "admin:///run",
+            "admin:///run/media",
+            "admin:///run/media/user",
+            "admin:///run/media/user/backups",
+        ]
+        .map(Location::uri)
+    );
+    assert_eq!(Location::uri("admin:///").display_name(), "Administrator");
+    assert_eq!(backups.display_name(), "backups");
+}
+
+#[test]
 fn uri_display_names_are_percent_decoded() {
     assert_eq!(
         Location::uri("smb://server/share/My%20Share").display_name(),
@@ -129,6 +204,7 @@ fn remote_locations_keep_uri_parents_and_breadcrumbs() {
         ("sftp://host/share/a%2Fb", "sftp://host/share"),
         ("sftp://host/share/a%2Fb/child", "sftp://host/share/a%2Fb"),
         ("sftp://host/share/100%25/child", "sftp://host/share/100%25"),
+        ("trash:///caf%E9.txt", "trash:///"),
     ] {
         assert_eq!(Location::uri(uri).parent(), Some(Location::uri(parent)));
     }
@@ -143,7 +219,7 @@ fn remote_locations_keep_uri_parents_and_breadcrumbs() {
 }
 
 #[test]
-fn rebasing_preserves_uri_descendants_and_rejects_unrelated_or_mixed_locations() {
+fn rebasing_preserves_descendants_across_location_kinds_and_rejects_unrelated_ones() {
     for scheme in ["smb", "sftp"] {
         let from = Location::uri(format!("{scheme}://host/share/old"));
         let to = Location::uri(format!("{scheme}://host/share/new%20folder"));
@@ -162,8 +238,23 @@ fn rebasing_preserves_uri_descendants_and_rejects_unrelated_or_mixed_locations()
         ] {
             assert!(Location::uri(unrelated).rebase(&from, &to).is_none());
         }
+        let local = Location::local("/fixture/new");
+        let nested = Location::uri(format!("{scheme}://host/share/old/nested/a:b"));
+        assert_eq!(from.rebase(&from, &local), Some(local.clone()));
+        assert_eq!(
+            nested.rebase(&from, &local),
+            Some(Location::local("/fixture/new/nested/a:b"))
+        );
+        let back = Location::local("/fixture/new/nested/a:b")
+            .rebase(&local, &from)
+            .expect("rebased onto the share");
         assert!(
-            from.rebase(&from, &Location::local("/fixture/new"))
+            gio::File::for_uri(back.uri_value().expect("a URI"))
+                .equal(&gio::File::for_uri(nested.uri_value().expect("a URI")))
+        );
+        assert!(
+            Location::local("/fixture/newer/a:b")
+                .rebase(&local, &from)
                 .is_none()
         );
     }
@@ -240,6 +331,14 @@ fn diagnostic_paths_preserve_native_paths_and_redact_remote_secrets() {
         "sftp://example.com/home/alice"
     );
     assert_eq!(
+        Location::uri("sftp://alice:pw@example.com/caf%E9?token=x#frag").diagnostic_path(),
+        "sftp://example.com/caf%E9"
+    );
+    assert_eq!(
+        Location::uri("smb://CORP;alice@fileserver.example/share?token=abc#frag").diagnostic_path(),
+        "smb://fileserver.example/share"
+    );
+    assert_eq!(
         Location::uri("not a uri with alice:password@example.com").diagnostic_path(),
         "<invalid-uri>"
     );
@@ -261,6 +360,15 @@ fn display_paths_hide_remote_credentials_but_preserve_usernames() {
         Location::uri("smb://alice@host/share").display_path(),
         "smb://alice@host/share"
     );
+    for (uri, displayed) in [
+        ("trash:///caf%E9.txt", "trash:///caf%E9.txt"),
+        ("smb://host/caf%C3%A9", "smb://host/café"),
+        ("smb://alice:secret@host/caf%E9", "smb://host/caf%E9"),
+        ("sftp://host/share/a%2Fb", "sftp://host/share/a%2Fb"),
+        ("sftp://host/share/a%2fb", "sftp://host/share/a%2Fb"),
+    ] {
+        assert_eq!(Location::uri(uri).display_path(), displayed, "{uri}");
+    }
     assert_eq!(
         Location::uri("smb://alice%ZZ@host/share").display_path(),
         "<invalid-uri>"
@@ -318,6 +426,57 @@ fn transfer_targets_keep_the_item_name_under_the_destination() {
         Location::local("/home/user/a b.txt").transfer_target(&Location::uri("smb://host/share")),
         Some(Location::uri("smb://host/share/a%20b.txt"))
     );
+}
+
+#[test]
+fn trash_transfer_targets_decode_only_virtual_root_names() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let destination = Location::local("/home/user/Documents");
+    for (uri, expected) in [
+        ("trash:///report.txt", b"report.txt".as_slice()),
+        (
+            "trash:///%5Cmnt%5CData%5C.Trash-1000%5Cfiles%5CSAMPLED.2",
+            b"SAMPLED.2",
+        ),
+        (
+            "trash:///%5Cmnt%5CData%5C.Trash-1000%5Cfiles%5Ca%2520b.txt",
+            b"a b.txt",
+        ),
+        (
+            "trash:///%5Cmnt%5CData%5C.Trash-1000%5Cfiles%5Ca%255Cb.txt",
+            b"a\\b.txt",
+        ),
+        (
+            "trash:///%5Cmnt%5CData%5C.Trash-1000%5Cfiles%5Ca%2560b%2525.txt",
+            b"a`b%.txt",
+        ),
+        (
+            "trash:///%5Cmnt%5CData%5C.Trash-1000%5Cfiles%5Ca%25FF.txt",
+            b"a\xff.txt",
+        ),
+        ("trash:///foo%5Cbar.txt", b"foo\\bar.txt"),
+        (
+            "trash:///foo%5C.Trash-1000%5Cbar.txt",
+            b"foo\\.Trash-1000\\bar.txt",
+        ),
+        ("trash:///%60%5Cbar.txt", b"\\bar.txt"),
+        ("trash:///%60%60bar.txt", b"`bar.txt"),
+        ("trash:///folder/%60%60bar.txt", b"``bar.txt"),
+        ("trash:///folder/%5Cbar.txt", b"\\bar.txt"),
+    ] {
+        let source = Location::uri(uri);
+        let expected = std::ffi::OsStr::from_bytes(expected);
+        assert_eq!(
+            source.transfer_target(&destination),
+            destination.child(expected),
+            "{uri}"
+        );
+    }
+    for leaf in ["", ".", "..", "%252Fescape", "%2500", "%25invalid"] {
+        let source = Location::uri(format!("trash:///%5Cmnt%5Cfiles%5C{leaf}"));
+        assert_eq!(source.transfer_target(&destination), None, "{leaf}");
+    }
 }
 
 #[test]

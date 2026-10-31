@@ -20,8 +20,8 @@ use gdk_pixbuf::prelude::*;
 use super::{
     bounded_output, bounded_output_with_timeout, bounded_surface_dimensions,
     exceeds_decoded_frame_budget, is_svg_head, pdf_render_request, read_exif_thumbnail,
-    read_limited, render_pixbuf, render_raw, render_raw_thumbnail, render_simple_dcraw, run,
-    scale_embedded_thumbnail, svg_source,
+    read_limited, read_png_dimensions, render_camera_raw, render_camera_raw_preview, render_pixbuf,
+    render_raw, render_simple_dcraw, run, scale_embedded_thumbnail, svg_source,
 };
 
 #[test]
@@ -67,6 +67,66 @@ fn pdf_preview_requests_carry_a_bounded_page_and_viewport() {
     assert!(pdf_render_request("12:0").is_err());
     assert!(pdf_render_request("page:640x800").is_err());
     assert!(pdf_render_request("12:wide").is_err());
+}
+
+#[test]
+fn pdf_password_errors_only_describe_previews_that_need_a_password() {
+    let directory = tempfile::tempdir().expect("PDF fixtures");
+    let damaged = directory.path().join("password-protected.pdf");
+    std::fs::write(&damaged, b"%PDF-1.7\nThis PDF is password protected.\n")
+        .expect("write damaged PDF with misleading contents and filename");
+    let empty = directory.path().join("empty.pdf");
+    std::fs::write(&empty, []).expect("write empty PDF");
+    let fixtures =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/documents");
+    for (input, locked, readable) in [
+        (fixtures.join("password-protected.pdf"), true, false),
+        (fixtures.join("owner-restricted.pdf"), false, true),
+        (damaged, false, false),
+        (empty, false, false),
+        (directory.path().join("missing.pdf"), false, false),
+    ] {
+        let original = std::fs::read(&input).ok();
+        for (operation, value) in [("preview-pdf", "0:640x800"), ("thumbnail-pdf", "128")] {
+            let output_directory = tempfile::tempdir().expect("PDF output");
+            let output = output_directory.path().join("result.png");
+            let result = run(&[
+                operation.into(),
+                input.to_string_lossy().into_owned(),
+                output.to_string_lossy().into_owned(),
+                value.into(),
+                "software".into(),
+            ]);
+            assert_eq!(result.is_ok(), readable, "{operation}: {input:?}");
+            assert_eq!(output.exists(), readable, "{operation}: {input:?}");
+            let error = output_directory.path().join("result.error");
+            if locked && operation == "preview-pdf" {
+                serde_json::from_slice::<crate::sandbox::PdfPreviewError>(
+                    &std::fs::read(error).expect("structured password error"),
+                )
+                .expect("valid PDF error");
+            } else {
+                assert!(!error.exists(), "{operation}: {input:?}");
+            }
+            if !readable {
+                for name in ["result.meta", "result.text"] {
+                    assert!(!output_directory.path().join(name).exists());
+                }
+            }
+        }
+        let thumbnail =
+            super::browser_render(&input, crate::sandbox::browser::wire::Operation::Pdf);
+        assert_eq!(
+            thumbnail.png.is_empty(),
+            !readable,
+            "browser thumbnail: {input:?}"
+        );
+        assert_eq!(
+            std::fs::read(&input).ok(),
+            original,
+            "PDF input stays unchanged"
+        );
+    }
 }
 
 #[test]
@@ -162,25 +222,16 @@ fn oversized_images_exceeding_decoded_frame_budget_are_rejected_safely() {
     assert!(exceeds_decoded_frame_budget(20000, 20000));
 
     let directory = tempfile::tempdir().expect("image fixture");
-    let path = directory.path().join("oversized.jpg");
+    let path = directory.path().join("oversized.png");
 
     let source = gdk_pixbuf::Pixbuf::new(gdk_pixbuf::Colorspace::Rgb, false, 8, 10, 10)
         .expect("allocate small source");
-    let mut jpeg = source
-        .save_to_bufferv("jpeg", &[])
-        .expect("encode small jpeg");
-    let sof0 = jpeg
-        .windows(2)
-        .position(|marker| marker == [0xff, 0xc0])
-        .expect("locate SOF0 marker");
-    let height: u16 = 23598;
-    let width: u16 = 18354;
-    jpeg[sof0 + 5..sof0 + 7].copy_from_slice(&height.to_be_bytes());
-    jpeg[sof0 + 7..sof0 + 9].copy_from_slice(&width.to_be_bytes());
-    std::fs::write(&path, &jpeg).expect("write oversized fixture");
-
-    let info = gdk_pixbuf::Pixbuf::file_info(&path).expect("read file info");
-    assert_eq!((info.1, info.2), (18354, 23598));
+    let mut png = source
+        .save_to_bufferv("png", &[])
+        .expect("encode small png");
+    png[16..20].copy_from_slice(&18354u32.to_be_bytes());
+    png[20..24].copy_from_slice(&23598u32.to_be_bytes());
+    std::fs::write(&path, &png).expect("write oversized fixture");
 
     let raw_err = render_raw(&path, 256).expect_err("render_raw must reject oversized image");
     assert!(raw_err.contains("decoded frame budget"));
@@ -189,8 +240,8 @@ fn oversized_images_exceeding_decoded_frame_budget_are_rejected_safely() {
         render_pixbuf(&path, 256).expect_err("render_pixbuf must reject oversized image");
     assert!(pixbuf_err.contains("decoded frame budget"));
 
-    let raw_thumb_err = render_raw_thumbnail(&path, 256)
-        .expect_err("render_raw_thumbnail must reject oversized image");
+    let raw_thumb_err =
+        render_camera_raw(&path, 256).expect_err("render_camera_raw must reject oversized image");
     assert!(raw_thumb_err.contains("decoded frame budget"));
 
     let output = directory.path().join("out.png");
@@ -219,12 +270,7 @@ fn oversized_images_exceeding_decoded_frame_budget_are_rejected_safely() {
     assert!(preview_response.png.is_empty());
 }
 
-fn create_test_jpeg_with_exif_thumbnail(
-    main_width: u16,
-    main_height: u16,
-    thumb_width: i32,
-    thumb_height: i32,
-) -> Vec<u8> {
+fn with_exif_thumbnail(main_jpeg: &[u8], thumb_width: i32, thumb_height: i32) -> Vec<u8> {
     let thumb = gdk_pixbuf::Pixbuf::new(
         gdk_pixbuf::Colorspace::Rgb,
         false,
@@ -261,122 +307,119 @@ fn create_test_jpeg_with_exif_thumbnail(
     writer.write(&mut cursor, true).expect("write exif data");
     let tiff_data = cursor.into_inner();
 
-    let source_width = if main_width > 1000 {
-        10
-    } else {
-        i32::from(main_width)
-    };
-    let source_height = if main_height > 1000 {
-        10
-    } else {
-        i32::from(main_height)
-    };
-    let source = gdk_pixbuf::Pixbuf::new(
-        gdk_pixbuf::Colorspace::Rgb,
-        false,
-        8,
-        source_width,
-        source_height,
-    )
-    .expect("allocate source");
-    let base_jpeg = source
-        .save_to_bufferv("jpeg", &[])
-        .expect("encode small jpeg");
-
-    let mut jpeg = Vec::new();
-    jpeg.extend_from_slice(&[0xff, 0xd8]);
-    let app1_len = (2 + 6 + tiff_data.len()) as u16;
-    jpeg.extend_from_slice(&[0xff, 0xe1]);
-    jpeg.extend_from_slice(&app1_len.to_be_bytes());
+    let mut jpeg = vec![0xff, 0xd8, 0xff, 0xe1];
+    jpeg.extend_from_slice(&((2 + 6 + tiff_data.len()) as u16).to_be_bytes());
     jpeg.extend_from_slice(b"Exif\0\0");
     jpeg.extend_from_slice(&tiff_data);
-    jpeg.extend_from_slice(&base_jpeg[2..]);
-
-    if main_width > 1000 || main_height > 1000 {
-        let sof0 = jpeg
-            .windows(2)
-            .rposition(|marker| marker == [0xff, 0xc0])
-            .expect("locate SOF0 marker");
-        jpeg[sof0 + 5..sof0 + 7].copy_from_slice(&main_height.to_be_bytes());
-        jpeg[sof0 + 7..sof0 + 9].copy_from_slice(&main_width.to_be_bytes());
-    }
+    jpeg.extend_from_slice(&main_jpeg[2..]);
     jpeg
 }
 
+fn png_size(png: &[u8]) -> Option<(i32, i32)> {
+    read_png_dimensions(&mut std::io::Cursor::new(png))
+}
+
+fn imagemagick_installed() -> bool {
+    ["magick", "convert"].into_iter().any(|tool| {
+        std::process::Command::new(tool)
+            .arg("-version")
+            .output()
+            .is_ok_and(|output| output.status.success())
+    })
+}
+
 #[test]
-fn oversized_images_with_exif_thumbnail_render_thumbnail_and_preview() {
+fn oversized_jpegs_use_their_exif_thumbnail_only_when_it_covers_the_size() {
     let directory = tempfile::tempdir().expect("image fixture");
     let path = directory.path().join("oversized-with-exif.jpg");
-
-    let jpeg = create_test_jpeg_with_exif_thumbnail(18354, 23598, 32, 24);
+    let jpeg = with_exif_thumbnail(&flat_gray_jpeg(12000, 12000), 320, 240);
     std::fs::write(&path, &jpeg).expect("write oversized fixture with exif");
 
-    let info = gdk_pixbuf::Pixbuf::file_info(&path).expect("read file info");
-    assert_eq!((info.1, info.2), (18354, 23598));
-
-    let thumb_png = render_raw(&path, 256).expect("render_raw with exif thumbnail");
-    let thumb_pixbuf = gdk_pixbuf::Pixbuf::from_read(std::io::Cursor::new(thumb_png.clone()))
-        .expect("decode thumbnail png");
-    assert_eq!((thumb_pixbuf.width(), thumb_pixbuf.height()), (32, 24));
-
-    let direct_exif = read_exif_thumbnail(&path, 256).expect("read_exif_thumbnail directly");
-    assert_eq!(direct_exif, thumb_png);
-
-    let raw_thumb_png = render_raw_thumbnail(&path, 256).expect("render_raw_thumbnail with exif");
-    let raw_pixbuf = gdk_pixbuf::Pixbuf::from_read(std::io::Cursor::new(raw_thumb_png))
-        .expect("decode raw thumbnail png");
-    assert_eq!((raw_pixbuf.width(), raw_pixbuf.height()), (32, 24));
-
-    let preview_png = super::document_media::image(&path, 800)
-        .expect("document_media::image with exif thumbnail");
-    let preview_pixbuf = gdk_pixbuf::Pixbuf::from_read(std::io::Cursor::new(preview_png))
-        .expect("decode preview png");
-    assert_eq!((preview_pixbuf.width(), preview_pixbuf.height()), (32, 24));
-
-    let output = directory.path().join("thumb.png");
-    run(&[
-        "thumbnail-image".into(),
-        path.to_string_lossy().into_owned(),
-        output.to_string_lossy().into_owned(),
-        "256".into(),
-        "software".into(),
-    ])
-    .expect("thumbnail-image helper must succeed");
-    assert!(output.exists());
-
-    let preview_output = directory.path().join("preview.png");
-    run(&[
-        "preview-image".into(),
-        path.to_string_lossy().into_owned(),
-        preview_output.to_string_lossy().into_owned(),
-        "800".into(),
-        "software".into(),
-    ])
-    .expect("preview-image helper must succeed");
-    assert!(preview_output.exists());
-
+    let thumbnail = render_raw(&path, 256).expect("thumbnail from the EXIF thumbnail");
+    assert_eq!(png_size(&thumbnail), Some((256, 192)));
+    assert_eq!(read_exif_thumbnail(&path, 256), Some(thumbnail));
     let response = super::browser_render(&path, crate::sandbox::browser::wire::Operation::Image);
-    assert!(!response.png.is_empty());
+    assert_eq!(png_size(&response.png), Some((256, 192)));
     assert!(!response.metadata.is_empty());
+    let raw_thumbnail = render_camera_raw(&path, 256).expect("render_camera_raw with exif");
+    assert_eq!(png_size(&raw_thumbnail), Some((256, 192)));
 
+    let expected_preview = if imagemagick_installed() {
+        (800, 800)
+    } else {
+        (320, 240)
+    };
+    let preview = super::document_media::image(&path, 800).expect("preview of the oversized JPEG");
+    assert_eq!(png_size(&preview), Some(expected_preview));
     let preview_response = super::browser_render(
         &path,
         crate::sandbox::browser::wire::Operation::PreviewImage,
     );
-    assert!(!preview_response.png.is_empty());
+    assert_eq!(png_size(&preview_response.png), Some(expected_preview));
+
+    for (operation, size) in [("thumbnail-image", "256"), ("preview-image", "800")] {
+        let output = directory.path().join(format!("{operation}.png"));
+        run(&[
+            operation.into(),
+            path.to_string_lossy().into_owned(),
+            output.to_string_lossy().into_owned(),
+            size.into(),
+            "software".into(),
+        ])
+        .unwrap_or_else(|error| panic!("{operation} helper must succeed: {error}"));
+        assert!(output.exists());
+    }
 }
 
 #[test]
 fn oversized_embedded_jpeg_is_rejected_before_decoding() {
     let directory = tempfile::tempdir().expect("image fixture");
     let path = directory.path().join("oversized-embedded.jpg");
-    let jpeg = create_test_jpeg_with_exif_thumbnail(18354, 23598, 20000, 20000);
+    let jpeg = with_exif_thumbnail(&flat_gray_jpeg(12000, 12000), 20000, 20000);
     std::fs::write(&path, jpeg).expect("write oversized thumbnail fixture");
 
     assert!(read_exif_thumbnail(&path, 256).is_none());
-    assert!(render_raw(&path, 256).is_err());
-    let response = super::browser_render(&path, crate::sandbox::browser::wire::Operation::Image);
-    assert!(response.png.is_empty());
+}
+
+fn flat_gray_jpeg(width: u16, height: u16) -> Vec<u8> {
+    let single_code_table = |class: u8| {
+        let mut segment = vec![0xff, 0xc4, 0, 20, class, 1];
+        segment.extend_from_slice(&[0; 15]);
+        segment.push(0);
+        segment
+    };
+    let mut jpeg = vec![0xff, 0xd8, 0xff, 0xdb, 0, 67, 0];
+    jpeg.extend_from_slice(&[1; 64]);
+    jpeg.extend_from_slice(&[0xff, 0xc0, 0, 11, 8]);
+    jpeg.extend_from_slice(&height.to_be_bytes());
+    jpeg.extend_from_slice(&width.to_be_bytes());
+    jpeg.extend_from_slice(&[1, 1, 0x11, 0]);
+    jpeg.extend(single_code_table(0x00));
+    jpeg.extend(single_code_table(0x10));
+    jpeg.extend_from_slice(&[0xff, 0xda, 0, 8, 1, 1, 0, 0, 63, 0]);
+    let blocks = usize::from(width).div_ceil(8) * usize::from(height).div_ceil(8);
+    jpeg.resize(jpeg.len() + (blocks * 2).div_ceil(8), 0);
+    jpeg.extend_from_slice(&[0xff, 0xd9]);
+    jpeg
+}
+
+#[test]
+fn oversized_jpegs_render_through_a_reduced_decode() {
+    let directory = tempfile::tempdir().expect("image fixture");
+    let path = directory.path().join("panorama.jpg");
+    std::fs::write(&path, flat_gray_jpeg(12000, 12000)).expect("write panorama fixture");
+    assert!(exceeds_decoded_frame_budget(12000, 12000));
+
+    let preview = render_raw(&path, 256);
+    let thumbnail =
+        super::browser_render(&path, crate::sandbox::browser::wire::Operation::Image).png;
+    if imagemagick_installed() {
+        assert_eq!(preview.ok().as_deref().and_then(png_size), Some((256, 256)));
+        assert_eq!(png_size(&thumbnail), Some((256, 256)));
+    } else {
+        assert!(preview.is_err());
+        assert!(thumbnail.is_empty());
+    }
 }
 
 #[test]
@@ -384,7 +427,11 @@ fn normal_images_with_exif_thumbnail_do_not_use_exif_thumbnail() {
     let directory = tempfile::tempdir().expect("image fixture");
     let path = directory.path().join("normal-with-exif.jpg");
 
-    let jpeg = create_test_jpeg_with_exif_thumbnail(40, 40, 16, 12);
+    let main = gdk_pixbuf::Pixbuf::new(gdk_pixbuf::Colorspace::Rgb, false, 8, 40, 40)
+        .expect("allocate source")
+        .save_to_bufferv("jpeg", &[])
+        .expect("encode small jpeg");
+    let jpeg = with_exif_thumbnail(&main, 16, 12);
     std::fs::write(&path, &jpeg).expect("write normal fixture with exif");
 
     let info = gdk_pixbuf::Pixbuf::file_info(&path).expect("read file info");
@@ -545,32 +592,79 @@ fn concurrent_raw_fallbacks_do_not_share_staging_files() {
 }
 
 #[test]
-fn thumbnail_raw_uses_embedded_preview_fallbacks() {
+fn raw_thumbnails_and_previews_use_embedded_preview_fallbacks() {
     let directory = tempfile::tempdir().expect("tempdir");
     let input = directory.path().join("photo.ARW");
     let output = directory.path().join("result.png");
     std::fs::write(&input, b"not a camera file").expect("write stub");
 
-    let pixbuf = render_pixbuf(&input, 256).expect_err("stub must fail pixbuf");
-    let thumbnail = render_raw_thumbnail(&input, 256);
-    let helper = run(&[
-        "thumbnail-raw".into(),
-        input.to_string_lossy().into_owned(),
-        output.to_string_lossy().into_owned(),
-        "256".into(),
-        "software".into(),
-    ]);
+    for (operation, size) in [("thumbnail-raw", 256), ("preview-raw", 800)] {
+        let pixbuf = render_pixbuf(&input, size).expect_err("stub must fail pixbuf");
+        let rendered = render_camera_raw(&input, size);
+        let helper = run(&[
+            operation.into(),
+            input.to_string_lossy().into_owned(),
+            output.to_string_lossy().into_owned(),
+            size.to_string(),
+            "software".into(),
+        ]);
 
-    match thumbnail {
-        Ok(_) => helper.expect("thumbnail-raw should use embedded preview fallbacks"),
-        Err(thumbnail) => {
-            assert_ne!(pixbuf, thumbnail);
-            assert_eq!(
-                helper.expect_err("stub should fail RAW fallbacks"),
-                thumbnail
-            );
+        match rendered {
+            Ok(_) => helper
+                .unwrap_or_else(|error| panic!("{operation} should use RAW fallbacks: {error}")),
+            Err(rendered) => {
+                assert_ne!(pixbuf, rendered);
+                assert_eq!(
+                    helper.expect_err("stub should fail RAW fallbacks"),
+                    rendered,
+                    "{operation}"
+                );
+            }
         }
     }
+}
+
+#[test]
+fn raw_previews_prefer_imagemagick_over_a_thumbnail_sized_pixbuf_decode() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let input = directory.path().join("GOPR0001.GPR");
+    let source = gdk_pixbuf::Pixbuf::new(gdk_pixbuf::Colorspace::Rgb, false, 8, 40, 30)
+        .expect("allocate source");
+    source.fill(0x3366_99ff);
+    let tiff = source.save_to_bufferv("tiff", &[]).expect("encode tiff");
+    std::fs::write(&input, tiff).expect("write RAW stand-in");
+
+    let thumbnail = render_camera_raw(&input, 256).expect("RAW thumbnail");
+    assert_eq!(png_size(&thumbnail), Some((256, 192)));
+    let preview = render_camera_raw_preview(&input, 800).expect("RAW preview");
+    let expected = if imagemagick_installed() {
+        (40, 30)
+    } else {
+        (800, 600)
+    };
+    assert_eq!(png_size(&preview), Some(expected));
+}
+
+#[test]
+fn embedded_previews_follow_their_exif_orientation() {
+    let source = gdk_pixbuf::Pixbuf::new(gdk_pixbuf::Colorspace::Rgb, false, 8, 40, 20)
+        .expect("allocate source");
+    let base = source.save_to_bufferv("jpeg", &[]).expect("encode jpeg");
+    let tiff = [
+        b"MM\0\x2a\0\0\0\x08".as_slice(),
+        &[0, 1, 0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0],
+    ]
+    .concat();
+    let mut jpeg = vec![0xff, 0xd8, 0xff, 0xe1];
+    jpeg.extend_from_slice(&((2 + 6 + tiff.len()) as u16).to_be_bytes());
+    jpeg.extend_from_slice(b"Exif\0\0");
+    jpeg.extend_from_slice(&tiff);
+    jpeg.extend_from_slice(&base[2..]);
+
+    let png = super::scale_embedded_thumbnail(&jpeg, 800).expect("render embedded preview");
+    let rendered =
+        gdk_pixbuf::Pixbuf::from_read(std::io::Cursor::new(png)).expect("decode rendered png");
+    assert_eq!((rendered.width(), rendered.height()), (20, 40));
 }
 
 fn archive_list_output(

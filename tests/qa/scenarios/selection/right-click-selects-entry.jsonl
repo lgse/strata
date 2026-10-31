@@ -1,0 +1,14 @@
+{"scenario":"right-click-selects-entry","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"file","vars":{"target":"todo.txt","previous":"readme.md"}},{"id":"folder","vars":{"target":"documents","previous":"archive"}}],"cost":{"columns-file":0.6,"icons-file":0.6,"list-file":0.6,"columns-folder":0.6,"icons-folder":0.6,"list-folder":0.6},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":4,"score":33,"note":"Right-click selects the entry under the pointer and keeps focus after menu close; columns and icons modes and folder no-navigate are unique, list route overlaps secondary-click-retargets-menu"}}
+{"select":{"entry":"readme.md","dir":"$root"}}
+{"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
+{"click":{"entry":"$target","dir":"$root"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for '$target'"}
+{"wait":{"selected":["$target"],"dir":"$root"},"message":"the selection to become ['$target']"}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"focused":"$target"},"message":"keyboard focus to reach '$target'"}
+{"expect":{"panes":["$root"]},"message":"a folder context menu must not navigate"}
+{"key":"Left","modes":["icons"]}
+{"key":"Up","modes":["columns","list"]}
+{"wait":{"focused":"$previous"},"message":"keyboard focus to reach '$previous'"}
+{"wait":{"selected":["$previous"],"dir":"$root"},"message":"the selection to become ['$previous']"}

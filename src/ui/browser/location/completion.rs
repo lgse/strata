@@ -1,15 +1,27 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::{Cell, RefCell},
-    fs,
     path::{Path, PathBuf},
     rc::Rc,
 };
 
-use gtk::{gdk, glib, prelude::*};
+use gtk::{
+    gdk::{self, ModifierType as Modifiers},
+    glib,
+    prelude::*,
+};
 
-use crate::app::Browser;
+use crate::ui::keys::{
+    self, Keys,
+    bindings::{
+        COMPLETE, DOWN, ENTER, ENTER_ANY_SHIFT, ESCAPE_ANY_SHIFT, PAGE_DOWN_KEY, PAGE_UP_KEY, UP,
+    },
+};
+use crate::{
+    adapters::probes,
+    app::{Browser, Presence},
+};
 
 const MAX_COMPLETION_CANDIDATES: usize = 50;
 const MAX_SCANNED_ENTRIES: usize = 10_000;
@@ -22,6 +34,21 @@ pub(crate) struct CompletionCandidate {
     pub(crate) match_len: usize,
 }
 
+#[derive(Clone, Copy)]
+enum Command {
+    Step(i32),
+    Down,
+    Complete,
+    Activate,
+}
+
+struct Request {
+    generation: u64,
+    text: String,
+    deferred: Vec<Command>,
+    task: glib::JoinHandle<()>,
+}
+
 pub(crate) struct PathCompletion {
     popover: gtk::Popover,
     scroll: gtk::ScrolledWindow,
@@ -30,7 +57,11 @@ pub(crate) struct PathCompletion {
     selected_index: Rc<Cell<Option<usize>>>,
     pending_reveal: Cell<bool>,
     suppress_refresh: Cell<bool>,
+    window_presence: Cell<Presence>,
     is_active: Box<dyn Fn() -> bool>,
+    on_activate: Rc<dyn Fn()>,
+    generation: Cell<u64>,
+    request: RefCell<Option<Request>>,
 }
 
 impl Drop for PathCompletion {
@@ -112,7 +143,16 @@ impl PathCompletion {
         content_box.append(&scroll);
 
         let shortcuts = gtk::Label::new(None);
-        shortcuts.set_markup("<b>Tab</b> Complete   <b>↑↓</b> Choose   <b>↵</b> Open");
+        crate::ui::shortcut_reference::follow_keys(&shortcuts, |shortcuts| {
+            shortcuts.set_markup(&crate::ui::shortcut_reference::legend_markup(&[
+                (Keys::One(COMPLETE.shown()), "completion.complete"),
+                (
+                    Keys::Any(crate::ui::keys::shown![UP.alternate(0), DOWN.alternate(0)]),
+                    "Choose",
+                ),
+                (Keys::One(ENTER.shown()), "Open"),
+            ]));
+        });
         shortcuts.set_xalign(0.0);
         shortcuts.add_css_class("path-completion-shortcuts");
         content_box.append(&shortcuts);
@@ -148,12 +188,22 @@ impl PathCompletion {
             selected_index: selected_index.clone(),
             pending_reveal: Cell::new(false),
             suppress_refresh: Cell::new(false),
+            window_presence: Cell::new(Presence::Focused),
             is_active: Box::new(is_active),
+            on_activate,
+            generation: Cell::new(0),
+            request: RefCell::new(None),
+        });
+
+        let weak_completion = Rc::downgrade(&completion);
+        entry.connect_unmap(move |_| {
+            if let Some(completion) = weak_completion.upgrade() {
+                completion.dismiss();
+            }
         });
 
         let weak_completion = Rc::downgrade(&completion);
         let row_entry = entry.downgrade();
-        let row_activate = on_activate.clone();
         list.connect_row_activated(move |_, row| {
             let Some(completion) = weak_completion.upgrade() else {
                 return;
@@ -164,7 +214,7 @@ impl PathCompletion {
             let index = row.index() as usize;
             let candidate = completion.candidates.borrow().get(index).cloned();
             if let Some(candidate) = candidate {
-                completion.activate_candidate(&entry, &candidate, row_activate.as_ref());
+                completion.activate_candidate(&entry, &candidate);
             }
         });
 
@@ -173,86 +223,33 @@ impl PathCompletion {
         let weak_completion = Rc::downgrade(&completion);
         let key_entry = entry.downgrade();
         let key_browser = browser.clone();
-        let key_activate = on_activate;
-        keys.connect_key_pressed(move |_, key, _, modifiers| {
+        keys::on_press(&keys, move |_, press| {
+            const SHIFT: Modifiers = Modifiers::SHIFT_MASK;
             let Some(completion) = weak_completion.upgrade() else {
                 return glib::Propagation::Proceed;
             };
             let Some(entry) = key_entry.upgrade() else {
                 return glib::Propagation::Proceed;
             };
-            if modifiers.intersects(
-                gdk::ModifierType::CONTROL_MASK
-                    | gdk::ModifierType::ALT_MASK
-                    | gdk::ModifierType::SUPER_MASK,
-            ) {
+            let command = if press.is(COMPLETE.ignoring(SHIFT)) {
+                Command::Complete
+            } else if press.is(DOWN.ignoring(SHIFT)) {
+                Command::Down
+            } else if press.is(UP.ignoring(SHIFT)) {
+                Command::Step(-1)
+            } else if press.is(PAGE_DOWN_KEY.ignoring(SHIFT)) {
+                Command::Step(5)
+            } else if press.is(PAGE_UP_KEY.ignoring(SHIFT)) {
+                Command::Step(-5)
+            } else if press.is(ENTER_ANY_SHIFT) {
+                Command::Activate
+            } else if press.is(ESCAPE_ANY_SHIFT) && completion.popover.is_visible() {
+                completion.dismiss();
+                return glib::Propagation::Stop;
+            } else {
                 return glib::Propagation::Proceed;
-            }
-            match key {
-                gdk::Key::Tab | gdk::Key::ISO_Left_Tab => {
-                    completion.handle_tab(&entry, &key_browser);
-                    glib::Propagation::Stop
-                }
-                gdk::Key::Down => {
-                    if completion.popover.is_visible() {
-                        completion.move_selection(1);
-                        glib::Propagation::Stop
-                    } else {
-                        completion.refresh(&entry, &key_browser);
-                        glib::Propagation::Stop
-                    }
-                }
-                gdk::Key::Up => {
-                    if completion.popover.is_visible() {
-                        completion.move_selection(-1);
-                        glib::Propagation::Stop
-                    } else {
-                        glib::Propagation::Proceed
-                    }
-                }
-                gdk::Key::Page_Down => {
-                    if completion.popover.is_visible() {
-                        completion.move_selection(5);
-                        glib::Propagation::Stop
-                    } else {
-                        glib::Propagation::Proceed
-                    }
-                }
-                gdk::Key::Page_Up => {
-                    if completion.popover.is_visible() {
-                        completion.move_selection(-5);
-                        glib::Propagation::Stop
-                    } else {
-                        glib::Propagation::Proceed
-                    }
-                }
-                gdk::Key::Escape => {
-                    if completion.popover.is_visible() {
-                        completion.dismiss();
-                        glib::Propagation::Stop
-                    } else {
-                        glib::Propagation::Proceed
-                    }
-                }
-                gdk::Key::Return | gdk::Key::KP_Enter => {
-                    if completion.popover.is_visible() {
-                        if let Some(index) = completion.selected_index.get() {
-                            let candidate = completion.candidates.borrow().get(index).cloned();
-                            if let Some(candidate) = candidate {
-                                completion.activate_candidate(
-                                    &entry,
-                                    &candidate,
-                                    key_activate.as_ref(),
-                                );
-                                return glib::Propagation::Stop;
-                            }
-                        }
-                        completion.dismiss();
-                    }
-                    glib::Propagation::Proceed
-                }
-                _ => glib::Propagation::Proceed,
-            }
+            };
+            completion.press(&entry, &key_browser, command, true)
         });
         entry.add_controller(keys);
 
@@ -269,11 +266,13 @@ impl PathCompletion {
         completion
     }
 
-    pub(crate) fn refresh(self: &Rc<Self>, entry: &gtk::Entry, browser: &Browser) {
-        if !(self.is_active)() || entry.root().is_none() {
-            self.candidates.borrow_mut().clear();
-            self.selected_index.set(None);
-            self.dismiss();
+    pub(crate) fn refresh(self: &Rc<Self>, entry: &gtk::Entry, browser: &Rc<Browser>) {
+        if self.window_presence.get() != Presence::Focused
+            || !(self.is_active)()
+            || entry.root().is_none()
+        {
+            self.cancel_request();
+            self.show(entry, Vec::new());
             return;
         }
 
@@ -282,23 +281,158 @@ impl PathCompletion {
             .active_location()
             .and_then(|location| location.native_path().map(Path::to_path_buf));
         let show_hidden = browser.preferences().show_hidden;
-        let candidates = suggest_completions(
+        match plan_completions(
             &text,
             current_dir.as_deref(),
             &glib::home_dir(),
             show_hidden,
-        );
+        ) {
+            Plan::Ready(candidates) => {
+                self.cancel_request();
+                self.show(entry, candidates);
+            }
+            Plan::List(listing) => self.request(entry, browser, text, listing),
+        }
+    }
 
+    fn request(
+        self: &Rc<Self>,
+        entry: &gtk::Entry,
+        browser: &Rc<Browser>,
+        text: String,
+        listing: Listing,
+    ) {
+        let generation = self.generation.get().wrapping_add(1);
+        self.generation.set(generation);
+        self.selected_index.set(None);
+        let weak_completion = Rc::downgrade(self);
+        let weak_entry = entry.downgrade();
+        let weak_browser = Rc::downgrade(browser);
+        let task = glib::MainContext::default().spawn_local(async move {
+            let candidates = listing.candidates().await;
+            if let (Some(completion), Some(entry), Some(browser)) = (
+                weak_completion.upgrade(),
+                weak_entry.upgrade(),
+                weak_browser.upgrade(),
+            ) {
+                completion.arrive(&entry, &browser, generation, candidates);
+            }
+        });
+        let previous = self.request.replace(Some(Request {
+            generation,
+            text,
+            deferred: Vec::new(),
+            task,
+        }));
+        if let Some(previous) = previous {
+            previous.task.abort();
+        }
+    }
+
+    fn arrive(
+        self: &Rc<Self>,
+        entry: &gtk::Entry,
+        browser: &Rc<Browser>,
+        generation: u64,
+        candidates: Vec<CompletionCandidate>,
+    ) {
+        let current = self
+            .request
+            .borrow_mut()
+            .take_if(|request| request.generation == generation);
+        let Some(request) = current else {
+            return;
+        };
+        if entry.text() != request.text.as_str() {
+            return;
+        }
+        self.show(entry, candidates);
+        let mut commands = request.deferred.into_iter();
+        while let Some(command) = commands.next() {
+            let relist = entry.text() != request.text.as_str();
+            let proceeds =
+                self.press(entry, browser, command, relist) == glib::Propagation::Proceed;
+            if proceeds && matches!(command, Command::Activate) {
+                (self.on_activate)();
+            }
+            if let Some(next) = self.request.borrow_mut().as_mut() {
+                next.deferred.extend(commands);
+                break;
+            }
+        }
+    }
+
+    fn press(
+        self: &Rc<Self>,
+        entry: &gtk::Entry,
+        browser: &Rc<Browser>,
+        command: Command,
+        relist: bool,
+    ) -> glib::Propagation {
+        if self.defer(command) {
+            return glib::Propagation::Stop;
+        }
+        let visible = self.popover.is_visible();
+        match command {
+            Command::Complete => self.handle_tab(entry, browser, relist),
+            Command::Down if visible => self.move_selection(1),
+            Command::Down => {
+                if relist && self.request.borrow().is_none() {
+                    self.refresh(entry, browser);
+                }
+            }
+            Command::Step(delta) if visible => self.move_selection(delta),
+            Command::Step(_) => return glib::Propagation::Proceed,
+            Command::Activate => match self.selected_candidate().filter(|_| visible) {
+                Some(candidate) => self.activate_candidate(entry, &candidate),
+                None => {
+                    self.dismiss();
+                    return glib::Propagation::Proceed;
+                }
+            },
+        }
+        glib::Propagation::Stop
+    }
+
+    fn cancel_request(&self) {
+        if let Some(request) = self.request.take() {
+            request.task.abort();
+        }
+    }
+
+    fn defer(&self, command: Command) -> bool {
+        let visible = self.popover.is_visible();
+        let mut request = self.request.borrow_mut();
+        let Some(request) = request.as_mut() else {
+            return false;
+        };
+        let waits = !request.deferred.is_empty()
+            || match command {
+                Command::Complete => true,
+                Command::Down | Command::Step(_) => visible,
+                Command::Activate => false,
+            };
+        if waits {
+            request.deferred.push(command);
+        }
+        waits
+    }
+
+    fn selected_candidate(&self) -> Option<CompletionCandidate> {
+        let index = self.selected_index.get()?;
+        self.candidates.borrow().get(index).cloned()
+    }
+
+    fn show(self: &Rc<Self>, entry: &gtk::Entry, candidates: Vec<CompletionCandidate>) {
+        self.selected_index.set(None);
         if candidates.is_empty() {
             self.candidates.borrow_mut().clear();
-            self.selected_index.set(None);
-            self.dismiss();
+            self.hide();
             return;
         }
 
-        self.candidates.replace(candidates.clone());
-        self.selected_index.set(None);
         self.render_candidates(&candidates);
+        self.candidates.replace(candidates);
         let already_pending = self.pending_reveal.replace(true);
         self.present_for_entry(entry);
         if self.pending_reveal.get() && !already_pending {
@@ -324,11 +458,15 @@ impl PathCompletion {
     }
 
     fn present_for_entry(&self, entry: &gtk::Entry) {
-        if !(self.is_active)() || self.candidates.borrow().is_empty() {
+        if self.window_presence.get() != Presence::Focused || !(self.is_active)() {
             self.dismiss();
             return;
         }
-        if entry.width() <= 0 {
+        if self.candidates.borrow().is_empty() {
+            self.hide();
+            return;
+        }
+        if !entry.is_mapped() || entry.width() <= 0 {
             return;
         }
         // Include the entry's CSS padding and border, not just its text area.
@@ -353,23 +491,30 @@ impl PathCompletion {
         }
     }
 
+    pub(crate) fn set_window_presence(&self, presence: Presence) {
+        self.window_presence.set(presence);
+        if presence != Presence::Focused {
+            self.dismiss();
+        }
+    }
+
     pub(crate) fn dismiss(&self) {
+        self.cancel_request();
+        self.hide();
+    }
+
+    fn hide(&self) {
         self.pending_reveal.set(false);
         self.popover.popdown();
     }
 
-    fn activate_candidate(
-        &self,
-        entry: &gtk::Entry,
-        candidate: &CompletionCandidate,
-        on_activate: &dyn Fn(),
-    ) {
+    fn activate_candidate(&self, entry: &gtk::Entry, candidate: &CompletionCandidate) {
         self.dismiss();
         self.suppress_refresh.set(true);
         entry.set_text(&candidate.replacement);
         entry.set_position(-1);
         self.suppress_refresh.set(false);
-        on_activate();
+        (self.on_activate)();
     }
 
     fn render_candidates(&self, candidates: &[CompletionCandidate]) {
@@ -464,18 +609,23 @@ impl PathCompletion {
         self.dismiss();
     }
 
-    fn handle_tab(self: &Rc<Self>, entry: &gtk::Entry, browser: &Browser) {
-        if !self.popover.is_visible() {
+    fn handle_tab(self: &Rc<Self>, entry: &gtk::Entry, browser: &Rc<Browser>, relist: bool) {
+        if relist && !self.popover.is_visible() {
             self.refresh(entry, browser);
+            if self.defer(Command::Complete) {
+                return;
+            }
         }
+        self.complete(entry);
+    }
+
+    fn complete(&self, entry: &gtk::Entry) {
         let candidates = self.candidates.borrow().clone();
         if candidates.is_empty() {
             return;
         }
 
-        if let Some(index) = self.selected_index.get()
-            && let Some(candidate) = candidates.get(index)
-        {
+        if let Some(candidate) = self.selected_candidate() {
             self.complete_text(entry, &candidate.replacement);
             return;
         }
@@ -499,28 +649,111 @@ impl PathCompletion {
     }
 }
 
-pub(crate) fn suggest_completions(
+enum Plan {
+    Ready(Vec<CompletionCandidate>),
+    List(Listing),
+}
+
+struct Folder {
+    path: PathBuf,
+    prepend: String,
+    parent_hint: String,
+}
+
+impl Folder {
+    fn new(path: PathBuf, prepend: String, home: &Path) -> Self {
+        let parent_hint = compact_hint(&path, home);
+        Self {
+            path,
+            prepend,
+            parent_hint,
+        }
+    }
+
+    async fn candidates(
+        &self,
+        leaf_prefix: &str,
+        include_hidden: bool,
+        match_len: usize,
+    ) -> Vec<CompletionCandidate> {
+        let names =
+            probes::child_folders(&self.path, leaf_prefix, include_hidden, MAX_SCANNED_ENTRIES)
+                .await;
+        let mut dirs: Vec<_> = names
+            .into_iter()
+            .map(|name| CompletionCandidate {
+                display_name: format!("{name}/"),
+                replacement: format!("{}{name}/", self.prepend),
+                parent_hint: self.parent_hint.clone(),
+                match_len,
+            })
+            .collect();
+        dirs.sort_by_cached_key(|candidate| candidate.display_name.to_lowercase());
+        dirs.truncate(MAX_COMPLETION_CANDIDATES);
+        dirs
+    }
+}
+
+struct Listing {
+    folder: Folder,
+    leaf_prefix: String,
+    show_hidden: bool,
+    inside: Option<Folder>,
+}
+
+impl Listing {
+    async fn candidates(self) -> Vec<CompletionCandidate> {
+        let include_hidden = self.leaf_prefix.starts_with('.') || self.show_hidden;
+        let match_len = self.leaf_prefix.chars().count();
+        let candidates = self
+            .folder
+            .candidates(&self.leaf_prefix, include_hidden, match_len)
+            .await;
+        if candidates.len() <= 1
+            && let Some(inside) = &self.inside
+        {
+            let children = inside.candidates("", self.show_hidden, 0).await;
+            if !children.is_empty() {
+                return children;
+            }
+        }
+        candidates
+    }
+}
+
+fn plan_completions(
     input: &str,
     current_dir: Option<&Path>,
     home: &Path,
-    show_hidden_pref: bool,
-) -> Vec<CompletionCandidate> {
+    show_hidden: bool,
+) -> Plan {
     let input = input.trim();
+    let list = |folder: Folder, leaf_prefix: &str, inside: Option<Folder>| {
+        Plan::List(Listing {
+            folder,
+            leaf_prefix: leaf_prefix.to_owned(),
+            show_hidden,
+            inside: inside.filter(|_| !input.ends_with('/')),
+        })
+    };
     if input.is_empty() {
-        if let Some(current) = current_dir {
-            let hint = compact_hint(current, home);
-            return list_directory_candidates(current, "", "", &hint, 0, show_hidden_pref);
-        }
-        return Vec::new();
+        return match current_dir {
+            Some(current) => list(
+                Folder::new(current.to_path_buf(), String::new(), home),
+                "",
+                None,
+            ),
+            None => Plan::Ready(Vec::new()),
+        };
     }
 
     if input == "~" {
-        return vec![CompletionCandidate {
+        return Plan::Ready(vec![CompletionCandidate {
             display_name: "~/".to_owned(),
             replacement: "~/".to_owned(),
             parent_hint: "home".to_owned(),
             match_len: 1,
-        }];
+        }]);
     }
 
     if let Some(relative) = input.strip_prefix("~/") {
@@ -539,37 +772,19 @@ pub(crate) fn suggest_completions(
         } else {
             (home.to_path_buf(), relative, "~/".to_owned())
         };
-        let hint = compact_hint(&base_dir, home);
-        let candidates = list_directory_candidates(
-            &base_dir,
-            leaf_prefix,
-            &prepend,
-            &hint,
-            leaf_prefix.chars().count(),
-            show_hidden_pref,
-        );
         let rel_trimmed = relative.trim_start_matches('/');
-        let full_path = home.join(rel_trimmed);
-        if candidates.len() <= 1 && full_path.is_dir() && !rel_trimmed.is_empty() {
-            let child_hint = compact_hint(&full_path, home);
-            let child_prepend = format!("~/{}/", rel_trimmed.trim_end_matches('/'));
-            let children = list_directory_candidates(
-                &full_path,
-                "",
-                &child_prepend,
-                &child_hint,
-                0,
-                show_hidden_pref,
-            );
-            if !children.is_empty() {
-                return children;
-            }
-        }
-        return candidates;
+        let inside = (!rel_trimmed.is_empty()).then(|| {
+            Folder::new(
+                home.join(rel_trimmed),
+                format!("~/{}/", rel_trimmed.trim_end_matches('/')),
+                home,
+            )
+        });
+        return list(Folder::new(base_dir, prepend, home), leaf_prefix, inside);
     }
 
     if input.starts_with('~') {
-        return Vec::new();
+        return Plan::Ready(Vec::new());
     }
 
     if let Some(stripped) = input.strip_prefix('/') {
@@ -592,123 +807,33 @@ pub(crate) fn suggest_completions(
         } else {
             (PathBuf::from("/"), stripped, "/".to_owned())
         };
-        let hint = compact_hint(&base_dir, home);
-        let candidates = list_directory_candidates(
-            &base_dir,
-            leaf_prefix,
-            &prepend,
-            &hint,
-            leaf_prefix.chars().count(),
-            show_hidden_pref,
-        );
-        let input_path = PathBuf::from(input);
-        if candidates.len() <= 1 && input_path.is_dir() && input != "/" {
-            let child_hint = compact_hint(&input_path, home);
-            let child_prepend = format!("{}/", input.trim_end_matches('/'));
-            let children = list_directory_candidates(
-                &input_path,
-                "",
-                &child_prepend,
-                &child_hint,
-                0,
-                show_hidden_pref,
-            );
-            if !children.is_empty() {
-                return children;
-            }
-        }
-        return candidates;
-    }
-
-    if let Some(current) = current_dir {
-        let (base_dir, leaf_prefix) = if input.ends_with('/') {
-            (current.join(input), "")
-        } else if let Some((parent_part, leaf)) = input.rsplit_once('/') {
-            (current.join(parent_part), leaf)
-        } else {
-            (current.to_path_buf(), input)
-        };
-        let prepend = directory_prefix(&base_dir);
-        let hint = compact_hint(&base_dir, home);
-        let candidates = list_directory_candidates(
-            &base_dir,
-            leaf_prefix,
-            &prepend,
-            &hint,
-            leaf_prefix.chars().count(),
-            show_hidden_pref,
-        );
-        let input_path = current.join(input);
-        if candidates.len() <= 1 && input_path.is_dir() && !input.ends_with('/') {
-            let child_hint = compact_hint(&input_path, home);
-            let child_prepend = directory_prefix(&input_path);
-            let children = list_directory_candidates(
-                &input_path,
-                "",
-                &child_prepend,
-                &child_hint,
-                0,
-                show_hidden_pref,
-            );
-            if !children.is_empty() {
-                return children;
-            }
-        }
-        return candidates;
-    }
-
-    Vec::new()
-}
-
-fn list_directory_candidates(
-    base_dir: &Path,
-    leaf_prefix: &str,
-    prepend: &str,
-    parent_hint: &str,
-    match_len: usize,
-    show_hidden_pref: bool,
-) -> Vec<CompletionCandidate> {
-    let Ok(entries) = fs::read_dir(base_dir) else {
-        return Vec::new();
-    };
-
-    let leaf_lower = leaf_prefix.to_lowercase();
-    let include_hidden = leaf_prefix.starts_with('.') || show_hidden_pref;
-
-    let mut dirs = Vec::new();
-
-    for entry in entries.flatten().take(MAX_SCANNED_ENTRIES) {
-        let name = entry.file_name().to_string_lossy().into_owned();
-        let is_hidden = name.starts_with('.');
-        if !include_hidden && is_hidden {
-            continue;
-        }
-        if !name.to_lowercase().starts_with(&leaf_lower) {
-            continue;
-        }
-
-        let is_dir = entry
-            .file_type()
-            .is_ok_and(|ft| ft.is_dir() || (ft.is_symlink() && entry.path().is_dir()));
-
-        if !is_dir {
-            continue;
-        }
-        dirs.push(CompletionCandidate {
-            display_name: format!("{name}/"),
-            replacement: format!("{prepend}{name}/"),
-            parent_hint: parent_hint.to_owned(),
-            match_len,
+        let inside = (input != "/").then(|| {
+            Folder::new(
+                PathBuf::from(input),
+                format!("{}/", input.trim_end_matches('/')),
+                home,
+            )
         });
+        return list(Folder::new(base_dir, prepend, home), leaf_prefix, inside);
     }
 
-    dirs.sort_by(|a, b| {
-        a.display_name
-            .to_lowercase()
-            .cmp(&b.display_name.to_lowercase())
-    });
-    dirs.truncate(MAX_COMPLETION_CANDIDATES);
-    dirs
+    let Some(current) = current_dir else {
+        return Plan::Ready(Vec::new());
+    };
+    let (base_dir, leaf_prefix) = if input.ends_with('/') {
+        (current.join(input), "")
+    } else if let Some((parent_part, leaf)) = input.rsplit_once('/') {
+        (current.join(parent_part), leaf)
+    } else {
+        (current.to_path_buf(), input)
+    };
+    let input_path = current.join(input);
+    let inside = Folder::new(input_path.clone(), directory_prefix(&input_path), home);
+    list(
+        Folder::new(base_dir.clone(), directory_prefix(&base_dir), home),
+        leaf_prefix,
+        Some(inside),
+    )
 }
 
 pub(crate) fn longest_common_prefix(strings: &[String]) -> Option<String> {

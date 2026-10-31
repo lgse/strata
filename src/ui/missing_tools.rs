@@ -2,13 +2,13 @@
 
 use std::{cell::Cell, rc::Rc};
 
-use gtk::{glib, prelude::*};
+use gtk::prelude::*;
 
 use crate::{assets, services::package_manager::PackageManager};
 
 use super::{
     controls::{ModalTone, copyable_command, message_dialog_description, message_dialog_layout},
-    modal::{ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus},
+    modal::{ModalHost, close_on_escape, dismiss_modal_layer, modal_layer, remember_modal_focus},
 };
 
 pub(super) struct MissingTool<'a> {
@@ -33,36 +33,35 @@ pub(super) fn show_missing_tools(
     parent: &impl IsA<gtk::Widget>,
     explanation: &str,
     tools: &[MissingTool<'_>],
+    manager: Option<PackageManager>,
 ) {
     let Some(host) = ModalHost::blurred_for(parent) else {
         return;
     };
     let layout = message_dialog_layout(
         assets::icons::TRIANGLE_ALERT,
-        "Missing tools",
-        "Install the required tools to continue",
-        "Close",
+        &crate::i18n::tr("Missing tools"),
+        &crate::i18n::tr("Install the required tools to continue"),
+        &crate::i18n::tr("Close"),
         ModalTone::Accent,
     );
     layout.cancel.set_visible(false);
     layout.body.append(&message_dialog_description(explanation));
-    let names = tools
-        .iter()
-        .map(|tool| tool.name)
-        .collect::<Vec<_>>()
-        .join(", ");
-    let missing = message_dialog_description(&format!("Missing: {names}"));
+    let names = crate::i18n::list(tools.iter().map(|tool| tool.name.to_owned()));
+    let missing = message_dialog_description(&rust_i18n::t!("Missing: %{names}", names = names));
     missing.set_selectable(true);
     layout.body.append(&missing);
-    if let Some(command) = install_command(PackageManager::detect(), tools) {
-        layout.body.append(&message_dialog_description(
-            "Run this command in a terminal, then try the action again:",
-        ));
+    if let Some(command) = install_command(manager, tools) {
+        layout
+            .body
+            .append(&message_dialog_description(&crate::i18n::tr(
+                "Run this command in a terminal, then try the action again:",
+            )));
         layout.body.append(&copyable_command(&command));
     } else {
-        layout.body.append(&message_dialog_description(
+        layout.body.append(&message_dialog_description(&crate::i18n::tr(
             "Install the packages providing these tools using your system's package manager, then try the action again.",
-        ));
+        )));
     }
 
     let layer = modal_layer(
@@ -84,16 +83,7 @@ pub(super) fn show_missing_tools(
     layout.confirm.connect_clicked(move |_| clicked());
     let clicked = close.clone();
     layout.close.connect_clicked(move |_| clicked());
-    let escape = gtk::EventControllerKey::new();
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
-            close();
-            glib::Propagation::Stop
-        } else {
-            glib::Propagation::Proceed
-        }
-    });
-    layer.add_controller(escape);
+    close_on_escape(&layer, move || close());
     layout.confirm.grab_focus();
 }
 

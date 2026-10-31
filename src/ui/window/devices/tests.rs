@@ -68,8 +68,6 @@ fn removable_mount_policy_excludes_unsafe_roots_and_fixed_storage() {
         shadowed: false,
         native_root: true,
         removable: true,
-        writable: true,
-        existing_directory: true,
     };
     assert!(removable_mount_is_eligible(eligible));
 
@@ -92,20 +90,6 @@ fn removable_mount_policy_excludes_unsafe_roots_and_fixed_storage() {
             "fixed storage",
             RemovableMountFacts {
                 removable: false,
-                ..eligible
-            },
-        ),
-        (
-            "read-only root",
-            RemovableMountFacts {
-                writable: false,
-                ..eligible
-            },
-        ),
-        (
-            "missing root",
-            RemovableMountFacts {
-                existing_directory: false,
                 ..eligible
             },
         ),
@@ -214,17 +198,20 @@ fn duplicate_send_to_identities_are_omitted_and_names_sort_deterministically() {
 }
 
 #[test]
-fn padlock_emblem_decides_lock_state() {
-    assert!(encrypted_device_is_locked(&["changes-prevent"], true));
-    assert!(!encrypted_device_is_locked(&["changes-allow"], false));
-    assert!(encrypted_device_is_locked(
-        &["drive-harddisk-encrypted"],
-        false
-    ));
-    assert!(!encrypted_device_is_locked(
-        &["drive-harddisk-encrypted"],
-        true
-    ));
+fn padlock_emblem_decides_lock_state_before_mount_and_mapping() {
+    for (icon, has_mount, cleartext_open, locked) in [
+        ("changes-prevent", true, true, true),
+        ("changes-allow", false, false, false),
+        ("drive-harddisk-encrypted", false, false, true),
+        ("drive-harddisk-encrypted", true, false, false),
+        ("drive-harddisk-encrypted", false, true, false),
+    ] {
+        assert_eq!(
+            encrypted_device_is_locked(&[icon], has_mount, cleartext_open),
+            locked,
+            "{icon} mounted={has_mount} open={cleartext_open}"
+        );
+    }
 }
 
 #[test]
@@ -385,9 +372,63 @@ fn a_non_system_drive_containing_home_is_still_included() {
 }
 
 #[test]
-fn mount_table_fallback_keeps_storage_but_not_system_mounts() {
-    let devices = mounted_devices_from_table(
+fn strata_label_identity_survives_mount_changes_without_using_recycled_device_paths() {
+    assert_eq!(
+        label_identity(Some("fixture-uuid"), Some("file:///media/old")),
+        label_identity(Some("fixture-uuid"), Some("file:///media/new"))
+    );
+    assert_ne!(
+        label_identity(Some("fixture-uuid"), None),
+        label_identity(Some("other-uuid"), None)
+    );
+    assert_eq!(
+        label_identity(None, Some("smb://server/share")),
+        Some("root:smb://server/share".to_owned())
+    );
+    assert_eq!(label_identity(Some(""), None), None);
+}
+
+#[test]
+fn properties_resolve_the_innermost_block_mount_including_btrfs_and_escaped_paths() {
+    let table = &MountTable::parse(
         br"25 1 8:1 / / rw - ext4 /dev/sda1 rw
+26 25 0:40 /@home /home rw - btrfs /dev/nvme0n1p2 rw
+27 26 8:2 / /home/USB\040Backup rw - exfat /dev/sdb1 rw
+28 27 0:2 / /home/USB\040Backup/cache rw - tmpfs tmpfs rw
+",
+    );
+    for (device, root) in [
+        ("/dev/sda1", Some("/")),
+        ("/dev/nvme0n1p2", Some("/home")),
+        ("/dev/sdb1", Some("/home/USB Backup")),
+        ("/dev/strata-unmounted-fixture", None),
+    ] {
+        assert_eq!(
+            mounted_path_from_table(table, Path::new(device)),
+            root.map(PathBuf::from)
+        );
+    }
+    for (path, device) in [
+        ("/", Some("/dev/sda1")),
+        ("/home/Documents", Some("/dev/nvme0n1p2")),
+        ("/home/USB Backup/file.txt", Some("/dev/sdb1")),
+        ("/home/USB Backup/cache", None),
+        ("/home/USB Backup-other", Some("/dev/nvme0n1p2")),
+    ] {
+        assert_eq!(
+            block_device_from_mount_table(table, Path::new(path)),
+            device.map(PathBuf::from)
+        );
+    }
+}
+
+#[test]
+fn mount_table_fallback_keeps_storage_but_not_system_mounts() {
+    crate::test_support::gtk_test(
+        "ui::window::devices::tests::mount_table_fallback_keeps_storage_but_not_system_mounts",
+        || {
+            crate::adapters::mount_watch::publish_for_isolated_test(Some(MountTable::parse(
+                br"25 1 8:1 / / rw - ext4 /dev/sda1 rw
 26 1 8:2 / /boot rw - vfat /dev/sda2 rw
 27 1 0:1 / /proc rw - proc proc rw
 28 1 8:3 / /run/media/me/USB\040Backup rw shared:1 - exfat /dev/sdb1 rw
@@ -396,26 +437,142 @@ fn mount_table_fallback_keeps_storage_but_not_system_mounts() {
 malformed
 31 1 8:5 / /mnt/missing-source rw - ext4
 ",
-    );
-    assert_eq!(
-        devices,
-        vec![
-            PathBuf::from("/run/media/me/USB Backup"),
-            PathBuf::from("/mnt/Archive")
-        ]
+            )));
+            let roots = global_search_roots();
+            for (root, searched) in [
+                ("/", false),
+                ("/run/media/me/USB Backup", true),
+                ("/mnt/Archive", true),
+                ("/boot", false),
+                ("/proc", false),
+                ("/run/user/1000/gvfs", false),
+                ("/mnt/missing-source", false),
+            ] {
+                assert_eq!(roots.contains(&PathBuf::from(root)), searched, "{root}");
+            }
+        },
     );
 }
 
 #[test]
-fn mount_paths_decode_kernel_escapes_without_losing_native_bytes() {
-    assert_eq!(
-        mount_path(br"/mnt/a\040b\011c\012d\134e"),
-        Some(PathBuf::from("/mnt/a b\tc\nd\\e"))
+fn crypto_hints_are_read_off_the_ui_thread_and_rebuild_the_sidebar_when_they_arrive() {
+    crate::test_support::gtk_test(
+        "ui::window::devices::tests::crypto_hints_are_read_off_the_ui_thread_and_rebuild_the_sidebar_when_they_arrive",
+        || {
+            static PROBED_ON_UI_THREAD: std::sync::Mutex<Vec<bool>> =
+                std::sync::Mutex::new(Vec::new());
+            fn probe(_: &str) -> BlockCryptoHint {
+                PROBED_ON_UI_THREAD
+                    .lock()
+                    .expect("probes")
+                    .push(crate::util::ui_thread::is_current());
+                BlockCryptoHint {
+                    id_fs_usage: Some("crypto".to_owned()),
+                    ..BlockCryptoHint::default()
+                }
+            }
+            let rebuilt = Rc::new(Cell::new(0));
+            let counted = rebuilt.clone();
+            let _sidebar = super::super::device_release::watch_sidebars(move || {
+                counted.set(counted.get() + 1);
+            });
+            assert_eq!(
+                block_crypto_hint_with("/dev/fixture-crypt", probe),
+                BlockCryptoHint::default()
+            );
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while rebuilt.get() == 0 {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "the hint never arrived"
+                );
+                gtk::glib::MainContext::default().iteration(false);
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            assert_eq!(
+                block_crypto_hint_with("/dev/fixture-crypt", probe)
+                    .id_fs_usage
+                    .as_deref(),
+                Some("crypto")
+            );
+            assert_eq!(rebuilt.get(), 1);
+            assert_eq!(*PROBED_ON_UI_THREAD.lock().expect("probes"), [false]);
+        },
     );
-    assert_eq!(
-        mount_path(b"/mnt/\xff"),
-        Some(std::ffi::OsString::from_vec(b"/mnt/\xff".to_vec()).into())
+}
+
+#[test]
+fn a_device_check_refused_while_its_mount_stalls_never_hides_the_device() {
+    crate::test_support::gtk_test(
+        "ui::window::devices::tests::a_device_check_refused_while_its_mount_stalls_never_hides_the_device",
+        || {
+            let device = tempfile::tempdir().expect("device fixture");
+            let root = |name: &str| {
+                let root = device.path().join(name);
+                std::fs::create_dir_all(&root).expect("device root");
+                root
+            };
+            let (slow, steady, late) = (root("slow"), root("steady"), root("late"));
+            let parked = crate::test_support::parked::Parked::default();
+            let _device = crate::adapters::FsQuirks::install(
+                device.path(),
+                crate::adapters::Quirks {
+                    before: vec![(crate::adapters::FsOp::Access, "slow", 0, parked.racer())],
+                    ..crate::adapters::Quirks::default()
+                },
+            );
+            let offer = |roots: &[&PathBuf]| {
+                crate::ui::offer_removable_destinations_for_test(
+                    roots
+                        .iter()
+                        .map(|root| {
+                            let name = root.file_name().expect("name").to_string_lossy();
+                            RemovableDestination {
+                                id: format!("volume:{name}"),
+                                name: name.into_owned(),
+                                root: (*root).clone(),
+                            }
+                        })
+                        .collect(),
+                );
+            };
+            let shown = || {
+                removable_destinations()
+                    .into_iter()
+                    .map(|destination| destination.name)
+                    .collect::<Vec<_>>()
+            };
+            let settle = |what: &str, until: &dyn Fn() -> bool| {
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+                while !until() {
+                    assert!(std::time::Instant::now() < deadline, "{what}");
+                    gtk::glib::MainContext::default().iteration(false);
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+            };
+
+            offer(&[&steady, &late]);
+            settle("both devices checked", &|| shown() == ["late", "steady"]);
+            offer(&[&slow, &steady]);
+            settle("the slow check parked", &|| parked.reached());
+            let parked_at = std::time::Instant::now();
+            settle("the mount stalls", &|| {
+                parked_at.elapsed()
+                    > crate::adapters::mount_lanes::STALLED_AFTER
+                        + std::time::Duration::from_millis(300)
+            });
+            offer(&[&slow, &steady, &late]);
+            let offered_at = std::time::Instant::now();
+            settle("the refused checks land", &|| {
+                offered_at.elapsed() > std::time::Duration::from_millis(200)
+            });
+            assert_eq!(shown(), ["steady"]);
+
+            parked.release();
+            settle(
+                "the parked check's answer and a re-check after a refusal show every device",
+                &|| shown() == ["late", "slow", "steady"],
+            );
+        },
     );
-    assert_eq!(mount_path(br"/mnt/bad\04"), None);
-    assert_eq!(mount_path(br"/mnt/bad\999"), None);
 }

@@ -29,6 +29,8 @@ const MAX_CACHED_DIMENSION: u32 = 512;
 const MAX_CACHED_PIXELS: u64 = 512 * 512;
 /// Only guards the normalization decode against absurd inputs.
 const MAX_RENDER_BYTES: usize = 32 * 1024 * 1024;
+const RAW_RENDER_KEYWORD: &str = "X-Strata-Raw-Render";
+const RAW_RENDER_REVISION: &str = "1";
 
 pub fn lookup(path: &Path, mtime: i64) -> Option<Vec<u8>> {
     let (uri, name) = cache_key(path)?;
@@ -40,8 +42,13 @@ pub fn lookup(path: &Path, mtime: i64) -> Option<Vec<u8>> {
     if u64::from(width) * u64::from(height) > MAX_CACHED_PIXELS {
         return None;
     }
-    let (stored_uri, stored_mtime) = read_thumb_tags(&bytes)?;
-    if stored_uri != uri || stored_mtime != mtime.to_string() {
+    let tags = read_thumb_tags(&bytes)?;
+    if tags.uri != uri || tags.mtime != mtime.to_string() {
+        return None;
+    }
+    if crate::sandbox::raw_metadata::is_raw(path)
+        && tags.raw_render.as_deref() != Some(RAW_RENDER_REVISION)
+    {
         return None;
     }
     Some(bytes)
@@ -61,7 +68,8 @@ pub fn store(path: &Path, mtime: i64, png: &[u8]) {
     if ensure_cache_dir(&dir).is_err() {
         return;
     }
-    let Ok(tagged) = normalize_to_canonical(png, &uri, mtime) else {
+    let raw = crate::sandbox::raw_metadata::is_raw(path);
+    let Ok(tagged) = normalize_to_canonical(png, &uri, mtime, raw) else {
         return;
     };
     let _ignored = crate::storage::atomic_write(&dir.join(name), &tagged);
@@ -165,7 +173,7 @@ fn read_bounded(path: &Path) -> Option<Vec<u8>> {
 }
 
 /// The output always has a maximum edge of 256 px, so a tiny view can never poison the shared bucket.
-fn normalize_to_canonical(png: &[u8], uri: &str, mtime: i64) -> Result<Vec<u8>, String> {
+fn normalize_to_canonical(png: &[u8], uri: &str, mtime: i64, raw: bool) -> Result<Vec<u8>, String> {
     use gtk::gdk_pixbuf::prelude::PixbufLoaderExt;
     let loader = gtk::gdk_pixbuf::PixbufLoader::new();
     loader.write(png).map_err(|error| error.to_string())?;
@@ -192,14 +200,17 @@ fn normalize_to_canonical(png: &[u8], uri: &str, mtime: i64) -> Result<Vec<u8>, 
             )
             .ok_or_else(|| "thumbnail scaling failed".to_owned())?
     };
+    let mtime = mtime.to_string();
+    let raw_render = format!("tEXt::{RAW_RENDER_KEYWORD}");
+    let mut options = vec![
+        ("tEXt::Thumb::URI", uri),
+        ("tEXt::Thumb::MTime", mtime.as_str()),
+    ];
+    if raw {
+        options.push((raw_render.as_str(), RAW_RENDER_REVISION));
+    }
     pixbuf
-        .save_to_bufferv(
-            "png",
-            &[
-                ("tEXt::Thumb::URI", uri),
-                ("tEXt::Thumb::MTime", &mtime.to_string()),
-            ],
-        )
+        .save_to_bufferv("png", &options)
         .map_err(|error| error.to_string())
         .map(|bytes| bytes.to_vec())
 }
@@ -228,14 +239,22 @@ fn png_dimensions(png: &[u8]) -> Option<(u32, u32)> {
     Some((width, height))
 }
 
+#[derive(Debug, PartialEq)]
+struct ThumbTags {
+    uri: String,
+    mtime: String,
+    raw_render: Option<String>,
+}
+
 /// Never panics on hostile input: the shared cache is world-writable data.
-fn read_thumb_tags(png: &[u8]) -> Option<(String, String)> {
+fn read_thumb_tags(png: &[u8]) -> Option<ThumbTags> {
     const SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
     if png.get(..SIGNATURE.len())? != SIGNATURE {
         return None;
     }
     let mut uri = None;
     let mut mtime = None;
+    let mut raw_render = None;
     let mut position = SIGNATURE.len();
     while position.checked_add(8)? <= png.len() {
         let length = u32::from_be_bytes(png.get(position..position + 4)?.try_into().ok()?) as usize;
@@ -252,6 +271,8 @@ fn read_thumb_tags(png: &[u8]) -> Option<(String, String)> {
                     uri = std::str::from_utf8(value).ok().map(str::to_owned);
                 } else if keyword == b"Thumb::MTime" {
                     mtime = std::str::from_utf8(value).ok().map(str::to_owned);
+                } else if keyword == RAW_RENDER_KEYWORD.as_bytes() {
+                    raw_render = std::str::from_utf8(value).ok().map(str::to_owned);
                 }
             }
         }
@@ -260,5 +281,9 @@ fn read_thumb_tags(png: &[u8]) -> Option<(String, String)> {
         }
         position = data_end + 4;
     }
-    Some((uri?, mtime?))
+    Some(ThumbTags {
+        uri: uri?,
+        mtime: mtime?,
+        raw_render,
+    })
 }

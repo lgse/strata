@@ -14,9 +14,9 @@
 //! - [`ViewState::show_extract_to_dialog`]
 //! - [`ViewState::show_extract_password_dialog`]
 
-use crate::adapters::gio_file_for_location;
+use crate::adapters::probes::{self, Presence};
 use crate::model::{FileEntry, Location};
-use crate::services::{ArchiveFormat, TransferConflict, validate_basename};
+use crate::services::{ArchiveFormat, PasswordFailure, TransferConflict, validate_basename};
 use crate::ui::browser::ViewState;
 use crate::ui::browser::entry::{entry_kind_summary, item_count_label};
 use crate::ui::browser::paths::compact_display_path;
@@ -26,14 +26,25 @@ use crate::ui::controls::{
     message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
     set_form_field_error,
 };
+use crate::ui::keys::{
+    self,
+    bindings::{ENTER_ANY, ESCAPE_ANY},
+};
 use crate::ui::modal::{
-    ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
+    ModalHost, close_on_escape, dismiss_modal_layer, modal_layer, remember_modal_focus,
+    show_error_dialog, submit_on_enter,
 };
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::Cell;
+use std::ffi::OsStr;
 use std::path::Path;
 use std::rc::Rc;
+
+/// Error text may contain arbitrary filenames; only the structured kind permits retry.
+pub(super) fn extract_password_retry(password_failure: Option<PasswordFailure>) -> Option<bool> {
+    password_failure.map(|failure| failure == PasswordFailure::Incorrect)
+}
 
 /// Basename used when creating the archive, with `format`'s extension removed.
 ///
@@ -46,13 +57,16 @@ fn normalized_archive_name(name: &str, format: ArchiveFormat) -> String {
         .to_owned()
 }
 
-/// Whether `destination` already contains a child named `archive_name`.
-///
-/// Collision checks use the final filename, including the format extension.
-fn archive_has_collision(destination: &Location, archive_name: &str) -> bool {
-    gio_file_for_location(destination)
-        .child(archive_name)
-        .query_exists(None::<&gio::Cancellable>)
+async fn archive_name_taken(destination: &Location, archive_name: &str) -> bool {
+    let Some(archive) = destination.child(OsStr::new(archive_name)) else {
+        return false;
+    };
+    matches!(
+        probes::presence(&[archive], &gio::Cancellable::new())
+            .await
+            .as_slice(),
+        [Presence::Present]
+    )
 }
 
 impl ViewState {
@@ -93,6 +107,7 @@ impl ViewState {
             blurred_root.clone(),
             block_dismiss,
         );
+        remember_modal_focus(&layer, &window_overlay);
         window_overlay.add_overlay(&layer);
 
         let dismiss: Rc<dyn Fn()> = Rc::new({
@@ -105,24 +120,15 @@ impl ViewState {
         layout.cancel.connect_clicked(move |_| dismiss_for_cancel());
         let dismiss_for_close = dismiss.clone();
         layout.close.connect_clicked(move |_| dismiss_for_close());
-        let escape = gtk::EventControllerKey::new();
         let dismiss_for_escape = dismiss.clone();
-        escape.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
-                dismiss_for_escape();
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
-        });
-        layer.add_controller(escape);
+        close_on_escape(&layer, move || dismiss_for_escape());
         (layout.body, layout.confirm, dismiss)
     }
 
     /// Starts compression, offering replacement or a numbered copy on collision.
     ///
-    /// Uses [`TransferConflict::FailIfExists`] when the name is free. On a
-    /// collision, shows a conflict prompt instead of overwriting. If that
+    /// Uses [`TransferConflict::FailIfExists`] when the name is free or could not be checked. On
+    /// a collision, shows a conflict prompt instead of overwriting. If that
     /// prompt cannot be hosted, the operation is not started.
     ///
     /// # Arguments
@@ -142,11 +148,21 @@ impl ViewState {
         password: Option<String>,
     ) {
         self.extract_destination.take();
-        let final_name = format!("{archive_name}.{}", format.extension());
-        if !archive_has_collision(&destination, &final_name) {
-            self.pending_archive_destination
+        let state = Rc::downgrade(self);
+        glib::MainContext::default().spawn_local(async move {
+            let final_name = format!("{archive_name}.{}", format.extension());
+            let taken = archive_name_taken(&destination, &final_name).await;
+            let Some(state) = state.upgrade() else {
+                return;
+            };
+            if taken {
+                state.ask_to_replace_archive(entries, destination, archive_name, format, password);
+                return;
+            }
+            state
+                .pending_archive_destination
                 .replace(Some(destination.clone()));
-            self.browser.compress(
+            state.browser.compress(
                 entries,
                 destination,
                 archive_name,
@@ -154,8 +170,18 @@ impl ViewState {
                 format,
                 password,
             );
-            return;
-        }
+        });
+    }
+
+    fn ask_to_replace_archive(
+        self: &Rc<Self>,
+        entries: Vec<FileEntry>,
+        destination: Location,
+        archive_name: String,
+        format: ArchiveFormat,
+        password: Option<String>,
+    ) {
+        let final_name = format!("{archive_name}.{}", format.extension());
         let Some(ModalHost {
             overlay: window_overlay,
             blurred_root,
@@ -165,16 +191,13 @@ impl ViewState {
         };
         let layout = message_dialog_layout(
             crate::assets::icons::FILE_ARCHIVE,
-            "File already exists",
+            &crate::i18n::tr("File already exists"),
             &final_name,
-            "Replace",
+            &crate::i18n::tr("Replace"),
             ModalTone::Danger,
         );
-        layout.body.append(&message_dialog_description(&format!(
-            "An archive named “{final_name}” already exists in {}. Replace it to overwrite its contents, or keep both to create a numbered copy.",
-            compact_display_path(&destination)
-        )));
-        let keep_both = gtk::Button::with_label("Keep Both");
+        layout.body.append(&message_dialog_description(&rust_i18n::t!("An archive named “%{final_name}” already exists in %{value1}. Replace it to overwrite its contents, or keep both to create a numbered copy.", final_name = final_name, value1 = compact_display_path(&destination))));
+        let keep_both = gtk::Button::with_label(&crate::i18n::tr("Keep Both"));
         keep_both.add_css_class("action-dialog-cancel");
         layout
             .actions
@@ -184,20 +207,19 @@ impl ViewState {
         let cancel = layout.cancel;
         let replace = layout.confirm;
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+        remember_modal_focus(&layer, &window_overlay);
         window_overlay.add_overlay(&layer);
 
         for button in [&close, &cancel] {
             let dismissed_layer = layer.clone();
             let dismissed_overlay = window_overlay.clone();
             let dismissed_root = blurred_root.clone();
-            let browser = self.browser.clone();
             button.connect_clicked(move |_| {
                 dismiss_modal_layer(
                     &dismissed_layer,
                     &dismissed_overlay,
                     dismissed_root.as_ref(),
                 );
-                browser.focus_active();
             });
         }
 
@@ -237,11 +259,11 @@ impl ViewState {
         let escaped_overlay = window_overlay;
         let escaped_root = blurred_root;
         let enter_buttons = [keep_both, replace.clone(), cancel, close];
-        keys.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
+        keys::on_press(&keys, move |_, press| {
+            if press.is(ESCAPE_ANY) {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
                 glib::Propagation::Stop
-            } else if key == gtk::gdk::Key::Return || key == gtk::gdk::Key::KP_Enter {
+            } else if press.is(ENTER_ANY) {
                 if let Some(button) = enter_buttons.iter().find(|button| button.has_focus()) {
                     button.emit_clicked();
                     glib::Propagation::Stop
@@ -285,7 +307,11 @@ impl ViewState {
             "archive".to_owned()
         };
 
-        let title = format!("Compress {}", item_count_label(entries.len()));
+        let title = rust_i18n::t!(
+            "Compress %{value1}",
+            value1 = item_count_label(entries.len())
+        )
+        .into_owned();
         let subtitle = entry_kind_summary(&entries);
 
         let name_entry = form_entry();
@@ -305,7 +331,7 @@ impl ViewState {
             crate::assets::icons::PACKAGE_PLUS,
             &title,
             &subtitle,
-            "Compress",
+            &crate::i18n::tr("Compress"),
             Some(Rc::new(move || {
                 dirty_name.text() != compress_default_name
                     || !dirty_password.text().is_empty()
@@ -313,25 +339,28 @@ impl ViewState {
             })),
         );
 
-        let name_label = form_label("Archive name");
+        let name_label = form_label(&crate::i18n::tr("Archive name"));
+        crate::ui::accessibility::set_labelled_by(&name_entry, &[name_label.upcast_ref()]);
         body.append(&name_label);
         body.append(&name_entry);
 
-        let format_label = form_label("Format");
+        let format_label = form_label(&crate::i18n::tr("archive.format"));
         let (format_control, format_options) =
             segmented_control(&["ZIP", "7Z", "TAR.GZ", "TAR"], 0);
         let selected_format = Rc::new(Cell::new(ArchiveFormat::Zip));
         body.append(&format_label);
         body.append(&format_control);
 
-        let protection_label = form_label("Protection");
+        let protection_label = form_label(&crate::i18n::tr("Protection"));
         let (protection_control, protection_options) =
             segmented_control(&["No password", "Password protected"], 0);
         let no_password = protection_options[0].clone();
         let password_protected = protection_options[1].clone();
 
-        let password_label = form_label("Password");
-        let confirm_label = form_label("Confirm password");
+        let password_label = form_label(&crate::i18n::tr("Password"));
+        let confirm_label = form_label(&crate::i18n::tr("Confirm password"));
+        crate::ui::accessibility::set_labelled_by(&password_entry, &[password_label.upcast_ref()]);
+        crate::ui::accessibility::set_labelled_by(&confirm_entry, &[confirm_label.upcast_ref()]);
         let password_fields = gtk::Box::new(gtk::Orientation::Vertical, 6);
         password_fields.append(&password_label);
         password_fields.append(&password_entry);
@@ -392,7 +421,10 @@ impl ViewState {
             let archive_name = normalized_archive_name(&name, format);
             if let Err(message) = validate_basename(&archive_name) {
                 name_for_confirm.add_css_class("error");
-                crate::ui::accessibility::set_description(&name_for_confirm, Some(message));
+                crate::ui::accessibility::set_description(
+                    &name_for_confirm,
+                    Some(&crate::i18n::tr(message)),
+                );
                 name_for_confirm.grab_focus();
                 return;
             }
@@ -401,8 +433,8 @@ impl ViewState {
                 if pw.is_empty() {
                     show_error_dialog(
                         &overlay_for_error,
-                        "Password required",
-                        "Enter a password or choose No password.",
+                        &crate::i18n::tr("Password required"),
+                        &crate::i18n::tr("Enter a password or choose No password."),
                     );
                     return;
                 }
@@ -410,8 +442,8 @@ impl ViewState {
                 if pw != confirm_pw {
                     show_error_dialog(
                         &overlay_for_error,
-                        "Passwords do not match",
-                        "Please enter the same password in both fields.",
+                        &crate::i18n::tr("Passwords do not match"),
+                        &crate::i18n::tr("Please enter the same password in both fields."),
                     );
                     return;
                 }
@@ -450,8 +482,8 @@ impl ViewState {
         let Some(parent) = entry.location.parent() else {
             show_error_dialog(
                 &self.overlay,
-                "Cannot extract",
-                "This archive has no parent directory.",
+                &crate::i18n::tr("Cannot extract"),
+                &crate::i18n::tr("This archive has no parent directory."),
             );
             return;
         };
@@ -490,18 +522,12 @@ impl ViewState {
         crate::ui::chooser::present_destination_chooser(
             crate::ui::chooser::DestinationRequest {
                 parent,
-                title: "Extract to".into(),
-                accept_label: "Extract here".into(),
+                title: crate::i18n::tr("Extract to"),
+                accept_label: crate::i18n::tr("Extract here"),
                 initial_directory: base,
                 root_limit: None,
                 allow_create: true,
-                validate: Rc::new(|path| {
-                    if path.is_dir() {
-                        Ok(path.to_path_buf())
-                    } else {
-                        Err("Choose an existing folder.".into())
-                    }
-                }),
+                validate: Rc::new(crate::ui::browser::destination::existing_folder),
             },
             move |path| {
                 let destination = Location::local(path);
@@ -511,11 +537,6 @@ impl ViewState {
         );
     }
 
-    /// Prompts for a password after a password-capable extract failed.
-    ///
-    /// Shown from operation-failure handling when the error mentions a password
-    /// or encryption. Empty submissions remain in the dialog, while a rejected
-    /// password reopens it with inline error feedback.
     pub(super) fn show_extract_password_dialog(
         self: &Rc<Self>,
         entry: FileEntry,
@@ -528,13 +549,13 @@ impl ViewState {
         let dirty_password = password_entry.clone();
         let (body, confirm, dismiss) = self.build_archive_modal(
             crate::assets::icons::FILE_ARCHIVE,
-            "Extract",
+            &crate::i18n::tr("Extract"),
             &entry.display_name,
-            "Extract",
+            &crate::i18n::tr("Extract"),
             Some(Rc::new(move || !dirty_password.text().is_empty())),
         );
 
-        let password_label = form_label("Password");
+        let password_label = form_label(&crate::i18n::tr("Password"));
         let password_error = form_error_label();
         body.append(&password_label);
         body.append(&password_entry);

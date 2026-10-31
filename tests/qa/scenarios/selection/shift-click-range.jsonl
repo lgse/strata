@@ -1,0 +1,4 @@
+{"scenario":"shift-click-range","modes":["columns","icons","list"],"layout":"us","mutation":"shift-click-range","known_bug":null,"cost":{"columns":0.4,"icons":0.4,"list":0.5},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"Pointer shift-click range from startup anchor in three modes; same range as shift-click-range-keyboard-entry (content route), unique only the startup anchor; drives shift-click-range mutation"}}
+{"wait":{"entry":"pictures","dir":"$root"},"message":"the entry 'pictures' in '$root' to appear"}
+{"click":{"entry":"pictures","dir":"$root"},"mods":["shift"]}
+{"wait":{"selected":["archive","documents","pictures"],"dir":"$root"},"message":"the selection to become ['archive', 'documents', 'pictures']"}

@@ -13,35 +13,98 @@ use crate::{
     app::{Browser, VisualKind},
     model::Location,
     ui::{
-        browser_modes::BrowserMode,
-        preview::{PreviewSurface, preview_target},
+        browser_modes::{BrowserMode, ThumbnailResize},
+        keys::{Binding, Command, KeyPress, Map, Match, bindings::*},
+        preview::{ArchiveMove, MediaCommand, PreviewSurface, preview_target},
         tenxer_mode::Chord,
         window::{
-            SinglePaneArrow, home_directory, jump_direction, page_direction,
-            sidebar_focus_direction, single_pane_arrow_action,
+            SinglePaneArrow, home_directory, sidebar_focus_direction, single_pane_arrow_action,
         },
     },
 };
 
+const SHIFT: Modifiers = Modifiers::SHIFT_MASK;
+const SUPER: Modifiers = Modifiers::SUPER_MASK;
+
+#[derive(Clone, Copy)]
+enum OpenInNewTarget {
+    Tab,
+    Window,
+}
+
 impl Dispatcher {
+    /// A focused file opens as with plain Enter.
+    fn open_focused_in_new(&self, browser: &Rc<Browser>, target: OpenInNewTarget) -> bool {
+        // Choosers have no tabs, and Ctrl+Enter there accepts the folder.
+        if self.chooser.is_some() {
+            return false;
+        }
+        let entry = self
+            .view
+            .selected_search_result()
+            .or_else(|| browser.focused_entry());
+        let Some(entry) = entry else {
+            return false;
+        };
+        if !entry.is_directory() {
+            self.activate_focused(browser);
+            return true;
+        }
+        let action = match target {
+            OpenInNewTarget::Tab => "win.open-tab-at",
+            OpenInNewTarget::Window => "win.open-window-at",
+        };
+        let uri = crate::adapters::gio_file_for_location(&entry.location)
+            .uri()
+            .to_variant();
+        if let Err(error) = self.window.activate_action(action, Some(&uri)) {
+            tracing::warn!(%error, action, "open-in-new location action unavailable");
+        }
+        true
+    }
+
+    fn tenxer_open_focused_in_new(&self, browser: &Rc<Browser>, press: &KeyPress) -> bool {
+        let target = if press.is(OPEN_IN_NEW_TAB) {
+            OpenInNewTarget::Tab
+        } else if press.is(OPEN_IN_NEW_WINDOW) {
+            OpenInNewTarget::Window
+        } else {
+            return false;
+        };
+        self.open_focused_in_new(browser, target)
+    }
+
     pub(super) fn dismissal(&self, browser: &Browser, event: &KeyEvent) -> KeyResult {
-        if event.key == Key::BackSpace
-            && event.without(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK)
+        const DELETE_MODIFIERS: Modifiers = Modifiers::CONTROL_MASK
+            .union(Modifiers::ALT_MASK)
+            .union(SUPER);
+        let press = &event.press;
+        if press.is(BACKSPACE.ignoring(SHIFT.union(SUPER)))
             && self.view.dismiss_empty_focused_filter()
         {
             return Some(Propagation::Stop);
         }
-        if event.key == Key::Delete
+        let permanent = if press.is(MOVE_TO_TRASH
+            .in_map(Map::Default)
+            .ignoring(DELETE_MODIFIERS))
+        {
+            Some(false)
+        } else if press.is(DELETE_PERMANENTLY
+            .in_map(Map::Default)
+            .ignoring(DELETE_MODIFIERS))
+        {
+            Some(true)
+        } else {
+            None
+        };
+        if let Some(permanent) = permanent
             && !self.view.filter_has_focus()
             && !event.text_has_focus()
-            && self.view.confirm_delete(event.shift())
+            && self.view.confirm_delete(permanent)
         {
             return Some(Propagation::Stop);
         }
-        if event.key == Key::Escape
-            && event.without(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
-            && !event.text_has_focus()
-        {
+        if press.is(ESCAPE_ANY_SHIFT) && !event.text_has_focus() {
             return self.dismiss_preview_or_selection(browser);
         }
         None
@@ -58,25 +121,18 @@ impl Dispatcher {
     }
 
     pub(super) fn preview_navigation(&self, event: &KeyEvent) -> KeyResult {
-        if !event.without(
-            Modifiers::CONTROL_MASK
-                | Modifiers::ALT_MASK
-                | Modifiers::SUPER_MASK
-                | Modifiers::SHIFT_MASK,
-        ) || (event.text_has_focus()
+        let press = &event.press;
+        if event.text_has_focus()
             && !event.focused.as_ref().is_some_and(|focused| {
                 self.preview.owns_focus(Some(focused))
                     && self.preview.surface(focused) == PreviewSurface::Document
-            }))
+            })
         {
             return None;
         }
         if self.view.item_view_has_focus() {
             if self.view.view_mode() == BrowserMode::Columns
-                && matches!(
-                    event.key,
-                    Key::Right | Key::Return | Key::KP_Enter | Key::space
-                )
+                && (press.is(RIGHT) || press.is(ENTER) || press.is(SPACE))
                 && self.view.browser().focused_entry().is_some_and(|entry| {
                     !entry.is_directory()
                         && entry.location.native_path().is_some()
@@ -86,7 +142,7 @@ impl Dispatcher {
                 self.enter_preview(&self.view.browser());
                 return Some(Propagation::Stop);
             }
-            if event.key == Key::Right
+            if press.is(RIGHT)
                 && matches!(
                     self.view.view_mode(),
                     BrowserMode::List | BrowserMode::Columns
@@ -106,7 +162,33 @@ impl Dispatcher {
         if !self.preview.owns_focus(event.focused.as_ref()) {
             return None;
         }
-        if event.key == Key::Left
+        if let Some(focused) = event.focused.as_ref() {
+            if self.preview.feedback_action_focused(focused) {
+                if press.is(LEFT) {
+                    self.return_from_preview(&self.view.browser());
+                    return Some(Propagation::Stop);
+                }
+                // Arrows would otherwise walk GTK focus out of the drawer.
+                if press.is_any(&[UP, DOWN, RIGHT]) {
+                    return Some(Propagation::Stop);
+                }
+            } else if press.is_any(&[DOWN, RIGHT])
+                && self.preview.surface(focused) == PreviewSurface::Document
+                && self.preview.focus_feedback_action()
+            {
+                return Some(Propagation::Stop);
+            }
+        }
+        if press.is(ENTER)
+            && event
+                .focused
+                .as_ref()
+                .is_some_and(|focused| self.preview.surface(focused) == PreviewSurface::Media)
+        {
+            self.activate_focused(&self.view.browser());
+            return Some(Propagation::Stop);
+        }
+        if press.is(LEFT)
             && self.preview.archive_at_root()
             && event.focused.as_ref().is_some_and(|focused| {
                 matches!(
@@ -121,14 +203,22 @@ impl Dispatcher {
         if !self.preview.archive_list_has_focus(event.focused.as_ref()) {
             return None;
         }
-        match event.key {
-            Key::Up | Key::Down | Key::Left | Key::Right | Key::Return | Key::KP_Enter => self
-                .preview
-                .archive_key(event.key)
-                .then_some(Propagation::Stop),
-            Key::space => self.preview.close_archive().then_some(Propagation::Stop),
-            _ => None,
+        if press.is(SPACE) {
+            return self.preview.close_archive().then_some(Propagation::Stop);
         }
+        let motion = [
+            (UP, ArchiveMove::Previous),
+            (DOWN, ArchiveMove::Next),
+            (LEFT, ArchiveMove::Parent),
+            (RIGHT, ArchiveMove::Open),
+            (ENTER, ArchiveMove::Open),
+        ]
+        .into_iter()
+        .find(|(key, _)| press.is(*key))?
+        .1;
+        self.preview
+            .archive_key(motion)
+            .then_some(Propagation::Stop)
     }
 
     pub(super) fn item_navigation(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
@@ -138,7 +228,14 @@ impl Dispatcher {
         {
             return Some(Propagation::Proceed);
         }
-        if let Some(direction) = jump_direction(event.key, event.modifiers)
+        let jump = if event.press.is(FIRST_ITEM_UP) {
+            Some(-1)
+        } else if event.press.is(LAST_ITEM_DOWN) {
+            Some(1)
+        } else {
+            None
+        };
+        if let Some(direction) = jump
             && self.view.jump_selection(direction)
         {
             return Some(Propagation::Stop);
@@ -155,8 +252,7 @@ impl Dispatcher {
         }
         let action = single_pane_arrow_action(
             self.view.view_mode(),
-            event.key,
-            event.modifiers,
+            &event.press,
             self.view.at_left_edge(),
             self.top_bar.sidebar_toggle().is_active(),
         )?;
@@ -175,25 +271,24 @@ impl Dispatcher {
     }
 
     fn native_selection(&self, event: &KeyEvent) -> Propagation {
-        if event.without(Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK)
-            && event.key == Key::Up
+        if event.press.is(UP)
             && !self.arrows_scoped_to_content()
             && self.view.focus_header_from_top_item()
         {
             return Propagation::Stop;
         }
         self.view.commit_selection();
-        let started_from_empty = !event.control() && self.view.resume_native_selection();
+        let started_from_empty =
+            event.without(Modifiers::CONTROL_MASK) && self.view.resume_native_selection();
         if event.shift() && started_from_empty {
             return Propagation::Stop;
         }
-        if event.without(Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK)
-            && let Some(direction) = sidebar_focus_direction(event.key)
+        if let Some(direction) = sidebar_focus_direction(&event.press, Modifiers::empty())
             && self.view.cross_type_group(direction, false)
         {
             Propagation::Stop
-        } else if event.vim_navigation {
-            crate::ui::focus_navigation::activate_native_arrow(&self.window, event.key);
+        } else if let Some(arrow) = event.vim_arrow() {
+            crate::ui::focus_navigation::activate_native_arrow(&self.window, arrow);
             Propagation::Stop
         } else {
             Propagation::Proceed
@@ -201,58 +296,76 @@ impl Dispatcher {
     }
 
     fn item_commands(&self, browser: &Browser, event: &KeyEvent) -> KeyResult {
-        if !event.without(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK) {
-            return None;
-        }
-        if self.view.item_view_has_focus() && matches!(event.key, Key::Home | Key::End) {
+        let press = &event.press;
+        if self.view.item_view_has_focus()
+            && (press.is_any(&[FIRST_ITEM, LAST_ITEM].map(|command| command.in_map(Map::Default)))
+                || press.is_any(&[EXTEND_TO_FIRST, EXTEND_TO_LAST]))
+        {
             self.view.commit_selection();
-            if !event.shift()
-                && self
-                    .view
-                    .jump_parked_selection(if event.key == Key::Home { -1 } else { 1 })
+            let jump = if press.is(FIRST_ITEM.in_map(Map::Default)) {
+                Some(-1)
+            } else if press.is(LAST_ITEM.in_map(Map::Default)) {
+                Some(1)
+            } else {
+                None
+            };
+            if let Some(direction) = jump
+                && self.view.jump_selection(direction)
             {
                 return Some(Propagation::Stop);
             }
         }
-        if let Some(direction) = page_direction(event.key)
-            && self.view.page_selection(direction, event.shift())
+        let page: [(&dyn Match, _, _); 4] = [
+            (&PAGE_UP.in_map(Map::Default).ignoring(SUPER), -1, false),
+            (&PAGE_DOWN.in_map(Map::Default).ignoring(SUPER), 1, false),
+            (&EXTEND_PAGE_UP.ignoring(SUPER), -1, true),
+            (&EXTEND_PAGE_DOWN.ignoring(SUPER), 1, true),
+        ];
+        let page = page.into_iter().find(|(key, _, _)| press.is(key));
+        if let Some((_, direction, extend)) = page
+            && self.view.page_selection(direction, extend)
         {
             return Some(Propagation::Stop);
         }
-        match event.key {
-            Key::y | Key::Y => {
-                self.view.copy_path();
+        if press.is(COPY_PATH) {
+            self.view.copy_path();
+        } else if press.is(PIN) {
+            self.view.pin_focused();
+        } else if press.is(PREVIEW.in_map(Map::Default).ignoring(SHIFT.union(SUPER))) {
+            self.view.cancel_pending_click_rename();
+            let activated_directory =
+                press.is(PREVIEW.in_map(Map::Default)) && self.view.activate_directory_on_space();
+            if !activated_directory {
+                self.preview.toggle(
+                    preview_target(browser.focused_entry()),
+                    browser.active_depth(),
+                );
             }
-            Key::p | Key::P => self.view.pin_focused(),
-            Key::space => {
-                self.view.cancel_pending_click_rename();
-                let activated_directory = event
-                    .without(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
-                    && self.view.activate_directory_on_space();
-                if !activated_directory {
-                    self.preview.toggle(
-                        preview_target(browser.focused_entry()),
-                        browser.active_depth(),
-                    );
-                }
-            }
-            Key::BackSpace => self.view.navigate_up(),
-            _ => return None,
+        } else if press.is(BACKSPACE.ignoring(SHIFT.union(SUPER))) {
+            self.view.navigate_up();
+        } else {
+            return None;
         }
         Some(Propagation::Stop)
     }
 
     fn selection_navigation(&self, browser: &Browser, event: &KeyEvent) -> KeyResult {
-        if event.shift() {
-            match event.key {
-                Key::Up => browser.extend_selection(-1),
-                Key::Down => browser.extend_selection(1),
-                _ => return None,
-            }
+        // Shift+Up/Down extend the selection even with Ctrl, Alt or Super held.
+        const EXTENDS: Modifiers = Modifiers::CONTROL_MASK
+            .union(Modifiers::ALT_MASK)
+            .union(SUPER);
+        let press = &event.press;
+        if press.is(EXTEND_UP.ignoring(EXTENDS)) {
+            browser.extend_selection(-1);
             return Some(Propagation::Stop);
         }
-        if !event.alt()
-            && matches!(event.key, Key::k | Key::Up)
+        if press.is(EXTEND_DOWN.ignoring(EXTENDS)) {
+            browser.extend_selection(1);
+            return Some(Propagation::Stop);
+        }
+        if press.is(UP
+            .ignoring(Modifiers::CONTROL_MASK.union(SUPER))
+            .or_alternates())
             && !self.arrows_scoped_to_content()
             && self.view.focus_header_from_top_item()
         {
@@ -262,23 +375,58 @@ impl Dispatcher {
     }
 
     fn directory_navigation(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
-        if !event.without(Modifiers::CONTROL_MASK | Modifiers::SUPER_MASK) {
+        let press = &event.press;
+        if self.view.item_view_has_focus() && !event.text_has_focus() {
+            // Ctrl wins over Shift, so Ctrl+Shift+Enter opens a tab.
+            let target = if press.is(OPEN_IN_NEW_TAB.ignoring(SHIFT)) {
+                Some(OpenInNewTarget::Tab)
+            } else if press.is(OPEN_IN_NEW_WINDOW) {
+                Some(OpenInNewTarget::Window)
+            } else {
+                None
+            };
+            if let Some(target) = target
+                && self.open_focused_in_new(browser, target)
+            {
+                return Some(Propagation::Stop);
+            }
+        }
+        // Ahead of the Ctrl and Super guard, which a user's binding may hold.
+        let jumped = if press.is(HISTORY_BACK.in_map(Map::Default).ignoring(SHIFT)) {
+            browser.back();
+            true
+        } else if press.is(HISTORY_FORWARD.in_map(Map::Default).ignoring(SHIFT)) {
+            browser.forward();
+            true
+        } else if press.is(PARENT_FOLDER.ignoring(SHIFT)) {
+            browser.parent();
+            true
+        } else if press.is(HOME_FOLDER.ignoring(SHIFT)) {
+            browser.navigate(Location::local(home_directory()));
+            true
+        } else {
+            false
+        };
+        if jumped {
+            return Some(Propagation::Stop);
+        }
+        if !event.without(Modifiers::CONTROL_MASK | SUPER) {
             return Some(Propagation::Proceed);
         }
-        match (event.key, event.alt()) {
-            (Key::Left, true) => browser.back(),
-            (Key::Right, true) => browser.forward(),
-            (Key::Up, true) => browser.parent(),
-            (Key::Home, true) => browser.navigate(Location::local(home_directory())),
-            (Key::j | Key::Down, false) => browser.move_selection(1),
-            (Key::k | Key::Up, false) => browser.move_selection(-1),
-            (Key::h | Key::Left, false) => self.navigate_left(event),
-            (Key::Right, false) if self.view.view_mode() == BrowserMode::Columns => {
-                browser.enter_focused_directory();
-            }
-            (Key::l | Key::Return | Key::KP_Enter, false) => self.view.activate_focused(),
-            (Key::Escape, false) => browser.escape(),
-            _ => return None,
+        if press.is(DOWN.ignoring(SHIFT).or_alternates()) {
+            browser.move_selection(1);
+        } else if press.is(UP.ignoring(SHIFT).or_alternates()) {
+            browser.move_selection(-1);
+        } else if press.is(LEFT.ignoring(SHIFT).or_alternates()) {
+            self.navigate_left(event);
+        } else if press.is(RIGHT.ignoring(SHIFT)) && self.view.view_mode() == BrowserMode::Columns {
+            browser.enter_focused_directory();
+        } else if press.is_any(&[RIGHT.alternates(), ENTER_ANY_SHIFT]) {
+            self.view.activate_focused();
+        } else if press.is(ESCAPE_ANY_SHIFT) {
+            browser.escape();
+        } else {
+            return None;
         }
         Some(Propagation::Stop)
     }
@@ -294,70 +442,66 @@ impl Dispatcher {
         }
     }
 
-    pub(super) fn tenxer_icons(
-        &self,
-        browser: &Rc<Browser>,
-        key: Key,
-        modifiers: Modifiers,
-    ) -> bool {
+    pub(super) fn tenxer_icons(&self, browser: &Rc<Browser>, press: &KeyPress) -> bool {
         if self.view.view_mode() != BrowserMode::Icons || !self.view.item_view_has_focus() {
             return false;
         }
+        if self.tenxer_open_focused_in_new(browser, press) {
+            return true;
+        }
         let search = self.view.selected_search_results().is_some();
-        let mods = super::command_modifiers(modifiers);
-        if search && !mods.is_empty() {
-            return match mods {
-                Modifiers::CONTROL_MASK => {
-                    (matches!(key, Key::r | Key::R) && self.view.invert_filter_results())
-                        || (self.view.listing_search_active() && self.tenxer_control_page(key))
-                }
-                Modifiers::SHIFT_MASK => {
-                    (matches!(key, Key::G | Key::V)
-                        || is_arrow(key)
-                        || page_direction(key).is_some())
-                        && self.tenxer_shifted(browser, key)
-                }
-                _ => false,
-            };
+        if let Some(command) = media_track(press) {
+            return self.preview.media_key(command);
         }
-        if mods == Modifiers::CONTROL_MASK {
-            return self.tenxer_control_page(key)
-                || self.tenxer_first_or_last(key)
-                || self.tenxer_selection_command(key);
+        // Before the search branch: the Shift that types + counts as held there.
+        if let Some(change) = ThumbnailResize::for_tenxer_key(press) {
+            return self.view.resize_icons_thumbnails(change);
         }
-        if mods == Modifiers::ALT_MASK {
-            return self.tenxer_alt_navigation(browser, key);
+        // Of the modified keys, only these act on hits, whatever keys they are bound to.
+        if search && !press.modifiers().is_empty() {
+            return (press.is(INVERT_SELECTION) && self.view.invert_filter_results())
+                || (self.view.listing_search_active() && self.tenxer_control_page(press))
+                || ((press.is_any(&[LAST_ITEM, VISUAL_UNSET]) || press.is_any(&EXTEND_KEYS))
+                    && self.tenxer_shifted(press));
         }
-        if mods == Modifiers::SHIFT_MASK {
-            return self.tenxer_shifted(browser, key);
+        if self.tenxer_control_page(press)
+            || self.tenxer_first_or_last(press)
+            || self.tenxer_selection_command(press)
+            || self.tenxer_alt_navigation(browser, press)
+            || self.tenxer_shifted(press)
+        {
+            return true;
         }
-        if !mods.is_empty() {
+        if let Some(arrow) = crate::ui::focus_navigation::spatial_arrow(press) {
+            return self.move_icon_cursor(browser, arrow.key(), search);
+        }
+        if press.is_any(&SWALLOWED_ON_HITS) && self.view.listing_search_active() {
+            return true;
+        }
+        if press.is(FIRST_ITEM) && !search {
+            self.jump_displayed(-1);
+        } else if press.is(LAST_ITEM) && !search {
+            self.jump_displayed(1);
+        } else if press.is(BACKSPACE) && !search {
+            self.go_parent();
+        } else if press.is(OPEN) || press.is(ENTER) {
+            self.activate_focused(browser);
+        } else if press.is(PREVIEW) {
+            if !self.toggle_file_preview(browser) {
+                self.view.toggle_folder_peek();
+            }
+        } else if press.is(PAGE_UP) && !search {
+            self.view.page_displayed_cursor(-1, false);
+        } else if press.is(PAGE_DOWN) && !search {
+            self.view.page_displayed_cursor(1, false);
+        } else if press.is(SPACE) && !self.selection_keys_blocked() {
+            self.toggle_tenxer_cursor();
+        } else if press.is(VISUAL_SELECT) && !self.selection_keys_blocked() {
+            self.toggle_visual(VisualKind::Select);
+        } else if press.is(GO) {
+            self.shortcuts.arm_chord(Chord::Go);
+        } else {
             return false;
-        }
-        if let Some(arrow) = crate::ui::focus_navigation::spatial_arrow(key) {
-            return self.move_icon_cursor(browser, arrow, search);
-        }
-        match key {
-            key if swallowed_on_hits(key) && self.view.listing_search_active() => {}
-            Key::Home | Key::KP_Home if !search => self.jump_displayed(-1),
-            Key::End | Key::KP_End | Key::G if !search => self.jump_displayed(1),
-            Key::H if !search => self.go_back(browser),
-            Key::L if !search => self.go_forward(browser),
-            Key::BackSpace if !search => self.go_parent(),
-            Key::o | Key::Return | Key::KP_Enter => self.activate_focused(browser),
-            Key::i => {
-                if !self.toggle_file_preview(browser) {
-                    self.view.toggle_folder_peek();
-                }
-            }
-            Key::Page_Up | Key::KP_Page_Up if !search => self.view.page_displayed_cursor(-1, false),
-            Key::Page_Down | Key::KP_Page_Down if !search => {
-                self.view.page_displayed_cursor(1, false)
-            }
-            Key::space if !self.selection_keys_blocked() => self.toggle_tenxer_cursor(),
-            Key::v if !self.selection_keys_blocked() => self.toggle_visual(VisualKind::Select),
-            Key::g => self.shortcuts.arm_chord(Chord::Go),
-            _ => return false,
         }
         true
     }
@@ -419,139 +563,170 @@ impl Dispatcher {
         self.view.refresh_visual();
     }
 
-    pub(super) fn tenxer_listing(
-        &self,
-        browser: &Rc<Browser>,
-        key: Key,
-        modifiers: Modifiers,
-    ) -> bool {
+    pub(super) fn tenxer_listing(&self, browser: &Rc<Browser>, press: &KeyPress) -> bool {
         if self.view.view_mode() == BrowserMode::Icons || !self.view.item_view_has_focus() {
             return false;
         }
-        let mods = super::command_modifiers(modifiers);
-        if mods == Modifiers::CONTROL_MASK {
-            return self.tenxer_control_page(key)
-                || self.tenxer_first_or_last(key)
-                || self.tenxer_selection_command(key);
-        }
-        if mods == Modifiers::ALT_MASK {
-            return self.tenxer_alt_navigation(browser, key);
-        }
-        if mods == Modifiers::SHIFT_MASK {
-            return self.tenxer_shifted(browser, key);
-        }
-        if !mods.is_empty() {
-            return false;
-        }
-        self.tenxer_plain(browser, key)
+        self.tenxer_open_focused_in_new(browser, press)
+            || self.tenxer_control_page(press)
+            || self.tenxer_first_or_last(press)
+            || self.tenxer_selection_command(press)
+            || self.tenxer_alt_navigation(browser, press)
+            || self.tenxer_shifted(press)
+            || self.tenxer_plain(browser, press)
     }
 
-    fn tenxer_selection_command(&self, key: Key) -> bool {
-        if matches!(key, Key::r | Key::R) && self.view.invert_filter_results() {
-            return true;
+    fn tenxer_selection_command(&self, press: &KeyPress) -> bool {
+        if press.is(INVERT_SELECTION) {
+            return self.invert_selection();
         }
-        if self.view.selected_search_results().is_some() {
-            return false;
-        }
-        let filled = match key {
-            Key::a | Key::A => self.view.select_focused_pane(),
-            Key::r | Key::R => self.view.invert_focused_pane(),
-            _ => return false,
-        };
+        press.is(SELECT_ALL)
+            && self.view.selected_search_results().is_none()
+            && self.fill_selection(self.view.select_focused_pane())
+    }
+
+    /// Inverts the filter's hits or the focused pane; false while search hits
+    /// own the selection.
+    pub(super) fn invert_selection(&self) -> bool {
+        self.view.invert_filter_results()
+            || (self.view.selected_search_results().is_none()
+                && self.fill_selection(self.view.invert_focused_pane()))
+    }
+
+    fn fill_selection(&self, filled: bool) -> bool {
         if !filled {
-            self.shortcuts.show_feedback("Nothing to select");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to select"));
         }
         true
     }
 
     fn toggle_visual(&self, kind: VisualKind) {
         if !self.view.toggle_visual(kind) {
-            self.shortcuts.show_feedback("Nothing to select");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to select"));
         }
     }
 
     fn toggle_tenxer_cursor(&self) {
         if !self.view.toggle_cursor_and_advance() {
-            self.shortcuts.show_feedback("Nothing to select");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to select"));
         }
     }
 
-    fn tenxer_first_or_last(&self, key: Key) -> bool {
-        let direction = match key {
-            Key::Up | Key::KP_Up => -1,
-            Key::Down | Key::KP_Down => 1,
-            _ => return false,
+    fn tenxer_first_or_last(&self, press: &KeyPress) -> bool {
+        let direction = if press.is(FIRST_ITEM_UP) {
+            -1
+        } else if press.is(LAST_ITEM_DOWN) {
+            1
+        } else {
+            return false;
         };
         self.jump_displayed(direction);
         true
     }
 
-    fn tenxer_control_page(&self, key: Key) -> bool {
-        let (direction, half) = match key {
-            Key::u | Key::U => (-1, true),
-            Key::d | Key::D => (1, true),
-            Key::b | Key::B | Key::Page_Up | Key::KP_Page_Up => (-1, false),
-            Key::f | Key::F | Key::Page_Down | Key::KP_Page_Down => (1, false),
-            _ => return false,
+    /// Plain Page Up and Page Down page in `tenxer_plain`, where search hits
+    /// swallow them.
+    fn tenxer_control_page(&self, press: &KeyPress) -> bool {
+        let (direction, half) = if press.is(HALF_PAGE_UP) {
+            (-1, true)
+        } else if press.is(HALF_PAGE_DOWN) {
+            (1, true)
+        } else if press.is(PAGE_UP) && !press.is(PAGE_UP_KEY) {
+            (-1, false)
+        } else if press.is(PAGE_DOWN) && !press.is(PAGE_DOWN_KEY) {
+            (1, false)
+        } else {
+            return false;
         };
+        self.page_cursor(direction, half);
+        true
+    }
+
+    /// Search hits shown in the listing swallow paging.
+    pub(super) fn page_cursor(&self, direction: i32, half: bool) {
         if !self.view.listing_search_active() {
             self.view.page_displayed_cursor(direction, half);
         }
-        true
     }
 
-    fn tenxer_alt_navigation(&self, browser: &Rc<Browser>, key: Key) -> bool {
-        match key {
-            Key::Left | Key::KP_Left => self.go_back(browser),
-            Key::Right | Key::KP_Right => self.go_forward(browser),
-            Key::Up | Key::KP_Up => self.go_parent(),
-            _ => return false,
+    fn tenxer_alt_navigation(&self, browser: &Rc<Browser>, press: &KeyPress) -> bool {
+        if press.is(HISTORY_BACK) {
+            self.go_back(browser);
+        } else if press.is(HISTORY_FORWARD) {
+            self.go_forward(browser);
+        } else if press.is(PARENT_FOLDER) {
+            self.go_parent();
+        } else {
+            return false;
         }
         true
     }
 
-    fn tenxer_shifted(&self, browser: &Rc<Browser>, key: Key) -> bool {
-        match key {
-            // Native Shift selection must not interfere with v/V ranges.
-            key if is_arrow(key) || page_direction(key).is_some() => {}
-            Key::V if !self.selection_keys_blocked() => {
-                self.toggle_visual(VisualKind::Unset);
-            }
-            Key::G => self.jump_displayed(1),
-            Key::H => self.go_back(browser),
-            Key::L => self.go_forward(browser),
-            Key::J | Key::K => self.scroll_open_preview(key),
-            _ => return false,
+    /// End jumps in `tenxer_plain`, where search hits swallow it.
+    fn tenxer_shifted(&self, press: &KeyPress) -> bool {
+        // Native Shift selection must not interfere with v/V ranges.
+        if press.is_any(&EXTEND_KEYS) {
+            return true;
+        }
+        if press.is(VISUAL_UNSET) && !self.selection_keys_blocked() {
+            self.toggle_visual(VisualKind::Unset);
+        } else if press.is(LAST_ITEM) && !press.is(END_KEY) {
+            self.jump_displayed(1);
+        } else if press.is(SCROLL_PREVIEW_DOWN) {
+            self.scroll_open_preview(1);
+        } else if press.is(SCROLL_PREVIEW_UP) {
+            self.scroll_open_preview(-1);
+        } else {
+            return false;
         }
         true
     }
 
-    fn tenxer_plain(&self, browser: &Rc<Browser>, key: Key) -> bool {
-        match key {
-            key if swallowed_on_hits(key) && self.view.listing_search_active() => {}
-            Key::j | Key::Down | Key::KP_Down => self.view.move_displayed_cursor(1, 1),
-            Key::k | Key::Up | Key::KP_Up => self.view.move_displayed_cursor(-1, 1),
-            Key::Home | Key::KP_Home => self.jump_displayed(-1),
-            Key::End | Key::KP_End | Key::G => self.jump_displayed(1),
-            Key::H => self.go_back(browser),
-            Key::L => self.go_forward(browser),
-            Key::h | Key::Left | Key::KP_Left if self.view.listing_search_active() => {
-                self.view.dismiss_listing_search();
+    fn tenxer_plain(&self, browser: &Rc<Browser>, press: &KeyPress) -> bool {
+        if press.is_any(&SWALLOWED_ON_HITS) && self.view.listing_search_active() {
+            return true;
+        }
+        if press.is(DOWN.or_alternates()) {
+            self.view.move_displayed_cursor(1, 1);
+        } else if press.is(UP.or_alternates()) {
+            self.view.move_displayed_cursor(-1, 1);
+        } else if press.is(FIRST_ITEM) {
+            self.jump_displayed(-1);
+        } else if press.is(LAST_ITEM) {
+            self.jump_displayed(1);
+        } else if press.is(LEFT.or_alternates()) && self.view.listing_search_active() {
+            self.view.dismiss_listing_search();
+        } else if press.is(LEFT.or_alternates()) || press.is(BACKSPACE) {
+            self.go_parent();
+        } else if press.is(RIGHT.or_alternates()) {
+            self.enter_preview(browser);
+        } else if press.is(OPEN) || press.is(ENTER) {
+            self.activate_focused(browser);
+        } else if press.is(GO) {
+            self.shortcuts.arm_chord(Chord::Go);
+        } else if let Some(command) = media_track(press) {
+            return self.preview.media_key(command);
+        } else if press.is(PREVIEW) {
+            if !self.toggle_file_preview(browser) {
+                if self.view.view_mode() == BrowserMode::Columns {
+                    self.open_miller_child(browser);
+                } else {
+                    self.view.toggle_folder_peek();
+                }
             }
-            Key::h | Key::Left | Key::KP_Left | Key::BackSpace => self.go_parent(),
-            Key::l | Key::Right | Key::KP_Right => self.enter_preview(browser),
-            Key::o | Key::Return | Key::KP_Enter => self.activate_focused(browser),
-            Key::g => self.shortcuts.arm_chord(Chord::Go),
-            Key::i if self.toggle_file_preview(browser) => {}
-            Key::i if self.view.view_mode() == BrowserMode::Columns => {
-                self.open_miller_child(browser);
-            }
-            Key::i => self.view.toggle_folder_peek(),
-            Key::Page_Up | Key::KP_Page_Up => self.view.page_displayed_cursor(-1, false),
-            Key::Page_Down | Key::KP_Page_Down => self.view.page_displayed_cursor(1, false),
-            Key::space if !self.selection_keys_blocked() => self.toggle_tenxer_cursor(),
-            Key::v if !self.selection_keys_blocked() => self.toggle_visual(VisualKind::Select),
-            _ => return false,
+        } else if press.is(PAGE_UP) {
+            self.view.page_displayed_cursor(-1, false);
+        } else if press.is(PAGE_DOWN) {
+            self.view.page_displayed_cursor(1, false);
+        } else if press.is(SPACE) && !self.selection_keys_blocked() {
+            self.toggle_tenxer_cursor();
+        } else if press.is(VISUAL_SELECT) && !self.selection_keys_blocked() {
+            self.toggle_visual(VisualKind::Select);
+        } else {
+            return false;
         }
         true
     }
@@ -622,48 +797,24 @@ impl Dispatcher {
     }
 }
 
-fn swallowed_on_hits(key: Key) -> bool {
-    matches!(
-        key,
-        Key::Home
-            | Key::KP_Home
-            | Key::End
-            | Key::KP_End
-            | Key::Page_Up
-            | Key::KP_Page_Up
-            | Key::Page_Down
-            | Key::KP_Page_Down
-    )
-}
+/// Paging and jumping keys do nothing while a listing search shows its hits.
+const SWALLOWED_ON_HITS: [Command; 4] = [FIRST_ITEM, LAST_ITEM, PAGE_UP, PAGE_DOWN];
 
-fn is_arrow(key: Key) -> bool {
-    matches!(
-        key,
-        Key::Up
-            | Key::KP_Up
-            | Key::Down
-            | Key::KP_Down
-            | Key::Left
-            | Key::KP_Left
-            | Key::Right
-            | Key::KP_Right
-    )
-}
+const EXTEND_KEYS: [Binding; 6] = [
+    EXTEND_UP,
+    EXTEND_DOWN,
+    EXTEND_LEFT,
+    EXTEND_RIGHT,
+    EXTEND_PAGE_UP,
+    EXTEND_PAGE_DOWN,
+];
 
-pub(super) fn is_modifier_key(key: Key) -> bool {
-    matches!(
-        key,
-        Key::Shift_L
-            | Key::Shift_R
-            | Key::Control_L
-            | Key::Control_R
-            | Key::Alt_L
-            | Key::Alt_R
-            | Key::Super_L
-            | Key::Super_R
-            | Key::Meta_L
-            | Key::Meta_R
-            | Key::ISO_Level3_Shift
-            | Key::Caps_Lock
-    )
+fn media_track(press: &KeyPress) -> Option<MediaCommand> {
+    if press.is(TENXER_MEDIA_PREVIOUS) {
+        Some(MediaCommand::Previous)
+    } else if press.is(TENXER_MEDIA_NEXT) {
+        Some(MediaCommand::Next)
+    } else {
+        None
+    }
 }

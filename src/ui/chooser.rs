@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod download;
+mod image_conversion;
 
 #[cfg(test)]
 mod tests;
@@ -8,8 +9,8 @@ mod tests;
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
-    ffi::OsString,
-    path::{Path, PathBuf},
+    ffi::{OsStr, OsString},
+    path::{Component, Path, PathBuf},
     rc::Rc,
     sync::{
         Arc,
@@ -23,10 +24,10 @@ use ashpd::{
     PortalError, WindowIdentifierType,
     desktop::file_chooser::{Choice, FileFilter, SelectedFiles},
 };
-use gtk::{gio, glib, prelude::*};
+use gtk::{gdk::ModifierType, gio, glib, prelude::*};
 
 use crate::{
-    adapters::{LocalFileSource, LocalOperationProvider, LocalPreviewProvider},
+    adapters::{LocalFileSource, LocalOperationProvider, LocalPreviewProvider, probes},
     app::BrowserEvent,
     model::{EntryKind, FileEntry, Location, MetadataValue},
     portal::{
@@ -34,32 +35,42 @@ use crate::{
         writable_from_read_only,
     },
     services::{
-        DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
-        LocationValidationError, MetadataRequest, RemoteDownload, download_remote, remote_file_url,
+        DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, ItemIdentity, LoadHandle,
+        LocationValidationError, MetadataRequest, RemoteDownload, StampAnswer, Watching,
+        download_remote, remote_file_url,
     },
 };
 
 use super::{
     blur::BlurBin,
     browser::{BrowserView, dismiss_modal_layer, modal_layer},
-    browser_modes::BrowserMode,
+    browser_modes::{BrowserMode, ThumbnailResize},
     controls::{
         ModalTone, focus_button, form_check_button, form_entry, form_label, menu_option,
         message_dialog_layout,
     },
+    marquee::OriginClick,
+    modal::close_on_escape,
     preferences::PreferenceManager,
     preview::{PreviewDrawer, preview_target},
     shortcut_footer::ShortcutFooter,
     top_bar_navigation::TopBarNavigation,
     window::{
         ChooserKeys, ChooserPolicy, MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH, SidebarView,
-        build_appearance_menu, build_sidebar, home_directory, install_modal_focus_trap,
-        is_sidebar_focus_shortcut, vim_focus_direction, visible_modal_layer,
+        build_appearance_menu, build_sidebar, edit_focused_text, home_directory,
+        install_modal_focus_trap, visible_modal_layer,
     },
+};
+use super::{
+    focus_navigation::{
+        FOCUS_MODIFIERS, arrow_direction, plain_tab_direction, vim_focus_direction,
+    },
+    keys::{self, KeyPress, Map, SHORTCUT_MODIFIERS, bindings::*},
 };
 
 type Completion = Box<dyn FnOnce(ashpd::backend::Result<SelectedFiles>)>;
-type DestinationValidator = Rc<dyn Fn(&Path) -> Result<PathBuf, String>>;
+type DestinationValidator =
+    Rc<dyn Fn(&Path) -> futures_lite::future::BoxedLocal<Result<PathBuf, String>>>;
 
 thread_local! {
     static CHOOSERS: RefCell<HashMap<String, glib::WeakRef<gtk::Window>>> = RefCell::new(HashMap::new());
@@ -105,6 +116,18 @@ impl ChooserFileSource {
     fn set_filter(&self, filter: Option<gtk::FileFilter>) {
         self.filter.replace(filter);
     }
+
+    fn refusal(&self, location: &Location) -> Result<(), LocationValidationError> {
+        if !self.allows_navigation(location) {
+            return Err(LocationValidationError::Refused(OUTSIDE_ROOT));
+        }
+        if location.native_path().is_none() && !location.is_recent_root() {
+            return Err(LocationValidationError::Refused(
+                "The system file chooser supports local files and folders only.",
+            ));
+        }
+        Ok(())
+    }
 }
 
 impl FileSource for ChooserFileSource {
@@ -122,15 +145,11 @@ impl FileSource for ChooserFileSource {
     }
 
     fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
-        if !self.allows_navigation(location) {
-            return Err(LocationValidationError::UnsupportedScheme(
-                "Choose an existing folder inside this removable device.".into(),
-            ));
-        }
-        if location.native_path().is_none() && !location.is_recent_root() {
-            return Err(LocationValidationError::UnsupportedScheme(
-                "The system file chooser supports local files and folders only.".into(),
-            ));
+        self.refusal(location)?;
+        if let (Some(root), Some(path)) = (&self.root_limit, location.native_path())
+            && !path.canonicalize().is_ok_and(|real| real.starts_with(root))
+        {
+            return Err(LocationValidationError::Refused(OUTSIDE_ROOT));
         }
         self.source.validate_location(location)
     }
@@ -140,10 +159,16 @@ impl FileSource for ChooserFileSource {
         location: Location,
         emit: Rc<dyn Fn(Result<(), LocationValidationError>)>,
     ) -> LoadHandle {
-        if self.root_limit.is_some()
-            || (location.native_path().is_none() && !location.is_recent_root())
+        if let (Some(root), Some(path)) = (self.root_limit.clone(), location.native_path())
+            && self.allows_navigation(&location)
         {
-            emit(self.validate_location(&location));
+            return after_containment(root, path.to_owned(), move |answer| {
+                emit(answer);
+                None
+            });
+        }
+        if let Err(refusal) = self.refusal(&location) {
+            emit(Err(refusal));
             return LoadHandle::new(|| {});
         }
         self.source.validate_location_async(location, emit)
@@ -166,55 +191,114 @@ impl FileSource for ChooserFileSource {
         let filter = self.filter.clone();
         let directory_only = self.directory_only.clone();
         let root_limit = self.root_limit.clone();
-        self.source.enumerate(
-            request,
-            Rc::new(move |event| {
-                let event = match event {
+        let emit: Rc<dyn Fn(DirectoryEvent)> = Rc::new(move |event| {
+            let event = match event {
+                DirectoryEvent::Batch {
+                    request_id,
+                    mut entries,
+                } => {
+                    entries.retain(|entry| {
+                        chooser_entry_allowed(
+                            filter.borrow().as_ref(),
+                            directory_only.get(),
+                            root_limit.as_deref(),
+                            entry,
+                        )
+                    });
                     DirectoryEvent::Batch {
                         request_id,
-                        mut entries,
-                    } => {
-                        entries.retain(|entry| {
-                            chooser_entry_allowed(
-                                filter.borrow().as_ref(),
-                                directory_only.get(),
-                                root_limit.as_deref(),
-                                entry,
-                            )
-                        });
-                        DirectoryEvent::Batch {
-                            request_id,
-                            entries,
-                        }
+                        entries,
                     }
-                    event => event,
-                };
-                emit(event);
-            }),
-        )
+                }
+                event => event,
+            };
+            emit(event);
+        });
+        let (Some(root), Some(path)) = (self.root_limit.clone(), request.location.native_path())
+        else {
+            return self.source.enumerate(request, emit);
+        };
+        let path = path.to_owned();
+        let source = self.source.clone();
+        after_containment(root, path, move |answer| match answer {
+            Ok(()) => Some(source.enumerate(request, emit)),
+            Err(error) => {
+                emit(DirectoryEvent::Failed {
+                    request_id: request.id,
+                    message: error.message(),
+                    refused: false,
+                    denied: false,
+                });
+                None
+            }
+        })
     }
 
-    fn watch(
+    fn start_watch(
         &self,
         location: Location,
         include_hidden: bool,
         notify: Rc<dyn Fn(DirectoryChange)>,
-    ) -> Option<LoadHandle> {
+        report: Rc<dyn Fn(Watching)>,
+    ) -> LoadHandle {
         let filter = self.filter.clone();
         let directory_only = self.directory_only.clone();
         let root_limit = self.root_limit.clone();
-        self.source.watch(
-            location,
-            include_hidden,
-            Rc::new(move |change| {
-                notify(filter_directory_change(
-                    filter.borrow().as_ref(),
-                    directory_only.get(),
-                    root_limit.as_deref(),
-                    change,
-                ));
-            }),
-        )
+        let notify: Rc<dyn Fn(DirectoryChange)> = Rc::new(move |change| {
+            notify(filter_directory_change(
+                filter.borrow().as_ref(),
+                directory_only.get(),
+                root_limit.as_deref(),
+                change,
+            ));
+        });
+        let (Some(root), Some(path)) = (self.root_limit.clone(), location.native_path()) else {
+            return self
+                .source
+                .start_watch(location, include_hidden, notify, report);
+        };
+        let path = path.to_owned();
+        let source = self.source.clone();
+        after_containment(root, path, move |answer| match answer {
+            Ok(()) => Some(source.start_watch(location, include_hidden, notify, report)),
+            Err(_) => {
+                report(Watching::Unavailable);
+                None
+            }
+        })
+    }
+
+    fn confined_to(&self) -> Option<&Path> {
+        self.root_limit.as_deref()
+    }
+
+    fn probe_stamp(&self, location: Location, emit: Rc<dyn Fn(StampAnswer)>) -> LoadHandle {
+        self.source.probe_stamp(location, emit)
+    }
+
+    fn check_stamps(
+        &self,
+        locations: Vec<Location>,
+        emit: Rc<dyn Fn(Location, StampAnswer)>,
+    ) -> LoadHandle {
+        self.source.check_stamps(locations, emit)
+    }
+
+    fn responsiveness(&self, location: &Location) -> crate::services::Responsiveness {
+        self.source.responsiveness(location)
+    }
+
+    fn follow_responsiveness(&self, notify: Rc<dyn Fn()>) -> LoadHandle {
+        self.source.follow_responsiveness(notify)
+    }
+
+    fn find_by_identity(
+        &self,
+        parent: Location,
+        identity: ItemIdentity,
+        emit: Rc<dyn Fn(Option<Location>)>,
+    ) -> LoadHandle {
+        self.source.find_by_identity(parent, identity, emit)
     }
 }
 
@@ -226,17 +310,39 @@ fn file_filter_matches(filter: &gtk::FileFilter, entry: &FileEntry) -> bool {
     info.set_name(Path::new(&entry.native_name));
     info.set_display_name(&entry.display_name);
     info.set_file_type(gio::FileType::Regular);
-    let (content_type, _) =
-        gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
+    let (content_type, _) = crate::services::guess_content_type(Path::new(&entry.native_name));
     info.set_content_type(&content_type);
     filter.match_(&info)
+}
+
+const OUTSIDE_ROOT: &str = "Choose an existing folder inside this removable device.";
+
+fn after_containment(
+    root: PathBuf,
+    path: PathBuf,
+    proven: impl FnOnce(Result<(), LocationValidationError>) -> Option<LoadHandle> + 'static,
+) -> LoadHandle {
+    let started: Rc<RefCell<Option<LoadHandle>>> = Rc::default();
+    let slot = started.clone();
+    let task = glib::MainContext::default().spawn_local(async move {
+        let answer = match probes::real_folder(&path).await {
+            Ok(real) if real.starts_with(&root) => Ok(()),
+            Ok(_) => Err(LocationValidationError::Refused(OUTSIDE_ROOT)),
+            Err(error) => Err(error),
+        };
+        let handle = proven(answer);
+        slot.replace(handle);
+    });
+    LoadHandle::new(move || {
+        task.abort();
+        started.take();
+    })
 }
 
 fn chooser_location_allowed(root: Option<&Path>, location: &Location) -> bool {
     root.is_none_or(|root| {
         location.native_path().is_some_and(|path| {
-            path.canonicalize()
-                .is_ok_and(|path| path.is_dir() && path.starts_with(root))
+            path.starts_with(root) && !path.components().any(|part| part == Component::ParentDir)
         })
     })
 }
@@ -474,6 +580,9 @@ struct ChooserState {
     filename: Option<gtk::Entry>,
     filename_selection: RefCell<Vec<Location>>,
     filename_edited: Cell<bool>,
+    /// Exact bytes of the filesystem name last copied into `filename`; the entry
+    /// itself holds only the lossy UTF-8 rendering.
+    filename_source: RefCell<Option<OsString>>,
     filter_dropdown: Option<ChooserDropdown>,
     filters: Vec<PortalFilter>,
     choices: Vec<ChoiceControl>,
@@ -485,6 +594,7 @@ struct ChooserState {
     accept_button: gtk::Button,
     completion: RefCell<Option<Completion>>,
     download_cancel: RefCell<Option<Arc<AtomicBool>>>,
+    downloaded_file: RefCell<Option<(String, PathBuf)>>,
     download_holder: gtk::Box,
     download_progress: RefCell<Option<download::DownloadProgress>>,
 }
@@ -508,6 +618,36 @@ impl ChooserState {
         true
     }
 
+    fn after_download_step<T: Send + 'static>(
+        self: &Rc<Self>,
+        work: impl FnOnce() -> T + Send + 'static,
+        then: impl FnOnce(&Rc<Self>, T) + 'static,
+    ) {
+        self.cancel_download();
+        let step = Arc::new(AtomicBool::new(false));
+        self.download_cancel.replace(Some(step.clone()));
+        self.accept_button.set_sensitive(false);
+        let weak = Rc::downgrade(self);
+        glib::MainContext::default().spawn_local(async move {
+            let answer = gio::spawn_blocking(work)
+                .await
+                .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let current = state
+                .download_cancel
+                .borrow()
+                .as_ref()
+                .is_some_and(|flag| Arc::ptr_eq(flag, &step));
+            if current {
+                state.download_cancel.take();
+                state.accept_button.set_sensitive(true);
+                then(&state, answer);
+            }
+        });
+    }
+
     fn open_remote(self: &Rc<Self>, url: &str) {
         if !matches!(
             self.request.kind,
@@ -516,7 +656,9 @@ impl ChooserState {
                 ..
             }
         ) {
-            self.show_error("Remote links are only supported when opening files");
+            self.show_error(&crate::i18n::tr(
+                "Remote links are only supported when opening files",
+            ));
             return;
         }
         if self.completion.borrow().is_none() || visible_modal_layer(&self.window).is_some() {
@@ -527,11 +669,25 @@ impl ChooserState {
             .set(self.accept_generation.get().wrapping_add(1));
         self.cancel_download();
         self.clear_error();
+        let cached = self
+            .downloaded_file
+            .borrow()
+            .as_ref()
+            .filter(|(previous, _)| previous == url)
+            .map(|(_, path)| path.clone());
+        match cached {
+            Some(path) => self.reuse_download(url.to_owned(), path),
+            None => self.download(url.to_owned()),
+        }
+    }
+
+    fn download(self: &Rc<Self>, url: String) {
+        self.downloaded_file.take();
         let cancelled = Arc::new(AtomicBool::new(false));
         *self.download_cancel.borrow_mut() = Some(cancelled.clone());
         let state = Rc::downgrade(self);
         self.show_download_progress(
-            url,
+            &url,
             Rc::new(move || {
                 if let Some(state) = state.upgrade() {
                     state.cancel_download();
@@ -570,9 +726,11 @@ impl ChooserState {
                     }
                     Ok(RemoteDownload::Finished(path)) => {
                         state.dismiss_download_progress();
-                        if state.download_cancel.borrow_mut().take().is_some() {
-                            state.complete_remote(path);
-                        }
+                        state.download_cancel.borrow_mut().take();
+                        state
+                            .downloaded_file
+                            .replace(Some((url.clone(), path.clone())));
+                        state.complete_download(path);
                         break glib::ControlFlow::Break;
                     }
                     Ok(RemoteDownload::Failed(message)) => {
@@ -588,12 +746,15 @@ impl ChooserState {
                         state.dismiss_download_progress();
                         state.accept_button.set_sensitive(true);
                         state.download_cancel.borrow_mut().take();
-                        state.show_error("The download stopped unexpectedly. Try again.");
+                        state.show_error(&crate::i18n::tr(
+                            "The download stopped unexpectedly. Try again.",
+                        ));
                         break glib::ControlFlow::Break;
                     }
                 }
             };
-            if let Some((downloaded, total)) = latest_progress
+            if current()
+                && let Some((downloaded, total)) = latest_progress
                 && let Some(progress) = state.download_progress.borrow().as_ref()
             {
                 progress.update(downloaded, total);
@@ -617,7 +778,7 @@ impl ChooserState {
         self.download_holder.set_visible(false);
     }
 
-    fn complete_remote(&self, path: PathBuf) {
+    fn finish_remote(&self, path: PathBuf) {
         let name = path
             .file_name()
             .map(|name| name.to_os_string())
@@ -635,11 +796,15 @@ impl ChooserState {
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
+            listable: MetadataValue::Unknown,
             is_hidden: false,
+            recent_uri: None,
         };
         if !self.view.browser().allows_entry(&entry) {
             self.accept_button.set_sensitive(true);
-            self.show_error("The file does not match the selected filter");
+            self.show_error(&crate::i18n::tr(
+                "The file does not match the selected filter",
+            ));
             return;
         }
         self.complete_paths(
@@ -734,6 +899,87 @@ impl ChooserState {
         self.chosen_entries(true)
     }
 
+    fn fill_filename(&self, filename: &gtk::Entry, name: &OsStr) {
+        filename.set_text(&name.to_string_lossy());
+        self.filename_source.replace(Some(name.to_owned()));
+    }
+
+    fn clear_filename(&self, filename: &gtk::Entry) {
+        filename.set_text("");
+        self.filename_source.replace(None);
+        self.filename_edited.set(false);
+    }
+
+    fn save_destination_name(&self, text: &str) -> OsString {
+        match self.filename_source.borrow().as_deref() {
+            Some(source) if source.to_string_lossy() == text => source.to_owned(),
+            _ => OsString::from(text),
+        }
+    }
+
+    fn install_filename_selection_click(self: &Rc<Self>) {
+        if !matches!(self.request.kind, ChooserKind::SaveFile { .. }) {
+            return;
+        }
+        let click = gtk::GestureClick::new();
+        click.set_button(1);
+        click.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak = Rc::downgrade(self);
+        click.connect_pressed(move |gesture, _, x, y| {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            if PreferenceManager::shared().tenxer_mode() {
+                return;
+            }
+            let Some(surface) = gesture.widget() else {
+                return;
+            };
+            let Some(picked) = surface.pick(x, y, gtk::PickFlags::DEFAULT) else {
+                return;
+            };
+            if super::focus_navigation::editable(&picked)
+                || super::focus_navigation::in_popover(&picked)
+                || !std::iter::successors(Some(picked), gtk::Widget::parent)
+                    .take_while(|widget| *widget != surface)
+                    .any(|widget| {
+                        widget.has_css_class("file-row")
+                            || widget.has_css_class("list-row")
+                            || widget.has_css_class("icons-card")
+                    })
+            {
+                return;
+            }
+            let location = state.view.browser().active_location();
+            let weak = Rc::downgrade(&state);
+            // Re-clicking a highlighted row emits no GTK selection change. Let the
+            // row handlers finish before committing its cursor and refilling the name.
+            glib::idle_add_local_once(move || {
+                let Some(state) = weak.upgrade() else {
+                    return;
+                };
+                let browser = state.view.browser();
+                if !state.window.is_visible() || browser.active_location() != location {
+                    return;
+                }
+                if state.view.selected_search_results().is_none()
+                    && browser.selection_is_load_cursor()
+                    && let Some((depth, position, _)) = browser.focused_item()
+                {
+                    browser.commit_selection();
+                    browser.set_selection(
+                        depth,
+                        &browser.selected_positions(depth),
+                        Some(position),
+                    );
+                }
+                state.filename_selection.borrow_mut().clear();
+                state.update_selected_filename();
+            });
+        });
+        self.view.widget().add_controller(click);
+    }
+
     fn update_selected_filename(&self) {
         let Some(filename) = self.filename.as_ref() else {
             return;
@@ -755,7 +1001,7 @@ impl ChooserState {
             && let Some(name) = entry.location.native_path().and_then(Path::file_name)
             && safe_filename(name)
         {
-            filename.set_text(&name.to_string_lossy());
+            self.fill_filename(filename, name);
             self.filename_edited.set(false);
             filename.remove_css_class("error");
             crate::ui::accessibility::set_description(filename, None);
@@ -766,8 +1012,7 @@ impl ChooserState {
                 ..
             }
         ) {
-            filename.set_text("");
-            self.filename_edited.set(false);
+            self.clear_filename(filename);
         }
     }
 
@@ -863,7 +1108,7 @@ impl ChooserState {
                 }
                 let browser = self.view.browser();
                 let Some(current) = browser.active_location() else {
-                    self.show_error("Choose an accessible local folder");
+                    self.show_error(&crate::i18n::tr("Choose an accessible local folder"));
                     return;
                 };
                 let entries = self.chosen_entries(!*directory);
@@ -875,17 +1120,14 @@ impl ChooserState {
                     open_selection(&entries, &current, *directory, *multiple),
                     self.destination_host.as_ref(),
                 ) {
-                    (Ok(paths), Some(host)) => match (host.validate)(&paths[0]) {
-                        Ok(path) => self.complete_paths(vec![path], None),
-                        Err(message) => self.show_error(&message),
-                    },
+                    (Ok(paths), Some(host)) => self.accept_destination((host.validate)(&paths[0])),
                     (Ok(paths), None) => self.complete_paths(
                         paths,
                         self.read_only
                             .as_ref()
                             .map(|read_only| writable_from_read_only(read_only.is_active())),
                     ),
-                    (Err(message), _) => self.show_error(message),
+                    (Err(message), _) => self.show_error(&crate::i18n::tr(message)),
                 }
             }
             ChooserKind::SaveFile { .. } => self.accept_save_file(),
@@ -893,7 +1135,7 @@ impl ChooserState {
                 let folder = match self.active_folder() {
                     Ok(folder) => folder,
                     Err(message) => {
-                        self.show_error(message);
+                        self.show_error(&crate::i18n::tr(message));
                         return;
                     }
                 };
@@ -902,13 +1144,38 @@ impl ChooserState {
         }
     }
 
+    fn accept_destination(
+        self: &Rc<Self>,
+        validation: futures_lite::future::BoxedLocal<Result<PathBuf, String>>,
+    ) {
+        self.destination_check.set(true);
+        self.accept_button.set_sensitive(false);
+        let generation = self.accept_generation.get();
+        let weak = Rc::downgrade(self);
+        let _task = glib::MainContext::default().spawn_local(async move {
+            let result = validation.await;
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.destination_check.set(false);
+            if state.completion.borrow().is_none() || state.accept_generation.get() != generation {
+                return;
+            }
+            state.accept_button.set_sensitive(true);
+            match result {
+                Ok(path) => state.complete_paths(vec![path], None),
+                Err(message) => state.show_error(&message),
+            }
+        });
+    }
+
     fn accept_open_name(self: &Rc<Self>, name: &str) {
         if let Some(url) = remote_file_url(name) {
             self.open_remote(&url);
             return;
         }
         if let Err(message) = crate::services::validate_basename(name) {
-            self.show_error(message);
+            self.show_error(&crate::i18n::tr(message));
             return;
         }
         let folder = self
@@ -918,7 +1185,7 @@ impl ChooserState {
             .and_then(|location| location.native_path().map(Path::to_path_buf))
             .or_else(|| self.active_folder().ok());
         let Some(folder) = folder else {
-            self.show_error("Choose an accessible local folder");
+            self.show_error(&crate::i18n::tr("Choose an accessible local folder"));
             return;
         };
         let location = Location::local(folder.join(name));
@@ -940,18 +1207,20 @@ impl ChooserState {
                 Ok(entry) if entry.is_directory() => {
                     state.view.browser().navigate(entry.location);
                     if let Some(filename) = state.filename.as_ref() {
-                        filename.set_text("");
-                        state.filename_edited.set(false);
+                        state.clear_filename(filename);
                     }
                 }
                 Ok(entry) if state.view.browser().allows_entry(&entry) => {
                     match entry.location.native_path() {
-                        Some(path) => state.complete_remote(path.to_path_buf()),
-                        None => state.show_error("Choose an existing, accessible file"),
+                        Some(path) => state.finish_remote(path.to_path_buf()),
+                        None => state
+                            .show_error(&crate::i18n::tr("Choose an existing, accessible file")),
                     }
                 }
-                Ok(_) => state.show_error("The file does not match the selected filter"),
-                Err(_) => state.show_error("Choose an existing, accessible file"),
+                Ok(_) => state.show_error(&crate::i18n::tr(
+                    "The file does not match the selected filter",
+                )),
+                Err(_) => state.show_error(&crate::i18n::tr("Choose an existing, accessible file")),
             }
         });
     }
@@ -962,9 +1231,10 @@ impl ChooserState {
         };
         let name = filename.text().to_string();
         if let Err(message) = crate::services::validate_basename(&name) {
+            let message = crate::i18n::tr(message);
             filename.add_css_class("error");
-            crate::ui::accessibility::set_description(filename, Some(message));
-            self.show_error(message);
+            crate::ui::accessibility::set_description(filename, Some(&message));
+            self.show_error(&message);
             filename.grab_focus();
             return;
         }
@@ -973,16 +1243,11 @@ impl ChooserState {
         let folder = match self.active_folder() {
             Ok(folder) => folder,
             Err(message) => {
-                self.show_error(message);
+                self.show_error(&crate::i18n::tr(message));
                 return;
             }
         };
-        let name = match &self.request.kind {
-            ChooserKind::SaveFile {
-                current_name: Some(current),
-            } if current.to_string_lossy() == name => current.clone(),
-            _ => OsString::from(name),
-        };
+        let name = self.save_destination_name(&name);
         self.accept_destinations(folder, vec![name]);
     }
 
@@ -1030,32 +1295,32 @@ impl ChooserState {
         if let Some(root) = root.as_ref() {
             root.set_blurred(true);
         }
-        let names = paths
-            .iter()
-            .take(3)
-            .filter_map(|path| path.file_name())
-            .map(|name| name.to_string_lossy().chars().take(80).collect::<String>())
-            .collect::<Vec<_>>()
-            .join(", ");
+        let names = crate::i18n::list(
+            paths
+                .iter()
+                .take(3)
+                .filter_map(|path| path.file_name())
+                .map(|name| name.to_string_lossy().chars().take(80).collect::<String>()),
+        );
         let layout = message_dialog_layout(
             crate::assets::icons::COPY,
-            if paths.len() > 1 {
+            &crate::i18n::tr(if paths.len() > 1 {
                 "Replace existing files?"
             } else {
                 "Replace existing file?"
-            },
+            }),
             &names,
-            "Replace",
+            &crate::i18n::tr("Replace"),
             ModalTone::Danger,
         );
         layout
             .body
             .append(&super::controls::message_dialog_description(
-                if paths.len() > 1 {
+                &crate::i18n::tr(if paths.len() > 1 {
                     "One or more destination files already exist. Continuing may overwrite them."
                 } else {
                     "The destination file already exists. Continuing may overwrite it."
-                },
+                }),
             ));
         let layer = modal_layer(&layout.content, &overlay, root.clone(), None);
         overlay.add_overlay(&layer);
@@ -1073,17 +1338,8 @@ impl ChooserState {
                 state.complete_paths(paths.clone(), None);
             }
         });
-        let escape = gtk::EventControllerKey::new();
         let cancel = layout.cancel.clone();
-        escape.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
-                cancel.emit_clicked();
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
-        });
-        layer.add_controller(escape);
+        close_on_escape(&layer, move || cancel.emit_clicked());
         focus_button(&layout.cancel);
     }
 
@@ -1098,7 +1354,7 @@ impl ChooserState {
                 ..
             }
         ) {
-            self.show_error("Choose folders only");
+            self.show_error(&crate::i18n::tr("Choose folders only"));
             return;
         }
         if matches!(
@@ -1125,8 +1381,8 @@ impl ChooserState {
         let Some(filename) = self.filename.as_ref() else {
             return;
         };
-        filename.grab_focus();
-        filename.select_region(0, super::collection_edit::rename_stem_end(&filename.text()));
+        filename.grab_focus_without_selecting();
+        select_name_stem(filename);
     }
 
     fn activate_file(self: &Rc<Self>, location: &Location) {
@@ -1138,7 +1394,7 @@ impl ChooserState {
                 directory: false, ..
             } => {
                 let Some(path) = location.native_path() else {
-                    self.show_error("Choose a local file");
+                    self.show_error(&crate::i18n::tr("Choose a local file"));
                     return;
                 };
                 self.complete_paths(
@@ -1158,13 +1414,17 @@ impl ChooserState {
                     return;
                 };
                 if let Some(filename) = self.filename.as_ref() {
-                    filename.set_text(&name.to_string_lossy());
+                    self.fill_filename(filename, &name);
                 }
                 self.accept_destinations(folder, vec![name]);
             }
             _ => {}
         }
     }
+}
+
+fn select_name_stem(entry: &gtk::Entry) {
+    entry.select_region(0, super::collection_edit::rename_stem_end(&entry.text()));
 }
 
 fn eligible_open_entries(entries: Vec<FileEntry>, directory: bool) -> Vec<FileEntry> {
@@ -1447,6 +1707,13 @@ fn build_chooser_hosted(
         .default_height(initial_height)
         .modal(request.modal)
         .build();
+    crate::ui::decoration::claim_titlebar(&window);
+    let presence_view = view.downgrade();
+    super::presence::follow(&window, move |presence, power_saver| {
+        if let Some(view) = presence_view.upgrade() {
+            view.set_presence(presence, power_saver);
+        }
+    });
     if let Some(host) = &host {
         window.set_transient_for(Some(&host.parent));
         window.set_destroy_with_parent(true);
@@ -1468,17 +1735,9 @@ fn build_chooser_hosted(
         });
     }
     let header = gtk::HeaderBar::new();
+    header.add_css_class("browser-header");
     header.set_show_title_buttons(false);
-    let sidebar_toggle = gtk::ToggleButton::builder()
-        .active(true)
-        .tooltip_text("Toggle sidebar (Ctrl+B)")
-        .build();
-    sidebar_toggle.set_child(Some(&crate::assets::primary_icon(
-        crate::assets::icons::PANEL_LEFT,
-        17,
-    )));
-    sidebar_toggle.add_css_class("sidebar-toggle");
-    sidebar_toggle.set_cursor_from_name(Some("pointer"));
+    let sidebar_toggle = super::sidebar_toggle::SidebarToggle::new();
     let location = view.location_widget();
     location.set_hexpand(true);
     let appearance = build_appearance_menu(&view, &browser, theme.clone(), &preview);
@@ -1487,9 +1746,10 @@ fn build_chooser_hosted(
     header_content.set_valign(gtk::Align::Center);
     header_content.append(&sidebar_toggle);
     header_content.append(&location);
-    let close = gtk::Button::builder()
-        .tooltip_text("Cancel file selection (Esc)")
-        .build();
+    let close = gtk::Button::new();
+    let keys = crate::ui::keys::Keys::One(crate::ui::keys::bindings::ESCAPE.shown());
+    crate::ui::shortcut_reference::follow_tooltip(&close, "Cancel file selection (%{keys})", keys);
+    crate::ui::shortcut_reference::follow_label(&close, "Cancel file selection (%{keys})", keys);
     close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
     close.add_css_class("header-action");
     let closing_window = window.downgrade();
@@ -1508,6 +1768,7 @@ fn build_chooser_hosted(
     let confined = source.root_limit.is_some();
     let sidebar = build_sidebar(view.clone(), theme.clone(), true);
     sidebar.schedule_after_first_paint(&window);
+    bind_chooser_sidebar_modes(&sidebar, &sidebar_toggle, &theme);
     let content = gtk::Paned::new(gtk::Orientation::Horizontal);
     content.set_wide_handle(false);
     content.set_position(SIDEBAR_WIDTH);
@@ -1529,7 +1790,8 @@ fn build_chooser_hosted(
 
     let preview_split = gtk::Paned::new(gtk::Orientation::Horizontal);
     preview_split.add_css_class("preview-split");
-    preview_split.set_wide_handle(false);
+    // The column beside the divider keeps its resize edge; the preview grip moves it.
+    preview_split.set_wide_handle(true);
     preview_split.set_resize_start_child(true);
     preview_split.set_resize_end_child(false);
     preview_split.set_shrink_start_child(false);
@@ -1539,8 +1801,16 @@ fn build_chooser_hosted(
     preview_split.set_position(i32::MAX);
     preview_split.set_vexpand(true);
     preview.attach_split(&preview_split, &content, &view, Some(&sidebar));
-    view.add_marquee_origin(&sidebar.widget, gtk::PackType::Start);
-    view.add_marquee_origin(&preview.widget(), gtk::PackType::End);
+    view.add_marquee_origin(
+        &sidebar.widget,
+        gtk::PackType::Start,
+        OriginClick::ClearsSelection,
+    );
+    view.add_marquee_origin(
+        &preview.widget(),
+        gtk::PackType::End,
+        OriginClick::keeps_selection_within(&preview.pane_widget()),
+    );
     let (footer, footer_holder) = chooser_footer(&view, &theme);
     footer.set_chooser(chooser_reference(&request.kind));
 
@@ -1548,40 +1818,39 @@ fn build_chooser_hosted(
     details.add_css_class("chooser-details");
     let filename = match &request.kind {
         ChooserKind::SaveFile { current_name } => {
-            let row = labeled_row("Name", None::<&gtk::Widget>);
+            let row = labeled_row(&crate::i18n::tr("Name"), None::<&gtk::Widget>);
             let entry = form_entry();
             entry.set_hexpand(true);
-            entry.set_placeholder_text(Some("Enter a filename"));
+            entry.set_placeholder_text(Some(&crate::i18n::tr("Enter a filename")));
+            crate::ui::accessibility::set_label(&entry, &crate::i18n::tr("Name"));
             if let Some(name) = current_name {
                 entry.set_text(&name.to_string_lossy());
-                entry.select_region(0, -1);
+                select_name_stem(&entry);
             }
             row.append(&entry);
             details.append(&row);
             Some(entry)
         }
         ChooserKind::SaveFiles { names } => {
-            let names = names
-                .iter()
-                .map(|name| name.to_string_lossy())
-                .collect::<Vec<_>>()
-                .join(", ");
+            let names =
+                crate::i18n::list(names.iter().map(|name| name.to_string_lossy().into_owned()));
             let label = gtk::Label::new(Some(&names));
             label.add_css_class("action-dialog-description");
             label.set_xalign(0.0);
             label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
             crate::ui::accessibility::set_description(&label, Some(&names));
-            let row = labeled_row("Files", Some(label.upcast_ref()));
+            let row = labeled_row(&crate::i18n::tr("Files"), Some(label.upcast_ref()));
             details.append(&row);
             None
         }
         ChooserKind::Open {
             directory: false, ..
         } => {
-            let row = labeled_row("Name", None::<&gtk::Widget>);
+            let row = labeled_row(&crate::i18n::tr("Name"), None::<&gtk::Widget>);
             let entry = form_entry();
             entry.set_hexpand(true);
-            entry.set_placeholder_text(Some("Enter a filename or https:// URL"));
+            entry.set_placeholder_text(Some(&crate::i18n::tr("Enter a filename or https:// URL")));
+            crate::ui::accessibility::set_label(&entry, &crate::i18n::tr("Name"));
             row.append(&entry);
             details.append(&row);
             Some(entry)
@@ -1601,7 +1870,10 @@ fn build_chooser_hosted(
             .map(|filter| filter.portal.label())
             .collect::<Vec<_>>();
         let dropdown = ChooserDropdown::new(&labels, selected_filter.unwrap_or(0));
-        let row = labeled_row("Filter", Some(dropdown.button.upcast_ref()));
+        let row = labeled_row(
+            &crate::i18n::tr("chooser.filter"),
+            Some(dropdown.button.upcast_ref()),
+        );
         append_option(&options, &row);
         let filters_for_change = filters.clone();
         let source_for_change = source.clone();
@@ -1626,7 +1898,7 @@ fn build_chooser_hosted(
         }
     )
     .then(|| {
-        let check = form_check_button("Open files read-only");
+        let check = form_check_button(&crate::i18n::tr("Open files read-only"));
         append_option(&options, &check);
         check
     });
@@ -1640,7 +1912,7 @@ fn build_chooser_hosted(
     error.add_css_class("form-field-error");
     error.set_visible(false);
 
-    let cancel = gtk::Button::with_label("Cancel");
+    let cancel = gtk::Button::with_label(&crate::i18n::tr("Cancel"));
     cancel.add_css_class("action-dialog-cancel");
     let accept = gtk::Button::with_mnemonic(&request.accept_label);
     accept.add_css_class("action-dialog-confirm");
@@ -1651,7 +1923,11 @@ fn build_chooser_hosted(
             ..
         }
     ) {
-        crate::ui::accessibility::set_description(&accept, Some("Select folder (Ctrl+Enter)"));
+        crate::ui::shortcut_reference::follow_description(
+            &accept,
+            "Select folder (%{keys})",
+            crate::ui::keys::Keys::One(crate::ui::keys::bindings::CHOOSE_FOLDER.shown()),
+        );
     }
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     actions.add_css_class("chooser-actions");
@@ -1700,8 +1976,14 @@ fn build_chooser_hosted(
     window.set_child(Some(&overlay));
     view.install_inline_edit_dismissal(&window);
     install_modal_focus_trap(&window);
+    keys::install_native_aliases(&window);
+    view.set_as_modal_focus_fallback(&window);
     window.set_default_widget(Some(&accept));
 
+    let filename_source = match &request.kind {
+        ChooserKind::SaveFile { current_name } => current_name.clone(),
+        _ => None,
+    };
     let state = Rc::new(ChooserState {
         request,
         window: window.clone(),
@@ -1710,6 +1992,7 @@ fn build_chooser_hosted(
         filename: filename.clone(),
         filename_selection: RefCell::new(Vec::new()),
         filename_edited: Cell::new(false),
+        filename_source: RefCell::new(filename_source),
         filter_dropdown,
         filters,
         choices,
@@ -1721,10 +2004,12 @@ fn build_chooser_hosted(
         accept_button: accept.clone(),
         completion: RefCell::new(Some(Box::new(completion))),
         download_cancel: RefCell::new(None),
+        downloaded_file: RefCell::new(None),
         download_holder,
         download_progress: RefCell::new(None),
     });
 
+    state.install_filename_selection_click();
     let weak = Rc::downgrade(&state);
     accept.connect_clicked(move |_| {
         if let Some(state) = weak.upgrade() {
@@ -1770,6 +2055,7 @@ fn build_chooser_hosted(
     }));
 
     let state_for_observer = state.clone();
+    preview.follow_operations(&browser);
     let preview_for_browser = preview.clone();
     let weak_browser = Rc::downgrade(&browser);
     browser.observe(move |event| {
@@ -1811,7 +2097,7 @@ fn build_chooser_hosted(
     let tenxer = tenxer_keys(
         &state,
         &sidebar,
-        &sidebar_toggle,
+        sidebar_toggle.upcast_ref(),
         &header_content,
         &preview,
         &footer,
@@ -1820,7 +2106,7 @@ fn build_chooser_hosted(
         &window,
         &state,
         &sidebar,
-        &sidebar_toggle,
+        sidebar_toggle.upcast_ref(),
         header_content.upcast_ref(),
         &preview,
         tenxer,
@@ -1878,16 +2164,20 @@ fn build_chooser_hosted(
         }
         return Some(state);
     } else if let Some(filename) = state.filename.as_ref() {
-        filename.grab_focus();
-        filename.select_region(0, -1);
+        filename.grab_focus_without_selecting();
+        select_name_stem(filename);
     } else {
         sidebar_toggle.grab_focus();
     }
     window.set_focus_visible(true);
+    let target_filename = state.filename.clone();
     let initial_focus = gtk::prelude::RootExt::focus(&window).map(|widget| widget.downgrade());
     // View initialization also queues focus work; restore the chooser's target afterward.
     glib::idle_add_local_once(move || {
-        if let Some(widget) = initial_focus.and_then(|widget| widget.upgrade()) {
+        if let Some(filename) = target_filename.as_ref() {
+            filename.grab_focus_without_selecting();
+            select_name_stem(filename);
+        } else if let Some(widget) = initial_focus.and_then(|widget| widget.upgrade()) {
             widget.grab_focus();
         }
     });
@@ -2039,25 +2329,38 @@ fn apply_external_parent(window: &gtk::Window, parent: Option<&WindowIdentifierT
 }
 
 fn save_hints(kind: &ChooserKind, preferences: &Rc<PreferenceManager>) -> Option<gtk::Box> {
-    let hints: &[(&str, &str)] = match kind {
+    use crate::ui::keys::{
+        self, Keys, Shown,
+        bindings::{ENTER, OPEN, RENAME},
+    };
+    let hints: &[(Shown, &str)] = match kind {
         ChooserKind::SaveFile { .. } => &[
-            ("Enter", "Save here"),
-            ("r", "Edit name"),
-            ("o", "Replace file"),
+            (ENTER.shown(), "Save here"),
+            (RENAME.alternate(0).shown(), "Edit name"),
+            (OPEN.shown(), "Replace file"),
         ],
-        ChooserKind::SaveFiles { .. } => &[("Enter", "Save here")],
+        ChooserKind::SaveFiles { .. } => &[(ENTER.shown(), "Save here")],
         ChooserKind::Open { .. } => return None,
     };
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     row.add_css_class("chooser-save-hints");
     row.set_valign(gtk::Align::Center);
-    for (index, (key, action)) in hints.iter().enumerate() {
-        let keycap = gtk::Label::new(Some(key));
+    for (index, (binding, action)) in hints.iter().enumerate() {
+        // Shown only in 10xer mode, so it shows that map.
+        let keycap = gtk::Label::new(None);
+        let shown = *binding;
+        crate::ui::shortcut_reference::follow_keys(&keycap, move |keycap| {
+            keycap.set_text(&keys::label_in_map(
+                &rust_i18n::locale(),
+                &Keys::One(shown),
+                Map::Tenxer,
+            ));
+        });
         keycap.add_css_class("sidebar-keycap");
         if index > 0 {
             keycap.set_margin_start(10);
         }
-        let label = gtk::Label::new(Some(action));
+        let label = gtk::Label::new(Some(&crate::i18n::tr(action)));
         label.add_css_class("shortcut-footer-chord-hint");
         row.append(&keycap);
         row.append(&label);
@@ -2103,6 +2406,46 @@ fn chooser_footer(
         |holder, enabled| holder.set_visible(enabled),
     );
     (footer, holder)
+}
+
+/// The chooser keeps its sidebar modes for the dialog only.
+fn bind_chooser_sidebar_modes(
+    sidebar: &SidebarView,
+    toggle: &super::sidebar_toggle::SidebarToggle,
+    preferences: &Rc<PreferenceManager>,
+) {
+    use super::sidebar_toggle::SidebarMode;
+    let state = Rc::downgrade(&sidebar.state);
+    let stepping_toggle = toggle.clone();
+    toggle.set_step(move || {
+        let Some(state) = state.upgrade() else {
+            return;
+        };
+        match SidebarMode::of(stepping_toggle.is_active(), state.rail.get()).next() {
+            SidebarMode::Expanded => {
+                state.set_compact(false);
+                stepping_toggle.set_active(true);
+            }
+            SidebarMode::Compact => state.set_compact(true),
+            SidebarMode::Hidden => stepping_toggle.set_active(false),
+        }
+    });
+    let describe = {
+        let toggle = toggle.clone();
+        let state = Rc::downgrade(&sidebar.state);
+        Rc::new(move || {
+            if let Some(state) = state.upgrade() {
+                toggle.describe(SidebarMode::of(toggle.is_active(), state.rail.get()));
+            }
+        })
+    };
+    let on_toggled = describe.clone();
+    toggle.connect_toggled(move |_| on_toggled());
+    let on_rail = describe.clone();
+    sidebar.state.connect_rail_changed(move |_| on_rail());
+    preferences.bind_preference(toggle, PreferenceManager::shown_keys, move |_, _| {
+        describe();
+    });
 }
 
 fn tenxer_keys(
@@ -2179,10 +2522,7 @@ fn install_shortcuts(
     let header = header.clone();
     let preview = preview.clone();
     let focus_before_sidebar = Rc::new(RefCell::new(None::<gtk::Widget>));
-    keys.connect_key_pressed(move |_, key, _, modifiers| {
-        let Some(state) = weak.upgrade() else {
-            return glib::Propagation::Proceed;
-        };
+    let handle = move |state: &Rc<ChooserState>, press: &KeyPress| -> glib::Propagation {
         let preferences = PreferenceManager::shared();
         if let Some(layer) = visible_modal_layer(&state.window) {
             let focused = gtk::prelude::RootExt::focus(&state.window);
@@ -2191,27 +2531,40 @@ fn install_shortcuts(
             }
             return glib::Propagation::Proceed;
         }
+        if press.is(ESCAPE_ANY) && state.view.cancel_column_drag() {
+            return glib::Propagation::Stop;
+        }
         let focused = gtk::prelude::RootExt::focus(&state.window);
         if preferences.tenxer_mode()
             && (state.name_has_focus(focused.as_ref()) || state.view.location_has_focus())
-            && !matches!(key, gtk::gdk::Key::F1 | gtk::gdk::Key::Escape)
-            && !(modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-                && modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK)
-                && matches!(key, gtk::gdk::Key::m | gtk::gdk::Key::M))
+            && !(press.is(REFERENCE.in_map(Map::Default).ignoring(SHORTCUT_MODIFIERS))
+                || press.is(ESCAPE_ANY)
+                || press.is(TENXER_MODE))
         {
             return glib::Propagation::Proceed;
         }
-        if let Some(result) = tenxer.handle(key, modifiers) {
-            return result;
-        }
-        if let Some(size) = preferences.text_size().for_shortcut(key, modifiers) {
-            preferences.set_text_size(size);
+        if preview.reset_pdf_zoom(press) {
             return glib::Propagation::Stop;
         }
+        if let Some(result) = tenxer.handle(press) {
+            return result;
+        }
+        if let Some(size) = preferences.text_size().for_shortcut(press) {
+            state.view.set_text_size(size);
+            return glib::Propagation::Stop;
+        }
+        if let Some(change) = ThumbnailResize::for_shortcut(press)
+            && state.view.resize_icons_thumbnails(change)
+        {
+            return glib::Propagation::Stop;
+        }
+        if tenxer.reference_is_open() {
+            return glib::Propagation::Proceed;
+        }
         let browser = state.view.browser();
-        let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
-        let alt = modifiers.contains(gtk::gdk::ModifierType::ALT_MASK);
-        let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+        let held = press.modifiers();
+        let control = held.contains(ModifierType::CONTROL_MASK);
+        let alt = held.contains(ModifierType::ALT_MASK);
         if focused
             .as_ref()
             .and_then(|focused| focused.ancestor(gtk::Popover::static_type()))
@@ -2219,7 +2572,7 @@ fn install_shortcuts(
         {
             return glib::Propagation::Proceed;
         }
-        if super::window::is_context_menu_shortcut(key, modifiers)
+        if press.is(CONTEXT_MENU)
             && !focused.as_ref().is_some_and(|widget| {
                 super::focus_navigation::editable(widget)
                     || super::focus_navigation::in_popover(widget)
@@ -2235,13 +2588,15 @@ fn install_shortcuts(
                 super::focus_navigation::editable(widget)
                     || super::focus_navigation::in_popover(widget)
             })
-            && preview.handle_video_key(key, modifiers)
+            && preview.handle_video_key(press)
         {
             return glib::Propagation::Stop;
         }
         // Filtered rows own navigation, not the hidden directory selection.
-        if matches!(key, gtk::gdk::Key::Up | gtk::gdk::Key::Down)
-            && state.view.selected_search_results().is_some()
+        if press.untyped().is_any(&[
+            UP.ignoring(SHORTCUT_MODIFIERS),
+            DOWN.ignoring(SHORTCUT_MODIFIERS),
+        ]) && state.view.selected_search_results().is_some()
             && !focused.as_ref().is_some_and(|widget| {
                 super::focus_navigation::editable(widget)
                     || super::focus_navigation::in_popover(widget)
@@ -2250,31 +2605,26 @@ fn install_shortcuts(
             state.window.set_focus_visible(true);
             return glib::Propagation::Proceed;
         }
-        let original_key = key;
-        let key = super::focus_navigation::navigation_key(
-            key,
-            modifiers,
-            PreferenceManager::shared().type_to_search(),
-            focused.as_ref(),
-        );
-        let vim_navigation = key != original_key;
+        // Unlike the window, the chooser types h j k l whenever type-to-search
+        // is on, 10xer mode included.
+        let press = &if preferences.type_to_search() {
+            press.untyped()
+        } else {
+            *press
+        };
+        let vim_navigation = press.aliased();
         if !focused
             .as_ref()
             .is_some_and(super::focus_navigation::in_popover)
-            && (super::window::is_sidebar_focus_shortcut(key, modifiers)
+            && (press.is(SIDEBAR_FOCUS)
                 || (!focused
                     .as_ref()
                     .is_some_and(super::focus_navigation::editable)
-                    && super::window::is_browser_navigation_key(key, modifiers)))
+                    && super::window::is_browser_navigation_key(press)))
         {
             state.view.keyboard_navigation();
         }
-        if !control
-            && !alt
-            && !shift
-            && !modifiers.contains(gtk::gdk::ModifierType::SUPER_MASK)
-            && super::focus_navigation::arrow_direction(key).is_some()
-        {
+        if arrow_direction(press, ModifierType::empty()).is_some() {
             state.window.set_focus_visible(true);
             if focused
                 .as_ref()
@@ -2293,7 +2643,7 @@ fn install_shortcuts(
         let sidebar_has_focus = focused.as_ref().is_some_and(|focused| {
             focused == &sidebar_widget || focused.is_ancestor(&sidebar_widget)
         });
-        if key == gtk::gdk::Key::Escape {
+        if press.is(ESCAPE_ANY) {
             if let Some(popover) = focused
                 .as_ref()
                 .and_then(|widget| widget.ancestor(gtk::Popover::static_type()))
@@ -2329,7 +2679,7 @@ fn install_shortcuts(
             state.cancel();
             return glib::Propagation::Stop;
         }
-        if super::window::is_rename_shortcut(key, modifiers)
+        if press.is(RENAME.in_map(Map::Default))
             && browser.selected_entries().len() == 1
             && !focused.as_ref().is_some_and(|widget| {
                 super::focus_navigation::editable(widget)
@@ -2339,10 +2689,7 @@ fn install_shortcuts(
         {
             return glib::Propagation::Stop;
         }
-        if alt
-            && !control
-            && !shift
-            && matches!(key, gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter)
+        if press.is(PROPERTIES.ignoring(ModifierType::SUPER_MASK))
             && state.view.item_view_has_focus()
             && !state.view.new_entry_is_active()
             && !state.view.rename_is_active()
@@ -2353,14 +2700,8 @@ fn install_shortcuts(
         if state.view.new_entry_is_active() || state.view.rename_is_active() {
             return glib::Propagation::Proceed;
         }
-        if key == gtk::gdk::Key::space
-            && !modifiers.intersects(
-                gtk::gdk::ModifierType::CONTROL_MASK
-                    | gtk::gdk::ModifierType::ALT_MASK
-                    | gtk::gdk::ModifierType::SUPER_MASK
-                    | gtk::gdk::ModifierType::SHIFT_MASK,
-            )
-            && let Some(entry) = state.view.selected_search_result()
+        if press.is(PREVIEW.in_map(Map::Default))
+            && let Some(entry) = state.view.search_result_for_space()
         {
             if state.view.activate_directory_on_space() {
                 return glib::Propagation::Stop;
@@ -2371,19 +2712,14 @@ fn install_shortcuts(
             );
             return glib::Propagation::Stop;
         }
-        if control
-            && !shift
-            && !alt
-            && matches!(key, gtk::gdk::Key::f | gtk::gdk::Key::F)
-            && state.view.show_filter()
-        {
+        if press.is(FILTER.in_map(Map::Default)) && state.view.show_filter() {
             return glib::Propagation::Stop;
         }
-        if control && matches!(key, gtk::gdk::Key::l | gtk::gdk::Key::L) {
+        if press.is(LOCATION) {
             state.view.begin_location_edit();
             return glib::Propagation::Stop;
         }
-        if is_sidebar_focus_shortcut(key, modifiers) {
+        if press.is(SIDEBAR_FOCUS) {
             if preferences.tenxer_mode() {
                 if !sidebar_toggle.is_active() {
                     return glib::Propagation::Stop;
@@ -2423,25 +2759,20 @@ fn install_shortcuts(
             }
             return glib::Propagation::Stop;
         }
-        let toggles_sidebar = if preferences.tenxer_mode() {
-            matches!(key, gtk::gdk::Key::n | gtk::gdk::Key::N)
-        } else {
-            matches!(key, gtk::gdk::Key::b | gtk::gdk::Key::B)
-        };
-        if control && !shift && toggles_sidebar {
+        if press.is(SIDEBAR) {
             if state
                 .destination_host
                 .as_ref()
                 .is_none_or(|host| !host.confined)
             {
-                sidebar_toggle.set_active(!sidebar_toggle.is_active());
+                sidebar_toggle.emit_clicked();
             }
             return glib::Propagation::Stop;
         }
         if state.view.location_has_focus() {
             return glib::Propagation::Proceed;
         }
-        if is_folder_accept_shortcut(key, modifiers)
+        if press.is(CHOOSE_FOLDER.ignoring(ModifierType::SUPER_MASK))
             && state.view.item_view_has_focus()
             && matches!(
                 &state.request.kind,
@@ -2454,7 +2785,7 @@ fn install_shortcuts(
             state.accept();
             return glib::Propagation::Stop;
         }
-        if control && shift && matches!(key, gtk::gdk::Key::n | gtk::gdk::Key::N) {
+        if press.is(NEW_FOLDER) {
             if state
                 .destination_host
                 .as_ref()
@@ -2464,9 +2795,7 @@ fn install_shortcuts(
             }
             return glib::Propagation::Stop;
         }
-        if control
-            && !shift
-            && key == gtk::gdk::Key::a
+        if press.is(SELECT_ALL)
             && state.view.item_view_has_focus()
             && matches!(
                 &state.request.kind,
@@ -2476,41 +2805,49 @@ fn install_shortcuts(
             state.view.select_all();
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::F5 {
+        if press.is(REFRESH.ignoring(SHORTCUT_MODIFIERS)) {
             if let Some(depth) = browser.active_depth() {
+                crate::adapters::trash_support::forget_all();
                 browser.retry_column(depth);
             }
             return glib::Propagation::Stop;
         }
-        if control
-            && !shift
-            && !alt
-            && matches!(
-                key,
-                gtk::gdk::Key::h | gtk::gdk::Key::H | gtk::gdk::Key::period
-            )
-        {
+        if press.is(HIDDEN_FILES.in_map(Map::Default)) {
             browser.toggle_hidden();
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::Delete
-            && !control
-            && !alt
+        let permanent = if press.is(MOVE_TO_TRASH
+            .in_map(Map::Default)
+            .ignoring(ModifierType::SUPER_MASK))
+        {
+            Some(false)
+        } else if press.is(DELETE_PERMANENTLY
+            .in_map(Map::Default)
+            .ignoring(ModifierType::SUPER_MASK))
+        {
+            Some(true)
+        } else {
+            None
+        };
+        if let Some(permanent) = permanent
             && state.view.item_view_has_focus()
             && !state.view.filter_has_focus()
-            && state.view.confirm_delete(shift)
+            && state.view.confirm_delete(permanent)
         {
             return glib::Propagation::Stop;
         }
-        if control
-            && !shift
-            && !alt
-            && let Some(mode) = super::window::browser_mode_for_digit(key)
-        {
+        if let Some(mode) = super::window::browser_mode_for_digit(press) {
             super::window::apply_browser_mode(&state.view, &PreferenceManager::shared(), mode);
             return glib::Propagation::Stop;
         }
-        if control {
+        // A user's binding for a folder jump may hold Ctrl, as in the window.
+        let jumps = press.is_any(&[
+            HISTORY_BACK.in_map(Map::Default),
+            HISTORY_FORWARD.in_map(Map::Default),
+            PARENT_FOLDER.into(),
+            HOME_FOLDER.into(),
+        ]);
+        if control && !jumps {
             return glib::Propagation::Proceed;
         }
         let column_popover = focused
@@ -2519,15 +2856,23 @@ fn install_shortcuts(
             .and_downcast::<gtk::Popover>()
             .filter(|popover| popover.has_css_class("column-popover"));
         if let Some(popover) = column_popover
-            && !control
-            && !alt
-            && let Some(direction) = vim_focus_direction(key)
+            && let Some(direction) = vim_focus_direction(press)
         {
             popover.child_focus(direction);
             return glib::Propagation::Stop;
         }
+        let tab = plain_tab_direction(press);
+        if !preferences.tenxer_mode()
+            && let Some(direction) = tab
+            && !focused
+                .as_ref()
+                .is_some_and(super::focus_navigation::in_popover)
+            && state.view.default_tab(direction)
+        {
+            return glib::Propagation::Stop;
+        }
         if preferences.tenxer_mode()
-            && super::focus_navigation::plain_tab_direction(key, modifiers).is_some()
+            && tab.is_some()
             && let Some(filename) = state.filename.as_ref()
         {
             let in_header = focused
@@ -2538,8 +2883,8 @@ fn install_shortcuts(
                 return glib::Propagation::Stop;
             }
             if in_header {
-                filename.grab_focus();
-                filename.select_region(0, -1);
+                filename.grab_focus_without_selecting();
+                select_name_stem(filename);
                 return glib::Propagation::Stop;
             }
         }
@@ -2547,8 +2892,7 @@ fn install_shortcuts(
             if super::focus_navigation::in_popover(focused) {
                 return glib::Propagation::Proceed;
             }
-            if !shift
-                && matches!(key, gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter)
+            if press.is(ENTER.ignoring(ModifierType::SUPER_MASK))
                 && super::focus_navigation::activate(state.window.upcast_ref())
             {
                 return glib::Propagation::Stop;
@@ -2559,57 +2903,42 @@ fn install_shortcuts(
         }
         if preferences.tenxer_mode()
             && state.view.item_view_has_focus()
-            && super::focus_navigation::plain_tab_direction(key, modifiers)
-                == Some(gtk::DirectionType::TabForward)
+            && tab == Some(gtk::DirectionType::TabForward)
         {
             if header.child_focus(gtk::DirectionType::TabForward) {
                 state.window.set_focus_visible(true);
             }
             return glib::Propagation::Stop;
         }
-        if preferences.tenxer_mode()
-            && super::focus_navigation::plain_tab_direction(key, modifiers).is_some()
-        {
+        if preferences.tenxer_mode() && tab.is_some() {
             if !super::focus_navigation::contains_widget(&state.view.widget(), focused.as_ref()) {
                 browser.focus_active();
             }
             return glib::Propagation::Stop;
         }
         let mut header_left_boundary = false;
-        if state.view.header_actions_have_focus() && !control && !alt {
-            match key {
-                gtk::gdk::Key::h | gtk::gdk::Key::Left => {
-                    if state.view.move_header_focus(gtk::DirectionType::Left)
-                        || preferences.tenxer_mode()
-                    {
-                        return glib::Propagation::Stop;
-                    }
-                    header_left_boundary = true;
-                }
-                gtk::gdk::Key::l | gtk::gdk::Key::Right => {
-                    state.view.move_header_focus(gtk::DirectionType::Right);
+        if state.view.header_actions_have_focus() {
+            if press.is(LEFT.ignoring(FOCUS_MODIFIERS).or_alternates()) {
+                if state.view.move_header_focus(gtk::DirectionType::Left)
+                    || preferences.tenxer_mode()
+                {
                     return glib::Propagation::Stop;
                 }
-                gtk::gdk::Key::j | gtk::gdk::Key::Down => {
-                    state.view.focus_items_from_header();
-                    return glib::Propagation::Stop;
-                }
-                _ => {}
+                header_left_boundary = true;
+            } else if press.is(RIGHT.ignoring(FOCUS_MODIFIERS).or_alternates()) {
+                state.view.move_header_focus(gtk::DirectionType::Right);
+                return glib::Propagation::Stop;
+            } else if press.is(DOWN.ignoring(FOCUS_MODIFIERS).or_alternates()) {
+                state.view.focus_items_from_header();
+                return glib::Propagation::Stop;
             }
         }
         if sidebar_has_focus
             && !preferences.tenxer_mode()
-            && !control
-            && !alt
             && let Some(direction) =
-                vim_focus_direction(key).or_else(|| super::focus_navigation::arrow_direction(key))
+                vim_focus_direction(press).or_else(|| arrow_direction(press, FOCUS_MODIFIERS))
         {
-            if preferences.tenxer_mode() {
-                browser.focus_active();
-                if super::focus_navigation::arrow_direction(key).is_none() {
-                    return glib::Propagation::Stop;
-                }
-            } else if direction == gtk::DirectionType::Right {
+            if direction == gtk::DirectionType::Right {
                 focus_before_sidebar.borrow_mut().take();
                 browser.focus_active();
             } else if !sidebar_widget.child_focus(direction) && direction == gtk::DirectionType::Up
@@ -2617,28 +2946,23 @@ fn install_shortcuts(
                 sidebar_toggle.grab_focus();
                 state.window.set_focus_visible(true);
             }
-            if !preferences.tenxer_mode() {
-                return glib::Propagation::Stop;
-            }
+            return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::BackSpace
-            && !control
-            && !alt
+        if press.is(BACKSPACE.ignoring(FOCUS_MODIFIERS))
             && state.view.dismiss_empty_focused_filter()
         {
             return glib::Propagation::Stop;
         }
-        if !control && !alt && !state.view.item_view_has_focus() && !header_left_boundary {
+        if !alt && !state.view.item_view_has_focus() && !header_left_boundary {
             if preferences.tenxer_mode()
-                && (super::focus_navigation::arrow_direction(key).is_some()
-                    || vim_focus_direction(key).is_some())
+                && (arrow_direction(press, FOCUS_MODIFIERS).is_some()
+                    || vim_focus_direction(press).is_some())
             {
                 browser.focus_active();
-                if super::focus_navigation::arrow_direction(key).is_none() {
+                if vim_focus_direction(press).is_some() {
                     return glib::Propagation::Stop;
                 }
-            } else if !shift && let Some(direction) = super::focus_navigation::arrow_direction(key)
-            {
+            } else if let Some(direction) = arrow_direction(press, ModifierType::SUPER_MASK) {
                 if direction == gtk::DirectionType::Up
                     && focused.as_ref().is_some_and(|focused| {
                         let mut widget = Some(focused.clone());
@@ -2662,10 +2986,7 @@ fn install_shortcuts(
                 return glib::Propagation::Proceed;
             }
         }
-        if key == gtk::gdk::Key::Left
-            && !control
-            && !alt
-            && !shift
+        if press.is(LEFT.ignoring(ModifierType::SUPER_MASK))
             && sidebar_toggle.is_active()
             && state.view.item_view_has_focus()
             && state.view.item_at_sidebar_edge()
@@ -2676,11 +2997,8 @@ fn install_shortcuts(
             state.window.set_focus_visible(true);
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::space && !control && !alt {
-            if !modifiers
-                .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::SUPER_MASK)
-                && state.view.activate_directory_on_space()
-            {
+        if press.is(PREVIEW.in_map(Map::Default).ignoring(FOCUS_MODIFIERS)) {
+            if press.is(PREVIEW.in_map(Map::Default)) && state.view.activate_directory_on_space() {
                 return glib::Propagation::Stop;
             }
             preview.toggle(
@@ -2689,31 +3007,30 @@ fn install_shortcuts(
             );
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::BackSpace && !control && !alt {
+        if press.is(BACKSPACE.ignoring(FOCUS_MODIFIERS)) {
             state.view.navigate_up();
             return glib::Propagation::Stop;
         }
+        let multiple = matches!(
+            &state.request.kind,
+            ChooserKind::Open { multiple: true, .. }
+        );
         if !alt
             && state.view.view_mode() != super::browser_modes::BrowserMode::Columns
-            && let Some(direction) = super::focus_navigation::arrow_direction(key)
+            && let Some(direction) = arrow_direction(press, FOCUS_MODIFIERS)
         {
-            let extend = shift
-                && matches!(
-                    &state.request.kind,
-                    ChooserKind::Open { multiple: true, .. }
-                );
+            let extend = held.contains(ModifierType::SHIFT_MASK) && multiple;
             if state.view.cross_type_group(direction, extend) {
                 return glib::Propagation::Stop;
             }
-            if !shift
-                && key == gtk::gdk::Key::Up
+            if press.is(UP.ignoring(ModifierType::SUPER_MASK))
                 && !PreferenceManager::shared().arrow_navigation_scoped_active()
                 && state.view.focus_header_from_top_item()
             {
                 return glib::Propagation::Stop;
             }
             // Keep GTK's spatial movement, then reconcile selection in visual order.
-            let weak = Rc::downgrade(&state);
+            let weak = Rc::downgrade(state);
             glib::idle_add_local_once(move || {
                 let Some(state) = weak.upgrade() else {
                     return;
@@ -2723,34 +3040,23 @@ fn install_shortcuts(
                 }
                 state.view.synchronize_native_selection(extend);
             });
-            if vim_navigation {
-                super::focus_navigation::activate_native_arrow(&state.window, key);
+            if vim_navigation && let Some(arrow) = super::focus_navigation::spatial_arrow(press) {
+                super::focus_navigation::activate_native_arrow(&state.window, arrow.key());
                 return glib::Propagation::Stop;
             }
             return glib::Propagation::Proceed;
         }
-        if shift
-            && matches!(
-                &state.request.kind,
-                ChooserKind::Open { multiple: true, .. }
-            )
-            && key == gtk::gdk::Key::Up
-        {
+        let alt_super = ModifierType::ALT_MASK.union(ModifierType::SUPER_MASK);
+        if multiple && press.is(EXTEND_UP.ignoring(alt_super)) {
             browser.extend_selection(-1);
             return glib::Propagation::Stop;
         }
-        if shift
-            && matches!(
-                &state.request.kind,
-                ChooserKind::Open { multiple: true, .. }
-            )
-            && key == gtk::gdk::Key::Down
-        {
+        if multiple && press.is(EXTEND_DOWN.ignoring(alt_super)) {
             browser.extend_selection(1);
             return glib::Propagation::Stop;
         }
         if state.view.item_view_has_focus()
-            && let Some(query) = super::window::type_to_search_query(key, modifiers)
+            && let Some(query) = super::window::type_to_search_query(press)
             && preferences.type_to_search()
             && match query {
                 super::window::TypeToSearchQuery::Empty => state.view.show_filter(),
@@ -2761,42 +3067,58 @@ fn install_shortcuts(
         {
             return glib::Propagation::Stop;
         }
-        if !shift
-            && matches!(key, gtk::gdk::Key::k | gtk::gdk::Key::Up)
+        if press.is(UP.ignoring(alt_super).or_alternates())
             && !PreferenceManager::shared().arrow_navigation_scoped_active()
             && state.view.focus_header_from_top_item()
         {
             return glib::Propagation::Stop;
         }
-
-        match (key, alt) {
-            (gtk::gdk::Key::Left, true) => browser.back(),
-            (gtk::gdk::Key::Right, true) => browser.forward(),
-            (gtk::gdk::Key::Up, true) => browser.parent(),
-            (gtk::gdk::Key::Home, true) => {
-                browser.navigate(Location::local(home_directory()));
-            }
-            (gtk::gdk::Key::j | gtk::gdk::Key::Down, false) => browser.move_selection(1),
-            (gtk::gdk::Key::k | gtk::gdk::Key::Up, false) => browser.move_selection(-1),
-            (gtk::gdk::Key::h | gtk::gdk::Key::Left, false)
-                if !control
-                    && state.view.first_column_has_focus()
-                    && sidebar_toggle.is_active()
-                    && !PreferenceManager::shared().arrow_navigation_scoped_active() =>
+        if press.is(HISTORY_BACK.in_map(Map::Default).ignoring(FOCUS_MODIFIERS)) {
+            browser.back();
+        } else if press.is(HISTORY_FORWARD
+            .in_map(Map::Default)
+            .ignoring(FOCUS_MODIFIERS))
+        {
+            browser.forward();
+        } else if press.is(PARENT_FOLDER.ignoring(FOCUS_MODIFIERS)) {
+            browser.parent();
+        } else if press.is(HOME_FOLDER.ignoring(FOCUS_MODIFIERS)) {
+            browser.navigate(Location::local(home_directory()));
+        } else if press.is(DOWN.ignoring(FOCUS_MODIFIERS).or_alternates()) {
+            browser.move_selection(1);
+        } else if press.is(UP.ignoring(FOCUS_MODIFIERS).or_alternates()) {
+            browser.move_selection(-1);
+        } else if press.is(LEFT.ignoring(FOCUS_MODIFIERS).or_alternates()) {
+            if state.view.first_column_has_focus()
+                && sidebar_toggle.is_active()
+                && !PreferenceManager::shared().arrow_navigation_scoped_active()
             {
                 focus_before_sidebar.replace(focused.clone());
                 sidebar_state.focus_active_place();
+            } else {
+                state.view.navigate_left();
             }
-            (gtk::gdk::Key::h | gtk::gdk::Key::Left, false) => state.view.navigate_left(),
-            (gtk::gdk::Key::Right, false) if state.view.view_mode() == BrowserMode::Columns => {
-                browser.enter_focused_directory();
+        } else if press.is(RIGHT.ignoring(FOCUS_MODIFIERS))
+            && state.view.view_mode() == BrowserMode::Columns
+        {
+            browser.enter_focused_directory();
+        } else if press.is_any(&[RIGHT.alternates(), ENTER.ignoring(FOCUS_MODIFIERS)]) {
+            if !tenxer.confirm_focused() {
+                state.view.activate_focused();
             }
-            (gtk::gdk::Key::l | gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter, false) => {
-                state.view.activate_focused()
-            }
-            _ => return glib::Propagation::Proceed,
+        } else {
+            return glib::Propagation::Proceed;
         }
         glib::Propagation::Stop
+    };
+    keys::on_press(&keys, move |_, press| {
+        let Some(state) = weak.upgrade() else {
+            return glib::Propagation::Proceed;
+        };
+        match handle(&state, press) {
+            glib::Propagation::Proceed => edit_focused_text(&state.window, press),
+            handled => handled,
+        }
     });
     window.add_controller(keys.clone());
     let keys = keys.downgrade();
@@ -2805,11 +3127,4 @@ fn install_shortcuts(
             window.remove_controller(&keys);
         }
     });
-}
-
-fn is_folder_accept_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
-    modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-        && !modifiers
-            .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
-        && matches!(key, gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter)
 }

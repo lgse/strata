@@ -5,7 +5,15 @@ use std::{
     rc::Rc,
 };
 
-use gtk::{gdk::Key, glib, prelude::*};
+use gtk::{gdk::ModifierType as Modifiers, glib, prelude::*};
+
+use crate::ui::keys::{
+    self,
+    bindings::{
+        DOWN, END_KEY, ENTER_ANY_SHIFT, ESCAPE_ANY_SHIFT, FOCUS_NEXT, FOCUS_PREVIOUS, HOME_KEY,
+        SPACE, UP,
+    },
+};
 
 pub(super) struct NativeMenuNavigation {
     popover: glib::WeakRef<gtk::PopoverMenu>,
@@ -61,6 +69,10 @@ impl NativeMenuNavigation {
         self.initial_focus.set(true);
         self.keyboard_owned.set(true);
         self.pointer_position.set(self.pointer_position());
+    }
+
+    pub(super) fn preserve_submenu_navigation(&self) {
+        self.keyboard_navigation();
     }
 
     fn pointer_position(&self) -> Option<(f64, f64)> {
@@ -172,9 +184,10 @@ fn install_menu_edges(popover: &gtk::PopoverMenu, navigation: &Rc<NativeMenuNavi
     keys.set_propagation_limit(gtk::PropagationLimit::None);
     let weak = popover.downgrade();
     let navigation = navigation.clone();
-    keys.connect_key_pressed(move |_, key, _, modifiers| {
+    keys::on_press(&keys, move |_, press| {
         navigation.keyboard_navigation();
-        if !modifiers.is_empty() || !matches!(key, Key::Home | Key::End) {
+        let first = press.is(HOME_KEY);
+        if !first && !press.is(END_KEY) {
             return glib::Propagation::Proceed;
         }
         let Some(popover) = weak.upgrade() else {
@@ -186,7 +199,7 @@ fn install_menu_edges(popover: &gtk::PopoverMenu, navigation: &Rc<NativeMenuNavi
             .and_then(|focus| focus.ancestor(gtk::Popover::static_type()))
             .and_downcast::<gtk::Popover>()
             .unwrap_or_else(|| popover.clone().upcast());
-        focus_first_or_last_menu_item(&active, key == Key::Home);
+        focus_first_or_last_menu_item(&active, first);
         glib::Propagation::Stop
     });
     popover.add_controller(keys);
@@ -222,52 +235,54 @@ pub(super) fn install(popover: &gtk::Popover) {
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let weak = popover.downgrade();
-    keys.connect_key_pressed(move |_, key, _, modifiers| {
+    keys::on_press(&keys, move |_, press| {
+        const SHIFT: Modifiers = Modifiers::SHIFT_MASK;
         let Some(popover) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
-        if modifiers.intersects(
-            gtk::accelerator_get_default_mod_mask() & !gtk::gdk::ModifierType::SHIFT_MASK,
-        ) {
+        if press
+            .modifiers()
+            .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+        {
             return glib::Propagation::Stop;
         }
         // Captured menu keys bypass GTK's focus-indicator timeout refresh.
         if let Some(window) = popover.root().and_downcast::<gtk::Window>() {
             window.set_focus_visible(true);
         }
-        match key {
-            Key::Escape => popover.popdown(),
-            Key::Home => focus_first_or_last_menu_item(&popover, true),
-            Key::End => focus_first_or_last_menu_item(&popover, false),
-            Key::Up | Key::Down | Key::Tab | Key::ISO_Left_Tab => {
-                let forward = key == Key::Down
-                    || (key == Key::Tab && !modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK));
-                let buttons = menu_buttons(&popover);
-                if !buttons.is_empty() {
-                    let current = buttons.iter().position(|button| button.has_focus());
-                    let next = match (current, forward) {
-                        (Some(index), true) => (index + 1) % buttons.len(),
-                        (Some(index), false) => (index + buttons.len() - 1) % buttons.len(),
-                        (None, true) => 0,
-                        (None, false) => buttons.len() - 1,
-                    };
-                    buttons[next].grab_focus();
+        let forward = press.is_any(&[DOWN.ignoring(SHIFT), FOCUS_NEXT.into()]);
+        if press.is(ESCAPE_ANY_SHIFT) {
+            popover.popdown();
+        } else if press.is(HOME_KEY.ignoring(SHIFT)) {
+            focus_first_or_last_menu_item(&popover, true);
+        } else if press.is(END_KEY.ignoring(SHIFT)) {
+            focus_first_or_last_menu_item(&popover, false);
+        } else if forward || press.is_any(&[UP.ignoring(SHIFT), FOCUS_PREVIOUS.into()]) {
+            let buttons = menu_buttons(&popover);
+            if !buttons.is_empty() {
+                let current = buttons.iter().position(|button| button.has_focus());
+                let next = match (current, forward) {
+                    (Some(index), true) => (index + 1) % buttons.len(),
+                    (Some(index), false) => (index + buttons.len() - 1) % buttons.len(),
+                    (None, true) => 0,
+                    (None, false) => buttons.len() - 1,
+                };
+                buttons[next].grab_focus();
+            }
+        } else if press.is(ENTER_ANY_SHIFT) || press.is(SPACE.ignoring(SHIFT)) {
+            if let Some(button) = menu_buttons(&popover)
+                .iter()
+                .find(|button| button.has_focus())
+            {
+                // activate() waits for a key release that this controller consumes.
+                if let Some(button) = button.downcast_ref::<gtk::Button>() {
+                    button.emit_clicked();
+                } else {
+                    button.activate();
                 }
             }
-            Key::Return | Key::KP_Enter | Key::space => {
-                if let Some(button) = menu_buttons(&popover)
-                    .iter()
-                    .find(|button| button.has_focus())
-                {
-                    // activate() waits for a key release that this controller consumes.
-                    if let Some(button) = button.downcast_ref::<gtk::Button>() {
-                        button.emit_clicked();
-                    } else {
-                        button.activate();
-                    }
-                }
-            }
-            _ => return glib::Propagation::Proceed,
+        } else {
+            return glib::Propagation::Proceed;
         }
         glib::Propagation::Stop
     });

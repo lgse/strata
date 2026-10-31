@@ -83,6 +83,37 @@ fn stale_progress_and_terminals_cannot_contaminate_a_replacement_transfer() {
 }
 
 #[test]
+fn removed_entry_counts_reach_observers_only_from_the_current_deletion() {
+    let (browser, events, _) = scripted_browser(ScriptedSource::manual(vec![], vec![]));
+    browser.navigate(Location::local("/fixture"));
+    let stale_id = browser.begin_operation();
+    let stale = browser.operation_callback(stale_id, false, HashSet::new());
+    let request_id = browser.begin_operation();
+    let current = browser.operation_callback(request_id, false, HashSet::new());
+    events.borrow_mut().clear();
+
+    stale(OperationEvent::DeleteEntriesRemoved {
+        request_id: stale_id,
+        removed: 10,
+    });
+    assert!(events.borrow().is_empty());
+
+    current(OperationEvent::DeleteEntriesRemoved {
+        request_id,
+        removed: 25,
+    });
+    let counts: Vec<_> = events
+        .borrow()
+        .iter()
+        .filter_map(|event| match event {
+            BrowserEvent::DeletionEntriesRemoved { removed } => Some(*removed),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(counts, [25]);
+}
+
+#[test]
 fn cancelling_transfer_blocks_new_mutations_until_its_terminal_event() {
     let (browser, events, _) = scripted_browser(ScriptedSource::manual(vec![], vec![]));
     let request_id = browser.begin_operation();
@@ -97,6 +128,7 @@ fn cancelling_transfer_blocks_new_mutations_until_its_terminal_event() {
         vec![PasteItem {
             source: Location::local("/fixture/source"),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         }],
         false,
         false,
@@ -143,22 +175,24 @@ fn progress_observer_can_supersede_an_operation_before_its_terminal() {
         request_id,
         completed: 1,
         total: 2,
-        deleted_location: None,
+        deleted_locations: Vec::new(),
     });
     callback(OperationEvent::Failed {
         request_id,
         message: "stale failure".to_owned(),
+        password_failure: None,
     });
     let replacement_id = replacement.get().expect("replacement operation");
     browser.operation_callback(replacement_id, false, HashSet::new())(OperationEvent::Failed {
         request_id: replacement_id,
         message: "current failure".to_owned(),
+        password_failure: None,
     });
     let messages: Vec<_> = events
         .borrow()
         .iter()
         .filter_map(|event| match event {
-            BrowserEvent::OperationFailed { message } => Some(message.clone()),
+            BrowserEvent::OperationFailed { message, .. } => Some(message.clone()),
             _ => None,
         })
         .collect();
@@ -217,6 +251,225 @@ fn held_operation_callback_does_not_keep_the_browser_alive() {
     callback(OperationEvent::Failed {
         request_id,
         message: "late failure".to_owned(),
+        password_failure: None,
     });
     assert!(events.borrow().is_empty());
+}
+
+#[derive(Clone, Copy)]
+enum OperationKind {
+    Copy,
+    Move,
+    Deletion,
+}
+
+#[test]
+fn superseded_operations_still_report_each_location_they_changed() {
+    let item = Location::local("/fixture/docs");
+    let landed = Location::local("/fixture/archive/docs");
+    let overwritten = Location::local("/fixture/archive/docs/note.txt");
+    let identity = ItemIdentity {
+        evidence: crate::services::Evidence {
+            device: 1,
+            inode: 2,
+            kind: rustix::fs::FileType::RegularFile,
+            birth: None,
+            handle: None,
+            attributes: None,
+        },
+        traits: crate::services::IdentityTraits::default(),
+    };
+    let cancelled_with_item = |request_id| OperationEvent::Cancelled {
+        request_id,
+        result: CancelledOperation {
+            completed: vec![item.clone()],
+            ..Default::default()
+        },
+    };
+    let item_moved = |request_id, merged| OperationEvent::ItemMoved {
+        request_id,
+        from: item.clone(),
+        to: landed.clone(),
+        merged,
+    };
+    let merged_over = |request_id| OperationEvent::Merged {
+        request_id,
+        source: item.clone(),
+        created: Vec::new(),
+        overwritten: vec![overwritten.clone()],
+        placed: HashMap::new(),
+    };
+    type Script<'a> = Box<dyn Fn(OperationRequestId) -> Vec<OperationEvent> + 'a>;
+    // A restore sets no kind: its events describe themselves.
+    let cases: Vec<(&str, Option<OperationKind>, Script, Vec<LocationChange>)> = vec![
+        (
+            "a move that has not reported its end",
+            Some(OperationKind::Move),
+            Box::new(|request_id| vec![item_moved(request_id, false)]),
+            vec![relocated(&item, &landed)],
+        ),
+        (
+            "a partially failed move",
+            Some(OperationKind::Move),
+            Box::new(|request_id| {
+                vec![
+                    item_moved(request_id, false),
+                    OperationEvent::TransferFailed {
+                        request_id,
+                        completed_locations: vec![item.clone()],
+                        message: "disk full".to_owned(),
+                    },
+                ]
+            }),
+            vec![relocated(&item, &landed)],
+        ),
+        (
+            "a merged move drops what it overwrote",
+            Some(OperationKind::Move),
+            Box::new(|request_id| {
+                vec![
+                    merged_over(request_id),
+                    item_moved(request_id, true),
+                    OperationEvent::Pasted {
+                        request_id,
+                        locations: vec![item.clone()],
+                    },
+                ]
+            }),
+            vec![
+                removed(&overwritten),
+                LocationChange::Relocated {
+                    from: item.clone(),
+                    to: landed.clone(),
+                    merged: true,
+                },
+            ],
+        ),
+        (
+            "a merged copy leaves the destination alone",
+            Some(OperationKind::Copy),
+            Box::new(|request_id| {
+                vec![
+                    merged_over(request_id),
+                    OperationEvent::Pasted {
+                        request_id,
+                        locations: vec![item.clone()],
+                    },
+                ]
+            }),
+            Vec::new(),
+        ),
+        (
+            "a cancelled move reports moves only through ItemMoved",
+            Some(OperationKind::Move),
+            Box::new(|request_id| vec![cancelled_with_item(request_id)]),
+            Vec::new(),
+        ),
+        (
+            "a cancelled trash reports the item once, with its identity",
+            Some(OperationKind::Deletion),
+            Box::new(|request_id| {
+                vec![
+                    OperationEvent::ItemTrashed {
+                        request_id,
+                        location: item.clone(),
+                        identity,
+                    },
+                    OperationEvent::DeleteProgress {
+                        request_id,
+                        completed: 1,
+                        total: 2,
+                        deleted_locations: vec![item.clone()],
+                    },
+                    cancelled_with_item(request_id),
+                ]
+            }),
+            vec![LocationChange::Removed {
+                location: item.clone(),
+                trash_identity: Some(identity),
+            }],
+        ),
+        (
+            "a deletion's terminal reports what its progress did not",
+            Some(OperationKind::Deletion),
+            Box::new(|request_id| {
+                vec![OperationEvent::Deleted {
+                    request_id,
+                    locations: vec![item.clone()],
+                }]
+            }),
+            vec![removed(&item)],
+        ),
+        (
+            "a restore that reports the identity of what it placed",
+            None,
+            Box::new(|request_id| {
+                vec![
+                    OperationEvent::ItemRestored {
+                        request_id,
+                        location: item.clone(),
+                        identity,
+                    },
+                    OperationEvent::RestoreProgress {
+                        request_id,
+                        completed: 1,
+                        total: 1,
+                        restored_location: Some(item.clone()),
+                    },
+                    OperationEvent::Restored {
+                        request_id,
+                        locations: vec![Location::uri("trash:///docs")],
+                        restored: vec![item.clone()],
+                    },
+                ]
+            }),
+            vec![LocationChange::Restored(item.clone(), Some(identity))],
+        ),
+        (
+            "a restore that reports no identity",
+            None,
+            Box::new(|request_id| {
+                vec![
+                    OperationEvent::RestoreProgress {
+                        request_id,
+                        completed: 1,
+                        total: 1,
+                        restored_location: Some(item.clone()),
+                    },
+                    OperationEvent::Restored {
+                        request_id,
+                        locations: vec![Location::uri("trash:///docs")],
+                        restored: vec![item.clone()],
+                    },
+                ]
+            }),
+            vec![LocationChange::Restored(item.clone(), None)],
+        ),
+    ];
+
+    for (case, kind, script, expected) in cases {
+        let (browser, events, _) = scripted_browser(ScriptedSource::manual(vec![], vec![]));
+        let stale_id = browser.begin_operation();
+        match kind {
+            Some(OperationKind::Copy) => browser.transfer_operation.set(Some(false)),
+            Some(OperationKind::Move) => browser.transfer_operation.set(Some(true)),
+            Some(OperationKind::Deletion) => browser.deletion_operation.set(true),
+            None => {}
+        }
+        let stale = browser.operation_callback(stale_id, false, HashSet::new());
+        browser.begin_operation();
+        events.borrow_mut().clear();
+
+        for event in script(stale_id) {
+            stale(event);
+        }
+
+        let events = events.borrow();
+        assert_eq!(location_changes(&events), expected, "{case}");
+        assert_eq!(
+            events.len(),
+            expected.len(),
+            "{case}: a superseded operation publishes nothing else: {events:?}"
+        );
+    }
 }

@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::services::path_match::Frecency;
 use crate::services::search::{
-    RESULT_LIMIT, SearchCoverage, SharedIndex, append_index_items, insert_match, score_index,
-    start_search_session,
+    RESULT_LIMIT, SearchCoverage, SearchScorer, SharedIndex, append_index_items, insert_match,
+    score_index, start_search_session,
 };
 use std::sync::Arc;
 
 fn ranked_fixture(count: usize) -> Vec<SearchItem> {
+    ranked_fixture_in(Path::new("/fixture"), count)
+}
+
+fn ranked_fixture_in(root: &Path, count: usize) -> Vec<SearchItem> {
     (0..count)
         .map(|position| {
             let name = match position % 5 {
@@ -17,11 +22,7 @@ fn ranked_fixture(count: usize) -> Vec<SearchItem> {
                 3 => format!("配置/İstanbul-Σ-{position:06}.txt"),
                 _ => format!("ordinary-{position:06}"),
             };
-            SearchItem::new(
-                Path::new("/fixture").join(name),
-                Path::new("/fixture"),
-                false,
-            )
+            SearchItem::new(root.join(name), root, false)
         })
         .collect()
 }
@@ -29,28 +30,41 @@ fn ranked_fixture(count: usize) -> Vec<SearchItem> {
 #[test]
 fn heap_and_parallel_scoring_match_a_full_stable_sort() {
     let items = ranked_fixture(50_003);
-    let fuzzy: crate::services::search::SearchScorer = fuzzy_score_normalized;
-    let filter: crate::services::search::SearchScorer =
-        crate::services::search::filter_score_normalized;
+    let fuzzy = SearchScorer::Name(fuzzy_score_normalized);
+    let filter = SearchScorer::Name(crate::services::search::filter_score_normalized);
+    let paths = SearchScorer::Paths {
+        frecency: Arc::new(Frecency::within(
+            Path::new("/fixture"),
+            [(Path::new("/fixture/archive").to_path_buf(), 8.0)],
+        )),
+        folders: None,
+    };
     for (query, scorer) in [
-        ("needle", fuzzy),
-        ("nested/objects", fuzzy),
-        ("ndobj", fuzzy),
-        ("配置", fuzzy),
-        ("missing", fuzzy),
-        ("", fuzzy),
-        ("*", filter),
-        ("needle*.txt", filter),
-        ("*missing*", filter),
+        ("needle", &fuzzy),
+        ("nested/objects", &fuzzy),
+        ("ndobj", &fuzzy),
+        ("archive needle", &fuzzy),
+        ("needle txt", &fuzzy),
+        ("配置", &fuzzy),
+        ("missing", &fuzzy),
+        ("", &fuzzy),
+        ("*", &filter),
+        ("needle*.txt", &filter),
+        ("*missing*", &filter),
+        ("needle", &paths),
+        ("arch needle", &paths),
+        ("needle !archive", &paths),
+        ("配置 σ", &paths),
     ] {
+        let mut prepared = scorer.prepare(query);
         let mut expected: Vec<_> = items
             .iter()
-            .filter_map(|item| scorer(item, query).map(|score| (score, item.clone())))
+            .filter_map(|item| prepared.score(item).map(|score| (score, item.clone())))
             .collect();
         expected.sort_by_key(|candidate| std::cmp::Reverse(candidate.0));
         expected.truncate(RESULT_LIMIT);
         assert_eq!(
-            score_index(&items, query, scorer),
+            score_index(&items, query, scorer.clone()),
             expected,
             "query: {query}"
         );
@@ -68,7 +82,7 @@ fn incremental_and_completed_queries_keep_the_same_tied_results() {
     }
     assert_eq!(
         incremental,
-        score_index(&items, "needle", fuzzy_score_normalized)
+        score_index(&items, "needle", SearchScorer::Name(fuzzy_score_normalized))
     );
 }
 
@@ -269,7 +283,8 @@ fn releasing_one_session_keeps_the_other_alive_and_last_release_refreshes_the_sn
 #[test]
 fn completed_events_include_the_final_batch_and_coverage() {
     let index = Arc::new(SharedIndex::new());
-    let (search, events) = start_search_session(index.clone(), fuzzy_score_normalized);
+    let (search, events) =
+        start_search_session(index.clone(), SearchScorer::Name(fuzzy_score_normalized));
     search.query("needle");
     let SearchEvent::Results { indexing, .. } = events
         .recv_timeout(Duration::from_secs(2))
@@ -279,8 +294,13 @@ fn completed_events_include_the_final_batch_and_coverage() {
         entry_limit: true,
         ..Default::default()
     };
-    let mut batch = ranked_fixture(100);
-    let expected = score_index(&batch, "needle", fuzzy_score_normalized);
+    let fixture = tempfile::tempdir().expect("fixture");
+    let mut batch = ranked_fixture_in(fixture.path(), 100);
+    for item in &batch {
+        fs::create_dir_all(item.path.parent().expect("parent")).expect("fixture folder");
+        fs::write(&item.path, b"").expect("fixture file");
+    }
+    let expected = score_index(&batch, "needle", SearchScorer::Name(fuzzy_score_normalized));
     append_index_items(&index, &mut batch, false, coverage);
     index.broadcast_change();
     let SearchEvent::Results {

@@ -14,8 +14,9 @@ use std::{
 mod scope;
 
 use super::{
-    PathAdmission, SearchEvent, SearchItem, admit_path, fuzzy_score_normalized,
-    fuzzy_subsequence_score, index_tree, index_trees, index_trees_with_budget,
+    PathAdmission, RefusedFolders, SearchEvent, SearchItem, SearchLimits, admit_path,
+    fuzzy_score_normalized, fuzzy_subsequence_score, index_folder_paths, index_tree, index_trees,
+    index_trees_with_budget, index_trees_with_budget_and_exclusions, index_trees_with_exclusions,
     index_trees_with_scheduler_budget,
 };
 
@@ -44,6 +45,49 @@ fn exact_names_rank_above_substrings_and_fuzzy_matches() {
         .expect("an ordered fuzzy subsequence should match");
     assert!(exact > substring);
     assert!(substring > fuzzy);
+}
+
+#[test]
+fn multi_word_match_tiers_survive_long_paths_depth_and_fuzzy_bonuses() {
+    let root = Path::new("/fixture");
+    let long_parent = [
+        "a".repeat(100),
+        "b".repeat(100),
+        "c".repeat(100),
+        "d".repeat(100),
+    ]
+    .join("/");
+    for (query, stronger, weaker) in [
+        (
+            "duck txt",
+            format!("{}{}duck txt.md", "a/".repeat(63), "x".repeat(200)),
+            "duck txt archive/notes.md".to_owned(),
+        ),
+        (
+            "duck txt",
+            format!("{long_parent}/duck txt/notes.md"),
+            "ducks_in_the_pool.txt".to_owned(),
+        ),
+        (
+            "duck txt",
+            format!("{}duck{}.txt", "a/".repeat(63), "x".repeat(92)),
+            "duck/notes.txt".to_owned(),
+        ),
+        (
+            "abcdefghijklmnopqrstuvwx yzabcdefghij",
+            "abcdefghijklmnopqrstuvwx/yzabcdefghij".to_owned(),
+            "abcdefghijklmnopqrstu_vwx yzabcdefghij.md".to_owned(),
+        ),
+    ] {
+        let stronger_score = score_path(&root.join(&stronger).to_string_lossy(), query, root)
+            .expect("stronger match");
+        let weaker_score =
+            score_path(&root.join(&weaker).to_string_lossy(), query, root).expect("weaker match");
+        assert!(
+            stronger_score > weaker_score,
+            "query={query:?}: {stronger:?} ({stronger_score}) must outrank {weaker:?} ({weaker_score})",
+        );
+    }
 }
 
 #[test]
@@ -360,6 +404,56 @@ fn index_reports_completion_before_a_query_is_entered() {
 }
 
 #[test]
+fn only_hits_proven_gone_are_dropped_before_they_reach_the_interface() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fixture = tempfile::tempdir().expect("search fixture");
+    let root = fixture.path();
+    fs::create_dir(root.join("locked")).expect("locked folder");
+    for name in [
+        "needle-kept.txt",
+        "needle-gone.txt",
+        "locked/needle-locked.txt",
+    ] {
+        fs::write(root.join(name), b"content").expect("search fixture file");
+    }
+    std::os::unix::fs::symlink(root.join("nowhere"), root.join("needle-dangling"))
+        .expect("dangling link");
+    let (search, events) = index_tree(root.to_path_buf(), false);
+    let published = |search: &super::SearchHandle, asked: &str| {
+        search.query(asked);
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            assert!(std::time::Instant::now() < deadline, "no completed results");
+            if let Ok(SearchEvent::Results {
+                query,
+                items,
+                indexing: false,
+                ..
+            }) = events.recv_timeout(Duration::from_millis(100))
+                && query == asked
+            {
+                let mut names: Vec<String> = items.into_iter().map(|item| item.name).collect();
+                names.sort();
+                return names;
+            }
+        }
+    };
+    assert_eq!(published(&search, "needle").len(), 4);
+
+    fs::remove_file(root.join("needle-gone.txt")).expect("remove a hit");
+    fs::set_permissions(root.join("locked"), fs::Permissions::from_mode(0o000))
+        .expect("lock the folder");
+    let names = published(&search, "needl");
+    let _ = fs::set_permissions(root.join("locked"), fs::Permissions::from_mode(0o755));
+
+    assert_eq!(
+        names,
+        ["needle-dangling", "needle-kept.txt", "needle-locked.txt"]
+    );
+}
+
+#[test]
 fn repeated_walker_paths_are_published_once_without_blocking_later_progress() {
     let repeated = PathBuf::from("/fixture/repeated.txt");
     let later = PathBuf::from("/fixture/later.txt");
@@ -614,6 +708,115 @@ fn nested_ignore_rules_are_preserved_by_fair_directory_scheduling() {
     assert_eq!(items[0].path, visible);
 }
 
+#[test]
+fn folder_path_search_offers_only_folders_below_the_root() {
+    let root = unique_fixture_root("folder-paths");
+    fixture_file(&root, "reports/report-2024.txt");
+    fixture_file(&root, "archive/reports-old/summary.txt");
+    fixture_file(&root, "report.txt");
+
+    let (search, events) = index_folder_paths(
+        root.clone(),
+        false,
+        crate::services::path_match::Frecency::default(),
+        RefusedFolders::default(),
+        SearchLimits::default(),
+    );
+    search.query("rep");
+    let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
+    drop(search);
+    fs::remove_dir_all(&root).expect("remove fixture");
+
+    let mut paths: Vec<_> = items.into_iter().map(|item| item.path).collect();
+    paths.sort();
+    assert_eq!(
+        paths,
+        [root.join("archive/reports-old"), root.join("reports")]
+    );
+}
+
+fn folder_hits(
+    root: &Path,
+    query: &str,
+    visited: &[&str],
+    refused: RefusedFolders,
+) -> Vec<PathBuf> {
+    let frecency = crate::services::path_match::Frecency::within(
+        root,
+        visited.iter().map(|folder| (root.join(folder), 100.0)),
+    );
+    let (search, events) = index_folder_paths(
+        root.to_path_buf(),
+        false,
+        frecency,
+        refused,
+        SearchLimits::default(),
+    );
+    search.query(query);
+    let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
+    items.into_iter().map(|item| item.path).collect()
+}
+
+#[test]
+fn folder_path_search_leads_with_a_folder_the_query_names_outright() {
+    let root = unique_fixture_root("folder-exact");
+    for folder in [
+        "Archive",
+        "Projects/Archive",
+        "Projects/archive-tool",
+        "Deep/x/Archive",
+        "Deep/x/archive-tool",
+    ] {
+        fs::create_dir_all(root.join(folder)).expect("fixture folder");
+    }
+
+    for (base, visited, first) in [
+        ("", "Projects/archive-tool", "Archive"),
+        ("", "Projects/Archive", "Archive"),
+        ("Deep", "x/archive-tool", "Deep/x/Archive"),
+    ] {
+        let hits = folder_hits(
+            &root.join(base),
+            "Archive",
+            &[visited],
+            RefusedFolders::default(),
+        );
+        assert_eq!(hits.first(), Some(&root.join(first)), "visited {visited}");
+    }
+    let hits = folder_hits(
+        &root,
+        "projects/archive",
+        &["Deep/x/Archive"],
+        RefusedFolders::default(),
+    );
+    assert_eq!(hits.first(), Some(&root.join("Projects/Archive")));
+    fs::remove_dir_all(&root).expect("remove fixture");
+}
+
+#[test]
+fn folder_path_search_skips_refused_folders_before_the_result_limit() {
+    let root = unique_fixture_root("folder-refused");
+    for index in 0..150 {
+        fs::create_dir_all(root.join(format!("photos/photos-{index:03}"))).expect("sent folder");
+    }
+    let valid: Vec<_> = (0..5)
+        .map(|index| root.join(format!("zarchive/old-photos-{index}")))
+        .collect();
+    for folder in &valid {
+        fs::create_dir_all(folder).expect("destination folder");
+    }
+
+    let refused = RefusedFolders {
+        trees: vec![root.join("photos")],
+        folder: Some(root.clone()),
+    };
+    let mut hits = folder_hits(&root, "photos", &[], refused);
+    fs::remove_dir_all(&root).expect("remove fixture");
+
+    hits.sort();
+    assert_eq!(hits, valid);
+}
+
 fn unique_fixture_root(label: &str) -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -668,6 +871,83 @@ fn index_reports_truncated_once_the_entry_budget_is_exceeded() {
         items.len() <= 2,
         "the index should stop growing once the entry budget is reached"
     );
+}
+
+#[test]
+fn limit_stops_point_to_the_search_limit_settings() {
+    let settings_pointer = "Raise the limits in Settings → General → Search & filtering.";
+    for coverage in [
+        super::SearchCoverage {
+            time_limit: true,
+            ..Default::default()
+        },
+        super::SearchCoverage {
+            entry_limit: true,
+            unreadable: true,
+            ..Default::default()
+        },
+    ] {
+        let message = coverage.message();
+        assert!(message.starts_with("Partial search — "), "{message}");
+        assert!(message.ends_with(settings_pointer), "{message}");
+    }
+    let unreadable = super::SearchCoverage {
+        unreadable: true,
+        depth_limit: true,
+        ..Default::default()
+    }
+    .message();
+    assert!(!unreadable.contains(settings_pointer), "{unreadable}");
+}
+
+#[test]
+fn each_limit_keys_its_own_shared_index_and_none_lifts_the_cap() {
+    let root = unique_fixture_root("limits");
+    fs::create_dir_all(&root).expect("the search fixture should be created");
+    for index in 0..5 {
+        fs::write(root.join(format!("file-{index}.txt")), b"content")
+            .expect("the search fixture file should be written");
+    }
+    let capped = SearchLimits {
+        max_entries: Some(2),
+        ..SearchLimits::default()
+    };
+    let uncapped = SearchLimits {
+        time_budget: None,
+        max_entries: None,
+    };
+    let (limited, limited_events) =
+        index_trees_with_exclusions(vec![root.clone()], false, Vec::new(), capped);
+    let (unlimited, unlimited_events) =
+        index_trees_with_exclusions(vec![root.clone()], false, Vec::new(), uncapped);
+    let (same_limits, _) =
+        index_trees_with_exclusions(vec![root.clone()], false, Vec::new(), capped);
+    assert!(!limited.shares_index_with(&unlimited));
+    assert!(limited.shares_index_with(&same_limits));
+    limited.query("file");
+    unlimited.query("file");
+    let limited_result = wait_for_results(&limited_events);
+    let unlimited_result = wait_for_results(&unlimited_events);
+
+    drop((limited, unlimited, same_limits));
+    fs::remove_dir_all(&root).expect("the search fixture should be removed");
+
+    let Some(SearchEvent::Results {
+        coverage, items, ..
+    }) = limited_result
+    else {
+        panic!("the capped worker should publish a result");
+    };
+    assert!(coverage.entry_limit);
+    assert!(items.len() <= 2);
+    let Some(SearchEvent::Results {
+        coverage, items, ..
+    }) = unlimited_result
+    else {
+        panic!("the uncapped worker should publish a result");
+    };
+    assert_eq!(coverage, super::SearchCoverage::default());
+    assert_eq!(items.len(), 5);
 }
 
 #[test]
@@ -743,45 +1023,304 @@ fn index_does_not_descend_past_the_depth_budget() {
 fn index_reports_truncated_when_the_walker_discards_an_inaccessible_directory() {
     use std::os::unix::fs::PermissionsExt;
 
-    let root = unique_fixture_root("inaccessible");
-    fs::create_dir_all(root.join("blocked")).expect("the search fixture should be created");
-    fs::create_dir_all(root.join("visible")).expect("the search fixture should be created");
-    fs::write(root.join("visible/needle.txt"), b"content")
-        .expect("the search fixture file should be written");
-    fs::set_permissions(root.join("blocked"), fs::Permissions::from_mode(0o000))
-        .expect("the fixture directory's permissions should be restrictable");
-    let running_as_root = fs::read_dir(root.join("blocked")).is_ok();
+    for (label, through_alias, fenced) in [
+        ("unreadable", false, false),
+        ("changed by an operation", false, true),
+        ("changed by an operation under its real name", true, true),
+    ] {
+        let fixture = unique_fixture_root("inaccessible");
+        let real = fixture.join("real");
+        fs::create_dir_all(real.join("blocked")).expect("the search fixture should be created");
+        fs::create_dir_all(real.join("visible")).expect("the search fixture should be created");
+        fs::write(real.join("visible/needle.txt"), b"content")
+            .expect("the search fixture file should be written");
+        fs::write(real.join("blocked/needle-blocked.txt"), b"content")
+            .expect("the search fixture file should be written");
+        std::os::unix::fs::symlink(&real, fixture.join("alias")).expect("the alias");
+        let root = if through_alias {
+            fixture.join("alias")
+        } else {
+            real.clone()
+        };
+        let operation = crate::services::file_activity::begin(
+            crate::services::file_activity::OperationScope::default(),
+        );
+        let fenced_name = if through_alias {
+            real.canonicalize()
+                .expect("the real folder")
+                .join("blocked")
+        } else {
+            real.join("blocked")
+        };
+        let fence = fenced.then(|| operation.fence([fenced_name]));
+        if !fenced {
+            fs::set_permissions(real.join("blocked"), fs::Permissions::from_mode(0o000))
+                .expect("the fixture directory's permissions should be restrictable");
+        }
+        let blocked = fenced || fs::read_dir(real.join("blocked")).is_err();
 
-    let (search, events) =
-        index_tree_with_budget(root.clone(), false, usize::MAX, 64, Duration::from_secs(10));
+        let (search, events) =
+            index_tree_with_budget(root.clone(), false, usize::MAX, 64, Duration::from_secs(10));
+        drop(fence);
+        search.query("needle");
+        let event = wait_for_results(&events);
+
+        drop(search);
+        let _ = fs::set_permissions(real.join("blocked"), fs::Permissions::from_mode(0o755));
+        fs::remove_dir_all(&fixture).expect("the search fixture should be removed");
+
+        let Some(SearchEvent::Results {
+            items, coverage, ..
+        }) = event
+        else {
+            panic!("the worker should publish a result for a non-empty query: {label}");
+        };
+        let names: Vec<&str> = items.iter().map(|item| item.name.as_str()).collect();
+        assert!(
+            names.contains(&"needle.txt"),
+            "entries outside the inaccessible directory should still be indexed: {label}"
+        );
+        if blocked {
+            assert!(!names.contains(&"needle-blocked.txt"), "{label}");
+            assert_eq!(
+                coverage,
+                super::SearchCoverage {
+                    unreadable: true,
+                    ..Default::default()
+                },
+                "{label}"
+            );
+            assert_eq!(
+                coverage.message(),
+                "Partial search — some folders could not be read"
+            );
+        }
+    }
+}
+
+#[test]
+fn excluded_nested_roots_leave_scheduler_capacity_for_visible_roots() {
+    let fixture = tempfile::tempdir().expect("search fixture");
+    let excluded = fixture.path().join("private-build/nested");
+    let visible = fixture.path().join("visible");
+    for root in [&excluded, &visible] {
+        fs::create_dir_all(root).expect("search root");
+        fs::write(root.join("needle.txt"), "fixture").expect("search file");
+    }
+    let (search, events) = super::index_trees_with_scheduler_budget_and_exclusions(
+        vec![excluded, visible.clone()],
+        false,
+        super::TraversalBudget {
+            max_entries: 1,
+            max_depth: 64,
+            time_budget: Duration::from_secs(10),
+            initial_directory_batch: 1,
+            max_pending_directories: 1,
+        },
+        super::SearchExclusions::from_strings(&["private-build".into()]),
+    );
     search.query("needle");
+    let Some(SearchEvent::Results {
+        items, coverage, ..
+    }) = wait_for_results(&events)
+    else {
+        panic!("expected completed search");
+    };
+    assert_eq!(
+        items.iter().map(|item| &item.path).collect::<Vec<_>>(),
+        vec![&visible.join("needle.txt")]
+    );
+    assert!(
+        !coverage.is_partial(),
+        "excluded roots must not consume traversal capacity"
+    );
+}
+
+#[test]
+fn index_excludes_configured_folder_names() {
+    let root = unique_fixture_root("excluded-folder-name");
+    let venv_dir = root.join("project/private-build");
+    let nested_venv_dir = root.join("project/sub/PRIVATE-BUILD");
+    let src_dir = root.join("project/src");
+    fs::create_dir_all(&venv_dir).expect("create fixture venv");
+    fs::create_dir_all(&nested_venv_dir).expect("create fixture nested venv");
+    fs::create_dir_all(&src_dir).expect("create fixture src");
+
+    fs::write(venv_dir.join("lib.py"), b"excluded").expect("write venv file");
+    fs::write(nested_venv_dir.join("lib.py"), b"excluded").expect("write nested venv file");
+    fs::write(src_dir.join("main.py"), b"included").expect("write src file");
+
+    let (search, events) = index_trees_with_budget_and_exclusions(
+        vec![root.clone()],
+        true,
+        usize::MAX,
+        64,
+        Duration::from_secs(10),
+        vec!["private-build".to_string()],
+    );
+    search.query("lib.py");
+    let event = wait_for_results(&events);
+
+    search.query("main.py");
+    let main_event = wait_for_results(&events);
+
+    drop(search);
+    fs::remove_dir_all(&root).expect("remove fixture");
+
+    let Some(SearchEvent::Results { items, .. }) = event else {
+        panic!("expected search event");
+    };
+    assert!(
+        items.is_empty(),
+        "files inside custom excluded folders should not be indexed, found: {items:?}"
+    );
+
+    let Some(SearchEvent::Results {
+        items: main_items, ..
+    }) = main_event
+    else {
+        panic!("expected search event for main");
+    };
+    assert!(
+        main_items.iter().any(|item| item.name == "main.py"),
+        "files outside excluded folders must be indexed"
+    );
+}
+
+#[test]
+fn index_excludes_configured_specific_directory() {
+    let root = unique_fixture_root("excluded-directory");
+    let excluded_dir = root.join("build");
+    let included_dir = root.join("nested/build");
+    fs::create_dir_all(&excluded_dir).expect("create excluded dir");
+    fs::create_dir_all(&included_dir).expect("create included dir");
+
+    fs::write(excluded_dir.join("target.txt"), b"excluded").expect("write file");
+    fs::write(included_dir.join("target.txt"), b"included").expect("write file");
+
+    let (search, events) = index_trees_with_budget_and_exclusions(
+        vec![root.clone()],
+        false,
+        usize::MAX,
+        64,
+        Duration::from_secs(10),
+        vec![excluded_dir.to_string_lossy().to_string()],
+    );
+    search.query("target.txt");
     let event = wait_for_results(&events);
 
     drop(search);
-    let _ = fs::set_permissions(root.join("blocked"), fs::Permissions::from_mode(0o755));
-    fs::remove_dir_all(&root).expect("the search fixture should be removed");
+    fs::remove_dir_all(&root).expect("remove fixture");
+
+    let Some(SearchEvent::Results { items, .. }) = event else {
+        panic!("expected search event");
+    };
+    assert_eq!(
+        items.len(),
+        1,
+        "only the file in the non-excluded build directory should match"
+    );
+    assert_eq!(items[0].path, included_dir.join("target.txt"));
+}
+
+#[test]
+fn index_preserves_sibling_directories_when_one_is_excluded() {
+    let root = unique_fixture_root("excluded-sibling-preservation");
+    let parent = root.join("parent");
+    let excluded_child = parent.join("excluded_child");
+    let sibling_child = parent.join("sibling_child");
+    fs::create_dir_all(&excluded_child).expect("create excluded child");
+    fs::create_dir_all(&sibling_child).expect("create sibling child");
+
+    fs::write(excluded_child.join("target.txt"), b"excluded").expect("write file");
+    fs::write(sibling_child.join("target.txt"), b"included").expect("write file");
+
+    let (search, events) = index_trees_with_budget_and_exclusions(
+        vec![root.clone()],
+        false,
+        usize::MAX,
+        64,
+        Duration::from_secs(10),
+        vec![excluded_child.to_string_lossy().to_string()],
+    );
+    search.query("target.txt");
+    let event = wait_for_results(&events);
+
+    drop(search);
+    fs::remove_dir_all(&root).expect("remove fixture");
+
+    let Some(SearchEvent::Results { items, .. }) = event else {
+        panic!("expected search event");
+    };
+    assert_eq!(
+        items.len(),
+        1,
+        "sibling directory work must not be dropped when one sibling is excluded"
+    );
+    assert_eq!(items[0].path, sibling_child.join("target.txt"));
+}
+
+#[test]
+fn index_tolerates_glob_metacharacters_in_exclusions() {
+    let root = unique_fixture_root("glob-metachars");
+    let weird_dir = root.join("project/[build]");
+    let venv_dir = root.join("project/.venv");
+    let src_dir = root.join("project/src");
+    fs::create_dir_all(&weird_dir).expect("create weird dir");
+    fs::create_dir_all(&venv_dir).expect("create venv dir");
+    fs::create_dir_all(&src_dir).expect("create src dir");
+
+    fs::write(weird_dir.join("weird.txt"), b"excluded").expect("write weird file");
+    fs::write(venv_dir.join("venv.txt"), b"venv excluded").expect("write venv file");
+    fs::write(src_dir.join("main.txt"), b"main included").expect("write main file");
+
+    let (search, events) = index_trees_with_budget_and_exclusions(
+        vec![root.clone()],
+        true,
+        usize::MAX,
+        64,
+        Duration::from_secs(10),
+        vec!["[build]".to_string()],
+    );
+    search.query("main.txt");
+    let main_event = wait_for_results(&events);
+
+    search.query("weird.txt");
+    let weird_event = wait_for_results(&events);
+
+    search.query("venv.txt");
+    let venv_event = wait_for_results(&events);
+
+    drop(search);
+    fs::remove_dir_all(&root).expect("remove fixture");
 
     let Some(SearchEvent::Results {
-        items, coverage, ..
-    }) = event
+        items: main_items, ..
+    }) = main_event
     else {
-        panic!("the worker should publish a result for a non-empty query");
+        panic!("expected main event");
+    };
+    assert!(!main_items.is_empty(), "main file should be found");
+
+    let Some(SearchEvent::Results {
+        items: weird_items, ..
+    }) = weird_event
+    else {
+        panic!("expected weird event");
     };
     assert!(
-        items.iter().any(|item| item.name == "needle.txt"),
-        "entries outside the inaccessible directory should still be indexed"
+        weird_items.is_empty(),
+        "folder with glob brackets must be properly excluded"
     );
-    if !running_as_root {
-        assert_eq!(
-            coverage,
-            super::SearchCoverage {
-                unreadable: true,
-                ..Default::default()
-            }
-        );
-        assert_eq!(
-            coverage.message(),
-            "Partial search — some folders could not be read"
-        );
-    }
+
+    let Some(SearchEvent::Results {
+        items: venv_items, ..
+    }) = venv_event
+    else {
+        panic!("expected venv event");
+    };
+    assert!(
+        venv_items.is_empty(),
+        "built-in .venv prune must still work even when user exclusion has unescaped glob brackets"
+    );
 }
