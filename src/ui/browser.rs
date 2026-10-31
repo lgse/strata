@@ -1018,6 +1018,23 @@ impl BrowserView {
         self.state.cancel_rename()
     }
 
+    /// Tab inside the focused inline rename: commits it and renames the neighbouring item.
+    pub fn advance_rename(&self, direction: gtk::DirectionType) -> bool {
+        let Some(field) = self.active_rename_field() else {
+            return false;
+        };
+        let focused = self.state.overlay.root().and_then(|root| root.focus());
+        if !focused.is_some_and(|focused| focused == field || focused.is_ancestor(&field)) {
+            return false;
+        }
+        let step = if direction == gtk::DirectionType::TabBackward {
+            -1
+        } else {
+            1
+        };
+        self.state.advance_rename(step)
+    }
+
     pub fn cancel_new_entry(&self) -> bool {
         self.state.cancel_new_entry()
     }

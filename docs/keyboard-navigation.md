@@ -158,7 +158,10 @@ With nothing selected **Ctrl+Alt+N** falls back to a plain `new folder`. The ite
 is hidden in Trash, Recent, and while a recursive search is open.
 
 For **any file or folder rename**, Enter, clicking outside the field (even empty
-pane space), or moving keyboard focus away commits a valid name. Switching to
+pane space), or moving keyboard focus away commits a valid name. **Tab** and
+**Shift+Tab** commit it too, then open the rename on the next or previous item,
+so a run of files is renamed without leaving the editor; at either end of the
+listing they only commit. Switching to
 another window, or an input method switcher taking the keyboard, leaves the
 edit open. Escape keeps the original name. Finishing with an empty or invalid name also keeps the
 original. Cancelling the initial rename does **not** delete the new item: it
