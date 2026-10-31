@@ -500,6 +500,14 @@ pub(super) fn commit_filter(fixture: &KeyboardFixture, text: &str) {
     wait_until(|| fixture.view.item_view_has_focus());
 }
 
+/// The Arabic layout types ظ on the US slash key; it is typed, never a descent.
+fn press_arabic_zah(fixture: &KeyboardFixture) -> bool {
+    fixture.keys.emit_by_name::<bool>(
+        "key-pressed",
+        &[&Key::Arabic_zah, &61u32, &ModifierType::empty()],
+    )
+}
+
 #[test]
 fn filter_slash_waits_through_empty_indexing_batches() {
     crate::test_support::gtk_test(
@@ -619,6 +627,12 @@ fn normal_filter_slash_rejects_files_and_cancels_on_edit_focus_loss_and_escape()
                     assert_eq!(entry.text(), query);
                     assert!(fixture.view.filter_has_focus());
                 }
+                entry.set_text("Documents");
+                let generation = browser.navigation_generation();
+                assert!(!press_arabic_zah(&fixture), "{mode:?}: ظ reaches the field");
+                pump(150);
+                assert_eq!(browser.navigation_generation(), generation, "{mode:?}");
+                assert!(fixture.view.filter_has_focus());
                 entry.set_text("doc");
                 assert!(fixture.press(Key::slash, none));
                 entry.set_text("report");
@@ -813,6 +827,15 @@ fn tenxer_filter_slash_uses_the_latest_query_and_rejects_files_and_misses() {
                     assert!(fixture.shortcuts.prompt_has_focus());
                     assert_eq!(fixture.shortcuts.prompt_text(), query);
                 }
+                fixture.shortcuts.prompt().set_text("Documents");
+                let generation = browser.navigation_generation();
+                assert!(
+                    !press_arabic_zah(&fixture),
+                    "{mode:?}: ظ reaches the prompt"
+                );
+                pump(350);
+                assert_eq!(browser.navigation_generation(), generation, "{mode:?}");
+                assert!(fixture.shortcuts.prompt_has_focus());
                 fixture.shortcuts.prompt().set_text("doc");
                 wait_results(&fixture, &["Documents"]);
                 fixture.shortcuts.prompt().set_text("arc");

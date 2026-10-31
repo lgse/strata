@@ -115,9 +115,14 @@ pub(super) fn finish_filter_descent(
     }
 }
 
+/// A letter that reads as `/` only through the layout fallback is typed.
+fn descends(press: &KeyPress) -> bool {
+    press.is(FILTER_DESCEND) && !press.used_fallback()
+}
+
 impl Dispatcher {
     pub(super) fn normal_filter_keys(&self, press: &KeyPress) -> KeyResult {
-        if self.type_to_search.preferences.tenxer_mode() || !press.is(FILTER_DESCEND) {
+        if self.type_to_search.preferences.tenxer_mode() || !descends(press) {
             return None;
         }
         let entry = self.view.focused_filter_entry()?;
@@ -248,7 +253,7 @@ impl Dispatcher {
             }
         } else if press.is(ENTER_ANY_SHIFT) {
             self.submit_prompt(browser);
-        } else if kind == Some(Prompt::Filter) && press.is(FILTER_DESCEND) {
+        } else if kind == Some(Prompt::Filter) && descends(press) {
             self.begin_filter_descent(None);
         } else if let Some(delta) = step
             && kind.is_some_and(Prompt::picks_history)
