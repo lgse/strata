@@ -173,6 +173,11 @@ impl Digits {
         self.prefix
     }
 
+    #[cfg(test)]
+    pub(crate) const fn then(self) -> Option<Shown> {
+        self.then
+    }
+
     pub(crate) const fn modifiers(self) -> Modifiers {
         self.modifiers
     }

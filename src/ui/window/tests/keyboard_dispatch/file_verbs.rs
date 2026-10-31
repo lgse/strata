@@ -1028,6 +1028,7 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
 
 #[test]
 fn tenxer_folder_actions_run_on_the_focused_folder_not_the_cursor_item() {
+    use crate::ui::keys::{Binding, Keymap, Map, bindings::ACTIONS_FOLDER, use_keymap};
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::file_verbs::tenxer_folder_actions_run_on_the_focused_folder_not_the_cursor_item",
         || {
@@ -1099,6 +1100,34 @@ fn tenxer_folder_actions_run_on_the_focused_folder_not_the_cursor_item() {
                     directory.join("empty").to_string_lossy().as_ref(),
                 ],
                 "an empty folder still offers its own actions"
+            );
+            std::fs::remove_file(&output).expect("reset recorder");
+
+            let _keymap = use_keymap(Keymap::defaults().with(
+                Map::Tenxer,
+                ACTIONS_FOLDER,
+                vec![Binding::plain(Key::f)],
+            ));
+            plain(&fixture, Key::semicolon);
+            wait_until(|| fixture.shortcuts.chord_options().is_some());
+            assert!(
+                fixture
+                    .shortcuts
+                    .chord_options()
+                    .expect("options")
+                    .contains(&("f".to_owned(), "Actions for this folder\u{2026}".to_owned())),
+                "the panel shows the rebound key"
+            );
+            plain(&fixture, Key::f);
+            assert_eq!(fixture.shortcuts.armed_chord(), Some(Chord::FolderAction));
+            assert_eq!(fixture.shortcuts.chord().text(), "; f-");
+            plain(&fixture, Key::_1);
+            assert_eq!(
+                wait_invocations(&output, 2),
+                [
+                    "folders background",
+                    directory.join("empty").to_string_lossy().as_ref(),
+                ]
             );
         },
     );
