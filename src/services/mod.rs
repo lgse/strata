@@ -20,12 +20,14 @@ pub(crate) mod model_preview;
 mod native_fs;
 mod navigation_history;
 mod network_error;
+pub(crate) mod odt;
 mod operations;
 pub(crate) mod package_manager;
 mod path_match;
 mod preview;
 mod release_channel;
 mod remote_download;
+pub(crate) mod route_preview;
 pub(crate) mod rtf;
 mod search;
 pub(crate) mod table;
@@ -34,8 +36,8 @@ mod update_check;
 mod update_install;
 
 pub use actions::{
-    ActionAvailability, ActionHandle, ActionLoadFailure, ActionProgram, ActionRegistry,
-    ActionScript, ActionWriteRequest, MatchedAction,
+    ActionAvailability, ActionCatalog, ActionHandle, ActionLoadFailure, ActionProgram,
+    ActionRegistry, ActionScript, ActionWriteRequest, MatchedAction,
 };
 pub(crate) use document::{
     DocumentBlock, DocumentLayout, DocumentListChildKind, DocumentMedia, DocumentSpan,
@@ -49,8 +51,9 @@ pub use file_source::{
     sanitize_uri_credentials, validate_uri_credentials,
 };
 pub(crate) use file_source::{
-    INVALID_NAME_REASON, UNEXPECTED_SYSTEM_ERROR, error_detail, gio_error_detail,
-    gio_error_message, io_error_detail, io_error_message, sanitize_failure_message,
+    INVALID_NAME_REASON, UNEXPECTED_SYSTEM_ERROR, describes_refused_credentials, error_detail,
+    gio_backend_error_message, gio_error_detail, gio_error_message, io_error_detail,
+    io_error_message, sanitize_failure_message,
 };
 pub use install_source::{InstallSource, ManagedInstall};
 pub(crate) use install_source::{ensure_self_managed, installed_executable};
@@ -60,7 +63,7 @@ pub use jobs::{
     InvocationSource, JobId, JobRequest, JobService, JobSnapshot, JobStatus, ScriptProgress,
     expand_command_arguments,
 };
-pub(crate) use listeners::ListenerGuard;
+pub(crate) use listeners::{ListenerGuard, Listeners};
 pub use mime_type::{EntryType, FOLDER_TYPE_NAME, OTHER_TYPE_NAME, entry_type};
 pub use model_preview::{ModelEncoding, ModelFormat, ModelMesh, ModelPalette, ModelView};
 pub(crate) use model_preview::{ModelRender, ModelRenderPurpose};
@@ -88,8 +91,8 @@ pub(crate) use preview::{
     INCORRECT_ARCHIVE_PASSWORD, archive_preview_format, bytes_support_named_family, content_family,
     guess_content_type, has_plain_text_extension, is_extensionless_dotfile, is_image_path,
     is_media_path, is_model, is_non_executable_extensionless_dotfile, looks_like_text,
-    normalize_preview_text, read_head_sample, reconcile_with_sample, split_archive_name,
-    supports_remote_video,
+    model_format, normalize_preview_text, read_head_sample, reconcile_with_sample,
+    split_archive_name, supports_remote_video,
 };
 pub(crate) use transfer_action::{
     CrossVolumeDropStrategy, DropActionInput, DropCommit, DropOverride, TransferKind,

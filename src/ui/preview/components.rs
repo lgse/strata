@@ -48,19 +48,20 @@ impl DetailsHeader {
 pub(super) fn navigation_button(
     icon: &str,
     name: &str,
-    tooltip: &str,
-    binding: Option<crate::ui::keys::Binding>,
+    tooltip: &'static str,
+    binding: Option<crate::ui::keys::Command>,
 ) -> gtk::Button {
     let button = gtk::Button::new();
     button.add_css_class("preview-media-button");
     button.set_child(Some(&crate::assets::primary_icon(icon, 18)));
-    let tooltip = binding.map_or_else(
-        || crate::i18n::tr(tooltip),
-        |binding| {
-            crate::ui::shortcut_reference::with_keys(tooltip, crate::ui::keys::Keys::One(binding))
-        },
-    );
-    button.set_tooltip_text(Some(&tooltip));
+    match binding {
+        Some(binding) => crate::ui::shortcut_reference::follow_tooltip(
+            &button,
+            tooltip,
+            crate::ui::keys::Keys::One(binding.shown()),
+        ),
+        None => button.set_tooltip_text(Some(&crate::i18n::tr(tooltip))),
+    }
     crate::ui::accessibility::set_label(&button, &crate::i18n::tr(name));
     button
 }

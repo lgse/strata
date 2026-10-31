@@ -357,6 +357,38 @@ fn connecting_cancel_invalidates_the_request_and_clears_status() {
 }
 
 #[test]
+fn an_unavailable_target_logs_no_user_query_or_fragment() {
+    crate::test_support::gtk_test(
+        "ui::window::open_argument::tests::an_unavailable_target_logs_no_user_query_or_fragment",
+        || {
+            PreferenceManager::seed_saved_preferences_for_test();
+            let file =
+                gio::File::for_uri("sftp://alice:s3cret@example.invalid/file?token=abc#frag");
+            let location = location_for_file(&file).expect("remote location");
+            let browser = view();
+
+            let output = crate::test_support::capture_logs(|| {
+                classify(browser.clone(), file, location);
+                wait_until(|| {
+                    status_widget(&browser.overlay())
+                        .as_ref()
+                        .and_then(|status| button_with_label(status, "Retry"))
+                        .is_some()
+                });
+            });
+
+            let warning =
+                crate::test_support::captured_event(&output, "target location unavailable");
+            assert_eq!(warning.split_whitespace().next(), Some("WARN"));
+            assert!(warning.contains("sftp://example.invalid/file"), "{warning}");
+            for secret in ["alice", "s3cret", "token", "frag"] {
+                assert!(!output.contains(secret), "{secret} leaked:\n{output}");
+            }
+        },
+    );
+}
+
+#[test]
 fn errors_do_not_expose_uri_credentials() {
     crate::test_support::gtk_test(
         "ui::window::open_argument::tests::errors_do_not_expose_uri_credentials",

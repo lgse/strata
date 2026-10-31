@@ -407,14 +407,18 @@ fn place_non_directory(
                     Err(PlaceError::Exists)
                 };
             }
-            Err(Errno::PERM) => {
+            Err(error @ (Errno::PERM | Errno::ACCESS)) => {
                 if exists(fs, to)? {
                     return Err(PlaceError::Exists);
                 }
-                // Linking can be refused for this item alone (protected_hardlinks),
-                // so only a probe teaches the mount anything.
-                if mount.capabilities().hard_links.is_none() {
-                    let _ = mount.probe(true, false);
+                // Linking can be refused for this item alone (protected_hardlinks) or by
+                // an SFTP server without a link extension (EACCES), so only a probe
+                // teaches the mount anything; a folder that refuses the probe's own
+                // file refused the link too.
+                if mount.capabilities().hard_links.is_none()
+                    && mount.probe(true, false) == Err(Errno::ACCESS)
+                {
+                    return Err(PlaceError::Io(error));
                 }
             }
             Err(Errno::MLINK) => {}
@@ -536,8 +540,8 @@ fn recreate_symlink(
     match fs.symlink(&link, to) {
         Ok(()) => {}
         Err(Errno::EXIST) => return Err(PlaceError::Exists),
-        Err(Errno::PERM) if exists(fs, to)? => return Err(PlaceError::Exists),
-        Err(Errno::PERM) => return Err(PlaceError::Unsupported),
+        Err(Errno::PERM | Errno::ACCESS) if exists(fs, to)? => return Err(PlaceError::Exists),
+        Err(Errno::PERM | Errno::ACCESS) => return Err(PlaceError::Unsupported),
         Err(Errno::INVAL) => return Err(PlaceError::InvalidName),
         Err(error) => return Err(PlaceError::Io(error)),
     }
@@ -807,7 +811,11 @@ pub(super) fn probe(
             match fs.link(at(dir, &current), at(dir, name)) {
                 Ok(()) => Ok(Some(true)),
                 Err(Errno::EXIST) => Err(PlaceError::Exists),
-                Err(error) if error == Errno::PERM || is_unsupported(error) => Ok(Some(false)),
+                Err(error)
+                    if matches!(error, Errno::PERM | Errno::ACCESS) || is_unsupported(error) =>
+                {
+                    Ok(Some(false))
+                }
                 Err(_) => Ok(None),
             }
         })

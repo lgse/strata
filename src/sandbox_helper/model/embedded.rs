@@ -9,10 +9,10 @@ use crate::services::{
     model_preview::{MAX_3MF_ARCHIVE_ENTRIES, MAX_FREECAD_ARCHIVE_ENTRIES},
 };
 
-const MAX_THUMBNAIL_BYTES: u64 = 4 * 1024 * 1024;
-const MAX_THUMBNAIL_CANDIDATES: usize = 16;
-const MAX_TOTAL_THUMBNAIL_BYTES: u64 = 16 * 1024 * 1024;
-const MAX_TOTAL_THUMBNAIL_PIXELS: u64 = 16 * 1024 * 1024;
+pub(super) const MAX_THUMBNAIL_BYTES: u64 = 4 * 1024 * 1024;
+pub(super) const MAX_THUMBNAIL_CANDIDATES: usize = 16;
+pub(super) const MAX_TOTAL_THUMBNAIL_BYTES: u64 = 16 * 1024 * 1024;
+pub(super) const MAX_TOTAL_THUMBNAIL_PIXELS: u64 = 16 * 1024 * 1024;
 
 pub(super) struct Package {
     archive: zip::ZipArchive<fs::File>,
@@ -34,6 +34,7 @@ impl Package {
             ModelFormat::ThreeMf => MAX_3MF_ARCHIVE_ENTRIES,
             ModelFormat::FreeCad => MAX_FREECAD_ARCHIVE_ENTRIES,
             ModelFormat::Stl => return Err("STL has no embedded thumbnail".into()),
+            ModelFormat::Gcode => return Err("G-code thumbnails are not package images".into()),
         };
         if archive.len() > entry_limit {
             return Err("Model package entry limit exceeded".into());
@@ -174,6 +175,10 @@ mod tests;
 fn thumbnail_png(bytes: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
     // Decode in this job: toolkit loaders may try to launch another sandbox.
     let image = Pixmap::decode_png(bytes).map_err(|_| "Invalid model thumbnail")?;
+    scale_pixmap(&image, width, height)
+}
+
+pub(super) fn scale_pixmap(image: &Pixmap, width: u32, height: u32) -> Result<Vec<u8>, String> {
     let scale = (width as f32 / image.width() as f32)
         .min(height as f32 / image.height() as f32)
         .min(1.);

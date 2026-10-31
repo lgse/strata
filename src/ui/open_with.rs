@@ -522,7 +522,7 @@ fn register_recent_file(file: &gio::File) -> bool {
     let uri = file.uri();
     let added = manager.add_item(uri.as_str());
     if !added {
-        tracing::debug!(uri = %uri, "unable to record file in Recent history");
+        tracing::debug!(uri = %crate::model::diagnostic_uri(uri.as_str()), "unable to record file in Recent history");
     }
     added
 }
@@ -751,6 +751,7 @@ pub(super) fn show(
     let search_entry = gtk::SearchEntry::new();
     search_entry.add_css_class("open-with-search");
     search_entry.set_placeholder_text(Some(&crate::i18n::tr("Search applications…")));
+    super::accessibility::set_label(&search_entry, &crate::i18n::tr("Search applications…"));
     layout.body.append(&search_entry);
 
     let list = gtk::ListBox::new();
@@ -961,6 +962,7 @@ pub(super) fn show(
         let (Some(list), Some(search)) = (list_weak.upgrade(), search_for_list.upgrade()) else {
             return glib::Propagation::Proceed;
         };
+        let press = &press.untyped();
 
         if press.is(UP.ignoring(SHORTCUT_MODIFIERS))
             && let Some(selected) = list.selected_row()

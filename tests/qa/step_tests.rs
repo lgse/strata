@@ -13,12 +13,13 @@ use crate::{
     CONTROLLER_PANIC, REPOSITORY,
     baseline::{DIFFERENT_PIXEL_BUDGET, compare_in, different_fraction, differing_pixels},
     drive::file_failure,
-    fixture::{expand_tree, fixed_fixture_name, manifest},
+    fixture::{OrderedMap, expand_tree, fixed_fixture_name, manifest},
     fs_check::{FsState, FsStep, contained},
     fs_helpers::{glob_matches, pdf_image, raw_photo},
     peer_steps::Relaunch,
     peers,
     process::wait_for_exit,
+    render_toml,
     run::Outcome,
     runner_steps::{EachStep, ProcStep},
     scenario::{Header, Image, Scenario, load_scenario},
@@ -795,5 +796,20 @@ pub(crate) fn waiting_for_exit_wakes_on_the_exit_and_gives_up_at_the_timeout() {
     assert!(
         reaped.is_ok_and(|status| !status.success()),
         "the killed sleep should be reaped"
+    );
+}
+
+pub(crate) fn prefs_write_nested_tables_into_settings_toml() {
+    let keymap = json!({ "default": { "rename": ["<Control>e"], "escape": ["Escape", "\"q\\"] } });
+    let preferences = OrderedMap(vec![
+        ("type_to_search".to_owned(), json!(false)),
+        ("keymap".to_owned(), keymap.clone()),
+    ]);
+    let written: toml::Table = render_toml(&preferences)
+        .parse()
+        .expect("the rendered settings.toml should parse");
+    assert_eq!(
+        serde_json::to_value(written).expect("TOML converts to JSON"),
+        json!({ "type_to_search": false, "keymap": keymap })
     );
 }

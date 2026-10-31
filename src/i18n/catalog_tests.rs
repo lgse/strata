@@ -2,8 +2,8 @@
 
 use std::{collections::BTreeSet, path::Path};
 
-const LOCALES: [&str; 12] = [
-    "en", "fr", "de", "es", "ja", "pt-BR", "ko", "vi", "it", "ru", "zh-CN", "zh-TW",
+const LOCALES: [&str; 13] = [
+    "en", "fr", "hu", "de", "es", "ja", "pt-BR", "ko", "vi", "it", "ru", "zh-CN", "zh-TW",
 ];
 
 fn placeholders(text: &str) -> BTreeSet<&str> {

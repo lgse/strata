@@ -284,8 +284,10 @@ or a capabilities request. A future optional negotiation must preserve that base
 ## Bounds and failure behavior
 
 At most eight registrations are loaded (from at most 64 directory entries), with
-one child per provider. Strata sends **one request at a time** on each connection;
-serial adapters are supported, and events may arrive at any time. It queues up to
+one child per provider, except that after **Refresh** a child still answering an
+activation keeps running beside its replacement until that action settles.
+Strata sends **one request at a time** on each connection; serial adapters are
+supported, and events may arrive at any time. It queues up to
 16 speculative query/menu requests and eight activations separately. User actions
 have dispatch priority after the current request; pending refreshes for the same
 visible path/menu are coalesced by the host. A full queue rejects admission, never

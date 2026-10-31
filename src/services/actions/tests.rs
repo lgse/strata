@@ -119,6 +119,37 @@ fn numbered_actions_follow_the_menu_and_stop_at_ten() {
     );
 }
 
+#[test]
+fn listed_actions_keep_their_place_and_run_only_where_they_apply() {
+    let mut unavailable = (*handle("broken", "Broken", true, MenuPlacement::Top)).clone();
+    unavailable.availability = ActionAvailability::Unavailable {
+        reason: "missing".to_owned(),
+    };
+    let catalog = ActionCatalog::new(
+        vec![
+            handle("off", "Off", false, MenuPlacement::Top),
+            Rc::new(unavailable),
+            handle("zebra", "Zebra", true, MenuPlacement::Submenu),
+        ],
+        Vec::new(),
+    );
+    let images = [ActionInput::file("a.png", Some("image/png"))];
+    let listed = |index| {
+        catalog
+            .listed(index, &images)
+            .map(|action| action.id().to_owned())
+    };
+    assert_eq!(listed(0), None, "disabled");
+    assert_eq!(listed(1), None, "unavailable");
+    assert_eq!(
+        listed(2).as_deref(),
+        Some("zebra"),
+        "the third listed, whatever its name"
+    );
+    assert_eq!(listed(3), None, "an empty slot");
+    assert_eq!(catalog.listed(2, &[ActionInput::file("a.txt", None)]), None);
+}
+
 struct FakeStore {
     stored: Mutex<StoredActions>,
     writes: AtomicUsize,

@@ -49,18 +49,19 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 ## Features
 
 - **Three browser modes:** navigable Columns, an Icons grid, and a sortable List table.
-- **Keyboard-first control:** directional-key movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also shows clipboard status. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md). Optional [10xer mode](docs/10xer-mode.md) hides window and pane chrome and uses Yazi-style keys.
+- **Keyboard-first control:** directional-key movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also shows clipboard status. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md). Optional [10xer mode](docs/10xer-mode.md) hides window and pane chrome and uses Yazi-style keys. Change, add, or remove shortcuts, separately for each mode, in **Settings → Keyboard**; see [Keymap](docs/keymap.md).
 - **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed. Global search covers Home and all mounted local drives, regardless of the current folder. Hover the search field to see the included locations. The dialog warns when results are incomplete; raise or remove the indexing time and entry limits under **Settings → General → Search & filtering** for slow or network mounts. Folder-scoped filtering/search remains separate. URI-native remote shares are not yet included.
 - **Rich previews and thumbnails:** native rendered Markdown and static HTML, plus bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application. Audio opens in a now-playing view with artwork and a live spectrum; video gets technical badges, a keyframe storyboard while scrubbing, ambient light around the frame, silent autoplay that eases its sound in, and <kbd>Enter</kbd> hands the position to your default player. File Properties shows available media resolution, duration, bitrate, codecs, HDR, subtitle and chapter counts, and audio/video rates. RAW previews and Properties also show dimensions, camera, lens, focal length, shutter speed, ISO, and GPS coordinates, with `N/A` for unavailable values.
 - **Shared storage properties:** volumes and mounted storage entries in Devices use the same Properties dialog for name, device, filesystem, mount status, and available capacity/usage. **Set label…** saves a display label only in Strata; it never changes the filesystem label, mounts/unmounts a drive, or alters system configuration. Labels update the sidebar and Properties live and can be cleared to restore the normal device name. Formatting remains restricted to eligible removable drives; release actions follow the device's reported capabilities.
 - **Responsive filesystem work:** cancellable directory loading, bounded streaming, incremental monitoring, stable selection, and virtualized large directories.
 - **Everyday file operations:** create folders, rename, cut, copy, paste, trash, permanent delete, sorting, hidden files, pins, and history.
 - **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares and SFTP servers from the location field, with explicit host-key decisions.
+- **Administrator access:** open a local folder you can't read, such as a root-owned backup folder, after the system's polkit password prompt. See [Administrator access](docs/administrator-access.md).
 - **Adaptive appearance:** compact or airy density, 95 bundled themes, custom themes, and live Omarchy Quattro theme following.
 - **Updates in the app:** automatic update checks (on by default; turn them off in **Settings → Updates**), release notes, verified downloads, and in-place installation for release binaries.
 - **Custom actions:** add your own scripts to the file and folder context menus, with a manager in **Settings → Actions** and background progress in the Jobs dashboard. See [Custom actions](docs/custom-actions.md).
 - **Integrations:** opt-in providers maintained in the repository's [`integrations/`](integrations/README.md) catalog, installed, updated and removed from **Settings → Integrations**; they plug services and devices into the context menu and the **Send to…** menu. See [External file providers](docs/file-providers.md).
-- **System file chooser:** opt in through **Settings → General → System file chooser**, the installer, or `strata --install-portal`; see [portal setup](docs/portal-file-chooser.md).
+- **System file chooser:** opt in through **Settings → General → Desktop integration → System file manager**, the installer, or `strata --install-portal`; see [portal setup](docs/portal-file-chooser.md).
 - **Encrypted-volume unlock:** opt in through the installer, **Settings → General → Desktop integration** on Omarchy, or `strata --install-udiskie-unlock`; restore with `strata --uninstall-udiskie-unlock` (Settings **Restore default** on Omarchy only).
 
 ## Installation
@@ -783,13 +784,21 @@ in; `--all-features` also enables UnRAR. The source lockfile and license notices
 still describe the optional dependency; they do not mean it is linked into the
 feature-disabled binary. See [third-party notices](THIRD_PARTY_LICENSES.md#unrar).
 
+### Builds without the in-app updater
+
+Distributions that ship Strata updates through their own packages build with
+`STRATA_UPDATER=disabled`, which removes update checks, installs, and the
+Updates settings page. See [distribution packaging](docs/packaging.md#building-without-the-in-app-updater).
+
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Deeper references:
 
 - [Keyboard navigation](docs/keyboard-navigation.md)
+- [Keymap](docs/keymap.md)
 - [Preview panel and column layout](docs/preview-panel-layout.md)
 - [10xer mode](docs/10xer-mode.md)
 - [Architecture principles](docs/architecture.md)
 - [Filesystem compatibility](docs/filesystem-compatibility.md)
+- [Administrator access](docs/administrator-access.md)
 - [Preview sandbox](docs/preview-sandbox.md)
 - [Hardened configuration](docs/hardened-configuration.md)
 - [Performance baseline](docs/performance-baseline.md)

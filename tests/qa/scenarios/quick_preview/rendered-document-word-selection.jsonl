@@ -1,7 +1,8 @@
-{"scenario":"rendered-document-word-selection","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"variants":[{"id":"md","vars":{"filename":"selection.md","word":"alpha"},"tree":{"selection.md":"alpha bravo charlie delta\n\nsecond paragraph\n"}},{"id":"docx","vars":{"filename":"selection.docx","word":"Quarterly"},"tree":{"selection.docx":""},"setup":[{"fs":{"path":"selection.docx","from_repository":"tests/fixtures/documents/report.docx"}}]}],"cost":{"columns-md":1.8,"columns-docx":1.9},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Rendered md/docx double-click word and shift-click range copy; sole GUI guard, source text is preview-source-text-copies"}}
+{"scenario":"rendered-document-word-selection","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"variants":[{"id":"md","vars":{"filename":"selection.md","word":"alpha"},"tree":{"selection.md":"alpha bravo charlie delta\n\nsecond paragraph\n"}},{"id":"rtf","vars":{"filename":"selection.rtf","word":"alpha"},"tree":{"selection.rtf":"{\\rtf1\\ansi\\uc1 alpha bravo charlie delta \\u-10179?\\u-8704?\\par second paragraph\\par}"}},{"id":"docx","vars":{"filename":"selection.docx","word":"Quarterly"},"tree":{"selection.docx":""},"setup":[{"fs":{"path":"selection.docx","from_repository":"tests/fixtures/documents/report.docx"}}]}],"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Rendered md/rtf/docx double-click word and shift-click range copy; sole GUI guard, source text is preview-source-text-copies"}}
 {"select_with_keyboard":"$filename"}
 {"key":"space"}
 {"wait":{"preview":"$word"},"message":"rendered document text"}
+{"expect":{"preview":"😀"},"message":"RTF surrogate escapes preserve the emoji","variants":["rtf"]}
 {"key":"ctrl+l"}
 {"key":"ctrl+a"}
 {"type":"selection-cleared"}
@@ -16,15 +17,15 @@
 {"click":{"remembered":"text"},"at":[17,"50%"]}
 {"click":{"remembered":"text"},"at":["3/4","50%"],"mods":["shift"]}
 {"key":"ctrl+c"}
-{"clipboard":{"starts_with":"alpha","longer_than":5},"variants":["md"]}
+{"clipboard":{"starts_with":"alpha","longer_than":5},"variants":["md","rtf"]}
 {"clipboard":{"starts_with":"Quarterly","longer_than":9},"variants":["docx"]}
 {"key":"ctrl+Home"}
 {"key":"shift+Right","repeat":5}
 {"key":"ctrl+c"}
-{"clipboard":"alpha","variants":["md"]}
+{"clipboard":"alpha","variants":["md","rtf"]}
 {"clipboard":"Quart","variants":["docx"]}
 {"key":"shift+Left","repeat":2}
 {"key":"ctrl+c"}
-{"clipboard":"alp","variants":["md"]}
+{"clipboard":"alp","variants":["md","rtf"]}
 {"clipboard":"Qua","variants":["docx"]}
 {"expect":{"selected":["$filename"]}}

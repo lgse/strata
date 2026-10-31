@@ -66,7 +66,8 @@ impl Browser {
                 request_id,
                 message,
                 refused,
-            } => self.receive_failure(request_id, message, refused),
+                denied,
+            } => self.receive_failure(request_id, message, refused, denied),
             DirectoryEvent::MetadataFilled {
                 request_id,
                 updates,
@@ -194,7 +195,13 @@ impl Browser {
         }
     }
 
-    fn receive_failure(self: &Rc<Self>, request_id: RequestId, message: String, refused: bool) {
+    fn receive_failure(
+        self: &Rc<Self>,
+        request_id: RequestId,
+        message: String,
+        refused: bool,
+        denied: bool,
+    ) {
         let depth = self.state.borrow().depth_for_request(request_id);
         if depth.is_some_and(|depth| self.keep_listing(depth, request_id, true, refused)) {
             return;
@@ -221,10 +228,19 @@ impl Browser {
             }
             None => {}
         }
+        let administrator = denied
+            .then(|| self.state.borrow().depth_for_request(request_id))
+            .flatten()
+            .and_then(|depth| self.location_at(depth))
+            .and_then(|location| self.administrator_alternative(&location));
         let mut state = self.state.borrow_mut();
-        if let Some(depth) = state.fail(request_id, message.clone()) {
+        if let Some(depth) = state.fail(request_id, message.clone(), administrator.clone()) {
             drop(state);
-            self.emit(BrowserEvent::LoadFailed { depth, message });
+            self.emit(BrowserEvent::LoadFailed {
+                depth,
+                message,
+                administrator,
+            });
             self.check_failed_root_load(depth);
         } else if state.fail_peek(request_id, message.clone()) {
             drop(state);

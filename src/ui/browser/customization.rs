@@ -124,7 +124,7 @@ fn show_custom_color_modal(
     back.add_css_class("action-dialog-cancel");
     let back_icon = crate::assets::primary_icon(crate::assets::icons::ARROW_LEFT, 14);
     back.set_child(Some(&back_icon));
-    back.set_tooltip_text(Some(&crate::i18n::tr("Back to palette")));
+    crate::ui::accessibility::set_tooltip_and_label(&back, &crate::i18n::tr("Back to palette"));
     back.set_visible(false);
     layout.actions.prepend(&back);
 
@@ -487,7 +487,10 @@ fn build_folder_color_bar(
     theme_btn.set_has_frame(false);
     theme_btn.add_css_class("folder-color-dot");
     theme_btn.add_css_class("folder-color-theme");
-    theme_btn.set_tooltip_text(Some(&crate::i18n::tr("Default (Theme color)")));
+    crate::ui::accessibility::set_tooltip_and_label(
+        &theme_btn,
+        &crate::i18n::tr("Default (Theme color)"),
+    );
     let theme_icon = crate::assets::primary_icon(crate::assets::icons::PALETTE, 12);
     theme_btn.set_child(Some(&theme_icon));
     container.append(&theme_btn);

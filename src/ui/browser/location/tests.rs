@@ -6,6 +6,63 @@ use gtk::{gio, glib};
 use std::time::{Duration, Instant};
 
 #[test]
+fn window_presence_dismisses_completion_without_discarding_the_path() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::window_presence_dismisses_completion_without_discarding_the_path",
+        || {
+            let fixture = tempfile::tempdir().expect("fixture");
+            std::fs::create_dir(fixture.path().join("documents")).expect("completion folder");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            content.append(&view.location_widget());
+            content.append(&view.widget());
+            let window = gtk::Window::builder().child(&content).build();
+            window.present();
+            view.browser().navigate(Location::local(fixture.path()));
+            wait_until(
+                || {
+                    view.browser()
+                        .column_snapshot(0)
+                        .is_some_and(|snapshot| !snapshot.loading)
+                },
+                "the folder loads",
+            );
+            view.state.begin_location_edit();
+            let popover = descendants(view.state.location_entry.upcast_ref())
+                .into_iter()
+                .find_map(|widget| widget.downcast::<gtk::Popover>().ok())
+                .expect("completion popover");
+
+            let path = format!("{}/doc", fixture.path().display());
+            view.state.location_entry.set_text(&path);
+            wait_until(|| popover.is_visible(), "suggestions visible");
+
+            view.set_presence(crate::app::Presence::Visible, false);
+
+            assert!(!popover.is_visible(), "losing focus dismisses suggestions");
+            assert_eq!(view.state.location_entry.text().as_str(), path);
+            assert!(view.location_edit_is_active());
+            view.state.location_entry.set_text("~");
+            assert!(
+                !popover.is_visible(),
+                "inactive edits cannot reopen suggestions"
+            );
+
+            view.set_presence(crate::app::Presence::Focused, false);
+            view.state.location_entry.set_text(&path);
+            wait_until(
+                || popover.is_visible(),
+                "suggestions return once the window is focused again",
+            );
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn password_storage_selection_maps_to_gio_values() {
     assert_eq!(password_save_for_selection(0), gio::PasswordSave::Never);
     assert_eq!(
@@ -87,6 +144,20 @@ fn remote_permission_denials_are_treated_as_authentication_failures() {
 }
 
 #[test]
+fn a_refused_polkit_prompt_neither_asks_for_credentials_nor_reports_an_error() {
+    let administrator = Location::uri("admin:///run/media/user/drive/backups");
+    let denied = glib::Error::new(gio::IOErrorEnum::PermissionDenied, "Permission denied");
+    assert!(!mount_error_is_authentication_failure(
+        &administrator,
+        &denied
+    ));
+    assert_eq!(mount_failure_message(&administrator, &denied), None);
+
+    let failed = glib::Error::new(gio::IOErrorEnum::Failed, "helper crashed");
+    assert!(mount_failure_message(&administrator, &failed).is_some());
+}
+
+#[test]
 fn cancelling_the_credential_prompt_produces_no_error_message() {
     let location = Location::uri("smb://host/share");
     for kind in [gio::IOErrorEnum::Cancelled, gio::IOErrorEnum::FailedHandled] {
@@ -164,7 +235,10 @@ fn backend_failures_do_not_echo_uri_secrets() {
         "Unable to mount sftp://alice:hunter2@host.example/home/alice?token=hidden#secret",
     );
     let message = mount_failure_message(&location, &error).expect("reportable error");
-    assert!(message.contains("sftp://host.example/home/alice"));
+    assert_eq!(
+        message,
+        crate::i18n::tr(crate::services::UNEXPECTED_SYSTEM_ERROR)
+    );
     assert!(!message.contains("hunter2"));
     assert!(!message.contains("alice:"));
     assert!(!message.contains("hidden"));
@@ -876,12 +950,16 @@ fn breadcrumb_adjustment_does_not_retain_widgets() {
                 Rc::new(crate::adapters::LocalFileSource),
                 crate::ui::browser::PeekBehavior::default(),
             );
-            let adjustment = view.state.breadcrumb_scroller.hadjustment();
             let container = view
                 .state
                 .location_stack
                 .child_by_name("breadcrumbs")
                 .expect("breadcrumb container");
+            let adjustment = descendants(&container)
+                .into_iter()
+                .find_map(|widget| widget.downcast::<gtk::ScrolledWindow>().ok())
+                .expect("breadcrumb scroller")
+                .hadjustment();
             let scrollbar = descendants(&container)
                 .into_iter()
                 .filter(|widget| widget.has_css_class("breadcrumb-scrollbar"))

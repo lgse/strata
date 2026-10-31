@@ -16,8 +16,8 @@ use crate::services::{
     normalize_preview_text,
 };
 use crate::ui::keys::{
-    self, KeyPress,
-    bindings::{COPY, DOWN, FIRST_ITEM, LAST_ITEM, LEFT, RIGHT, SELECT_ALL, UP},
+    self, KeyPress, Match,
+    bindings::{COPY, DOWN, END_KEY, HOME_KEY, LEFT, RIGHT, SELECT_ALL, UP},
 };
 
 mod line_numbers;
@@ -1703,7 +1703,7 @@ fn install_keyboard_selection(list: &gtk::ListView, state: Rc<VirtualPreviewStat
             return glib::Propagation::Stop;
         }
         let held = press.modifiers();
-        if let Some(motion) = caret_motion(press)
+        if let Some(motion) = caret_motion(&press.untyped())
             && let Some(selection) = selection::move_selection(
                 &state.units,
                 state.selection.get(),
@@ -1723,16 +1723,17 @@ fn install_keyboard_selection(list: &gtk::ListView, state: Rc<VirtualPreviewStat
 /// Ctrl moves by word or to the document's ends; Shift extends.
 fn caret_motion(press: &KeyPress) -> Option<Motion> {
     const HELD: Modifiers = Modifiers::CONTROL_MASK.union(Modifiers::SHIFT_MASK);
-    [
-        (LEFT, Motion::Left),
-        (RIGHT, Motion::Right),
-        (UP, Motion::Up),
-        (DOWN, Motion::Down),
-        (FIRST_ITEM, Motion::Home),
-        (LAST_ITEM, Motion::End),
-    ]
-    .into_iter()
-    .find_map(|(binding, motion)| press.is(binding.ignoring(HELD)).then_some(motion))
+    let motions: [(&dyn Match, Motion); 6] = [
+        (&LEFT.ignoring(HELD), Motion::Left),
+        (&RIGHT.ignoring(HELD), Motion::Right),
+        (&UP.ignoring(HELD), Motion::Up),
+        (&DOWN.ignoring(HELD), Motion::Down),
+        (&HOME_KEY.ignoring(HELD), Motion::Home),
+        (&END_KEY.ignoring(HELD), Motion::End),
+    ];
+    motions
+        .into_iter()
+        .find_map(|(key, motion)| press.is(key).then_some(motion))
 }
 
 fn start_autoscroll(

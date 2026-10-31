@@ -18,7 +18,7 @@ user-defined names, or the locale environment inherited by other programs.
   shared with the standalone Bash installer. After editing, regenerate its
   embedded catalog with `python3 scripts/installer_messages.py --write`.
 
-Locales are `en`, `fr`, `de`, `es`, `ja`, `pt-BR`, `ko`, `vi`, `it`, `ru`,
+Locales are `en`, `fr`, `hu`, `de`, `es`, `ja`, `pt-BR`, `ko`, `vi`, `it`, `ru`,
 `zh-CN`, and `zh-TW`.
 JSON keys normally contain the original English message. Semantic keys are used
 for grammatical count forms and calendar data, and for an English word that needs
@@ -124,7 +124,13 @@ rustix errnos converted with `.into()`) or `services::gio_error_message`
 shows a generic translated reason and logs the system text; an `io::Error` built
 with its own message keeps that message, except a `storage::DestinationError`
 (an atomic write that refused its destination), which is shown through its
-localized `message()`, and `gio_error_message` falls back to GIO's text. Never format an `io::Error` directly: its `Display` adds an
+localized `message()`. `gio_error_message` preserves application-owned detail for
+unclassified errors. Network-location validation, directory enumeration, and mount
+failures use `services::gio_backend_error_message`, which shares the same typed
+reasons, reads untyped backend text that describes refused credentials as
+"Permission denied", substitutes a generic translated reason for other unknown
+backend text, and retains sanitized detail in diagnostic logs.
+Never format an `io::Error` directly: its `Display` adds an
 `(os error N)` suffix and can name internal temporary paths. These return
 standalone, capitalized text. When the
 reason continues a sentence after a colon, as the `%{error}` value of a template
@@ -170,8 +176,10 @@ catalog, so translators place the key text but never write it (see
 before any particle that follows the placeholder (`%{keys} 키를`), because the
 particle cannot follow how the key is read.
 
-External release notes, system/GIO descriptions, uncommon system errors, and
-toolkit-owned controls may follow their provider or system language. Do not
+External release notes, provider-owned authentication prompts, native-volume terminal
+diagnostics, and toolkit-owned controls may follow their provider or system language.
+Unclassified failures at these network-location boundaries use Strata's translated
+fallback rather than echoing backend wording. Do not
 rewrite the process environment to translate them: spawned commands must retain
 the user's locale. Translations should be reviewed by native speakers, particularly longer
 help text and destructive-operation confirmations.

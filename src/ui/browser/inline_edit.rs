@@ -299,11 +299,14 @@ impl ViewState {
         {
             return RenameRevealTarget::Stop;
         }
-        let position = (0..snapshot.count).find(|position| {
-            self.browser
-                .entry_at(context.depth, *position)
-                .is_some_and(|entry| entry.location == context.target)
-        });
+        let position = self
+            .browser
+            .with_column_entries(context.depth, |entries| {
+                entries
+                    .iter()
+                    .position(|entry| entry.location == context.target)
+            })
+            .flatten();
         let Some(source_position) = position else {
             return RenameRevealTarget::Wait;
         };
@@ -700,24 +703,21 @@ impl ViewState {
             {
                 return gtk::glib::ControlFlow::Continue;
             }
-            let Some(row) = row else {
-                super::collection::apply_collection_scroll(
-                    &collection,
-                    position,
-                    gtk::ListScrollFlags::NONE,
-                );
+            let Some(row) = row.filter(|row| row.height() > 0 && row.width() > 0) else {
+                // Focusing an unallocated row gives GTK a zero-origin scroll anchor, so
+                // let GTK seed the cursor until the replacement row is allocated.
+                let flags = if state
+                    .mode_views
+                    .borrow()
+                    .listing_may_take_focus(context.depth)
+                {
+                    gtk::ListScrollFlags::FOCUS
+                } else {
+                    gtk::ListScrollFlags::NONE
+                };
+                super::collection::apply_collection_scroll(&collection, position, flags);
                 return gtk::glib::ControlFlow::Continue;
             };
-            // A newly rebound item can have CSS bounds but no allocation. Focusing it
-            // then gives GTK a zero-origin scroll anchor and sends the column to the top.
-            if row.height() <= 0 || row.width() <= 0 {
-                super::collection::apply_collection_scroll(
-                    &collection,
-                    position,
-                    gtk::ListScrollFlags::NONE,
-                );
-                return gtk::glib::ControlFlow::Continue;
-            }
             // Model splices may replace GTK's scroll anchor even when the rename
             // stays in place. Reveal from the pre-refresh viewport instead.
             if let Some(value) = scroll_value.get() {

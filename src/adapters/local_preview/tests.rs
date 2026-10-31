@@ -5,6 +5,7 @@ use std::{fs, time::Duration};
 mod cover_preview;
 mod model_preview;
 mod remote_preview;
+mod route_preview;
 
 use super::*;
 use crate::services::{MediaPreviewSize, PreviewContent};
@@ -155,6 +156,7 @@ fn cold_previews_with_shared_thumbnails_match_rendered_cache_hits() {
                         image_dimensions: MetadataValue::Unknown,
                         child_count: MetadataValue::Unknown,
                         duration_seconds: MetadataValue::Unknown,
+                        listable: MetadataValue::Unknown,
                         recent_uri: None,
                     },
                     text_byte_limit: 1024,
@@ -229,6 +231,7 @@ fn preview_cache_stores_and_retrieves_entries() {
         modified: 100,
         pdf_page: None,
         model: None,
+        route: None,
     };
     let content1 = PreviewContent::Rasterized {
         png: vec![1, 2, 3, 4],
@@ -242,6 +245,7 @@ fn preview_cache_stores_and_retrieves_entries() {
         modified: 200,
         pdf_page: None,
         model: None,
+        route: None,
     };
     let content2 = PreviewContent::Text {
         content: "hello world".to_owned(),
@@ -256,12 +260,14 @@ fn preview_cache_stores_and_retrieves_entries() {
         modified: 300,
         pdf_page: Some((0, PdfRenderSize::new(640, 800))),
         model: None,
+        route: None,
     };
     let pdf_page_1 = PreviewCacheKey {
         path: PathBuf::from("doc.pdf"),
         modified: 300,
         pdf_page: Some((1, PdfRenderSize::new(640, 800))),
         model: None,
+        route: None,
     };
     let page0_content = PreviewContent::Pdf {
         png: vec![10, 20],
@@ -285,6 +291,7 @@ fn preview_cache_stores_and_retrieves_entries() {
             modified: 300,
             pdf_page: Some((0, PdfRenderSize::new(800, 1_800))),
             model: None,
+            route: None,
         }),
         None,
         "a page rendered for a smaller viewport must not poison a larger preview"
@@ -406,6 +413,7 @@ fn cancelled_in_flight_document_renders_keep_the_permit_and_emit_no_stale_events
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
                     recent_uri: None,
                 },
                 text_byte_limit: 1024,
@@ -492,6 +500,7 @@ fn cancelled_archive_listings_emit_no_stale_events() {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
                 is_hidden: false,
                 recent_uri: None,
             },
@@ -544,6 +553,7 @@ fn preview_cache_evicts_the_least_recent_entry() {
             modified: index as i64,
             pdf_page: None,
             model: None,
+            route: None,
         })
         .collect();
 
@@ -574,6 +584,7 @@ fn replacing_a_preview_cache_entry_updates_its_byte_count() {
         modified: 1,
         pdf_page: None,
         model: None,
+        route: None,
     };
 
     cache.insert(key.clone(), PreviewContent::Rasterized { png: vec![0; 8] });
@@ -595,6 +606,7 @@ fn active_media_requests_are_never_retained_by_the_preview_cache() {
         modified: 1,
         pdf_page: None,
         model: None,
+        route: None,
     };
     let content = PreviewContent::SandboxedMedia {
         media: SandboxedMedia {
@@ -703,6 +715,7 @@ fn uncertain_file_names_resolve_their_preview_from_the_content() {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
                 recent_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 recent_uri: None,
@@ -781,6 +794,7 @@ fn text_subclassed_names_resolve_their_preview_from_the_type_hierarchy() {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
                 recent_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 recent_uri: None,
@@ -829,6 +843,7 @@ fn text_subclassed_names_resolve_their_preview_from_the_type_hierarchy() {
 enum Resolved {
     Text(String),
     Image,
+    Media,
     Pdf,
     Unsupported,
 }
@@ -860,6 +875,22 @@ fn preview_families_follow_file_bytes_not_names() {
             "clip.mp4",
             &b"not a movie\n"[..],
             Resolved::Text("not a movie\n".into()),
+        ),
+        (
+            "clip.h264",
+            &b"not a movie\n"[..],
+            Resolved::Text("not a movie\n".into()),
+        ),
+        ("empty.H264", &b""[..], Resolved::Text(String::new())),
+        (
+            "stream.h264",
+            &b"\x00\x00\x00\x01\x67\x64\x00\x0c\xac\xd9\x41\x41"[..],
+            Resolved::Media,
+        ),
+        (
+            "STREAM.H264",
+            &b"\x00\x00\x01\x67\x64\x00\x0c\xac\xd9\x41\x41"[..],
+            Resolved::Media,
         ),
         (
             "app.ts",
@@ -926,6 +957,7 @@ fn preview_families_follow_file_bytes_not_names() {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
                 recent_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 recent_uri: None,
@@ -978,6 +1010,10 @@ fn preview_families_follow_file_bytes_not_names() {
         let resolved = match &preview.content {
             PreviewContent::Text { content, .. } => Resolved::Text(content.clone()),
             PreviewContent::Rasterized { .. } => Resolved::Image,
+            PreviewContent::SandboxedMedia { media } => {
+                assert_eq!(media.path, path);
+                Resolved::Media
+            }
             PreviewContent::Pdf { .. } => Resolved::Pdf,
             PreviewContent::Unsupported => Resolved::Unsupported,
             other => panic!("{name} resolved to {other:?}"),
@@ -1023,6 +1059,7 @@ fn archives_list_member_trees_as_preview_content() {
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
                     is_hidden: false,
                     recent_uri: None,
                 },
@@ -1134,6 +1171,7 @@ fn preview_archive_with_password(
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
+            listable: MetadataValue::Unknown,
             is_hidden: false,
             recent_uri: None,
         },
@@ -1435,6 +1473,7 @@ fn unsupported_archive_preview_reports_unsupported_format() {
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
                     is_hidden: false,
                     recent_uri: None,
                 },

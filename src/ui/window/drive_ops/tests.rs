@@ -164,6 +164,155 @@ fn format_failure_is_not_reported_as_success_or_retried() {
     );
 }
 
+const CONTAINER: &str = "/org/freedesktop/UDisks2/block_devices/sda1";
+const MAPPING: &str = "/org/freedesktop/UDisks2/block_devices/dm_2d0";
+const PLAIN: &str = "/org/freedesktop/UDisks2/block_devices/sda2";
+
+#[derive(Clone, Copy)]
+enum ContainerState {
+    Open,
+    Closed,
+    Unreachable,
+}
+
+/// A UDisks fixture with one LUKS container, its mapping and a plain block.
+/// Returns the object each `Lock` call targeted.
+fn lock_with_fixture(
+    device: Option<&str>,
+    luks_uuid: Option<&str>,
+    container: ContainerState,
+) -> (Result<(), DriveOpError>, Vec<String>) {
+    let mut locked = Vec::new();
+    let object_path =
+        |path: &str| glib::variant::ObjectPath::try_from(path).expect("fixture object path");
+    let result =
+        lock_encrypted_device(
+            device,
+            luks_uuid,
+            |path, interface, method, parameters| match (interface, method) {
+                ("org.freedesktop.UDisks2.Manager", "ResolveDevice") => {
+                    let spec = glib::VariantDict::new(Some(&parameters.child_value(0)));
+                    let by_path = spec.lookup::<String>("path").expect("path variant");
+                    let by_uuid = spec.lookup::<String>("uuid").expect("uuid variant");
+                    let found = match (by_path.as_deref(), by_uuid.as_deref()) {
+                        (Some("/dev/sda1"), None) | (None, Some("luks-uuid")) => vec![CONTAINER],
+                        (Some("/dev/dm-0"), None) => vec![MAPPING],
+                        (Some("/dev/sda2"), None) => vec![PLAIN],
+                        _ => vec![],
+                    };
+                    Ok((found.into_iter().map(object_path).collect::<Vec<_>>(),).to_variant())
+                }
+                ("org.freedesktop.DBus.Properties", "Get") => {
+                    let (interface, property) = parameters
+                        .get::<(String, String)>()
+                        .expect("property request");
+                    let value = match (path, interface.as_str(), property.as_str()) {
+                        (MAPPING, "org.freedesktop.UDisks2.Block", "CryptoBackingDevice") => {
+                            CONTAINER
+                        }
+                        (_, "org.freedesktop.UDisks2.Block", "CryptoBackingDevice") => "/",
+                        (CONTAINER, "org.freedesktop.UDisks2.Encrypted", "CleartextDevice") => {
+                            match container {
+                                ContainerState::Open => MAPPING,
+                                ContainerState::Closed => "/",
+                                ContainerState::Unreachable => {
+                                    return Err(DriveOpError::CommandFailed(
+                                        "Timeout was reached".into(),
+                                    ));
+                                }
+                            }
+                        }
+                        _ => {
+                            return Err(DriveOpError::MissingInterface(
+                                "No such interface on object".into(),
+                            ));
+                        }
+                    };
+                    Ok((object_path(value).to_variant(),).to_variant())
+                }
+                ("org.freedesktop.UDisks2.Encrypted", "Lock") => {
+                    assert_eq!(parameters.type_().as_str(), "(a{sv})");
+                    locked.push(path.to_owned());
+                    Ok(().to_variant())
+                }
+                _ => panic!("unexpected storage operation {interface}.{method}"),
+            },
+        );
+    (result, locked)
+}
+
+#[test]
+fn lock_closes_the_container_whether_named_directly_or_through_its_mapping() {
+    for (device, luks_uuid) in [
+        (Some("/dev/sda1"), None),
+        (Some("/dev/dm-0"), None),
+        (None, Some("luks-uuid")),
+        (Some("/dev/unknown"), Some("luks-uuid")),
+        (Some("/dev/sda2"), Some("luks-uuid")),
+    ] {
+        let (result, locked) = lock_with_fixture(device, luks_uuid, ContainerState::Open);
+        assert!(result.is_ok(), "{device:?} {luks_uuid:?}: {result:?}");
+        assert_eq!(locked, [CONTAINER], "{device:?} {luks_uuid:?}");
+    }
+}
+
+#[test]
+fn lock_never_targets_a_block_without_an_encrypted_container() {
+    for device in ["/dev/sda2", "/dev/unknown"] {
+        let (result, locked) = lock_with_fixture(Some(device), None, ContainerState::Open);
+        assert!(
+            matches!(result, Err(DriveOpError::DeviceNotFound)),
+            "{device}"
+        );
+        assert!(locked.is_empty(), "{device}");
+    }
+}
+
+#[test]
+fn lock_of_an_already_closed_container_succeeds_without_calling_udisks_lock() {
+    let (result, locked) = lock_with_fixture(Some("/dev/sda1"), None, ContainerState::Closed);
+    assert!(result.is_ok());
+    assert!(locked.is_empty());
+}
+
+#[test]
+fn lock_reports_a_failed_container_read_instead_of_a_missing_device() {
+    for device in ["/dev/sda1", "/dev/dm-0"] {
+        let (result, locked) = lock_with_fixture(Some(device), None, ContainerState::Unreachable);
+        assert!(
+            matches!(&result, Err(DriveOpError::CommandFailed(message)) if message == "Timeout was reached"),
+            "{device}: {result:?}"
+        );
+        assert!(locked.is_empty(), "{device}");
+    }
+}
+
+#[test]
+fn dismissed_lock_authorization_is_quiet_and_other_failures_keep_their_reason() {
+    assert!(matches!(
+        lock_error(gio::DBusError::new_for_dbus_error(
+            "org.freedesktop.UDisks2.Error.NotAuthorizedDismissed",
+            "Not authorized",
+        )),
+        DriveOpError::Cancelled
+    ));
+    assert!(matches!(
+        lock_error(gio::DBusError::new_for_dbus_error(
+            "org.freedesktop.UDisks2.Error.Failed",
+            "Device /dev/sda1 is busy",
+        )),
+        DriveOpError::CommandFailed(message) if message == "Device /dev/sda1 is busy"
+    ));
+    assert!(matches!(
+        lock_error(gio::DBusError::new_for_dbus_error(
+            "org.freedesktop.DBus.Error.InvalidArgs",
+            "No such interface “org.freedesktop.UDisks2.Encrypted”",
+        )),
+        DriveOpError::MissingInterface(message)
+            if message == "No such interface “org.freedesktop.UDisks2.Encrypted”"
+    ));
+}
+
 #[test]
 fn tool_path_finds_shell_and_rejects_missing_tools() {
     assert!(tool_path("sh").is_some());
@@ -174,7 +323,23 @@ fn tool_path_finds_shell_and_rejects_missing_tools() {
 fn filesystem_label_limits_match_backends() {
     assert_eq!(FilesystemType::Fat32.max_label_len(), 11);
     assert_eq!(FilesystemType::Ntfs.max_label_len(), 32);
-    assert_eq!(FilesystemType::Exfat.max_label_len(), 32);
+    assert_eq!(FilesystemType::Exfat.max_label_len(), 11);
+}
+
+#[test]
+fn labels_fit_in_the_units_each_backend_counts() {
+    let emoji = |count| "😀".repeat(count);
+    for (fs, label, fits) in [
+        (FilesystemType::Exfat, "日本語のラベル".to_owned(), true),
+        (FilesystemType::Exfat, emoji(5), true),
+        (FilesystemType::Exfat, emoji(6), false),
+        (FilesystemType::Fat32, "ARCH_202609".to_owned(), true),
+        (FilesystemType::Fat32, "ÉTIQUETTE12".to_owned(), false),
+        (FilesystemType::Ntfs, emoji(16), true),
+        (FilesystemType::Ntfs, emoji(17), false),
+    ] {
+        assert_eq!(fs.label_fits(&label), fits, "{} {label}", fs.label());
+    }
 }
 
 #[test]

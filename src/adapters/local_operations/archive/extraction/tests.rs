@@ -20,7 +20,7 @@ use super::{ArchiveError, ArchiveOutcome, ExtractionSession, MemberContent, Memb
 use crate::{
     adapters::local_operations::{
         archive::fixtures::{EXTRACTION_STAGE, expected_mode, stages},
-        tests::fs_quirks::{FsQuirks, Op, Preset, Quirks, skips_malformed_name_on_fuse},
+        tests::fs_quirks::{FsQuirks, Op, Preset, Quirks, Support, skips_malformed_name_on_fuse},
     },
     model::Location,
     services::{RenameCause, RenamedItem, SkippedItem, SpecialKind, TransferReport},
@@ -1615,6 +1615,82 @@ fn links_the_destination_cannot_hold_are_left_out_with_hard_links_to_them()
     Ok(())
 }
 
+#[test]
+fn a_hard_link_the_destination_cannot_hold_is_copied_and_the_rest_still_extracts()
+-> Result<(), Box<dyn Error>> {
+    use Member::{File, Folder, Hard};
+    let members: &[(&[u8], Member<'_>)] = &[
+        (b"d", Folder),
+        (b"d/a.txt", File),
+        (b"d/b.txt", Hard("d/a.txt")),
+        (b"d/c.txt", Hard("d/b.txt")),
+        (b"d/e.txt", File),
+    ];
+    let refusing = |errno| Quirks {
+        links: Support::Rejected(errno),
+        ..Quirks::ext4()
+    };
+    for (quirks, shares_inode) in [
+        (Quirks::ext4(), true),
+        (Quirks::vfat(), false),
+        (Quirks::exfat_fuse(), false),
+        (refusing(Errno::OPNOTSUPP), false),
+    ] {
+        let root = tempfile::tempdir()?;
+        let _quirks = FsQuirks::install(root.path(), quirks);
+        let mut report = TransferReport::default();
+
+        let outcome = extract_members(root.path(), ARCHIVE, members, Ok(()), &mut report)?;
+
+        assert!(
+            matches!(&outcome, ArchiveOutcome::Completed(Some(name)) if name == "d"),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            entries(root.path())?,
+            ["d/", "d/a.txt", "d/b.txt", "d/c.txt", "d/e.txt"]
+        );
+        for name in ["a.txt", "b.txt", "c.txt", "e.txt"] {
+            assert_eq!(fs::read(root.path().join("d").join(name))?, b"data");
+        }
+        assert!(report.skipped.is_empty(), "{:?}", report.skipped);
+        let inode = |name| fs::metadata(root.path().join("d").join(name)).map(|meta| meta.ino());
+        assert_eq!(inode("a.txt")? == inode("b.txt")?, shares_inode);
+        assert_eq!(inode("a.txt")? == inode("c.txt")?, shares_inode);
+    }
+    Ok(())
+}
+
+#[test]
+fn a_colon_after_the_first_component_extracts_as_a_name() -> Result<(), Box<dyn Error>> {
+    use Member::{File, Folder, Hard};
+    let root = tempfile::tempdir()?;
+    let mut report = TransferReport::default();
+    let members: &[(&[u8], Member<'_>)] = &[
+        (b"before.txt", File),
+        (b"names", Folder),
+        (b"names/c:notes", File),
+        (b"names/linked", Hard("names/c:notes")),
+        (b"after.txt", File),
+    ];
+
+    extract_members(root.path(), ARCHIVE, members, Ok(()), &mut report)?;
+
+    assert_eq!(
+        entries(root.path())?,
+        [
+            "archive/",
+            "archive/after.txt",
+            "archive/before.txt",
+            "archive/names/",
+            "archive/names/c:notes",
+            "archive/names/linked"
+        ]
+    );
+    assert_eq!(fs::read(root.path().join("archive/names/linked"))?, b"data");
+    Ok(())
+}
+
 fn refuses_colons(name: &OsStr) -> Option<Errno> {
     name.as_bytes().contains(&b':').then_some(Errno::INVAL)
 }
@@ -1830,10 +1906,11 @@ fn members_the_destination_will_not_make_fail_the_extraction_naming_them_and_why
 -> Result<(), Box<dyn Error>> {
     use Member::{File, Folder, Hard, Link};
     let invalid = "The name isn’t valid at this location";
+    let io_failed = crate::services::io_error_message(&Errno::IO.into());
     // Only `py:3` has a stricter name; the destination refuses it too, and
     // the first refusal is the one reported.
     type Fails<'a> = &'a [(Op, &'a str, Errno)];
-    let rows: [(Entry<'_>, Fails<'_>, String); 9] = [
+    let rows: [(Entry<'_>, Fails<'_>, String); 10] = [
         (
             (b"bin/python3", Link(b"python")),
             &[(Op::Symlink, "python3", Errno::NOSPC)],
@@ -1882,6 +1959,16 @@ fn members_the_destination_will_not_make_fail_the_extraction_naming_them_and_why
             (b"bin/hard", Hard("bin/python")),
             &[(Op::Link, "hard", Errno::INVAL)],
             format!("Could not link “bin/hard” to “bin/python”: {invalid}"),
+        ),
+        // The copy that stands in for a hard link the mount cannot hold
+        // reports why its target could not be read, not the refused link.
+        (
+            (b"bin/hard", Hard("bin/python")),
+            &[
+                (Op::Link, "hard", Errno::PERM),
+                (Op::OpenSource, "python", Errno::IO),
+            ],
+            format!("Could not link “bin/hard” to “bin/python”: {io_failed}"),
         ),
     ];
     for (member, fails, failure) in rows {

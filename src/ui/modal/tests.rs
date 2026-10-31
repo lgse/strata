@@ -122,17 +122,34 @@ fn escape_closes_with_any_modifiers_held_and_other_keys_pass_through() {
                 | gdk::ModifierType::ALT_MASK
                 | gdk::ModifierType::SHIFT_MASK
                 | gdk::ModifierType::SUPER_MASK;
-            for (key, modifiers, closes) in [
-                (gdk::Key::Escape, gdk::ModifierType::empty(), true),
-                (gdk::Key::Escape, every_modifier, true),
-                (gdk::Key::Return, gdk::ModifierType::empty(), false),
-            ] {
-                let handled = keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]);
-                assert_eq!(
-                    (handled, closed.replace(false)),
-                    (closes, closes),
-                    "{key:?} with {modifiers:?}"
-                );
+            // A table that replaces Escape with an alternate keeps Escape as a fallback.
+            for alternate in [false, true] {
+                let _keymap = alternate.then(|| {
+                    use crate::ui::keys::{Binding, Keymap, Map, bindings::ESCAPE, use_keymap};
+                    use_keymap(Keymap::defaults().with(
+                        Map::Default,
+                        ESCAPE,
+                        vec![Binding::ctrl(gdk::Key::bracketleft)],
+                    ))
+                });
+                for (key, modifiers, closes) in [
+                    (gdk::Key::Escape, gdk::ModifierType::empty(), true),
+                    (gdk::Key::Escape, every_modifier, true),
+                    (gdk::Key::Return, gdk::ModifierType::empty(), false),
+                    (
+                        gdk::Key::bracketleft,
+                        gdk::ModifierType::CONTROL_MASK,
+                        alternate,
+                    ),
+                ] {
+                    let handled =
+                        keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]);
+                    assert_eq!(
+                        (handled, closed.replace(false)),
+                        (closes, closes),
+                        "{key:?} with {modifiers:?}, alternate={alternate}"
+                    );
+                }
             }
         },
     );

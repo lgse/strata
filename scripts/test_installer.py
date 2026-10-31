@@ -128,7 +128,7 @@ class InstallerFixture:
         for name in (
             "bash", "uname", "getconf", "awk", "sort", "head", "install", "sed", "grep",
             "dirname", "mkdir", "cp", "rm", "tar", "gzip", "sha256sum", "mktemp", "sleep", "cat",
-            "tee", "stty", "date", "tail", "wc", "openssl",
+            "tee", "stty", "date", "tail", "wc", "openssl", "timeout",
         ):
             (self.commands / name).symlink_to(shutil.which(name))
         distro = self.root / "os-release"
@@ -443,7 +443,7 @@ class InstallerTests(unittest.TestCase):
                 root = pathlib.Path(home)
                 commands = root / "commands"
                 commands.mkdir()
-                for name in ("mkdir", "dirname", "install", "sed", "grep", "head"):
+                for name in ("mkdir", "dirname", "install", "sed", "grep", "head", "timeout"):
                     (commands / name).symlink_to(shutil.which(name))
                 if reload_status is not None:
                     gdbus = commands / "gdbus"
@@ -494,6 +494,29 @@ class InstallerTests(unittest.TestCase):
                 else:
                     self.assertNotIn(active_message, result.stdout)
                     self.assertIn("Log out and back in", result.stderr)
+
+    def test_file_manager_service_continues_when_the_bus_never_replies(self) -> None:
+        with tempfile.TemporaryDirectory() as home:
+            root = pathlib.Path(home)
+            commands = root / "commands"
+            commands.mkdir()
+            for name in ("mkdir", "dirname", "install", "sed", "grep", "head", "timeout", "sleep"):
+                (commands / name).symlink_to(shutil.which(name))
+            gdbus = commands / "gdbus"
+            gdbus.write_text("#!/bin/sh\nexec sleep 20\n", encoding="utf-8")
+            gdbus.chmod(0o755)
+            started = time.monotonic()
+            result = bash(
+                'TEMP_DIR="$HOME/tmp"; mkdir -p "$TEMP_DIR"; '
+                'BIN_PATH="$HOME/.local/bin/strata"; '
+                'install_file_manager_service "$(dirname "$1")/data"; '
+                'printf "installer continued\\n"',
+                env={"HOME": home, "XDG_DATA_HOME": f"{home}/data", "PATH": str(commands)},
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertLess(time.monotonic() - started, 15)
+            self.assertIn("installer continued", result.stdout)
+            self.assertIn("Log out and back in", result.stderr)
 
     def test_file_manager_service_refuses_another_per_user_provider(self) -> None:
         with tempfile.TemporaryDirectory() as home:
@@ -912,12 +935,17 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(fixture.recorded_calls(), [])
 
     def test_integration_failure_reports_that_the_application_is_installed(self) -> None:
-        for flag, status in (("--with-folder-association", 17), ("--with-file-chooser", 1), ("--with-udiskie-unlock", 1)):
-            with self.subTest(flag=flag), InstallerFixture(release_files={
+        for flag, status, xdg_mime in (
+            ("--with-folder-association", 17, "exit 17\n"),
+            ("--with-folder-association", 124, "exec sleep 20\n"),
+            ("--with-file-chooser", 1, None),
+            ("--with-udiskie-unlock", 1, None),
+        ):
+            with self.subTest(flag=flag, status=status), InstallerFixture(release_files={
                 "strata": '#!/bin/bash\nprintf "fixture integration failed\\n" >&2\nexit 17\n',
             }) as fixture:
-                if flag == "--with-folder-association":
-                    fixture.command("xdg-mime", "exit 17\n")
+                if xdg_mime is not None:
+                    fixture.command("xdg-mime", xdg_mime)
                 elif flag == "--with-udiskie-unlock":
                     fixture.command("udiskie", "exit 0\n")
                 result = fixture.run(flag)

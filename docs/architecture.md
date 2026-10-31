@@ -104,7 +104,12 @@ Cut styling, tooltips and date
 bindings refresh outside layout, for visible/overscan items, once scrolling has been still for
 25 ms and at least two frames.
 These presentation refreshes never resubmit file work or reset a name label or active
-rename editor. Identical active thumbnail/metadata requests are reused. Missing
+rename editor. Identical active thumbnail/metadata requests are reused. Completed
+file operations invalidate affected folder counts across browsers through the shared
+activity notification, distinguishing direct writes from recursive merges. Folder
+bindings remain registered after a successful fill and resolve shifted positions
+through the shared metadata index. Only live viewport targets are recounted;
+parent listings and unrelated metadata work stay intact. Missing
 bindings retain the existing fallback path. Pane assembly, headers, grouping/filtering, and Icons factories
 remain in the composition module rather than changing alongside this lifecycle boundary.
 
@@ -132,7 +137,8 @@ selects its first visible entry. A preview that is showing something (content or
 placeholder) is a drag-only origin: a plain click there leaves the selection alone and only a
 drag past the threshold changes it, while the empty reserved preview slot clears like the strip
 beside the columns. Presses on controls, including disabled ones and drag handles such as the
-preview header, never start a marquee. Click
+preview header, never start a marquee, and neither do presses on a viewport's own
+scrollbars, including overlay scrollbars drawn over blank row space. Click
 activation and automatic preview wait for release and reject cancelled gestures, drag motion,
 and recycled items. Marquees anchor and cache mapped item geometry in scroll-content
 coordinates, independent of native GtkScrollable or GtkViewport layout. Edge and wheel scrolling

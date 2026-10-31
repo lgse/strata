@@ -28,6 +28,7 @@ use crate::{
         notes_stand_in_for_what_a_run_reads_and_unknown_variables_are_rejected,
         only_a_controller_panic_is_filed_as_a_harness_error,
         peer_restart_and_guard_steps_check_their_shape_before_the_run,
+        prefs_write_nested_tables_into_settings_toml,
         remove_and_rename_act_only_inside_the_run_directories,
         waiting_for_exit_wakes_on_the_exit_and_gives_up_at_the_timeout,
     },
@@ -68,5 +69,6 @@ unit_tests! {
     a_quality_rates_four_axes_and_its_score_follows_the_rubric,
     the_harness_starts_costly_runs_first_and_names_select_whole_scenarios,
     waiting_for_exit_wakes_on_the_exit_and_gives_up_at_the_timeout,
+    prefs_write_nested_tables_into_settings_toml,
     no_test_attribute_hides_a_runner_test,
 }

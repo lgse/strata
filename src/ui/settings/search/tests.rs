@@ -78,6 +78,50 @@ fn localized_setting_titles_keep_stable_search_targets() {
 }
 
 #[test]
+fn shortcut_rows_never_take_a_query_from_a_setting() {
+    crate::test_support::gtk_test(
+        "ui::settings::search::tests::shortcut_rows_never_take_a_query_from_a_setting",
+        || {
+            let mut words: Vec<&str> = TARGETS
+                .iter()
+                .flat_map(|target| {
+                    target
+                        .title
+                        .split_whitespace()
+                        .chain(target.aliases.split_whitespace())
+                })
+                .collect();
+            words.sort_unstable();
+            words.dedup();
+            let mut taken = Vec::new();
+            for word in words {
+                let query = normalized(word);
+                if query.is_empty() {
+                    continue;
+                }
+                let mut best = -1;
+                let mut setting = None;
+                for target in TARGETS {
+                    if let Some(score) = score(&query, target)
+                        && score > best
+                    {
+                        best = score;
+                        setting = Some(target.page);
+                    }
+                }
+                let routed = find_matches(&query).best_page;
+                if setting.is_some() && routed != setting {
+                    taken.push(format!("{word}: {setting:?} became {routed:?}"));
+                }
+            }
+            assert!(taken.is_empty(), "{taken:#?}");
+            let rename = find_matches(&normalized("Rename"));
+            assert_eq!(rename.best_page, Some(super::super::keyboard::PAGE));
+        },
+    );
+}
+
+#[test]
 fn ranks_exact_labels_aliases_and_small_typing_errors() {
     for (query, page, id) in [
         ("Folder peeking", "general", "peeking"),
@@ -228,6 +272,34 @@ fn global_search_navigates_filters_lazy_pages_and_restores_without_editing_prefe
             assert!(item(layer, "themes").is_visible());
             assert!(item(layer, "motion").is_visible());
             assert_eq!(manager.folder_peeking(), original);
+        },
+    );
+}
+
+#[test]
+fn builds_without_the_updater_leave_updates_out_of_navigation_and_search() {
+    crate::test_support::gtk_test(
+        "ui::settings::search::tests::builds_without_the_updater_leave_updates_out_of_navigation_and_search",
+        || {
+            crate::ui::prepare_portal_ui();
+            for updater in [true, false] {
+                if !updater {
+                    crate::build_info::disable_updater_for_test();
+                }
+                let (layer, entry, stack) = settings_layer(&PreferenceManager::shared());
+                let has_button = descendants(&layer)
+                    .iter()
+                    .any(|widget| widget.is::<gtk::Button>() && widget.widget_name() == "updates");
+                assert_eq!(has_button, updater);
+                assert_eq!(stack.child_by_name("updates").is_some(), updater);
+                entry.set_text("release channel");
+                let expected = if updater {
+                    "updates"
+                } else {
+                    "settings-search-empty"
+                };
+                assert_eq!(stack.visible_child_name().as_deref(), Some(expected));
+            }
         },
     );
 }
@@ -500,6 +572,10 @@ fn every_page_row_is_registered_for_search() {
                     .widget,
                 ),
                 ("actions", super::super::actions::actions_page()),
+                (
+                    "keyboard",
+                    super::super::keyboard::keyboard_page(manager.clone()),
+                ),
                 (
                     "integrations",
                     super::super::integrations::integrations_page(None),

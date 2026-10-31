@@ -507,6 +507,8 @@ pub(super) struct BlockCryptoHint {
     pub id_fs_usage: Option<String>,
     pub id_fs_type: Option<String>,
     pub crypto_uuid: Option<String>,
+    /// The device is, or is held by, an open dm-crypt mapping.
+    pub cleartext_open: bool,
 }
 
 impl BlockCryptoHint {
@@ -542,7 +544,13 @@ pub(super) fn is_encrypted_device(
         || block_indicates_crypto(block)
 }
 
-pub(super) fn encrypted_device_is_locked(icon_names: &[&str], has_mount: bool) -> bool {
+/// GVfs' padlock emblem wins; without it, an open mapping whose filesystem is
+/// unmounted (for example an fstab entry) still counts as unlocked.
+pub(super) fn encrypted_device_is_locked(
+    icon_names: &[&str],
+    has_mount: bool,
+    cleartext_open: bool,
+) -> bool {
     let mut padlock_locked = false;
     let mut padlock_unlocked = false;
     for name in icon_names {
@@ -557,7 +565,7 @@ pub(super) fn encrypted_device_is_locked(icon_names: &[&str], has_mount: bool) -
     } else if padlock_unlocked {
         false
     } else {
-        !has_mount
+        !has_mount && !cleartext_open
     }
 }
 
@@ -656,12 +664,29 @@ fn probe_block_crypto(unix_device: &str) -> BlockCryptoHint {
         .or_else(|| luks_uuid_from_unix_device(unix_device))
         .or_else(|| udev.as_deref().and_then(udev_crypto_uuid))
         .or_else(|| slave_crypto_uuid(&sysfs));
+    let cleartext_open =
+        dm_uuid.as_deref().is_some_and(dm_uuid_is_crypt) || holder_is_crypt_mapping(&sysfs);
     BlockCryptoHint {
         dm_uuid,
         id_fs_usage,
         id_fs_type,
         crypto_uuid,
+        cleartext_open,
     }
+}
+
+fn holder_is_crypt_mapping(sysfs: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(sysfs.join("holders")) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        read_trimmed(
+            Path::new("/sys/class/block")
+                .join(entry.file_name())
+                .join("dm/uuid"),
+        )
+        .is_some_and(|uuid| dm_uuid_is_crypt(&uuid))
+    })
 }
 
 // An unlocked volume exposes the filesystem UUID, not the saved passphrase's LUKS UUID.

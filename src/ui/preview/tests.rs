@@ -9,6 +9,7 @@ mod media_controls;
 mod model;
 mod operations;
 mod pdf;
+mod route;
 mod video;
 
 struct Pending {
@@ -40,6 +41,7 @@ pub(super) fn entry(name: &str) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         is_hidden: false,
         recent_uri: None,
     }

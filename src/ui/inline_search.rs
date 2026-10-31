@@ -49,7 +49,7 @@ pub(super) struct SearchCollectionOptions {
     pub(super) presentation: SearchPresentation,
     pub(super) multiple_selection: Rc<Cell<bool>>,
     pub(super) activate: Rc<dyn Fn(FileEntry)>,
-    pub(super) single_click: Rc<dyn Fn(FileEntry)>,
+    pub(super) pointer_click: Rc<dyn Fn(FileEntry, i32)>,
     pub(super) selection_changed: SearchSelectionChanged,
     pub(super) focus_items: Rc<dyn Fn()>,
     /// Runs after the displayed results (or the return to the directory) change.
@@ -629,7 +629,7 @@ pub(super) fn wrap(
         presentation,
         multiple_selection,
         activate,
-        single_click,
+        pointer_click,
         selection_changed,
         focus_items,
         results_changed,
@@ -652,7 +652,7 @@ pub(super) fn wrap(
         CollectionBehavior {
             multiple_selection: multiple_selection.clone(),
             activate: activate.clone(),
-            single_click,
+            pointer_click,
             focus_items,
             focus_entry,
             enter: enter.clone(),
@@ -756,7 +756,7 @@ pub(super) fn wrap(
         let Some(state) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
-        if !press.is(UP)
+        if !press.untyped().is(UP)
             || !state
                 .collection
                 .current_position()

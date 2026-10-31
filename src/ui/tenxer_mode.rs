@@ -89,23 +89,26 @@ pub(crate) enum Chord {
 }
 
 impl Chord {
-    /// The pending chord's first key, as its footer pill shows it.
+    /// The pending chord's keys so far, as its footer pill shows them.
     pub(crate) fn mark(self) -> String {
         use super::keys::{
             Keys,
             bindings::{ACTIONS, ACTIONS_FOLDER, COPY_AS, GO, SORT_BY, TAB_CHORD},
         };
         let prefix = match self {
-            Self::Go | Self::PreviewTop => Keys::One(GO),
-            Self::Copy => Keys::One(COPY_AS),
-            Self::Sort => Keys::One(SORT_BY),
-            Self::Action => Keys::One(ACTIONS),
-            Self::FolderAction => Keys::Chord(&[ACTIONS, ACTIONS_FOLDER]),
-            Self::Tabs => Keys::One(TAB_CHORD),
+            Self::Go | Self::PreviewTop => Keys::One(GO.shown()),
+            Self::Copy => Keys::One(COPY_AS.shown()),
+            Self::Sort => Keys::One(SORT_BY.shown()),
+            Self::Action => Keys::One(ACTIONS.shown()),
+            Self::FolderAction => Keys::Chord(super::keys::shown![ACTIONS, ACTIONS_FOLDER]),
+            Self::Tabs => Keys::One(TAB_CHORD.shown()),
         };
         format!("{}-", super::keys::label(&prefix))
     }
 
+    /// The second keys and their untranslated actions. The `;` and `; .`
+    /// panels list the matching actions themselves, and a file chooser leaves
+    /// out the steps it refuses.
     pub(crate) fn options(
         self,
         chooser: bool,
@@ -115,31 +118,34 @@ impl Chord {
             shortcut_reference::Mention,
         };
         const GO_STEPS: [(Mention, &str); 14] = [
-            (Mention::Keys(One(GO_FOLLOW)), "Follow search result"),
-            (Mention::Keys(One(GO_HOME)), "Home"),
-            (Mention::Keys(One(GO_DOWNLOADS)), "Downloads"),
-            (Mention::Keys(One(GO_CONFIG)), "Config"),
-            (Mention::Keys(One(GO_TRASH)), "Trash"),
-            (Mention::Keys(One(GO_NETWORK)), "Network"),
-            (Mention::Keys(One(GO_RECENT)), "Recent"),
-            (Mention::Keys(One(GO_DOCUMENTS)), "Documents"),
-            (Mention::Keys(One(GO_MUSIC)), "Music"),
-            (Mention::Keys(One(GO_PICTURES)), "Pictures"),
-            (Mention::Keys(One(GO_VIDEOS)), "Videos"),
+            (
+                Mention::Keys(One(GO_FOLLOW.shown())),
+                "Follow search result",
+            ),
+            (Mention::Keys(One(GO_HOME.shown())), "Home"),
+            (Mention::Keys(One(GO_DOWNLOADS.shown())), "Downloads"),
+            (Mention::Keys(One(GO_CONFIG.shown())), "Config"),
+            (Mention::Keys(One(GO_TRASH.shown())), "Trash"),
+            (Mention::Keys(One(GO_NETWORK.shown())), "Network"),
+            (Mention::Keys(One(GO_RECENT.shown())), "Recent"),
+            (Mention::Keys(One(GO_DOCUMENTS.shown())), "Documents"),
+            (Mention::Keys(One(GO_MUSIC.shown())), "Music"),
+            (Mention::Keys(One(GO_PICTURES.shown())), "Pictures"),
+            (Mention::Keys(One(GO_VIDEOS.shown())), "Videos"),
             (Mention::Keys(Keys::Digits(PIN_NUMBERS.step())), "Pins"),
             (
-                Mention::Keys(Keys::Any(&[GO_PIN, GO_UNPIN])),
+                Mention::Keys(Keys::Any(crate::ui::keys::shown![GO_PIN, GO_UNPIN])),
                 "Pin / unpin folder",
             ),
-            (Mention::Keys(One(GO_PROMPT)), "Type a path"),
+            (Mention::Keys(One(GO_PROMPT.shown())), "Type a path"),
         ];
         // Choosers open only local folders and Recent, and keep pins as they are.
         const CHOOSER_REFUSES: [Mention; 3] = [
-            Mention::Keys(One(GO_TRASH)),
-            Mention::Keys(One(GO_NETWORK)),
-            Mention::Keys(Keys::Any(&[GO_PIN, GO_UNPIN])),
+            Mention::Keys(One(GO_TRASH.shown())),
+            Mention::Keys(One(GO_NETWORK.shown())),
+            Mention::Keys(Keys::Any(crate::ui::keys::shown![GO_PIN, GO_UNPIN])),
         ];
-        let step = |binding| Mention::Keys(One(binding));
+        let step = |step: super::keys::Command| Mention::Keys(One(step.shown()));
         let go = |first| -> Vec<_> {
             std::iter::once((step(GO_FIRST), first))
                 .chain(GO_STEPS.iter().copied())
@@ -198,8 +204,8 @@ impl Prompt {
             bindings::{FIND, FIND_BACKWARD},
         };
         let label = match self {
-            Self::Find => return super::keys::label(&Keys::One(FIND)),
-            Self::FindBackward => return super::keys::label(&Keys::One(FIND_BACKWARD)),
+            Self::Find => return super::keys::label(&Keys::One(FIND.shown())),
+            Self::FindBackward => return super::keys::label(&Keys::One(FIND_BACKWARD.shown())),
             Self::Filter => "filter:",
             Self::Search => "search:",
             Self::Go => "go \u{203a}",

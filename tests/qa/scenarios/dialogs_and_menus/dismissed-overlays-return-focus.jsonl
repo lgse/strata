@@ -1,4 +1,4 @@
-{"scenario":"dismissed-overlays-return-focus","modes":["columns"],"layout":"us","quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Settings, search, jump-to-folder, Compress click-outside dismissals return focus to the entry; dialog Escape: modal-dialog-blocks-window-shortcuts"}}
+{"scenario":"dismissed-overlays-return-focus","modes":["columns"],"layout":"us","quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Settings, search, jump-to-folder, Compress and delete-confirmation backdrop dismissals return focus to the entry; dialog Escape: modal-dialog-blocks-window-shortcuts"}}
 {"select_with_keyboard":"todo.txt"}
 {"key":"ctrl+comma"}
 {"wait":{"present":{"role":"button","name":"Close settings"}},"message":"Ctrl+, to open Settings"}
@@ -36,3 +36,11 @@
 {"wait":{"focused":"readme.md"},"message":"focus to return to 'readme.md' after a click outside closed the Compress dialog in List"}
 {"key":"Down"}
 {"wait":{"focused":"todo.txt"},"message":"Down to move the returned focus to 'todo.txt'"}
+{"key":"shift+Delete"}
+{"wait":{"dialog":"Permanently delete 1 item?"},"message":"the delete confirmation opens over the selected file"}
+{"click":{"window":true},"at":[5,100]}
+{"wait":{"dialog":null},"message":"the delete confirmation closes on a backdrop click"}
+{"wait":{"focused":"todo.txt"},"message":"the delete backdrop restores focus without confirming deletion"}
+{"key":"Up"}
+{"wait":{"focused":"readme.md"},"message":"arrow navigation works after cancelling deletion on its backdrop"}
+{"fs":{"path":"todo.txt","text":"todo\n"},"timeout_ms":0,"message":"backdrop dismissal never deletes the selected file"}

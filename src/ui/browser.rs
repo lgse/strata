@@ -79,9 +79,9 @@ pub(super) use crate::ui::browser::clipboard::{
     ClipboardMark, ClipboardMarks, file_drag_content, mark_in, set_mark_result_style,
 };
 pub(crate) use crate::ui::browser::clipboard::{
-    PreparedFileDrop, active_drag_snapshot, arm_spring_load_navigation, clear_active_drag,
-    drag_actions_for_modifiers, file_drag_hover_target, file_drop_action, file_drop_commit,
-    locations_from_file_list_value, prepare_file_drop_target,
+    PreparedFileDrop, active_drag_snapshot, active_file_drag_source, arm_spring_load_navigation,
+    clear_active_drag, drag_actions_for_modifiers, file_drag_hover_target, file_drop_action,
+    file_drop_commit, locations_from_file_list_value, prepare_file_drop_target,
 };
 pub(crate) use crate::ui::browser::collection::{
     ActivePaneFilter, bind_listing_filter, detach_collection_view, filter_placeholder,
@@ -115,16 +115,17 @@ pub(super) use crate::ui::browser::pane_header::{
 };
 pub(super) use crate::ui::browser::paths::is_trash_root;
 pub use crate::ui::browser::peek::PeekBehavior;
-pub(super) use crate::ui::browser::presentation::not_responding_notice;
+pub(super) use crate::ui::browser::presentation::{administrator_notice, not_responding_notice};
 pub use crate::ui::browser::properties::format_permissions;
 pub(super) use crate::ui::modal::{
     animate_in, animate_out, dismiss_modal_layer, modal_layer, show_error_dialog, slide_out,
 };
 
-type PinHandler = Rc<dyn Fn(Location, String)>;
+// Receives whether the pin was saved, once the bookmark snapshot is published.
+type PinCompletion = Box<dyn FnOnce(bool)>;
+type PinHandler = Rc<dyn Fn(Location, String, PinCompletion)>;
 type UnpinHandler = Rc<dyn Fn(&Location)>;
 type PinStatusHandler = Rc<dyn Fn(&Location) -> PinStatus>;
-type PrintHandler = Rc<dyn Fn(FileEntry)>;
 type PreparingTransfer = (
     transfer::Preparing,
     gio::Cancellable,
@@ -195,7 +196,7 @@ pub(super) struct ViewState {
     global_activity_spinner: gtk::Spinner,
     global_activity: RefCell<GlobalActivityState>,
     breadcrumbs: gtk::Box,
-    breadcrumb_scroller: gtk::ScrolledWindow,
+    breadcrumb_reveal_pending: Rc<Cell<bool>>,
     location_entry: gtk::Entry,
     path_completion: Rc<location::completion::PathCompletion>,
     columns_widget: gtk::Box,
@@ -260,7 +261,6 @@ pub(super) struct ViewState {
     pin_handler: RefCell<Option<PinHandler>>,
     unpin_handler: RefCell<Option<UnpinHandler>>,
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
-    print_handler: RefCell<Option<PrintHandler>>,
     search_selection_handlers: RefCell<Vec<Rc<dyn Fn()>>>,
     pending_select: RefCell<Vec<String>>,
     pending_properties: RefCell<Option<Location>>,
@@ -384,17 +384,13 @@ impl BrowserView {
             .placeholder_text(crate::i18n::tr("Enter a path or URI…"))
             .build();
         location_entry.add_css_class("location-entry");
-        let confirm_location = gtk::Button::builder()
-            .tooltip_text(super::accessibility::location_confirm_label())
-            .build();
+        let confirm_location = gtk::Button::new();
         confirm_location.set_child(Some(&crate::assets::primary_icon(
             crate::assets::icons::CHECK,
             16,
         )));
         confirm_location.add_css_class("location-action");
-        let cancel_location = gtk::Button::builder()
-            .tooltip_text(super::accessibility::location_cancel_label())
-            .build();
+        let cancel_location = gtk::Button::new();
         cancel_location.set_child(Some(&crate::assets::primary_icon(
             crate::assets::icons::X,
             16,
@@ -446,6 +442,21 @@ impl BrowserView {
         breadcrumb_overlay.set_hexpand(true);
 
         let hadjustment = breadcrumb_scroller.hadjustment();
+        let breadcrumb_reveal_pending = Rc::new(Cell::new(false));
+        let pending = breadcrumb_reveal_pending.clone();
+        let reveal = RefCell::new(None::<super::frame::FrameTask>);
+        super::frame::after_layout(&breadcrumb_scroller, move |scroller| {
+            if scroller.is_mapped() && pending.replace(false) {
+                let scroller = scroller.downgrade();
+                // GTK can still update adjustment bounds during this frame's layout.
+                reveal.replace(Some(super::frame::FrameTask::new(None, move || {
+                    if let Some(scroller) = scroller.upgrade() {
+                        let adjustment = scroller.hadjustment();
+                        adjustment.set_value(adjustment.upper() - adjustment.page_size());
+                    }
+                })));
+            }
+        });
         let breadcrumb_scrollbar =
             gtk::Scrollbar::new(gtk::Orientation::Horizontal, Some(&hadjustment));
         breadcrumb_scrollbar.add_css_class("breadcrumb-scrollbar");
@@ -596,7 +607,7 @@ impl BrowserView {
             global_activity_spinner,
             global_activity: RefCell::new(GlobalActivityState::default()),
             breadcrumbs,
-            breadcrumb_scroller: breadcrumb_scroller.clone(),
+            breadcrumb_reveal_pending,
             location_entry,
             path_completion,
             columns_widget,
@@ -652,7 +663,6 @@ impl BrowserView {
             pin_handler: RefCell::new(None),
             unpin_handler: RefCell::new(None),
             pin_status_handler: RefCell::new(None),
-            print_handler: RefCell::new(None),
             search_selection_handlers: RefCell::new(Vec::new()),
             pending_select: RefCell::new(Vec::new()),
             pending_properties: RefCell::new(None),
@@ -905,9 +915,11 @@ impl BrowserView {
 
     pub(super) fn can_trash_file_drop(sources: &[Location]) -> bool {
         !sources.is_empty()
-            && sources
-                .iter()
-                .all(|source| source.parent().is_some() && !paths::is_trash_location(source))
+            && sources.iter().all(|source| {
+                source.parent().is_some()
+                    && !paths::is_trash_location(source)
+                    && !source.is_administrator()
+            })
     }
 
     pub(super) fn trash_file_drop(&self, sources: Vec<Location>) -> bool {
@@ -972,10 +984,6 @@ impl BrowserView {
         self.state.pin_handler.replace(Some(handler));
         self.state.unpin_handler.replace(Some(unpin_handler));
         self.state.pin_status_handler.replace(Some(status_handler));
-    }
-
-    pub(super) fn set_print_handler(&self, handler: PrintHandler) {
-        self.state.print_handler.replace(Some(handler));
     }
 
     pub fn set_operation_provider(&self, provider: Rc<dyn OperationProvider>) {
@@ -1140,6 +1148,9 @@ impl BrowserView {
 
     /// Focus follows the filter session across a view switch.
     fn restore_view_switch_focus(&self, filter_focus: Option<FilterFocus>) {
+        if !crate::ui::focus_navigation::browser_can_take_focus(&self.state.overlay) {
+            return;
+        }
         if let Some(target) = self.filter_target() {
             if filter_focus == Some(FilterFocus::Entry) {
                 refocus_filter_entry(target.entry());
@@ -1185,6 +1196,10 @@ impl BrowserView {
 
     pub(in crate::ui) fn restore_listing_focus(&self) {
         self.state.restore_listing_focus();
+    }
+
+    pub(in crate::ui) fn cancel_column_drag(&self) -> bool {
+        self.state.mode_views.borrow().cancel_column_drag()
     }
 
     /// Makes this listing the focus target when a dismissed overlay leaves `window`
@@ -1710,8 +1725,11 @@ impl BrowserView {
 
     pub fn duplicate_selection(&self) -> bool {
         self.state.sync_mode_selection();
-        let entries = self.state.browser.transfer_entries();
-        let Some((destination, sources)) = duplicate_transfer(&entries) else {
+        self.duplicate_entries(&self.state.browser.transfer_entries())
+    }
+
+    pub(in crate::ui) fn duplicate_entries(&self, entries: &[FileEntry]) -> bool {
+        let Some((destination, sources)) = duplicate_transfer(entries) else {
             return false;
         };
         self.state.start_transfer(destination, sources, false);
@@ -1745,9 +1763,12 @@ impl BrowserView {
 
     pub fn pin_focused(&self) {
         self.state.sync_mode_selection();
-        let Some(entry) = self.state.browser.focused_entry() else {
-            return;
-        };
+        if let Some(entry) = self.state.browser.focused_entry() {
+            self.pin_entry(entry);
+        }
+    }
+
+    pub(in crate::ui) fn pin_entry(&self, entry: FileEntry) {
         let status = self
             .state
             .pin_status_handler
@@ -1758,7 +1779,7 @@ impl BrowserView {
             return;
         }
         if let Some(handler) = self.state.pin_handler.borrow().as_ref() {
-            handler(entry.location, entry.display_name);
+            handler(entry.location, entry.display_name, Box::new(|_| {}));
         }
     }
 
@@ -2036,6 +2057,7 @@ impl BrowserView {
     }
 
     pub fn set_presence(&self, presence: Presence, power_saver: bool) {
+        self.state.path_completion.set_window_presence(presence);
         let browser = &self.state.browser;
         browser.set_freshness(FreshnessInput {
             presence,
@@ -2156,6 +2178,7 @@ impl BrowserView {
                         image_dimensions: crate::model::MetadataValue::Unknown,
                         child_count: crate::model::MetadataValue::Unknown,
                         duration_seconds: crate::model::MetadataValue::Unknown,
+                        listable: crate::model::MetadataValue::Unknown,
                         recent_uri: None,
                     }
                 })
@@ -2325,6 +2348,14 @@ impl BrowserView {
     }
 
     pub fn page_selection(&self, direction: i32, extend: bool) -> bool {
+        self.step_selection_by_page(direction, extend, false)
+    }
+
+    pub(in crate::ui) fn half_page_selection(&self, direction: i32) -> bool {
+        self.step_selection_by_page(direction, false, true)
+    }
+
+    fn step_selection_by_page(&self, direction: i32, extend: bool, half: bool) -> bool {
         let focused = self.state.overlay.root().and_then(|root| root.focus());
         let Some((view, scroll)) = focused
             .as_ref()
@@ -2333,6 +2364,11 @@ impl BrowserView {
             return false;
         };
         let page = super::scrolling::page(&view, &scroll);
+        let items = if half {
+            (page.items / 2).max(1)
+        } else {
+            page.items
+        };
         self.state.mode_views.borrow().suppress_focus_scroll();
         if extend {
             let order = self
@@ -2342,7 +2378,7 @@ impl BrowserView {
                 .and_then(|depth| self.displayed_order(depth));
             self.state
                 .browser
-                .extend_page_selection(direction, page.items, order.as_deref());
+                .extend_page_selection(direction, items, order.as_deref());
             let position = self.cursor_view_position(&view);
             super::scrolling::reveal_cursor(
                 &view,
@@ -2357,7 +2393,7 @@ impl BrowserView {
             self.state
                 .mode_views
                 .borrow()
-                .page_target(depth, direction, page.items)
+                .page_target(depth, direction, items)
                 .map(|position| (depth, position))
         });
         if let Some((depth, position)) = target {
@@ -2371,7 +2407,7 @@ impl BrowserView {
                 .filter(|order| !order.is_empty());
             self.state
                 .browser
-                .page_along(direction, page.items, order.as_deref());
+                .page_along(direction, items, order.as_deref());
         }
         super::scrolling::reveal_selection(&view, &scroll, direction, &page);
         true

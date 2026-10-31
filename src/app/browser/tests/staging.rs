@@ -146,6 +146,7 @@ fn remote_load_failure_waits_for_queued_rows() {
         request_id,
         message: "remote failure".to_owned(),
         refused: false,
+        denied: false,
     });
 
     assert!(

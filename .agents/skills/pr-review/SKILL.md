@@ -27,7 +27,7 @@ of the two words. Everything else runs without asking: the user is not
 watching. Ask only when a decision is genuinely theirs (see **Stop points**).
 
 All repository rules in `AGENTS.md` apply throughout: Conventional Commits,
-twelve-language i18n, `ui::keys` bindings, tooltips only on icon-only
+thirteen-language i18n, `ui::keys` bindings, tooltips only on icon-only
 buttons, semantic `@strata_*` colors, the test-value rules, and the risk-based
 validation policy. Read it before starting if it is not already in context.
 
@@ -119,7 +119,7 @@ one:
 - `Cargo.lock`: take main's version (`git checkout origin/main -- Cargo.lock`)
   and run `cargo check --all-targets --all-features` so Cargo re-resolves
   anything the PR added. Never hand-edit it.
-- `data/locales/*.yml`: a key must end up present in all twelve catalogs with
+- `data/locales/*.yml`: a key must end up present in all thirteen catalogs with
   the same placeholders. After resolving, run `./scripts/test-headless.py i18n::`.
 - Generated files (`src/ui/browser/entry/catppuccin.rs`, and anything whose
   header says it is generated): take main's and rerun the generator.
@@ -166,7 +166,7 @@ skill is available, run it at high effort on the branch as a second reader;
 verify each of its findings before acting on it.
 
 **Repository rules.** Check the diff against `AGENTS.md`: every new
-user-facing string in all twelve `data/locales/` catalogs; shortcuts only
+user-facing string in all thirteen `data/locales/` catalogs; shortcuts only
 through `ui::keys::bindings`; tooltips only on icon-only buttons; no static
 colors; no inline test modules; no narrating comments; Conventional Commit PR
 title that `.github/workflows/pr-policy.yml` accepts; PR body keeps the

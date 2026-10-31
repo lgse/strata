@@ -24,6 +24,7 @@ fn request(path: &Path, name: &str) -> PreviewRequest {
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
+            listable: MetadataValue::Unknown,
             recent_uri: None,
         },
         text_byte_limit: 1024,

@@ -30,7 +30,7 @@ Line 1 of the file, one JSON object. Unknown keys are rejected.
 | --- | --- | --- |
 | `scenario` | yes | Equals the file stem. Lowercase words of `a-z0-9` joined by `-`; unique across all folders. |
 | `modes` | yes | Views to run in: any of `columns`, `icons`, `list`. Each mode is one run. The runner writes `browser_mode` for the run's mode last, over every `prefs`. |
-| `prefs` | no | Preference overrides written into `settings.toml` over the fixture manifest's defaults (`tests/fixtures/harness.json`, key `preferences`). |
+| `prefs` | no | Preference overrides written into `settings.toml` over the fixture manifest's defaults (`tests/fixtures/harness.json`, key `preferences`). An object value becomes a TOML table: `{"keymap":{"default":{"rename":["<Control>e"]}}}`. |
 | `layout` | no | Keyboard layout switched to once the app is ready; default `us`. One of the manifest's `layouts`: `us`, `ru`, `ru-only`, `fr`, `de`, `caps-lock`, `cn-altgr-pinyin`. Key names always mean US key positions. |
 | `variants` | no | `[{"id":..., "modes", "prefs", "layout", "vars", "tree", "setup", "teardown"}]`. Each variant reruns the file; its `modes` replace the header's, `prefs` and `layout` apply over the header's, `vars` become `$variables`, `tree` replaces the header's, `setup` runs after the header's and `teardown` after the header's. Run labels become `<mode>-<id>`. |
 | `tree` | no | A manifest tree name (default `canonical`) or an inline tree: an object of directories (objects) and files (text). `{000..199}.txt` expands to one zero-padded file per number with `{}` in its text replaced by the number; a file's text may be a list of strings and `{"repeat":"r-{},{}\n","from":0,"to":999}`. Directories get mode 755, files 644, and every time is pinned to the manifest's `mtime`. |
@@ -41,6 +41,7 @@ Line 1 of the file, one JSON object. Unknown keys are rejected.
 | `env` | no | Variables added to the app's environment, `$variables` replaced. Never one the runner owns (`RUNNER_OWNED_ENVIRONMENT`, `XDG_DIRECTORIES`, and `QA_ENVIRONMENT` in `tests/qa.rs`): the display, buses, runtime, HOME and XDG directories, input log, shader cache, and accessibility switches. |
 | `session_bus` | no | `true` starts a private session bus with no service directories, shared by the app and the `dbus_send`, `launch`, and `foreign` steps (all three require it). Without it the app gets a bus address that cannot connect. |
 | `portal` | no | `true` (requires `session_bus`) starts `strata --qa --portal`, the FileChooser portal backend, instead of the browser. There is no window until `portal_open`; `adopt` then drives the chooser. Until a chooser opens, the snapshot is empty. |
+| `input_method` | no | An fcitx5 input method name such as `chewing` or `pinyin` (requires `session_bus`): starts a private fcitx5 on the run's display and bus whose group holds the US keyboard and that method; Ctrl+Space switches to it. Pick the toolkit path with `env` (`GTK_IM_MODULE`). Host runs only, since the pinned image has no fcitx5; give such a scenario a `skip` reason. See "Wayland and input methods" in `docs/testing.md`. |
 | `fixture_root` | no | `/tmp/<name>`: builds the tree at that fixed path instead of a fresh one, for a screenshot where the path renders. The path must not exist (never reused); runs with a `fixture_root` never overlap one another. |
 | `mutation` | no | The name of a patch in `tests/qa/mutations/` (without `.patch`) that must make the scenario fail; each patch belongs to one scenario. `./scripts/qa-mutation.sh` checks it. Not combinable with `skip`. |
 | `known_bug` | no | An issue reference. A failure becomes the expected result. Needs `known_bug_step`. |
@@ -502,8 +503,9 @@ A failed run, or every run with `STRATA_QA_KEEP_ARTIFACTS=1`, writes
 | `transcript.jsonl` | `{"command":..., "reply":...}` per step, starting with the `{"launch":true}` reply (and one per restart): the `app` snapshot after every step. |
 | `tree.txt` | The widget tree: `Type role="..." name="..." description="..." (x,y wxh)`, headed by `focus: ...` (marked when focus sits on an unmapped widget). |
 | `state.json` | The snapshot after the last step, once two reads 250 ms apart agree (at most 5 s). |
-| `screenshot.png` | The X root at the end. |
-| `strata.log`, `xvfb.log` | The app's log and the X server's. |
+| `screenshot.png` | The X root at the end (the sway output under `STRATA_QA_DISPLAY=wayland`). |
+| `strata.log`, `xvfb.log` | The app's log and the X server's (`sway.log` under Wayland). |
+| `fcitx5.log` | With `input_method`: the input method's log. |
 | `input.log` | Every synthetic event, as above. |
 | `fixture.txt` | The fixture listing with sizes and link targets. |
 | `<name>.png`, `<name>.actual.png`, ... | `screenshot` and `baseline` captures. |

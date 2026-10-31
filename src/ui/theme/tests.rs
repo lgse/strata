@@ -4,7 +4,7 @@ mod density;
 mod syntax;
 mod text_size;
 
-use std::{cell::Cell, collections::HashSet, rc::Rc};
+use std::{cell::Cell, collections::HashSet, path::Path, rc::Rc};
 
 use crate::ui::preferences::{CornerRoundness, PreferenceManager};
 
@@ -226,6 +226,112 @@ fn rewriting_the_selected_custom_theme_applies_without_a_restart() {
             tokens.accent = "#778899".to_owned();
             write_theme(&tokens);
             wait_for_live_theme(|| manager.active_model_palette().accent == 0x77_88_99);
+        },
+    );
+}
+
+#[test]
+fn rewriting_a_symlinked_theme_target_applies_without_a_restart() {
+    gtk_test(
+        "ui::theme::tests::rewriting_a_symlinked_theme_target_applies_without_a_restart",
+        || {
+            let directory = themes_directory();
+            let config = directory.parent().expect("config directory");
+            let (dotfiles, generated) = (config.join("dotfiles"), config.join("generated"));
+            for path in [&directory, &dotfiles, &generated] {
+                std::fs::create_dir_all(path).expect("theme directories");
+            }
+            let write_theme = |folder: &Path, name: &str, accent: &str| {
+                let mut tokens = azure_tokens();
+                tokens.name = name.to_owned();
+                tokens.accent = accent.to_owned();
+                std::fs::write(
+                    folder.join(format!("{name}.toml")),
+                    toml::to_string_pretty(&tokens).expect("theme file"),
+                )
+                .expect("written dotfile");
+            };
+            let link = |folder: &Path, name: &str| {
+                std::os::unix::fs::symlink(
+                    folder.join(format!("{name}.toml")),
+                    directory.join(format!("{name}.toml")),
+                )
+                .expect("dotfiles link");
+            };
+            write_theme(&dotfiles, "linked", "#112233");
+            link(&dotfiles, "linked");
+
+            let manager = ThemeManager::shared();
+            manager.select_theme("linked");
+            assert_eq!(manager.active_model_palette().accent, 0x11_22_33);
+
+            // Dangling until the generator first writes it, in a directory not yet watched.
+            link(&generated, "later");
+            write_theme(&dotfiles, "linked", "#445566");
+            wait_for_live_theme(|| manager.active_model_palette().accent == 0x44_55_66);
+
+            write_theme(&generated, "later", "#778899");
+            wait_for_live_theme(|| manager.themes().iter().any(|theme| theme.id == "later"));
+            manager.select_theme("later");
+            assert_eq!(manager.active_model_palette().accent, 0x77_88_99);
+
+            write_theme(&generated, "later", "#aabbcc");
+            wait_for_live_theme(|| manager.active_model_palette().accent == 0xaa_bb_cc);
+        },
+    );
+}
+
+#[test]
+fn switching_omarchy_symlinks_keeps_direct_and_atomic_palette_edits_live() {
+    gtk_test(
+        "ui::theme::tests::switching_omarchy_symlinks_keeps_direct_and_atomic_palette_edits_live",
+        || {
+            let state = super::omarchy_state_dir();
+            let themes = gtk::glib::home_dir().join("palettes");
+            let write = |folder: &Path, accent: &str, atomic: bool| {
+                std::fs::create_dir_all(folder).expect("palette directory");
+                let destination = folder.join("colors.toml");
+                let path = if atomic {
+                    folder.join("colors.new")
+                } else {
+                    destination.clone()
+                };
+                std::fs::write(
+                    &path,
+                    format!(
+                        "background = '#112233'\nforeground = '#ddeeff'\naccent = '{accent}'\n"
+                    ),
+                )
+                .expect("palette written");
+                if atomic {
+                    std::fs::rename(path, destination).expect("atomic palette replacement");
+                }
+            };
+            let switch = |name: &str| {
+                let pending = state.join("next-theme");
+                std::os::unix::fs::symlink(themes.join(name), &pending).expect("new theme link");
+                std::fs::rename(pending, state.join("theme")).expect("atomic theme switch");
+            };
+            std::fs::create_dir_all(&state).expect("Omarchy state");
+            std::fs::write(state.join("theme.name"), "fixture").expect("theme name");
+            write(&themes.join("a"), "#112244", false);
+            write(&themes.join("b"), "#445566", false);
+            switch("a");
+            let manager = ThemeManager::shared();
+            manager.set_follow_omarchy(true);
+            assert_eq!(manager.active_model_palette().accent, 0x11_22_44);
+
+            for (name, initial, edited, color) in [
+                ("b", 0x44_55_66, "#778899", 0x77_88_99),
+                ("a", 0x11_22_44, "#aabbcc", 0xaa_bb_cc),
+            ] {
+                switch(name);
+                wait_for_live_theme(|| manager.active_model_palette().accent == initial);
+                write(&themes.join(name), edited, false);
+                wait_for_live_theme(|| manager.active_model_palette().accent == color);
+                write(&themes.join(name), "#abcdef", true);
+                wait_for_live_theme(|| manager.active_model_palette().accent == 0xab_cd_ef);
+            }
         },
     );
 }

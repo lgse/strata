@@ -424,7 +424,7 @@ impl PreviewState {
             .current
             .borrow()
             .as_ref()
-            .is_some_and(|entry| crate::services::is_model(&entry.native_name))
+            .is_some_and(crate::services::is_model)
         {
             return false;
         }
@@ -468,7 +468,7 @@ impl PreviewState {
         let depth = self.current_depth.get()?;
         let current = self.current.borrow().as_ref()?.location.clone();
         let files = view.displayed_entries_matching(depth, |entry| {
-            entry.is_file() && crate::services::is_model(&entry.native_name)
+            entry.is_file() && crate::services::is_model(entry)
         });
         let index = files.iter().position(|entry| entry.location == current)?;
         Some(ListingPosition {

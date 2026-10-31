@@ -18,13 +18,14 @@ use crate::{
         gio_file_for_location,
         local_operations::{ArchiveListingStatus, decode_archive_listing},
     },
-    sandbox::{Cancellation, MediaPreviewBackend, ParseOperation, PdfRenderSize},
+    sandbox::{Cancellation, DocumentFormat, MediaPreviewBackend, ParseOperation, PdfRenderSize},
     services::{
         LoadHandle, MediaPreviewSize, ModelFormat, ModelRender, Preview, PreviewContent,
         PreviewEvent, PreviewProvider, PreviewRequest, SandboxedMedia, content_family,
         document_kind, has_plain_text_extension, is_non_executable_extensionless_dotfile,
         layout_document, looks_like_text, normalize_preview_text, parse_document, read_head_sample,
         reconcile_with_sample,
+        route_preview::{RouteFormat, RoutePreview, RouteRender},
     },
 };
 
@@ -120,6 +121,7 @@ struct PreviewCacheKey {
     modified: i64,
     pdf_page: Option<(i32, PdfRenderSize)>,
     model: Option<ModelRender>,
+    route: Option<RouteRender>,
 }
 
 impl PreviewCache {
@@ -159,6 +161,11 @@ impl PreviewCache {
 
 fn preview_content_size(content: &PreviewContent) -> usize {
     match content {
+        PreviewContent::Route { preview } => {
+            preview.png.len()
+                + preview.profile.as_ref().map_or(0, Vec::len)
+                + preview.samples.len() * size_of::<crate::services::route_preview::RouteSample>()
+        }
         PreviewContent::Rasterized { png } | PreviewContent::Model { png, .. } => png.len(),
         PreviewContent::Pdf {
             png, text_layer, ..
@@ -198,7 +205,7 @@ impl LocalPreviewProvider {
 impl PreviewProvider for LocalPreviewProvider {
     fn load(&self, request: PreviewRequest, emit: Rc<dyn Fn(PreviewEvent)>) -> LoadHandle {
         use futures_lite::StreamExt;
-        if !crate::services::is_model(&request.entry.native_name) {
+        if !crate::services::is_model(&request.entry) {
             return self.load_with_renderer(request, emit, crate::sandbox::parse);
         }
         let (send, mut receive) = futures_channel::mpsc::channel(8);
@@ -278,11 +285,13 @@ impl LocalPreviewProvider {
             let (mut content_type, uncertain) =
                 crate::services::guess_content_type(Path::new(&entry.native_name));
             let mut content = content_family(&content_type);
-            if crate::services::is_model(&entry.native_name) {
+            let sandbox_only = crate::services::is_model(&entry)
+                || RouteFormat::for_name(&entry.native_name).is_some();
+            if sandbox_only {
                 content = PreviewContent::Unsupported;
             }
 
-            if !crate::services::is_model(&entry.native_name)
+            if !sandbox_only
                 && matches!(content, PreviewContent::Unsupported)
             {
                 if gio::content_type_is_a(&content_type, "text/plain") {
@@ -299,7 +308,7 @@ impl LocalPreviewProvider {
                 }
             }
 
-            if !crate::services::is_model(&entry.native_name) && matches!(content, PreviewContent::Unsupported)
+            if !sandbox_only && matches!(content, PreviewContent::Unsupported)
                 && (uncertain || entry.native_name.is_empty())
             {
                 let file = gio_file_for_location(&entry.location);
@@ -344,7 +353,7 @@ impl LocalPreviewProvider {
             }
             let sample_is_text = sample.as_deref().map(looks_like_text);
             if let Some(sample) = &sample
-                && !crate::services::is_model(&entry.native_name)
+                && !sandbox_only
             {
                 reconcile_with_sample(&mut content_type, &mut content, sample);
             }
@@ -430,10 +439,10 @@ impl LocalPreviewProvider {
             let sandboxed = if crate::services::table::is_workbook(&content_type, &entry.native_name)
             {
                 Some(ParseOperation::PreviewWorkbook)
-            } else if crate::services::docx::is_document(&content_type, &entry.native_name)
+            } else if let Some(format) = DocumentFormat::for_file(&content_type, &entry.native_name)
                 && sample_is_text != Some(true)
             {
-                Some(ParseOperation::PreviewDocument)
+                Some(ParseOperation::PreviewDocument(format))
             } else {
                 None
             };
@@ -543,14 +552,17 @@ impl LocalPreviewProvider {
                 return;
             }
 
-            let model = ModelFormat::for_name(&entry.native_name).map(|format| ModelRender {
+            let model = crate::services::model_format(&entry).map(|format| ModelRender {
                     purpose: crate::services::ModelRenderPurpose::Preview,
                 format,
                 size: MediaPreviewSize::new(request.media_size.width.min(800), request.media_size.height.min(800)),
                 palette: request.model_palette,
                 view: request.model_view,
             });
-            let operation = if let Some(render) = model {
+            let route = RouteFormat::for_name(&entry.native_name).map(|format| RouteRender { format, palette: request.model_palette });
+            let operation = if let Some(render) = route {
+                Some(ParseOperation::PreviewRoute(render))
+            } else if let Some(render) = model {
                 Some(ParseOperation::PreviewModel(render))
             } else if let Some(format) = crate::sandbox::CoverFormat::for_name(&entry.native_name) {
                 Some(ParseOperation::PreviewCover(format))
@@ -567,6 +579,7 @@ impl LocalPreviewProvider {
                 PreviewContent::Media => None,
                 PreviewContent::Text { .. }
                 | PreviewContent::Model { .. }
+                | PreviewContent::Route { .. }
                 | PreviewContent::Document { .. }
                 | PreviewContent::Rendered { .. }
                 | PreviewContent::Rasterized { .. }
@@ -585,6 +598,8 @@ impl LocalPreviewProvider {
                             entry,
                             message: if matches!(operation, ParseOperation::PreviewModel(_)) {
                                 "Remote model previews are not supported; copy the file locally first"
+                            } else if matches!(operation, ParseOperation::PreviewRoute(_)) {
+                                "Copy this route file locally before previewing it."
                             } else if matches!(operation, ParseOperation::PreviewCover(_)) {
                                 "Remote cover previews are not supported; copy the file locally first"
                             } else {
@@ -631,6 +646,7 @@ impl LocalPreviewProvider {
                     modified,
                     pdf_page,
                     model,
+                    route,
                 });
                 if let Some(cached) = cache_key
                     .as_ref()
@@ -649,7 +665,7 @@ impl LocalPreviewProvider {
                     return;
                 }
 
-                let heavy_permit = if matches!(operation, ParseOperation::PreviewPdf(_) | ParseOperation::PreviewModel(_) | ParseOperation::PreviewCover(_)) {
+                let heavy_permit = if matches!(operation, ParseOperation::PreviewPdf(_) | ParseOperation::PreviewModel(_) | ParseOperation::PreviewRoute(_) | ParseOperation::PreviewCover(_)) {
                     let Some(permit) = request_heavy_preview_permit().acquire().await else {
                         return;
                     };
@@ -682,48 +698,88 @@ impl LocalPreviewProvider {
                 if cancellation_for_task.is_cancelled() {
                     return;
                 }
-                content = match render {
-                    Ok(Ok(output)) if model.is_some() => PreviewContent::Model {
-                        png: output.data,
-                        mesh: output.model_mesh,
-                    },
-                    Ok(Ok(output)) if matches!(operation, ParseOperation::PreviewPdf(_)) => {
-                        if let Some(mtime) = modified
-                            && request.pdf_page == 0
-                        {
-                            thumbnail_to_store = Some((path.clone(), mtime, output.data.clone()));
-                        }
-                        PreviewContent::Pdf {
-                            png: output.data,
-                            page: output.page,
-                            pages: output.pages,
-                            text_layer: output.text_layer.map(std::sync::Arc::new),
-                        }
-                    }
-                    Ok(Ok(output)) => {
-                        if let Some(mtime) = modified.filter(|_| !matches!(operation, ParseOperation::PreviewCover(_))) {
-                            thumbnail_to_store = Some((path.clone(), mtime, output.data.clone()));
-                        }
-                        PreviewContent::Rasterized { png: output.data }
-                    }
-                    Ok(Err(message)) => {
-                        emit(PreviewEvent::Failed {
-                            request_id,
-                            entry,
-                            message,
-                        });
-                        return;
-                    }
-                    Err(_) => {
-                        if cancellation_for_task.is_cancelled() {
+                let missing_gcode_thumbnail = matches!(
+                    (&render, model.map(|item| item.format)),
+                    (Ok(Err(message)), Some(ModelFormat::Gcode))
+                        if message == crate::services::model_preview::NO_GCODE_THUMBNAIL
+                            && sample_is_text == Some(true)
+                );
+                content = if missing_gcode_thumbnail {
+                    let file = gio_file_for_location(&entry.location);
+                    let native_path = entry.location.native_path().map(ToOwned::to_owned);
+                    match read_text(&file, native_path.as_deref(), request.text_byte_limit).await {
+                        Ok((source, truncated)) => PreviewContent::Text {
+                            content: source,
+                            truncated,
+                        },
+                        Err(error) => {
+                            emit(PreviewEvent::Failed {
+                                request_id,
+                                entry,
+                                message: crate::services::gio_error_message(&error),
+                            });
                             return;
                         }
-                        emit(PreviewEvent::Failed {
-                            request_id,
-                            entry,
-                            message: "The preview worker stopped unexpectedly.".to_owned(),
-                        });
-                        return;
+                    }
+                } else {
+                    match render {
+                        Ok(Ok(output)) if route.is_some() => {
+                            match RoutePreview::from_json(&output.data) {
+                                Ok(preview) => PreviewContent::Route { preview },
+                                Err(message) => {
+                                    emit(PreviewEvent::Failed {
+                                        request_id,
+                                        entry,
+                                        message,
+                                    });
+                                    return;
+                                }
+                            }
+                        }
+                        Ok(Ok(output)) if model.is_some() => PreviewContent::Model {
+                            png: output.data,
+                            mesh: output.model_mesh,
+                        },
+                        Ok(Ok(output)) if matches!(operation, ParseOperation::PreviewPdf(_)) => {
+                            if let Some(mtime) = modified && request.pdf_page == 0 {
+                                thumbnail_to_store =
+                                    Some((path.clone(), mtime, output.data.clone()));
+                            }
+                            PreviewContent::Pdf {
+                                png: output.data,
+                                page: output.page,
+                                pages: output.pages,
+                                text_layer: output.text_layer.map(std::sync::Arc::new),
+                            }
+                        }
+                        Ok(Ok(output)) => {
+                            if let Some(mtime) = modified
+                                .filter(|_| !matches!(operation, ParseOperation::PreviewCover(_)))
+                            {
+                                thumbnail_to_store =
+                                    Some((path.clone(), mtime, output.data.clone()));
+                            }
+                            PreviewContent::Rasterized { png: output.data }
+                        }
+                        Ok(Err(message)) => {
+                            emit(PreviewEvent::Failed {
+                                request_id,
+                                entry,
+                                message,
+                            });
+                            return;
+                        }
+                        Err(_) => {
+                            if cancellation_for_task.is_cancelled() {
+                                return;
+                            }
+                            emit(PreviewEvent::Failed {
+                                request_id,
+                                entry,
+                                message: "The preview worker stopped unexpectedly.".to_owned(),
+                            });
+                            return;
+                        }
                     }
                 };
                 drop(heavy_permit);

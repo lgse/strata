@@ -11,12 +11,10 @@ pub(super) fn stepper(labels: [String; 3]) -> (gtk::Box, [gtk::Button; 3]) {
     control.set_hexpand(true);
     control.set_halign(gtk::Align::End);
     let buttons = std::array::from_fn(|index| {
-        let label = &labels[index];
         let button = gtk::Button::new();
         if index == 1 {
             button.add_css_class("appearance-text-value");
             button.set_hexpand(true);
-            super::accessibility::set_description(&button, Some(label));
         } else {
             let icon = if index == 0 {
                 crate::assets::icons::MINUS
@@ -28,13 +26,23 @@ pub(super) fn stepper(labels: [String; 3]) -> (gtk::Box, [gtk::Button; 3]) {
             image.set_valign(gtk::Align::Center);
             button.set_child(Some(&image));
             button.add_css_class("appearance-text-step");
-            super::accessibility::set_label(&button, label);
-            button.set_tooltip_text(Some(label));
         }
+        label_stepper_button(&button, &labels[index]);
         control.append(&button);
         button
     });
     (control, buttons)
+}
+
+/// The value button keeps its text and takes `label` as its description; the
+/// icon-only step buttons take it as their name and tooltip.
+pub(super) fn label_stepper_button(button: &gtk::Button, label: &str) {
+    if button.has_css_class("appearance-text-value") {
+        super::accessibility::set_description(button, Some(label));
+    } else {
+        super::accessibility::set_label(button, label);
+        button.set_tooltip_text(Some(label));
+    }
 }
 
 /// A numeric stepper with GTK's native spin actions, decrement before the entry.
@@ -70,10 +78,18 @@ pub(super) fn form_entry() -> gtk::Entry {
     entry
 }
 
+type LengthMeasure = fn(&str) -> usize;
+
+#[derive(Clone)]
 pub(super) struct FormTextField {
     pub widget: gtk::Box,
     pub entry: gtk::Entry,
     remaining: gtk::Label,
+    measure: Rc<Cell<LengthMeasure>>,
+}
+
+fn character_count(text: &str) -> usize {
+    text.chars().count()
 }
 
 impl FormTextField {
@@ -92,29 +108,81 @@ impl FormTextField {
             widget,
             entry,
             remaining,
+            measure: Rc::new(Cell::new(character_count)),
         };
         field.refresh_remaining();
         let remaining = field.remaining.clone();
+        let measure = field.measure.clone();
         field.entry.connect_changed(move |entry| {
-            Self::update_remaining(entry, &remaining);
+            Self::update_remaining(entry, &remaining, measure.get());
         });
         let remaining = field.remaining.clone();
+        let measure = field.measure.clone();
         field.entry.connect_max_length_notify(move |entry| {
-            Self::update_remaining(entry, &remaining);
+            Self::update_remaining(entry, &remaining, measure.get());
         });
+        field.limit_insertions();
         field
     }
 
-    fn refresh_remaining(&self) {
-        Self::update_remaining(&self.entry, &self.remaining);
+    /// Measures the limit with `measure`, such as bytes or UTF-16 units, and
+    /// trims the current text to fit.
+    pub fn set_limit(&self, max_length: i32, measure: LengthMeasure) {
+        self.measure.set(measure);
+        if self.entry.max_length() != max_length {
+            self.entry.set_max_length(max_length);
+        }
+        let text = self.entry.text();
+        let fitting = fitting_prefix(&text, usize::try_from(max_length).unwrap_or(0), measure);
+        if fitting.len() < text.len() {
+            self.entry.set_text(fitting);
+        }
+        self.refresh_remaining();
     }
 
-    fn update_remaining(entry: &gtk::Entry, remaining: &gtk::Label) {
+    // GTK's own max length counts characters, so it cannot enforce other measures.
+    fn limit_insertions(&self) {
+        let Some(text) = self.entry.delegate().and_downcast::<gtk::Text>() else {
+            return;
+        };
+        let measure = self.measure.clone();
+        text.connect_insert_text(move |text, inserted, position| {
+            let measure = measure.get();
+            let max_length = text.max_length();
+            let room = usize::try_from(max_length)
+                .unwrap_or(0)
+                .saturating_sub(measure(&text.text()));
+            if max_length <= 0 || measure(inserted) <= room {
+                return;
+            }
+            let fitting = fitting_prefix(inserted, room, measure);
+            if !fitting.is_empty() {
+                text.insert_text(fitting, position);
+            }
+            text.stop_signal_emission_by_name("insert-text");
+        });
+    }
+
+    fn refresh_remaining(&self) {
+        Self::update_remaining(&self.entry, &self.remaining, self.measure.get());
+    }
+
+    fn update_remaining(entry: &gtk::Entry, remaining: &gtk::Label, measure: LengthMeasure) {
         let limit = entry.max_length();
         remaining.set_visible(limit > 0);
-        let count = (limit as usize).saturating_sub(entry.text().chars().count());
+        let count = (limit as usize).saturating_sub(measure(&entry.text()));
         remaining.set_text(&crate::i18n::count("chars_remaining", count));
     }
+}
+
+fn fitting_prefix(text: &str, room: usize, measure: LengthMeasure) -> &str {
+    let end = text
+        .char_indices()
+        .map(|(start, character)| start + character.len_utf8())
+        .take_while(|&end| measure(&text[..end]) <= room)
+        .last()
+        .unwrap_or(0);
+    &text[..end]
 }
 
 #[cfg(test)]
@@ -133,10 +201,10 @@ pub(super) fn copyable_command(command: &str) -> gtk::Overlay {
     overlay.set_child(Some(&field));
 
     let copy = gtk::Button::builder()
-        .tooltip_text(crate::i18n::tr("Copy install command"))
         .halign(gtk::Align::End)
         .valign(gtk::Align::Center)
         .build();
+    super::accessibility::set_tooltip_and_label(&copy, &crate::i18n::tr("Copy install command"));
     copy.add_css_class("preview-command-copy");
     copy.set_has_frame(false);
     copy.set_cursor_from_name(Some("pointer"));
@@ -151,14 +219,20 @@ pub(super) fn copyable_command(command: &str) -> gtk::Overlay {
         let generation = feedback_generation.get().saturating_add(1);
         feedback_generation.set(generation);
         crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::CHECK);
-        button.set_tooltip_text(Some(&crate::i18n::tr("Install command copied")));
+        super::accessibility::set_tooltip_and_label(
+            button,
+            &crate::i18n::tr("Install command copied"),
+        );
         let button = button.clone();
         let copy_icon = copy_icon.clone();
         let feedback_generation = feedback_generation.clone();
         glib::timeout_add_local_once(Duration::from_secs(2), move || {
             if feedback_generation.get() == generation {
                 crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::COPY);
-                button.set_tooltip_text(Some(&crate::i18n::tr("Copy install command")));
+                super::accessibility::set_tooltip_and_label(
+                    &button,
+                    &crate::i18n::tr("Copy install command"),
+                );
             }
         });
     });

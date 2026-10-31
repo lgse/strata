@@ -21,7 +21,10 @@ use crate::ui::keys::{
     self,
     bindings::{ENTER_ANY, ESCAPE_ANY},
 };
-use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
+use crate::ui::modal::{
+    ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus_for_listing,
+    show_error_dialog,
+};
 use futures_lite::future::BoxedLocal;
 use gtk::prelude::*;
 use gtk::{gio, glib};
@@ -356,6 +359,7 @@ impl ViewState {
         let copy = layout.confirm;
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+        remember_modal_focus_for_listing(&layer, &window_overlay);
         window_overlay.add_overlay(&layer);
 
         let dismiss_layer = layer.clone();
@@ -816,13 +820,15 @@ impl ViewState {
         let target_name = collision.target_name.clone();
         let name = source.display_name();
         // Merge stays copy-only: undoing a merged move cannot tell which
-        // destination contents the source actually owned.
-        let allow_merge = collision.mergeable && !move_sources;
+        // destination contents the source actually owned. It stages what it
+        // overwrites in Trash, which `admin://` lacks.
+        let allow_merge = collision.mergeable && !move_sources && !destination.is_administrator();
         let explanation = conflict_explanation(&collision, &destination, allow_merge);
-        let without_trash = destination
-            .native_path()
-            .and_then(crate::adapters::trash_support::unsupported_reason_for)
-            .is_some();
+        let without_trash = destination.is_administrator()
+            || destination
+                .native_path()
+                .and_then(crate::adapters::trash_support::unsupported_reason_for)
+                .is_some();
         let explanation = if without_trash {
             format!(
                 "{explanation}\n\n{}",

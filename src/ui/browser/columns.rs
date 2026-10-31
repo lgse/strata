@@ -402,9 +402,13 @@ pub(super) struct BoundRow {
 
 #[derive(Clone, Copy)]
 pub(super) enum PendingActivationKind {
-    Standard { preview: bool },
+    Standard {
+        preview: bool,
+    },
     ChooserSearchNavigate,
     RecursiveSearch,
+    /// A filtered file whose single click previews instead of launching.
+    RecursivePreview,
     Mapped,
 }
 
@@ -1142,10 +1146,13 @@ impl ViewState {
                 // Rebuilt, already-loaded columns receive no finish event to cancel the timer.
                 stop_column_spinner(column);
                 if let Some(message) = snapshot.error.as_deref() {
-                    column.presentation.show_error(&rust_i18n::t!(
-                        "Unable to read this directory\n%{message}",
-                        message = message
-                    ));
+                    column.presentation.show_error(
+                        &rust_i18n::t!(
+                            "Unable to read this directory\n%{message}",
+                            message = message
+                        ),
+                        snapshot.administrator.is_some(),
+                    );
                 } else if snapshot.count == 0 {
                     column.presentation.show_empty();
                 } else {
@@ -1173,6 +1180,9 @@ impl ViewState {
     }
 
     pub(super) fn focus_rebuilt_active_column(&self) {
+        if !crate::ui::focus_navigation::browser_can_take_focus(&self.overlay) {
+            return;
+        }
         let Some(depth) = self.browser.active_depth() else {
             return;
         };
@@ -1395,6 +1405,9 @@ impl ViewState {
         column.append(&filter_revealer);
         let not_responding = super::not_responding_notice();
         column.append(&not_responding);
+        if depth == 0 && location.is_administrator() {
+            column.append(&super::administrator_notice());
+        }
 
         let entry_count = Rc::new(Cell::new(0));
         let browser_for_model = self.browser.clone();
@@ -1792,6 +1805,7 @@ impl ViewState {
         let navigation_state = Rc::downgrade(self);
         keys::on_press(&return_to_filter, move |controller, press| {
             let filter_active = search_active.get() || !query_for_return.borrow().trim().is_empty();
+            let press = &press.untyped();
             if !filter_active || !press.is_any(&[UP, DOWN]) {
                 return glib::Propagation::Proceed;
             }
@@ -1888,11 +1902,21 @@ impl ViewState {
                 browser.retry_column(depth);
             }
         });
-        let presentation = LoadPresentation::new(&scroll, Some(retry)).with_focus_fallback(
-            &location.display_name(),
-            &list,
-            &self.browser,
-        );
+        let administrator = gtk::Button::with_label(&crate::i18n::tr("Open as Administrator"));
+        administrator.add_css_class("retry-button");
+        let weak_state = Rc::downgrade(self);
+        administrator.connect_clicked(move |_| {
+            if let Some(state) = weak_state.upgrade()
+                && let Some(location) = state
+                    .browser
+                    .column_snapshot(depth)
+                    .and_then(|snapshot| snapshot.administrator)
+            {
+                state.open_as_administrator(location);
+            }
+        });
+        let presentation = LoadPresentation::new(&scroll, Some(retry), Some(administrator))
+            .with_focus_fallback(&location.display_name(), &list, &self.browser);
         let weak_for_clear = Rc::downgrade(self);
         let returning_to_column = Rc::new(Cell::new(false));
         let returning_for_clear = returning_to_column.clone();
@@ -1981,6 +2005,30 @@ impl ViewState {
             depth,
             location.clone(),
         );
+        let header_context_click = gtk::GestureClick::new();
+        header_context_click.set_button(3);
+        let open_folder_context = folder_context_trigger.clone();
+        let context_anchor = presentation.stack.downgrade();
+        header_context_click.connect_pressed(move |gesture, _, x, y| {
+            let (Some(header), Some(anchor)) = (gesture.widget(), context_anchor.upgrade()) else {
+                return;
+            };
+            let Some(picked) = header.pick(x, y, gtk::PickFlags::DEFAULT) else {
+                return;
+            };
+            if !is_column_background(&header, &picked) {
+                return;
+            }
+            let Some(point) =
+                header.compute_point(&anchor, &gtk::graphene::Point::new(x as f32, y as f32))
+            else {
+                return;
+            };
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+            open_folder_context(f64::from(point.x()), f64::from(point.y()));
+        });
+        header.add_controller(header_context_click);
+
         let rows_for_context = bound_rows.clone();
         let pick_position = Rc::new(move |picked: &gtk::Widget| {
             let picked = file_row_target(picked.clone())?;

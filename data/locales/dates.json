@@ -2,6 +2,7 @@
   "_version": 2,
   "dates.month.1": {
     "en": "January",
+    "hu": "január",
     "fr": "janvier",
     "de": "Januar",
     "es": "enero",
@@ -16,6 +17,7 @@
   },
   "dates.month.2": {
     "en": "February",
+    "hu": "február",
     "fr": "février",
     "de": "Februar",
     "es": "febrero",
@@ -30,6 +32,7 @@
   },
   "dates.month.3": {
     "en": "March",
+    "hu": "március",
     "fr": "mars",
     "de": "März",
     "es": "marzo",
@@ -44,6 +47,7 @@
   },
   "dates.month.4": {
     "en": "April",
+    "hu": "április",
     "fr": "avril",
     "de": "April",
     "es": "abril",
@@ -58,6 +62,7 @@
   },
   "dates.month.5": {
     "en": "May",
+    "hu": "május",
     "fr": "mai",
     "de": "Mai",
     "es": "mayo",
@@ -72,6 +77,7 @@
   },
   "dates.month.6": {
     "en": "June",
+    "hu": "június",
     "fr": "juin",
     "de": "Juni",
     "es": "junio",
@@ -86,6 +92,7 @@
   },
   "dates.month.7": {
     "en": "July",
+    "hu": "július",
     "fr": "juillet",
     "de": "Juli",
     "es": "julio",
@@ -100,6 +107,7 @@
   },
   "dates.month.8": {
     "en": "August",
+    "hu": "augusztus",
     "fr": "août",
     "de": "August",
     "es": "agosto",
@@ -114,6 +122,7 @@
   },
   "dates.month.9": {
     "en": "September",
+    "hu": "szeptember",
     "fr": "septembre",
     "de": "September",
     "es": "septiembre",
@@ -128,6 +137,7 @@
   },
   "dates.month.10": {
     "en": "October",
+    "hu": "október",
     "fr": "octobre",
     "de": "Oktober",
     "es": "octubre",
@@ -142,6 +152,7 @@
   },
   "dates.month.11": {
     "en": "November",
+    "hu": "november",
     "fr": "novembre",
     "de": "November",
     "es": "noviembre",
@@ -156,6 +167,7 @@
   },
   "dates.month.12": {
     "en": "December",
+    "hu": "december",
     "fr": "décembre",
     "de": "Dezember",
     "es": "diciembre",
@@ -170,6 +182,7 @@
   },
   "dates.short_month.1": {
     "en": "Jan",
+    "hu": "jan.",
     "fr": "janv.",
     "de": "Jan.",
     "es": "ene",
@@ -184,6 +197,7 @@
   },
   "dates.short_month.2": {
     "en": "Feb",
+    "hu": "febr.",
     "fr": "févr.",
     "de": "Feb.",
     "es": "feb",
@@ -198,6 +212,7 @@
   },
   "dates.short_month.3": {
     "en": "Mar",
+    "hu": "márc.",
     "fr": "mars",
     "de": "März",
     "es": "mar",
@@ -212,6 +227,7 @@
   },
   "dates.short_month.4": {
     "en": "Apr",
+    "hu": "ápr.",
     "fr": "avr.",
     "de": "Apr.",
     "es": "abr",
@@ -226,6 +242,7 @@
   },
   "dates.short_month.5": {
     "en": "May",
+    "hu": "máj.",
     "fr": "mai",
     "de": "Mai",
     "es": "may",
@@ -240,6 +257,7 @@
   },
   "dates.short_month.6": {
     "en": "Jun",
+    "hu": "jún.",
     "fr": "juin",
     "de": "Juni",
     "es": "jun",
@@ -254,6 +272,7 @@
   },
   "dates.short_month.7": {
     "en": "Jul",
+    "hu": "júl.",
     "fr": "juil.",
     "de": "Juli",
     "es": "jul",
@@ -268,6 +287,7 @@
   },
   "dates.short_month.8": {
     "en": "Aug",
+    "hu": "aug.",
     "fr": "août",
     "de": "Aug.",
     "es": "ago",
@@ -282,6 +302,7 @@
   },
   "dates.short_month.9": {
     "en": "Sep",
+    "hu": "szept.",
     "fr": "sept.",
     "de": "Sept.",
     "es": "sep",
@@ -296,6 +317,7 @@
   },
   "dates.short_month.10": {
     "en": "Oct",
+    "hu": "okt.",
     "fr": "oct.",
     "de": "Okt.",
     "es": "oct",
@@ -310,6 +332,7 @@
   },
   "dates.short_month.11": {
     "en": "Nov",
+    "hu": "nov.",
     "fr": "nov.",
     "de": "Nov.",
     "es": "nov",
@@ -324,6 +347,7 @@
   },
   "dates.short_month.12": {
     "en": "Dec",
+    "hu": "dec.",
     "fr": "déc.",
     "de": "Dez.",
     "es": "dic",
@@ -338,6 +362,7 @@
   },
   "dates.weekday.1": {
     "en": "Monday",
+    "hu": "hétfő",
     "fr": "lundi",
     "de": "Montag",
     "es": "lunes",
@@ -352,6 +377,7 @@
   },
   "dates.weekday.2": {
     "en": "Tuesday",
+    "hu": "kedd",
     "fr": "mardi",
     "de": "Dienstag",
     "es": "martes",
@@ -366,6 +392,7 @@
   },
   "dates.weekday.3": {
     "en": "Wednesday",
+    "hu": "szerda",
     "fr": "mercredi",
     "de": "Mittwoch",
     "es": "miércoles",
@@ -380,6 +407,7 @@
   },
   "dates.weekday.4": {
     "en": "Thursday",
+    "hu": "csütörtök",
     "fr": "jeudi",
     "de": "Donnerstag",
     "es": "jueves",
@@ -394,6 +422,7 @@
   },
   "dates.weekday.5": {
     "en": "Friday",
+    "hu": "péntek",
     "fr": "vendredi",
     "de": "Freitag",
     "es": "viernes",
@@ -408,6 +437,7 @@
   },
   "dates.weekday.6": {
     "en": "Saturday",
+    "hu": "szombat",
     "fr": "samedi",
     "de": "Samstag",
     "es": "sábado",
@@ -422,6 +452,7 @@
   },
   "dates.weekday.7": {
     "en": "Sunday",
+    "hu": "vasárnap",
     "fr": "dimanche",
     "de": "Sonntag",
     "es": "domingo",
@@ -436,6 +467,7 @@
   },
   "dates.long": {
     "en": "%B %-d, %Y, %H:%M",
+    "hu": "%Y. %B %-d. %H:%M",
     "fr": "%-d %B %Y, %H:%M",
     "de": "%-d. %B %Y, %H:%M",
     "es": "%-d de %B de %Y, %H:%M",
@@ -450,6 +482,7 @@
   },
   "dates.recent": {
     "en": "%b %-d, %H:%M",
+    "hu": "%b %-d. %H:%M",
     "fr": "%-d %b, %H:%M",
     "de": "%-d. %b, %H:%M",
     "es": "%-d %b, %H:%M",
@@ -464,6 +497,7 @@
   },
   "dates.older": {
     "en": "%b %-d, %Y",
+    "hu": "%Y. %b %-d.",
     "fr": "%-d %b %Y",
     "de": "%-d. %b %Y",
     "es": "%-d %b %Y",
@@ -478,6 +512,7 @@
   },
   "dates.full": {
     "en": "%b %-d, %Y, %-I:%M %p",
+    "hu": "%Y. %b %-d. %H:%M",
     "fr": "%-d %b %Y, %H:%M",
     "de": "%-d. %b %Y, %H:%M",
     "es": "%-d %b %Y, %H:%M",

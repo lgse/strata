@@ -266,7 +266,9 @@ impl PaneNavigation {
                 | gtk::gdk::EventType::Scroll
                 | gtk::gdk::EventType::TouchBegin => true,
                 gtk::gdk::EventType::KeyPress => {
-                    applied.get() || moves_focus(event) || !focus_within(input, field.as_ref())
+                    applied.get()
+                        || moves_focus(input, event)
+                        || !focus_within(input, field.as_ref())
                 }
                 _ => false,
             };
@@ -404,8 +406,9 @@ fn focus_within(
 }
 
 /// Tab moves focus through GTK, past the commands that cancel a restore themselves.
-fn moves_focus(event: &gtk::gdk::Event) -> bool {
-    keys::read_event(event).is_some_and(|press| press.is(FOCUS_NEXT.ignoring(SHORTCUT_MODIFIERS)))
+fn moves_focus(input: &gtk::EventControllerLegacy, event: &gtk::gdk::Event) -> bool {
+    keys::read_event(input, event)
+        .is_some_and(|press| press.is(FOCUS_NEXT.ignoring(SHORTCUT_MODIFIERS)))
 }
 
 /// The pane's directory, once it loaded without an error; a load still in progress

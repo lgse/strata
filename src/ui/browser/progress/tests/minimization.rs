@@ -283,6 +283,84 @@ fn docked_progress_does_not_change_an_existing_modal_blur() {
 }
 
 #[test]
+fn docked_completion_preserves_modal_focus_when_created_entries_are_selected() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::minimization::docked_completion_preserves_modal_focus_when_created_entries_are_selected",
+        || {
+            for mode in [
+                crate::ui::browser_modes::BrowserMode::Columns,
+                crate::ui::browser_modes::BrowserMode::Icons,
+                crate::ui::browser_modes::BrowserMode::List,
+            ] {
+                let fixture = Fixture::new();
+                std::fs::write(fixture.temp.path().join("source.txt"), "source")
+                    .expect("source file");
+                fixture.view.set_view_mode(mode);
+                fixture
+                    .view
+                    .navigate_location(Location::local(fixture.temp.path()));
+                pump_until(|| {
+                    fixture
+                        .view
+                        .browser()
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading && column.count == 1)
+                });
+                fixture.view.browser().compress(
+                    vec![entry(Location::local(
+                        fixture.temp.path().join("source.txt"),
+                    ))],
+                    Location::local(fixture.temp.path()),
+                    "created".into(),
+                    TransferConflict::FailIfExists,
+                    ArchiveFormat::Zip,
+                    None,
+                );
+                let id = fixture
+                    .view
+                    .browser()
+                    .last_started_operation()
+                    .expect("compression started");
+                fixture.progress(id);
+                crate::ui::modal::show_error_dialog(
+                    &fixture.window,
+                    "Keep modal focus",
+                    "A background completion must not take keyboard focus.",
+                );
+                let focused = gtk::prelude::RootExt::focus(&fixture.window)
+                    .expect("the modal's Close button owns focus");
+                assert!(focused.is::<gtk::Button>());
+                let created = fixture.temp.path().join("created.zip");
+                std::fs::write(&created, "archive").expect("created archive");
+                fixture.operations.emit(
+                    id,
+                    OperationEvent::Compressed {
+                        request_id: id,
+                        archive_name: "created.zip".into(),
+                        archive: Location::local(created),
+                        original: None,
+                        placed: None,
+                    },
+                );
+                pump_until(|| {
+                    !fixture.view.browser().has_background_operations()
+                        && fixture
+                            .view
+                            .browser()
+                            .column_snapshot(0)
+                            .is_some_and(|column| !column.loading && column.count == 2)
+                });
+                assert_eq!(
+                    gtk::prelude::RootExt::focus(&fixture.window),
+                    Some(focused),
+                    "{mode:?}: selecting a background operation's created entry must not steal modal focus",
+                );
+            }
+        },
+    );
+}
+
+#[test]
 fn docked_copy_archive_and_deletion_update_and_cancel_independently() {
     crate::test_support::gtk_test(
         "ui::browser::progress::tests::minimization::docked_copy_archive_and_deletion_update_and_cancel_independently",
@@ -396,6 +474,69 @@ fn docked_copy_archive_and_deletion_update_and_cancel_independently() {
                     .contains_key(&first)
             );
             assert!(crate::ui::window::visible_modal_layer(&fixture.window).is_none());
+        },
+    );
+}
+
+#[test]
+fn one_deleted_folder_counts_the_entries_removed_but_several_items_keep_their_percent() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::minimization::one_deleted_folder_counts_the_entries_removed_but_several_items_keep_their_percent",
+        || {
+            let fixture = Fixture::new();
+            let removed_text = |removed| {
+                rust_i18n::t!("%{items} deleted", items = item_count_label(removed)).into_owned()
+            };
+            let delete = |names: &[&str]| {
+                let entries = names
+                    .iter()
+                    .map(|name| entry(Location::local(fixture.temp.path().join(name))))
+                    .collect();
+                fixture.view.browser().delete(entries, true);
+                let id = fixture
+                    .view
+                    .browser()
+                    .last_started_operation()
+                    .expect("deletion started");
+                (id, fixture.progress(id))
+            };
+            let report = |id, removed| {
+                fixture.operations.emit(
+                    id,
+                    OperationEvent::DeleteEntriesRemoved {
+                        request_id: id,
+                        removed,
+                    },
+                );
+            };
+
+            let (single, single_progress) = delete(&["folder"]);
+            report(single, 1_200);
+            let view_pulses = || {
+                single_progress
+                    .file_progress_view
+                    .borrow()
+                    .as_ref()
+                    .expect("visible progress")
+                    .indeterminate
+                    .get()
+            };
+            assert_eq!(
+                progress_card(&single_progress).meta.text(),
+                removed_text(1_200)
+            );
+            assert!(view_pulses(), "the bar pulses while the folder empties");
+            report(single, 2_400);
+            assert_eq!(
+                progress_card(&single_progress).meta.text(),
+                removed_text(2_400)
+            );
+
+            let (several, several_progress) = delete(&["first", "second"]);
+            let before = progress_card(&several_progress).meta.text();
+            report(several, 5_000);
+            assert_eq!(progress_card(&several_progress).meta.text(), before);
+            assert!(!before.contains("deleted"));
         },
     );
 }

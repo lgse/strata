@@ -72,12 +72,9 @@ impl LocalActionRunner {
     }
 }
 
+// Falls back to the user's cache directory, never a shared temp directory.
 fn runtime_root() -> PathBuf {
-    std::env::var_os("XDG_RUNTIME_DIR")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-        .join("strata")
+    gtk::glib::user_runtime_dir().join("strata")
 }
 
 impl ActionRunner for LocalActionRunner {

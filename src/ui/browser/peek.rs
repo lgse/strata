@@ -317,7 +317,7 @@ impl ViewState {
             .max_content_height(240)
             .propagate_natural_height(true)
             .build();
-        let presentation = LoadPresentation::new(&scroll, None);
+        let presentation = LoadPresentation::new(&scroll, None, None);
         presentation.stack.set_size_request(-1, 120);
         content.append(&presentation.stack);
 

@@ -218,6 +218,7 @@ pub(crate) struct DragSnapshot {
 }
 
 struct ActiveDrag {
+    source: glib::WeakRef<gtk::DragSource>,
     content: glib::WeakRef<gtk::gdk::ContentProvider>,
     snapshot: DragSnapshot,
 }
@@ -243,6 +244,10 @@ fn drag_snapshot_for_content(content: &gtk::gdk::ContentProvider) -> Option<Drag
             .filter(|active| active.content.upgrade().as_ref() == Some(content))
             .map(|active| active.snapshot.clone())
     })
+}
+
+pub(crate) fn active_file_drag_source() -> Option<gtk::DragSource> {
+    ACTIVE_DRAG.with(|cell| cell.borrow().as_ref()?.source.upgrade())
 }
 
 pub(crate) fn clear_active_drag() {
@@ -805,7 +810,10 @@ pub(crate) fn locations_from_file_list_value(value: &glib::Value) -> Option<Vec<
     (!locations.is_empty()).then_some(locations)
 }
 
-pub(in crate::ui) fn file_drag_content(entries: &[FileEntry]) -> Option<gtk::gdk::ContentProvider> {
+pub(in crate::ui) fn file_drag_content(
+    source: &gtk::DragSource,
+    entries: &[FileEntry],
+) -> Option<gtk::gdk::ContentProvider> {
     if entries.is_empty() {
         return None;
     }
@@ -828,6 +836,7 @@ pub(in crate::ui) fn file_drag_content(entries: &[FileEntry]) -> Option<gtk::gdk
     let locations = entries.iter().map(|entry| entry.location.clone()).collect();
     ACTIVE_DRAG.with(|cell| {
         *cell.borrow_mut() = Some(ActiveDrag {
+            source: source.downgrade(),
             content: content.downgrade(),
             snapshot: DragSnapshot {
                 locations,

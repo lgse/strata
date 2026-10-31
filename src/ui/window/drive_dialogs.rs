@@ -230,30 +230,27 @@ fn capacity_summary(total: u64, available: u64) -> ProgressSummary {
 fn refresh_format_validity(
     available: &[FilesystemType],
     fs_combo: &gtk::DropDown,
-    label_entry: &gtk::Entry,
+    label_field: &FormTextField,
     confirm_btn: &gtk::Button,
 ) {
     refresh_format_selection(
         available.get(fs_combo.selected() as usize).copied(),
-        label_entry,
+        label_field,
         confirm_btn,
     );
 }
 
 fn refresh_format_selection(
     fs_type: Option<FilesystemType>,
-    label_entry: &gtk::Entry,
+    label_field: &FormTextField,
     confirm_btn: &gtk::Button,
 ) {
     let Some(fs_type) = fs_type else {
         confirm_btn.set_sensitive(false);
         return;
     };
-    let max_length = fs_type.max_label_len() as i32;
-    if label_entry.max_length() != max_length {
-        label_entry.set_max_length(max_length);
-    }
-    confirm_btn.set_sensitive(label_entry.text().chars().count() <= fs_type.max_label_len());
+    label_field.set_limit(fs_type.max_label_len() as i32, fs_type.label_measure());
+    confirm_btn.set_sensitive(fs_type.label_fits(&label_field.entry.text()));
 }
 
 fn wire_entry_submission(entry: &gtk::Entry, confirm: &gtk::Button) {
@@ -694,6 +691,7 @@ fn show_label_dialog_for_identity(
     entry.set_max_width_chars(32);
     entry.set_text(&current_label);
     entry.select_region(0, -1);
+    crate::ui::accessibility::set_label(&entry, &crate::i18n::tr("Label shown in Strata"));
     shell
         .layout
         .body
@@ -969,8 +967,9 @@ fn fill_format_dialog<S, Fut>(
     let label_field = FormTextField::with_character_limit(
         available[fs_combo.selected() as usize].max_label_len() as i32,
     );
-    let label_entry = label_field.entry;
+    let label_entry = label_field.entry.clone();
     label_entry.set_placeholder_text(Some(&crate::i18n::tr("Volume label (optional)")));
+    crate::ui::accessibility::set_label(&label_entry, &crate::i18n::tr("Filesystem label"));
     step1.append(&field_block("Filesystem label", &label_field.widget));
 
     let quick_check = form_check_button(&crate::i18n::tr("Quick format"));
@@ -1015,23 +1014,23 @@ fn fill_format_dialog<S, Fut>(
     let confirm_btn = shell.layout.confirm.clone();
     {
         let fs_combo = fs_combo.clone();
-        let label_entry = label_entry.clone();
+        let label_field = label_field.clone();
         let confirm_btn = confirm_btn.clone();
-        label_entry.clone().connect_changed(move |_| {
-            refresh_format_validity(&available, &fs_combo, &label_entry, &confirm_btn);
+        label_entry.connect_changed(move |_| {
+            refresh_format_validity(&available, &fs_combo, &label_field, &confirm_btn);
         });
     }
     {
         let fs_combo = fs_combo.clone();
-        let label_entry = label_entry.clone();
+        let label_field = label_field.clone();
         let confirm_btn = confirm_btn.clone();
         fs_combo
             .clone()
             .connect_notify_local(Some("selected"), move |_, _| {
-                refresh_format_validity(&available, &fs_combo, &label_entry, &confirm_btn);
+                refresh_format_validity(&available, &fs_combo, &label_field, &confirm_btn);
             });
     }
-    refresh_format_validity(&available, &fs_combo, &label_entry, &confirm_btn);
+    refresh_format_validity(&available, &fs_combo, &label_field, &confirm_btn);
     wire_entry_submission(&label_entry, &confirm_btn);
 
     let shell_layer = shell.layer.clone();
@@ -1052,7 +1051,7 @@ fn fill_format_dialog<S, Fut>(
                 return;
             };
             let label = submitted_label_entry.text().to_string();
-            if label.chars().count() > fs_type.max_label_len() {
+            if !fs_type.label_fits(&label) {
                 return;
             }
             summary.set_text(&rust_i18n::t!("Drive: %{value1} (%{value2}, %{value3})\nFilesystem: %{value4}\nLabel: %{value5}\nMode: %{value6}", value1 = name, value2 = device, value3 = size, value4 = fs_type.label(), value5 = if label.is_empty() { crate::i18n::tr("(none)") } else { label.clone() }, value6 = crate::i18n::tr(if quick_check.is_active() {

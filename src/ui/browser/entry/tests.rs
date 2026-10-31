@@ -279,30 +279,35 @@ fn aggregate_directory_summary_does_not_recurse_into_directory_symlinks() {
         .expect("query realdir entry");
     assert_eq!(real_dir_entry.kind, crate::model::EntryKind::Directory);
 
-    let link_summary = context.block_on(super::aggregate_directory_summary(std::slice::from_ref(
-        &dir_link_entry,
-    )));
+    let link_summary = context.block_on(super::aggregate_directory_summary(
+        std::slice::from_ref(&dir_link_entry),
+        |_, _| {},
+    ));
     assert_eq!(link_summary.item_count, 1);
     assert_eq!(link_summary.total_size, 0);
     assert_eq!(link_summary.visible_file_count, 1);
     assert_eq!(link_summary.visible_folder_count, 0);
     assert!(!link_summary.truncated());
 
-    let dir_summary = context.block_on(super::aggregate_directory_summary(std::slice::from_ref(
-        &real_dir_entry,
-    )));
+    let dir_summary = context.block_on(super::aggregate_directory_summary(
+        std::slice::from_ref(&real_dir_entry),
+        |_, _| {},
+    ));
     assert_eq!(dir_summary.item_count, 5);
     assert_eq!(dir_summary.total_size, 5);
     assert_eq!(dir_summary.visible_file_count, 5);
     assert_eq!(dir_summary.visible_folder_count, 0);
     assert!(!dir_summary.truncated());
 
-    let combined_summary = context.block_on(super::aggregate_directory_summary(&[
-        dir_link_entry,
-        crate::test_support::operations::entry(crate::model::Location::local(
-            fixture.path().join("other.txt"),
-        )),
-    ]));
+    let combined_summary = context.block_on(super::aggregate_directory_summary(
+        &[
+            dir_link_entry,
+            crate::test_support::operations::entry(crate::model::Location::local(
+                fixture.path().join("other.txt"),
+            )),
+        ],
+        |_, _| {},
+    ));
     assert_eq!(combined_summary.item_count, 2);
     assert_eq!(combined_summary.total_size, 100);
     assert!(!combined_summary.truncated());

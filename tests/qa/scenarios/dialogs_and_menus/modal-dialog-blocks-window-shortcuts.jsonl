@@ -27,3 +27,9 @@
 {"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'"}
 {"expect":{"editable_fields":0}}
 {"fs":{"path":"todo.txt","exists":true},"timeout_ms":0}
+{"key":"alt+Return"}
+{"wait":{"dialog":"todo.txt"},"message":"Properties opens over the active tab"}
+{"key":"ctrl+comma"}
+{"expect":[{"dialog":"todo.txt"},{"absent":{"role":"button","name":"Close settings"}}],"message":"Ctrl+, must not open tab-local Settings behind a window-level Properties dialog"}
+{"key":"Escape"}
+{"wait":{"all":[{"dialog":null},{"focused":"todo.txt"}]},"message":"Escape closes Properties with no hidden Settings left underneath"}

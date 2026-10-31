@@ -5,7 +5,21 @@ use std::{collections::HashMap, fs, io::Read, path::Path};
 use crate::services::{ModelFormat, ModelPreviewStage, model_preview::*};
 
 mod embedded;
-pub(super) use embedded::thumbnail;
+mod gcode;
+
+pub(super) fn thumbnail(
+    input: &Path,
+    format: ModelFormat,
+    width: u32,
+    height: u32,
+    progress: &dyn Fn(ModelPreviewStage),
+) -> Result<Vec<u8>, String> {
+    if format == ModelFormat::Gcode {
+        gcode::thumbnail(input, width, height, progress)
+    } else {
+        embedded::thumbnail(input, format, width, height, progress)
+    }
+}
 use quick_xml::{
     Reader,
     events::{BytesStart, Event},
@@ -53,7 +67,8 @@ fn user_model_message(message: String) -> String {
         | "Model has no visible extent"
         | "External 3MF model references are not supported"
         | "This FreeCAD file has no usable embedded thumbnail"
-        | "This model has no unambiguous usable embedded thumbnail" => message,
+        | "This model has no unambiguous usable embedded thumbnail"
+        | NO_GCODE_THUMBNAIL => message,
         _ if message == triangle_limit_message() => message,
         _ if message.ends_with(" limit exceeded")
             || message.contains(" budget exceeded")
@@ -642,7 +657,7 @@ fn render_model(
         [r, g, b, 255]
     };
     match format {
-        ModelFormat::FreeCad => Ok(RenderedModel {
+        ModelFormat::FreeCad | ModelFormat::Gcode => Ok(RenderedModel {
             png: thumbnail(input, format, width, height, progress)?,
             mesh: None,
         }),

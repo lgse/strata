@@ -23,6 +23,15 @@ pub(super) fn set_label(widget: &impl IsA<gtk::Accessible>, label: &str) {
     qa::record(widget, |naming| naming.label = Some(label.to_owned()));
 }
 
+/// A tooltip is not an accessible name, so an icon-only button states it as its name too.
+pub(super) fn set_tooltip_and_label(
+    widget: &(impl IsA<gtk::Widget> + IsA<gtk::Accessible>),
+    text: &str,
+) {
+    widget.set_tooltip_text(Some(text));
+    set_label(widget, text);
+}
+
 thread_local! {
     static OWN_LABELS: RefCell<Vec<glib::WeakRef<gtk::Widget>>> = RefCell::default();
     static STAND_INS: RefCell<Vec<glib::WeakRef<gtk::Widget>>> = RefCell::default();
@@ -149,26 +158,30 @@ pub(super) fn sync_checked_with_icon(option: &impl IsA<gtk::Widget>, check: &gtk
     });
 }
 
-pub(super) fn location_confirm_label() -> String {
-    with_keys("Navigate (%{keys})", Keys::One(bindings::ENTER))
-}
-
-pub(super) fn location_cancel_label() -> String {
-    with_keys("Cancel (%{keys})", Keys::One(bindings::ESCAPE))
-}
-
-// Location controls require explicit accessible names.
+/// Location controls require explicit accessible names; the icon-only buttons
+/// also show them as tooltips.
 pub(super) fn describe_location_controls(
-    entry: &impl IsA<gtk::Accessible>,
-    confirm: &impl IsA<gtk::Accessible>,
-    cancel: &impl IsA<gtk::Accessible>,
+    entry: &gtk::Entry,
+    confirm: &gtk::Button,
+    cancel: &gtk::Button,
 ) {
-    set_label(
-        entry,
-        &with_keys("Location (%{keys})", Keys::One(bindings::LOCATION)),
-    );
-    set_label(confirm, &location_confirm_label());
-    set_label(cancel, &location_cancel_label());
+    use super::shortcut_reference::follow_keys;
+    follow_keys(entry, |entry| {
+        set_label(
+            entry,
+            &with_keys("Location (%{keys})", Keys::One(bindings::LOCATION.shown())),
+        );
+    });
+    for (button, message, key) in [
+        (confirm, "Navigate (%{keys})", bindings::ENTER),
+        (cancel, "Cancel (%{keys})", bindings::ESCAPE),
+    ] {
+        follow_keys(button, move |button| {
+            let label = with_keys(message, Keys::One(key.shown()));
+            set_label(button, &label);
+            button.set_tooltip_text(Some(&label));
+        });
+    }
 }
 
 /// The name belongs on the list item rather than on the row content: the item
@@ -340,6 +353,12 @@ pub(super) fn view_name(mode: BrowserMode) -> String {
 
 fn entry_kind_name(entry: &FileEntry) -> String {
     crate::i18n::tr(match entry.kind {
+        EntryKind::Directory if entry.is_locked_folder() => {
+            "Folder that requires administrator access"
+        }
+        EntryKind::DirectorySymbolicLink if entry.is_locked_folder() => {
+            "Folder link that requires administrator access"
+        }
         EntryKind::Directory => "Folder",
         EntryKind::DirectorySymbolicLink => "Folder link",
         EntryKind::File => "File",

@@ -88,7 +88,7 @@ control that might be midway through synchronization.
 | Folder peeking, single-click previews, columns selection mirror, mode, density, grouping, per-mode click counts | Every browser binds at construction, including lazily rebuilt view modes. Miller columns disallow folder-peek popovers regardless of the saved value; Icons and List retain the preference. The chooser explicitly disallows folder peeking and the columns selection mirror regardless of the saved values. |
 | Watch network folders | On by default. Every browser and the portal chooser bind it at construction, before Settings opens, and follow changes live across windows, tabs and rebuilt views. On, open folders on mounts that other computers or programs also change (NFS, SMB, sshfs and other FUSE mounts except `fuseblk`, and GVfs network locations) are checked every few seconds while their window shows them and at once when it regains focus, and re-read when a check finds a change. Off, those folders are not checked or re-read, so other computers' changes show only after a refresh. Those with a working change monitor still show this computer's changes at once; those without one (GVfs SMB and SFTP locations, or a folder whose monitor could not be created) show them only after a refresh too. Local folders without a working change monitor are checked either way. It replaces the former Auto-refresh setting: a saved `auto_refresh_interval` is ignored and dropped on the next save. Set under **Settings → General → Performance**. See [Changes made elsewhere](filesystem-compatibility.md#changes-made-elsewhere) for the cadence and what a check costs. |
 | Show sizes in Columns view | Enabled by default. Miller columns bind file-size and immediate folder-item-count visibility at construction, across windows and rebuilt columns. The existing badge appears on hover, selection, or the active path; disabling it hides the badge. Column widths and the row presentation are unchanged. Settings → General → Browsing and the Columns Appearance menu edit the same saved choice. List and Icons metadata are unchanged. |
-| Hidden files | Shared across existing browsers and new columns. |
+| Hidden files | Shared across existing browsers and new columns. Hidden entries stay in the model and filesystem monitor stream even while hidden, so revealing them is an in-memory filter change, not a directory rescan. |
 | Open folder after dropping files | Drop dispatch reads the saved choice (off by default), including confirmation of cross-device drops. Successful drops reveal the destination only when enabled and the user is still at the transfer origin. Paste and Move/Copy to remain unchanged. |
 | Cross-device drag and drop | Drop dispatch reads the current Copy, Move, or Ask strategy; unresolved volume lookups follow the same cross-device policy. |
 | Default sort key/direction | The sort for folders without their own; see [Per-folder sort and thumbnail size](#per-folder-sort-and-thumbnail-size). Set under **Settings → General → Browsing → Default sort**; open columns that follow the default re-sort live in every window. With per-folder settings off, an explicit field sort updates the default instead and existing columns keep their own sort. Camera Photos libraries open in column-local Device order (see below). |
@@ -107,19 +107,21 @@ control that might be midway through synchronization.
 | Theme, Omarchy following/variant, text size | `ThemeManager` applies shared CSS when theme selection, Omarchy following, Omarchy variant, text size, or element glow change; controls and theme-card selections bind to preferences through `ThemeManager::bind_theme_preference`. Newly saved custom themes appear in other open theme pages. Missing themes/Omarchy use the existing fallback policy. |
 | Language | Initialized before application UI from the saved manual language or system locale priorities. The selection and Restart button synchronize across Settings windows, but the running interface keeps its startup language until a full restart. This deliberate restart-to-apply exception avoids rebuilding active browsers, dialogs, and operations. |
 | Interface renderer | GTK selects the renderer at process startup. The saved GTK default or Cairo choice is read before GTK initializes; GTK default is selected for new installs. The control and Restart button synchronize across Settings windows, but changes take effect only after restarting Strata (via the button or after fully quitting and reopening). An explicit `GSK_RENDERER` always overrides the saved choice. |
+| Keymap overrides | Every key dispatcher, the portal chooser included, reads the tables built from the saved overrides at press time, before Settings opens; labels that show shortcuts follow changes live across windows. See [Keymap](#keymap). Edited under **Settings → Keyboard**, one table per mode. |
 | Keybinding hints | Navigation hints and the shortcuts button bind immediately and live. When hidden, the status bar appears only while the clipboard badge or F1 reference needs it; otherwise the empty bar is hidden. |
 | Show thumbnails | Enabled by default. **Settings → Appearance → File icons** switches file thumbnails to the existing file-type icons. Applies before Settings opens and live across browser windows, the portal chooser, searches, peeks, and rebuilt views. Disabling cancels pending thumbnail requests and prevents cache reads and decoding for new requests; re-enabling restores thumbnails for still-bound entries. Live thumbnail changes preserve pending dimensions and duration metadata; rebinding or unbinding a row still discards stale updates. Custom icons and the preview panel are unchanged. |
-| STL model thumbnails | Off by default. **Settings → Appearance → File icons** enables fixed-view, software-rendered thumbnails of local STL models when Show thumbnails is also enabled. Applies before Settings opens and live to bound slots across browser windows, the portal chooser, searches, peeks, and rebuilt views; disabling also hides cached STL artwork and cancels pending requests. Rendering uses the existing queue and sandbox, with at most one background STL render at a time across the application process, within the general worker budget. Cancellation and timeout release the background slot after sending SIGKILL; a detached waiter reaps the helper, so a killed process stuck in I/O does not stop the queue. Quick Preview is independent and may render concurrently. Existing input and geometry limits apply; failures leave the file icon. 3MF/FreeCAD continue to use embedded images only for file thumbnails. |
+| STL model thumbnails | Off by default. **Settings → Appearance → File icons** enables fixed-view, software-rendered thumbnails of local STL models when Show thumbnails is also enabled. Applies before Settings opens and live to bound slots across browser windows, the portal chooser, searches, peeks, and rebuilt views; disabling also hides cached STL artwork and cancels pending requests. Rendering uses the existing queue and sandbox, with at most one background STL render at a time across the application process, within the general worker budget. Cancellation and timeout release the background slot after sending SIGKILL; a detached waiter reaps the helper, so a killed process stuck in I/O does not stop the queue. Quick Preview is independent and may render concurrently. Existing input and geometry limits apply; failures leave the file icon. 3MF, FreeCAD, and G-code continue to use embedded images only for file thumbnails. |
 | Thumbnail workers | Browser construction binds the shared decoder limit before Settings opens. Changes apply across windows and rebuilt views; lowering the limit lets active work finish and retires excess idle supervisors. |
-| List column order and visibility | Browser windows and the portal chooser share column order and visibility, including newly opened List panes. Drag a heading to reorder it; the Columns menu, heading context menu, and Appearance → Customize columns edit the same saved choices. Name cannot be hidden. Hiding, showing, reordering, or resetting columns changes only their presentation, never the sort key or direction. A hidden sort column remains active, including for saved folder sorts, newly opened folders, and view switches; showing it again restores its sort indicator. Widths retain their independent browser and chooser scopes below. |
+| List column order and visibility | Browser windows and the portal chooser share column order and visibility, including newly opened List panes. Dragging a heading previews its destination with an accent-colored line; column order changes only on release. Cancelling or releasing outside the headings leaves the order unchanged. The Columns menu, heading context menu, and Appearance → Customize columns edit the same saved choices. Name cannot be hidden. Hiding, showing, reordering, or resetting columns changes only their presentation, never the sort key or direction. A hidden sort column remains active, including for saved folder sorts, newly opened folders, and view switches; showing it again restores its sort indicator. Widths retain their independent browser and chooser scopes below. |
 | Browser and chooser column widths | A Columns resize or a List heading resize, including double-click autofit, saves the unscaled width. A Columns drag or autofit stops at the visible browser area: the window minus the preview divider and the sidebar at its full width, so while a narrow window rails the sidebar, columns stop short of the window edge by the width the rail gives up. Columns opened later, including a saved width from before, are narrowed to the current area, and so are open columns when the window first lays out and after a text-size change; returning to the earlier text size restores the dragged width. Resizing the window does not narrow open columns; dragging the edge of one that is wider than the area snaps it to the area. New columns and rebuilt List panes read the latest saved defaults before Settings opens. Dragging a Columns edge resizes that column as the pointer moves, with a **Column width** caption that appears once the pointer rests on the edge and follows it through the drag, and when the drag ends the window's other open columns ease to the same width; double-click autofit changes only its own column. Other windows keep their widths. Browser defaults (`browser_column_width`, `browser_list_columns`) and chooser defaults (`chooser_column_width`, `chooser_list_columns`) are independent. The Name column keeps expanding until it is resized itself. Not exposed in Settings. |
 | Icons view thumbnail size | The default size for folders without their own; see [Per-folder sort and thumbnail size](#per-folder-sort-and-thumbnail-size). Every browser binds at construction, and an Icons pane resolves its folder's size before it is built, so it opens at that size. With per-folder settings off, the popover slider sets the default. Visible Icons panes in other windows resize when their folder's size or the default changes. Clamped to 32–256 px; not exposed in Settings. |
 | Hardware video acceleration/backend | Preview providers read the current choice when requesting a preview; changing it does not restart an already playing file. Settings controls and backend availability synchronize live. |
+| Units | Metric by default: kilometres and metres. Imperial uses miles and feet. Settings → General → Units edits the saved `unit_system` choice. Open previews, including the chooser, update immediately without resetting playback; new files and later sessions use the saved choice. |
 | Preview text wrap | Every text preview and header toggle binds to the saved wrap choice, including newly loaded files. Off by default. |
 | Preview autoplay | Read when a video, audio, or GIF preview is first shown. Off by default: playback waits for an explicit play action; the generic player shows its center play affordance, and the audio and video views their transport play button. When on, playback starts silent and fades in on a slow-in, slow-out curve, over 1 s from the first frame for video and over 0.5 s from the first sample for audio, unless the saved audio state is muted or the file is shorter than 10 s, which plays at full volume at once; any play, pause, seek, volume or mute input brings the sound in at once, and the saved volume is never changed. Continuing playback into the next file with `<` / `>` keeps its sound. Does not affect resuming playback that was already active before a preview pane was temporarily hidden by a resize. |
 | Render documents by default | A newly loaded Markdown or HTML preview reads the current choice for its initial Rendered or Source view. Switching the view of an open document does not change the saved default. |
 | Preview mute/volume | Every player's controls and media stream bind to the saved audio state. Slider changes publish/persist together, without a delayed stale save overwriting another window or being discarded when closing a preview. |
-| Automatic updates, release channel | Eligibility checks read current preferences. Controls synchronize, and all windows clear outdated notices when these preferences change, even without opening Settings. A package-managed installation's tracked channel is enforced when read, not by constructing Settings. On by default. The switch controls the automatic check, which runs at every start once the first window paints and again when a window or **Settings → Updates** opens if no check has completed in the last 24 hours. Turning it off also locks the channel, hides shown update notices, and discards an in-flight check's result; turning it back on or changing the channel checks immediately. **Check now** and the release-notes card (fetched when the Updates page opens, unless cached) ignore the switch. |
+| Automatic updates, release channel | Eligibility checks read current preferences. Controls synchronize, and all windows clear outdated notices when these preferences change, even without opening Settings. A package-managed installation's tracked channel is enforced when read, not by constructing Settings. On by default. The switch controls the automatic check, which runs at every start once the first window paints and again when a window or **Settings → Updates** opens if no check has completed in the last 24 hours. Turning it off also locks the channel, hides shown update notices, and discards an in-flight check's result; turning it back on or changing the channel checks immediately. The Updates page reuses the latest completed check and follows later results in every open Settings window, without starting another request just to display them. Running or completed installations keep their own status. **Check now** and the release-notes card (fetched when the Updates page opens, unless cached) ignore the switch. |
 | Sidebar order | Existing sidebars bind to the shared order. |
 | Sidebar default-place visibility | Existing sidebars bind to the shared Home, Trash, Network, Recent, and standard-folder visibility (Desktop, Documents, Downloads, Music, Pictures, and Videos) and rebuild. Enabled by default; hiding removes that place from the sidebar without changing pins or devices. Recent is also omitted when GTK recent-file tracking or the runtime Recent VFS backend is unavailable, and from local-only sidebars. Toggle the location chips under General → Sidebar; existing default-place Unpin context actions remain available where supported. Re-enable a hidden place’s chip to restore it. |
 | Sidebar expanded | Browser windows bind their header toggle at construction: a saved collapsed state starts closed without animation. The header toggle, `Ctrl+B`, or `Ctrl+N` in 10xer mode steps the sidebar from full to compact to hidden and back to full; each step persists and updates all open browser windows live. Expanded by default; not exposed in Settings. The portal chooser keeps its own unsaved sidebar state. |
@@ -148,8 +150,8 @@ the portal chooser, custom themes, Omarchy theme changes) is parsed on the write
 and applied on the interface thread; the file monitors that notice those changes are
 created and released on the monitors worker that also watches open folders, and once
 each of them is live what it watches is read once more, so a change made while it was
-starting is not missed (the Omarchy theme folders are watched anew only when that
-set of folders changes); a change of this process's own that is still being saved
+starting is not missed (Omarchy follows the resolved theme directory, rebinding
+its watch when a theme symlink points elsewhere); a change of this process's own that is still being saved
 wins over an older save from elsewhere. Selection, history, the sort of
 folders that are not remembered, filter query, transient theme
 catalog filters, dialogs, and preview playback position remain window-local.
@@ -160,6 +162,13 @@ plus `$XDG_DATA_HOME/strata/udiskie-install/state.toml`.
 Synchronization between independently running application processes, or manual
 external edits to `settings.toml` while Strata runs, is not supported by this
 in-process binding mechanism. External edits are read on the next launch.
+A save writes only the settings this process changed or repaired at startup since
+its last successful save, over the file as it is on disk, so it keeps what another
+process, such as the portal chooser, wrote to the other settings, and keys this
+version does not know. Folder colors, custom icons, device labels, Send to
+destinations and Omarchy variants are merged entry by entry. If two processes change
+the same setting, the later save wins. A file that cannot be read or parsed is left
+unchanged and the save fails.
 
 ## Per-folder sort and thumbnail size
 
@@ -307,8 +316,8 @@ without resetting other preferences.
 ## Language
 
 **Settings → General → Language** offers **Auto-detect** (the default) and
-English, French, German, Spanish, Japanese, Brazilian Portuguese, Korean,
-Vietnamese, Italian, Russian, Simplified Chinese, and Traditional Chinese.
+English, French, Hungarian, German, Spanish, Japanese, Brazilian Portuguese,
+Korean, Vietnamese, Italian, Russian, Simplified Chinese, and Traditional Chinese.
 Language names use their native spelling so the selector remains recognizable
 after an accidental choice.
 Save a manual choice as `language = "fr"` or `language = "zh-CN"`, for example,
@@ -480,6 +489,107 @@ Columns the cursor opens the folder or preview under it. **i** opens the next
 Miller column without focusing it, or toggles the folder-peek popover in List
 and Icons. See
 [10xer mode](10xer-mode.md) for the keymap.
+
+## Keymap
+
+`settings.toml` stores keyboard shortcut overrides only, one table per map:
+`[keymap.default]` and `[keymap.tenxer]` (10xer mode). Each entry names a
+command by its stable id from `ui::keys::bindings` and lists its accelerators,
+primary first; the primary is the one menus show, and all of them work. A file
+without overrides has no `keymap` tables, so existing files save unchanged.
+
+```toml
+[keymap.default]
+rename = ["F2"]
+duplicate = []
+
+[keymap.tenxer]
+"go.home" = ["<Shift>h"]
+toggle_sidebar = ["<Control>n", "F9"]
+```
+
+- An entry replaces that map's whole entry for the command; the other map keeps
+  its own. An empty list unbinds the command, so its key reaches GTK. A
+  structural key (`escape`, `activate`, `focus_next`, `focus_previous`, `up`,
+  `down`, `left`, `right`) with an empty list leaves Strata's handlers, while
+  GTK widgets keep their own handling of the physical key, and physical Escape
+  always cancels.
+- Accelerators use GTK's syntax, as `Binding::accelerator` writes them: Ctrl,
+  Alt, Shift and Super only, Shift written out (`<Shift>g`; a letter's case does
+  not matter), digits by digit-row position, keypad keys as the main keys they
+  act as. A plain digit also accepts Shift, which AZERTY needs.
+- A plain printable key (no Ctrl, Alt or Super) that an entry adds acts only
+  where nothing owns typing: a focused text field or popover, and
+  type-to-search while it is on, keep the key, as they keep structural
+  alternates. Such a key on `shortcut_reference` opens the reference wherever
+  it would not type, as 10xer's **~** does. Repeated accelerators in one entry
+  count once.
+- In `[keymap.tenxer]`, chord steps such as `go.home` match only while their
+  trigger is pending. Shift with a Sort step reverses it on whatever key the
+  step is bound to; a key bound to a step itself, such as `<Shift>a`, picks
+  that step instead.
+- A command a map ships no key for runs there only if one of its stages reads
+  it. In `[keymap.default]` that is `open_with`, `move_to`, `copy_to`,
+  `restore`, `invert_selection`, `search_subfolders`, `jump_visited`,
+  `jump_recent`, `half_page_up`, `half_page_down`, and the `sort.*`,
+  `copy_as.*` and `actions.*` steps but `actions.folder`, which act as plain
+  keys there, without a trigger or Shift reversal, and the custom action slots `"custom_action.1"` to
+  `"custom_action.10"`, which run the Nth action Settings → Actions lists; in
+  `[keymap.tenxer]`, `duplicate`, `pin`,
+  `jump_to_folder`, `arrow_scope` and, on a key that types nothing, `copy_path`. Any
+  other such entry, such as `yank` or `"go.home"` in `[keymap.default]`, does
+  nothing, and the load-time check below logs it.
+  Digit ranges are not commands and keep their keys. Quote ids that contain a
+  dot: unquoted, TOML reads `go.home = [..]` as a table, which is logged and
+  left out.
+- An uppercase letter without `<Shift>`, such as `<Control>E`, is logged once
+  as a warning, because GTK reads it as the plain letter while labels show
+  Shift+e as **E**; the entry still applies as the plain letter. Keys recorded
+  in Settings are always saved in the lowercase, Shift-explicit form.
+- An entry whose id names no command, that is not a list, or that holds an
+  accelerator Strata cannot read is logged once with the file's path, kept
+  verbatim in the file, and left out of the tables, so that command keeps its
+  shipped keys and a newer version's entries survive an older version's save.
+  A map that is not a table is dropped without touching the other map.
+- Keys an entry adds beyond its shipped ones are checked against the rest of
+  their table when the tables are first built (see
+  [Checking keymap entries](keyboard-shortcuts.md#checking-keymap-entries)),
+  with type-to-search as saved. Each finding is logged once with the file's
+  path, the map, the id, the accelerator and the finding: an error, such as a
+  key another command holds, as a warning, and a key that works only in some
+  places as information. The entry still applies.
+- `PreferenceManager` builds the tables (`keymap()`) on first use and rebuilds
+  them on every change through `set_bindings`, `reset_binding` and `reset_map`;
+  saving the shipped keys removes the entry, and `reset_map` keeps unknown ids.
+  `keys::active_keymap()` reads these tables, so dispatch in every window and
+  the portal file chooser follows the file loaded at startup before Settings
+  opens. Text built once that shows shortcuts binds to `shown_keys` (10xer mode,
+  whether type-to-search is active, since labels then leave out the plain keys a
+  user added to the default map, and `keymap_revision()`) through
+  `shortcut_reference::follow_keys`: footer
+  hints, the F1 reference, sidebar keycaps, tooltips, Settings copy that names
+  keys, and context-menu hints with their native `accel` attributes follow a
+  change in every open window.
+- Where 10xer key presses fall through to default-map stages (keys the 10xer
+  stages do not claim, text fields, popovers, the file chooser's own keys,
+  thumbnail resizing), the default
+  table's overrides apply in both modes; a `[keymap.tenxer]` entry changes only
+  what the 10xer stages claim.
+
+**Settings → Keyboard** edits the same overrides: capturing a key appends it,
+removing a chip or resetting writes the entry again, and saving the shipped keys
+removes the entry. A captured key goes through the same check first, with
+type-to-search as it is then: an error (the key never fires there, or stops
+another key working) refuses it and keeps the capture waiting, and a warning
+(the key works only in some places) saves it with a note under the row. Resets
+and hand edits can still leave errors in a table; the page shows them under the
+rows they affect. It reads the tables and the checker's findings when an
+override or type-to-search changes, in every open window; see
+[Settings keyboard page](keyboard-shortcuts.md#settings-keyboard-page) and, for
+users, [Keymap](keymap.md).
+
+Like other preferences, hand edits made while Strata runs are read on the next
+launch.
 
 ## Content and Frame density
 

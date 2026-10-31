@@ -7,7 +7,12 @@ use crate::services::{MediaPreviewSize, ModelPalette, ModelView};
 fn model_metadata_accepts_only_the_requested_camera_or_a_supported_thumbnail() {
     let directory = tempfile::tempdir().expect("fixture directory");
     let path = directory.path().join("result.model");
-    for format in [ModelFormat::Stl, ModelFormat::ThreeMf, ModelFormat::FreeCad] {
+    for format in [
+        ModelFormat::Stl,
+        ModelFormat::ThreeMf,
+        ModelFormat::FreeCad,
+        ModelFormat::Gcode,
+    ] {
         for view in ModelView::ALL {
             let render = ModelRender {
                 purpose: crate::services::ModelRenderPurpose::Preview,
@@ -28,7 +33,7 @@ fn model_metadata_accepts_only_the_requested_camera_or_a_supported_thumbnail() {
             for (value, expected) in [
                 (
                     serde_json::to_vec(&Some(mesh)).expect("metadata"),
-                    (format != ModelFormat::FreeCad).then_some(Some(mesh)),
+                    matches!(format, ModelFormat::Stl | ModelFormat::ThreeMf).then_some(Some(mesh)),
                 ),
                 (
                     b"null".to_vec(),
