@@ -137,7 +137,8 @@ selects its first visible entry. A preview that is showing something (content or
 placeholder) is a drag-only origin: a plain click there leaves the selection alone and only a
 drag past the threshold changes it, while the empty reserved preview slot clears like the strip
 beside the columns. Presses on controls, including disabled ones and drag handles such as the
-preview header, never start a marquee. Click
+preview header, never start a marquee, and neither do presses on a viewport's own
+scrollbars, including overlay scrollbars drawn over blank row space. Click
 activation and automatic preview wait for release and reject cancelled gestures, drag motion,
 and recycled items. Marquees anchor and cache mapped item geometry in scroll-content
 coordinates, independent of native GtkScrollable or GtkViewport layout. Edge and wheel scrolling
