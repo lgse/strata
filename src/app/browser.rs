@@ -15,12 +15,12 @@ use crate::{
         ArchiveFormat, CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest,
         DirectoryChange, DirectoryRequest, DirectoryStamp, ExtractRequest, FileSource,
         ItemIdentity, LoadHandle, LocationValidationError, MetadataOutcome, MetadataRequest,
-        MoveRecord, NameMode, OperationEvent, OperationProvider, OperationRequestId,
-        PasswordFailure, PasteItem, PasteRequest, PlacedSnapshot, RenameRecord, RenameRequest,
-        RenamedItem, RequestId, Responsiveness, RestoreRequest, RestoreSource, RestoreTrashItem,
-        StampAnswer, TransferConflict, TransferReport, UndoCopyRequest, UndoMergeRequest,
-        UndoMoveItem, UndoMoveRequest, UndoRenameRequest, Watching, validate_basename,
-        validate_uri_credentials,
+        MoveRecord, NameMode, NewEntryPath, OperationEvent, OperationProvider, OperationRequestId,
+        PasswordFailure, PasteItem, PasteRequest, PlaceNewEntryRequest, PlacedSnapshot,
+        RenameRecord, RenameRequest, RenamedItem, RequestId, Responsiveness, RestoreRequest,
+        RestoreSource, RestoreTrashItem, StampAnswer, TransferConflict, TransferReport,
+        UndoCopyRequest, UndoMergeRequest, UndoMoveItem, UndoMoveRequest, UndoRenameRequest,
+        Watching, validate_basename, validate_uri_credentials,
     },
 };
 
@@ -808,6 +808,23 @@ fn push_pending_undo(entry: UndoEntry) {
         pending.push_entry(false, entry);
         pending.fold_group_tail();
     });
+}
+
+/// Naming a new item with a path moves or replaces the item its creation
+/// recorded, so undoing that creation removes what the naming made instead.
+fn retarget_created_undo(created: &Location, placed: Location) {
+    let retargeted = PENDING_UNDO.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        let recorded = pending.history.iter_mut().rev().find(|undo| {
+            !undo.claimed
+                && matches!(&undo.entry, UndoEntry::Copy(locations)
+                    if locations.as_slice() == std::slice::from_ref(created))
+        });
+        recorded.map(|undo| undo.entry = UndoEntry::Copy(vec![placed.clone()]))
+    });
+    if retargeted.is_none() {
+        push_pending_undo(UndoEntry::Copy(vec![placed]));
+    }
 }
 
 fn push_background_undo(entry: UndoEntry) {
@@ -2729,6 +2746,59 @@ impl Browser {
                 id: request_id,
                 entry,
                 new_name,
+            },
+            publish,
+        );
+        self.install_operation_load(request_id, load);
+        Some(request_id)
+    }
+
+    /// Names a just-created item with a relative path, which a rename cannot.
+    pub fn place_new_entry(
+        self: &Rc<Self>,
+        entry: FileEntry,
+        path: NewEntryPath,
+    ) -> Option<OperationRequestId> {
+        let Some(provider) = self.operation_provider.borrow().clone() else {
+            self.emit(BrowserEvent::RenameFailed {
+                request_id: None,
+                message: crate::i18n::tr("File operations are unavailable"),
+            });
+            return None;
+        };
+        let request_id = self.try_begin_operation()?;
+        self.rename_operation.set(Some(request_id));
+        // The view selects what took the item's place, not the row beside it.
+        self.state
+            .borrow_mut()
+            .set_selectionless_removals([entry.location.clone()]);
+        let refresh_locations = entry.location.parent().into_iter().collect();
+        let emit = self.operation_callback(request_id, true, refresh_locations);
+        let created = entry.location.clone();
+        let weak = Rc::downgrade(self);
+        let publish = Rc::new(move |event: OperationEvent| {
+            if let OperationEvent::NewEntryPlaced {
+                request_id: id,
+                created: placed,
+            } = &event
+                && *id == request_id
+            {
+                if let Some(outermost) = placed.first() {
+                    retarget_created_undo(&created, outermost.clone());
+                }
+            } else if let Some(browser) = weak.upgrade() {
+                browser
+                    .state
+                    .borrow_mut()
+                    .retain_selectionless_removals(std::iter::empty());
+            }
+            emit(event);
+        });
+        let load = provider.place_new_entry(
+            PlaceNewEntryRequest {
+                id: request_id,
+                entry,
+                path,
             },
             publish,
         );

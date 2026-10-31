@@ -985,6 +985,7 @@
   "“%{name}” changed during the move and was left in “%{folder}”": "“%{name}”在移动过程中发生了变化，已留在“%{folder}”中",
   "“%{name}” changed during the restore and was left in the Trash": "“%{name}”在还原过程中发生了变化，已留在回收站中",
   "“%{name}” is a reserved name in this location": "“%{name}”是此位置的保留名称",
+  "“%{name}” is not a folder": "“%{name}”不是文件夹",
   "“%{name}” is already pinned": "“%{name}”已固定",
   "“%{name}” is an executable file. Only run programs you trust.": "“%{name}”是可执行文件。请只运行你信任的程序。",
   "“%{name}” is not a usable program name: it cannot be empty, start with a dash, or contain a NUL byte": "程序名“%{name}”无效：不能为空、不能以连字符开头，也不能包含 NUL 字节",

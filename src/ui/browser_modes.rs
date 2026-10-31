@@ -819,7 +819,7 @@ impl ModeViews {
     pub(in crate::ui) fn take_active_rename(
         &self,
         field: &gtk::Entry,
-    ) -> Option<(FileEntry, String)> {
+    ) -> Option<super::collection_edit::Submission> {
         super::collection_edit::take_submission(&self.active_rename, field)
     }
 
@@ -876,10 +876,10 @@ impl ModeViews {
             if let Some(state) = state.upgrade() {
                 state.submit_mode_rename(field);
             } else if let Some(active) = active.upgrade()
-                && let Some((entry, name)) = super::collection_edit::take_submission(&active, field)
+                && let Some(submission) = super::collection_edit::take_submission(&active, field)
                 && let Some(browser) = browser.upgrade()
             {
-                super::browser::queue_rename(&browser, entry, name);
+                super::browser::queue_rename(&browser, submission.entry, submission.name);
             }
         })
     }
@@ -974,7 +974,13 @@ impl ModeViews {
         )
     }
 
-    pub fn begin_rename(&self, depth: usize, source_position: usize, entry: &FileEntry) -> bool {
+    pub fn begin_rename(
+        &self,
+        depth: usize,
+        source_position: usize,
+        entry: &FileEntry,
+        new_item: bool,
+    ) -> bool {
         self.cancel_rename();
         let pane = match self.mode {
             BrowserMode::Columns => return false,
@@ -1007,6 +1013,7 @@ impl ModeViews {
             return false;
         };
         let mut target = super::collection_edit::EditTarget::from(widgets);
+        target.new_item = new_item;
         self.bind_rename_cancellation(&mut target, &entry.location);
         if self.mode == BrowserMode::List {
             let state = self.context_state.borrow().clone().unwrap_or_default();

@@ -7,7 +7,7 @@
 
 use crate::{
     model::{FileEntry, Location},
-    services::validate_basename,
+    services::{NewEntryPath, validate_basename},
 };
 use gtk::{glib, prelude::*};
 use std::{cell::RefCell, rc::Rc};
@@ -88,6 +88,8 @@ pub(super) struct EditTarget {
     pub(super) reveal: Option<Reveal>,
     pub(super) finish: Option<Rc<dyn Fn()>>,
     pub(super) cancelled: Option<Rc<dyn Fn()>>,
+    /// The entry was just created, so a local one may be named with a path.
+    pub(super) new_item: bool,
 }
 
 impl From<EditWidgets> for EditTarget {
@@ -97,6 +99,7 @@ impl From<EditWidgets> for EditTarget {
             reveal: None,
             finish: None,
             cancelled: None,
+            new_item: false,
         }
     }
 }
@@ -110,6 +113,14 @@ pub(super) struct ActiveEdit {
     focus_handler: Option<glib::SignalHandlerId>,
     tick: Option<gtk::TickCallbackId>,
     submitted: bool,
+    allows_path: bool,
+}
+
+pub(super) struct Submission {
+    pub(super) entry: FileEntry,
+    pub(super) name: String,
+    /// The name may be a relative path; see [`NewEntryPath`].
+    pub(super) allows_path: bool,
 }
 
 impl Drop for ActiveEdit {
@@ -159,7 +170,7 @@ pub(super) fn cancel(active: &RefCell<Option<ActiveEdit>>) -> bool {
 pub(super) fn take_submission(
     active: &RefCell<Option<ActiveEdit>>,
     field: &gtk::Entry,
-) -> Option<(FileEntry, String)> {
+) -> Option<Submission> {
     if !field.is_sensitive()
         || !active
             .borrow()
@@ -170,9 +181,13 @@ pub(super) fn take_submission(
     }
     let mut edit = active.take()?;
     edit.submitted = true;
-    let result = (edit.entry.clone(), field.text().to_string());
+    let submission = Submission {
+        entry: edit.entry.clone(),
+        name: field.text().to_string(),
+        allows_path: edit.allows_path,
+    };
     drop(edit);
-    Some(result)
+    Some(submission)
 }
 
 pub(super) fn begin(
@@ -190,8 +205,10 @@ pub(super) fn begin(
     field.set_sensitive(true);
     field.remove_css_class("error");
     crate::ui::accessibility::set_description(&field, None);
-    let changed = field.connect_changed(|field| {
-        update_basename_validation(field);
+    let allows_path = target.new_item && entry.location.native_path().is_some();
+    let path_kind = allows_path.then_some(entry.is_directory());
+    let changed = field.connect_changed(move |field| {
+        update_name_validation(field, path_kind);
     });
     let activate = submit.clone();
     let activated = field.connect_activate(move |field| activate(field));
@@ -242,6 +259,7 @@ pub(super) fn begin(
         focus_handler: Some(focus_handler),
         tick,
         submitted: false,
+        allows_path,
     }));
     field.grab_focus();
     field.select_region(0, end);
@@ -281,18 +299,23 @@ pub(super) fn rename_stem_end(name: &str) -> i32 {
     name[..end].chars().count().min(i32::MAX as usize) as i32
 }
 
-// Empty fields are an ordinary editing state, although they cannot be submitted.
-pub(super) fn basename_field_error(name: &str) -> Option<&'static str> {
-    if name.is_empty() {
-        None
-    } else {
-        validate_basename(name).err()
+/// Empty fields are an ordinary editing state, although they cannot be submitted.
+/// `path_kind` is whether a new item that may be named with a path is a folder.
+pub(super) fn name_field_error(name: &str, path_kind: Option<bool>) -> Option<&'static str> {
+    match path_kind {
+        _ if name.is_empty() => None,
+        Some(is_directory) => NewEntryPath::parse(name, is_directory).err(),
+        None => validate_basename(name).err(),
     }
 }
 
 pub(in crate::ui) fn update_basename_validation(field: &gtk::Entry) -> bool {
+    update_name_validation(field, None)
+}
+
+fn update_name_validation(field: &gtk::Entry, path_kind: Option<bool>) -> bool {
     let text = field.text();
-    match basename_field_error(text.as_str()) {
+    match name_field_error(text.as_str(), path_kind) {
         None => {
             field.remove_css_class("error");
             crate::ui::accessibility::set_description(field, None);

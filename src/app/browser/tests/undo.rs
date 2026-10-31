@@ -1637,6 +1637,75 @@ fn a_created_file_can_be_undone_by_trashing_it() {
 }
 
 #[test]
+fn naming_a_created_file_with_a_path_makes_undo_trash_the_outermost_new_folder() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    UNDO_COPY_REQUESTS.with(|requests| requests.borrow_mut().clear());
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    browser.create_new_file(Location::local("/fixture"));
+
+    let request_id = browser.place_new_entry(
+        fixture_entry("/fixture/new file"),
+        crate::services::NewEntryPath::parse("docs/today.txt", false).expect("path"),
+    );
+
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::RenameCompleted { request_id: completed } if Some(*completed) == request_id
+    )));
+    let (generation, locations) = browser.pending_undo_copy().expect("pending copy undo");
+    assert_eq!(locations, [Location::local("/fixture/docs")]);
+    assert!(browser.undo_copy(generation, locations));
+    assert_eq!(
+        UNDO_COPY_REQUESTS.with(|requests| requests.borrow().clone()),
+        vec![vec![Location::local("/fixture/docs")]]
+    );
+    assert_eq!(
+        pending_undo_entry(),
+        None,
+        "the creation is undone only once"
+    );
+}
+
+#[test]
+fn a_failed_path_naming_leaves_the_created_file_to_undo() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.create_new_file(Location::local("/fixture"));
+    let operations = Rc::new(crate::test_support::operations::HeldOperations::default());
+    browser.set_operation_provider(operations.clone());
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    let request_id = browser
+        .place_new_entry(
+            fixture_entry("/fixture/new file"),
+            crate::services::NewEntryPath::parse("todo.txt/today.txt", false).expect("path"),
+        )
+        .expect("placement started");
+    operations.emit(
+        request_id,
+        OperationEvent::Failed {
+            request_id,
+            message: "“todo.txt” is not a folder".to_owned(),
+            password_failure: None,
+        },
+    );
+
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::RenameFailed { request_id: Some(failed), .. } if *failed == request_id
+    )));
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Copy(vec![Location::local("/fixture/new file")]))
+    );
+}
+
+#[test]
 fn a_completed_compression_records_the_archive_for_undo() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     browser.set_operation_provider(Rc::new(ImmediateOperationProvider));

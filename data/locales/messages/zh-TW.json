@@ -988,6 +988,7 @@
   "“%{name}” changed during the move and was left in “%{folder}”": "“%{name}” 在移動過程中發生變更，已留在 “%{folder}”",
   "“%{name}” changed during the restore and was left in the Trash": "“%{name}” 在還原過程中發生變更，已留在垃圾桶",
   "“%{name}” is a reserved name in this location": "“%{name}” 是此位置的保留名稱",
+  "“%{name}” is not a folder": "“%{name}” 不是資料夾",
   "“%{name}” was left in the Trash, as what replaced it may have changed since": "“%{name}” 已留在垃圾桶，因為取代它的項目可能已變更",
   "“%{name}” was left in “%{folder}”, as a file in it is still in use by Strata": "“%{name}” 已留在 “%{folder}”，因為其中的某個檔案仍由 Strata 使用中",
   "“%{name}” was left in “%{folder}”, as a file in it is still open in %{program}": "“%{name}” 已留在 “%{folder}”，因為其中的某個檔案仍在 %{program} 中開啟",

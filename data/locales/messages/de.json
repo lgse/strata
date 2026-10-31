@@ -985,6 +985,7 @@
   "“%{name}” changed during the move and was left in “%{folder}”": "„%{name}“ hat sich während des Verschiebens geändert und ist in „%{folder}“ geblieben",
   "“%{name}” changed during the restore and was left in the Trash": "„%{name}“ hat sich während der Wiederherstellung geändert und ist im Papierkorb geblieben",
   "“%{name}” is a reserved name in this location": "„%{name}“ ist an diesem Ort ein reservierter Name",
+  "“%{name}” is not a folder": "„%{name}“ ist kein Ordner",
   "“%{name}” is already pinned": "„%{name}“ ist bereits angeheftet",
   "“%{name}” is an executable file. Only run programs you trust.": "„%{name}“ ist eine ausführbare Datei. Führen Sie nur Programme aus, denen Sie vertrauen.",
   "“%{name}” is not a usable program name: it cannot be empty, start with a dash, or contain a NUL byte": "„%{name}“ ist kein verwendbarer Programmname: Er darf nicht leer sein, nicht mit einem Bindestrich beginnen und kein NUL-Byte enthalten",

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-use super::{ArchiveFormat, RenameCause, RenamedItem, TransferReport, validate_basename};
+use super::{
+    ArchiveFormat, NewEntryPath, RenameCause, RenamedItem, TransferReport, validate_basename,
+};
 use crate::{
     model::{EntryKind, Location},
     test_support::operations::entry,
@@ -42,6 +44,41 @@ fn basenames_accept_single_native_and_unicode_components() {
             validate_basename(name).is_ok(),
             "{name:?} should be accepted"
         );
+    }
+}
+
+#[test]
+fn new_entry_paths_split_folders_and_a_trailing_slash() {
+    for (text, is_directory, folders, name, folder) in [
+        ("note.txt", false, &[][..], "note.txt", false),
+        ("docs/", false, &[], "docs", true),
+        ("docs/", true, &[], "docs", true),
+        ("docs/note.txt", false, &["docs"], "note.txt", false),
+        ("a/b/c/", false, &["a", "b"], "c", true),
+        ("a/b", true, &["a"], "b", true),
+        (" a /.b", false, &[" a "], ".b", false),
+    ] {
+        let path = NewEntryPath::parse(text, is_directory).expect(text);
+        assert_eq!(path.folders, folders, "{text:?}");
+        assert_eq!(path.name, name, "{text:?}");
+        assert_eq!(path.folder, folder, "{text:?}");
+    }
+}
+
+#[test]
+fn new_entry_paths_refuse_every_invalid_component() {
+    for (text, message) in [
+        ("", "Enter a name"),
+        ("/", "Enter a name"),
+        ("/absolute", "Enter a name"),
+        ("a//b", "Enter a name"),
+        ("docs//", "Enter a name"),
+        ("a/ /b", "Enter a name"),
+        ("../escaped", "That name is reserved"),
+        ("a/./b", "That name is reserved"),
+        ("a/nul\0/b", "Names cannot contain NUL characters"),
+    ] {
+        assert_eq!(NewEntryPath::parse(text, false), Err(message), "{text:?}");
     }
 }
 
