@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+mod isobmff;
+
 #[cfg(not(feature = "rar"))]
 #[test]
 fn rar_disabled_helper_rejects_extraction_without_reading_input() {
@@ -19,9 +21,10 @@ use gdk_pixbuf::prelude::*;
 
 use super::{
     bounded_output, bounded_output_with_timeout, bounded_surface_dimensions,
-    exceeds_decoded_frame_budget, is_svg_head, pdf_render_request, read_exif_thumbnail,
-    read_limited, read_png_dimensions, render_camera_raw, render_camera_raw_preview, render_pixbuf,
-    render_raw, render_simple_dcraw, run, scale_embedded_thumbnail, svg_source,
+    exceeds_decoded_frame_budget, image_dimensions, is_svg_head, pdf_render_request,
+    read_exif_thumbnail, read_limited, read_png_dimensions, render_camera_raw,
+    render_camera_raw_preview, render_pixbuf, render_raw, render_simple_dcraw, run,
+    scale_embedded_thumbnail, svg_source,
 };
 
 #[test]
@@ -236,8 +239,8 @@ fn oversized_images_exceeding_decoded_frame_budget_are_rejected_safely() {
     let raw_err = render_raw(&path, 256).expect_err("render_raw must reject oversized image");
     assert!(raw_err.contains("decoded frame budget"));
 
-    let pixbuf_err =
-        render_pixbuf(&path, 256).expect_err("render_pixbuf must reject oversized image");
+    let pixbuf_err = render_pixbuf(&path, 256, image_dimensions(&path))
+        .expect_err("render_pixbuf must reject oversized image");
     assert!(pixbuf_err.contains("decoded frame budget"));
 
     let raw_thumb_err =
@@ -555,7 +558,8 @@ fn preview_image_uses_raw_fallbacks() {
     let output = directory.path().join("result.png");
     std::fs::write(&input, b"not a camera file").expect("write stub");
 
-    let pixbuf = render_pixbuf(&input, 800).expect_err("stub must fail pixbuf");
+    let pixbuf =
+        render_pixbuf(&input, 800, image_dimensions(&input)).expect_err("stub must fail pixbuf");
     let raw = render_raw(&input, 800);
     let preview = run(&[
         "preview-image".into(),
@@ -599,7 +603,8 @@ fn raw_thumbnails_and_previews_use_embedded_preview_fallbacks() {
     std::fs::write(&input, b"not a camera file").expect("write stub");
 
     for (operation, size) in [("thumbnail-raw", 256), ("preview-raw", 800)] {
-        let pixbuf = render_pixbuf(&input, size).expect_err("stub must fail pixbuf");
+        let pixbuf = render_pixbuf(&input, size, image_dimensions(&input))
+            .expect_err("stub must fail pixbuf");
         let rendered = render_camera_raw(&input, size);
         let helper = run(&[
             operation.into(),

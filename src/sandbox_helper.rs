@@ -28,6 +28,7 @@ pub(crate) mod archive_cover;
 mod archive_rar;
 mod document_media;
 mod image_conversion;
+mod isobmff;
 mod media;
 mod model;
 mod raw_metadata;
@@ -427,7 +428,8 @@ pub(crate) fn browser_render(
                     response.metadata = encode_dimensions(size);
                     if !oversized {
                         response.png =
-                            render_pixbuf(input, 256.min(size.0.max(size.1))).unwrap_or_default();
+                            render_pixbuf(input, 256.min(size.0.max(size.1)), Some(size))
+                                .unwrap_or_default();
                     } else if let Some(png) = render_oversized(input, 256) {
                         response.png = png;
                     }
@@ -583,14 +585,21 @@ fn image_dimensions(path: &Path) -> Option<(i32, i32)> {
         if let Some(dimensions) = read_gif_dimensions(&mut reader) {
             return Some(dimensions);
         }
+        if let Some(dimensions) = isobmff::dimensions(&mut reader) {
+            return Some(dimensions);
+        }
     }
     gdk_pixbuf::Pixbuf::file_info(path)
         .filter(|(_, width, height)| *width > 0 && *height > 0)
         .map(|(_, width, height)| (width, height))
 }
 
-fn render_pixbuf(path: &Path, size: i32) -> Result<Vec<u8>, String> {
-    if let Some((width, height)) = image_dimensions(path)
+fn render_pixbuf(
+    path: &Path,
+    size: i32,
+    dimensions: Option<(i32, i32)>,
+) -> Result<Vec<u8>, String> {
+    if let Some((width, height)) = dimensions
         && exceeds_decoded_frame_budget(width, height)
     {
         return Err("Image dimensions exceed the decoded frame budget".to_owned());
@@ -612,7 +621,7 @@ fn render_raw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
             return render_oversized(path, size)
                 .ok_or_else(|| "Image dimensions exceed the decoded frame budget".to_owned());
         }
-        return render_pixbuf(path, size.min(width.max(height)))
+        return render_pixbuf(path, size.min(width.max(height)), info)
             .or_else(|_| render_imagemagick(path, size))
             .or_else(|_| render_dcraw(path, size));
     }
@@ -620,7 +629,8 @@ fn render_raw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
 }
 
 fn render_camera_raw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
-    if let Some((width, height)) = image_dimensions(path)
+    let dimensions = image_dimensions(path);
+    if let Some((width, height)) = dimensions
         && exceeds_decoded_frame_budget(width, height)
     {
         return read_exif_thumbnail(path, size)
@@ -629,19 +639,19 @@ fn render_camera_raw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
     }
     // Prefer the camera JPEG so ImageMagick does not demosaic.
     render_dcraw(path, size)
-        .or_else(|_| render_pixbuf(path, size))
+        .or_else(|_| render_pixbuf(path, size, dimensions))
         .or_else(|_| render_imagemagick(path, size))
 }
 
 fn render_camera_raw_preview(path: &Path, size: i32) -> Result<Vec<u8>, String> {
-    let pixbuf_sees_thumbnail =
-        image_dimensions(path).is_some_and(|(width, height)| width.max(height) < size);
+    let dimensions = image_dimensions(path);
+    let pixbuf_sees_thumbnail = dimensions.is_some_and(|(width, height)| width.max(height) < size);
     if !pixbuf_sees_thumbnail {
         return render_camera_raw(path, size);
     }
     render_dcraw(path, size)
         .or_else(|_| render_imagemagick(path, size))
-        .or_else(|_| render_pixbuf(path, size))
+        .or_else(|_| render_pixbuf(path, size, dimensions))
 }
 
 fn render_oversized(path: &Path, size: i32) -> Option<Vec<u8>> {
