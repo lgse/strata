@@ -2,19 +2,28 @@
 
 use super::*;
 
+/// Nine folders of nine files, each holding its own `folder/file` path.
+fn grid() -> impl Iterator<Item = String> {
+    (0..9).flat_map(|folder| (0..9).map(move |file| format!("{folder}/{file}")))
+}
+
+fn write_grid(source: &Path) -> io::Result<()> {
+    for folder in 0..9 {
+        fs::create_dir_all(source.join(folder.to_string()))?;
+    }
+    for path in grid() {
+        fs::write(source.join(&path), &path)?;
+    }
+    Ok(())
+}
+
 #[test]
 fn nested_copy_shares_one_worker_budget_across_subdirectories() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
     let root = tempfile::tempdir()?;
     let source = root.path().join("source");
     let target = root.path().join("target");
-    for folder in 0..9 {
-        let directory = source.join(folder.to_string());
-        fs::create_dir_all(&directory)?;
-        for file in 0..9 {
-            fs::write(directory.join(file.to_string()), format!("{folder}/{file}"))?;
-        }
-    }
+    write_grid(&source)?;
     *copy_activity() = (0, 0);
     glib::MainContext::default().block_on(copy_local(
         source,
@@ -32,13 +41,8 @@ fn nested_copy_shares_one_worker_budget_across_subdirectories() -> Result<(), Bo
         peak <= 2,
         "nested directories exceeded the copy budget: {peak}"
     );
-    for folder in 0..9 {
-        for file in 0..9 {
-            assert_eq!(
-                fs::read_to_string(target.join(format!("{folder}/{file}")))?,
-                format!("{folder}/{file}")
-            );
-        }
+    for path in grid() {
+        assert_eq!(fs::read_to_string(target.join(&path))?, path);
     }
     Ok(())
 }
@@ -76,10 +80,15 @@ fn recursive_copy_preserves_nested_directory_contents() -> Result<(), Box<dyn Er
     ));
     assert!(merged.is_ok(), "{merged:?}");
     // A merge fills only names it moved out of the way, and numbers the rest.
-    assert_eq!(fs::read(target.join("top.txt"))?, b"top");
-    assert_eq!(fs::read(target.join("top (1).txt"))?, b"replacement");
-    assert_eq!(fs::read(target.join("nested/child.txt"))?, b"child");
-    assert_eq!(fs::read(target.join("nested/child (1).txt"))?, b"child");
+    assert_files(
+        &target,
+        &[
+            ("top.txt", "top"),
+            ("top (1).txt", "replacement"),
+            ("nested/child.txt", "child"),
+            ("nested/child (1).txt", "child"),
+        ],
+    )?;
 
     fs::remove_dir_all(root)?;
     Ok(())
@@ -188,206 +197,6 @@ fn copy_accepts_a_symlink_higher_in_the_sources_parent_path() -> Result<(), Box<
 }
 
 #[test]
-fn cancelling_staged_remote_file_copy_removes_only_the_incomplete_stage()
--> Result<(), Box<dyn Error>> {
-    let _serial = serial()?;
-    let root = tempfile::tempdir()?;
-    let source = root.path().join("source.bin");
-    let target = root.path().join("target.bin");
-    fs::write(&source, b"source contents")?;
-
-    let result = glib::MainContext::default().block_on(copy_new_remote_file_with(
-        gio::File::for_path(&source),
-        gio::File::for_path(&target),
-        Taken::Fail,
-        gio::Cancellable::new(),
-        Rc::new(|_, stage, _| {
-            Box::pin(async move {
-                fs::write(stage.path().expect("native stage"), b"partial")
-                    .map_err(super::super::io_error)?;
-                Err(glib::Error::new(
-                    gio::IOErrorEnum::Cancelled,
-                    "injected cancellation",
-                ))
-            })
-        }),
-        Rc::new(|_, _, _| Box::pin(async { panic!("cancelled copy must not commit") })),
-    ));
-
-    assert!(result.is_err_and(|error| error.matches(gio::IOErrorEnum::Cancelled)));
-    assert!(!target.exists());
-    assert_eq!(fs::read(&source)?, b"source contents");
-    assert_eq!(fs::read_dir(root.path())?.count(), 1);
-    Ok(())
-}
-
-#[test]
-fn staged_remote_file_copy_preserves_a_racing_destination() -> Result<(), Box<dyn Error>> {
-    let _serial = serial()?;
-    let root = tempfile::tempdir()?;
-    let source = root.path().join("source.bin");
-    let target = root.path().join("target.bin");
-    fs::write(&source, b"source contents")?;
-
-    let result = glib::MainContext::default().block_on(copy_new_remote_file_with(
-        gio::File::for_path(&source),
-        gio::File::for_path(&target),
-        Taken::Fail,
-        gio::Cancellable::new(),
-        Rc::new(|source, stage, _| {
-            Box::pin(async move {
-                fs::copy(
-                    source.path().expect("native source"),
-                    stage.path().expect("native stage"),
-                )
-                .map(|_| ())
-                .map_err(super::super::io_error)
-            })
-        }),
-        Rc::new(|_, target, _| {
-            Box::pin(async move {
-                fs::write(target.path().expect("native target"), b"racing contents")
-                    .map_err(super::super::io_error)?;
-                Err(glib::Error::new(
-                    gio::IOErrorEnum::Exists,
-                    "injected destination race",
-                ))
-            })
-        }),
-    ));
-
-    assert!(result.is_err_and(|error| error.matches(gio::IOErrorEnum::Exists)));
-    assert_eq!(fs::read(&target)?, b"racing contents");
-    assert_eq!(fs::read(&source)?, b"source contents");
-    assert_eq!(fs::read_dir(root.path())?.count(), 2);
-    Ok(())
-}
-
-#[test]
-fn a_remote_keep_both_copy_takes_the_next_name_when_one_is_taken_meanwhile()
--> Result<(), Box<dyn Error>> {
-    let _serial = serial()?;
-    let root = tempfile::tempdir()?;
-    let source = root.path().join("source.bin");
-    let target = root.path().join("target.bin");
-    fs::write(&source, b"source contents")?;
-    fs::write(&target, b"existing")?;
-
-    let copied = glib::MainContext::default().block_on(copy_new_remote_file_with(
-        gio::File::for_path(&source),
-        gio::File::for_path(&target),
-        Taken::Number,
-        gio::Cancellable::new(),
-        Rc::new(|source, stage, _| {
-            Box::pin(async move {
-                fs::copy(
-                    source.path().expect("native source"),
-                    stage.path().expect("native stage"),
-                )
-                .map(drop)
-                .map_err(super::super::io_error)
-            })
-        }),
-        Rc::new(|stage, target, _| {
-            Box::pin(async move {
-                let target = target.path().expect("native target");
-                if target.ends_with("target (1).bin") {
-                    fs::write(&target, b"racing contents").map_err(super::super::io_error)?;
-                    return Err(glib::Error::new(
-                        gio::IOErrorEnum::Exists,
-                        "injected destination race",
-                    ));
-                }
-                fs::rename(stage.path().expect("native stage"), target)
-                    .map_err(super::super::io_error)
-            })
-        }),
-    ))?;
-
-    assert_eq!(copied.path(), Some(root.path().join("target (2).bin")));
-    assert_eq!(
-        fs::read(root.path().join("target (2).bin"))?,
-        b"source contents"
-    );
-    assert_eq!(
-        fs::read(root.path().join("target (1).bin"))?,
-        b"racing contents"
-    );
-    assert_eq!(fs::read(&target)?, b"existing");
-    assert_eq!(
-        names(root.path())?,
-        [
-            "source.bin",
-            "target (1).bin",
-            "target (2).bin",
-            "target.bin"
-        ]
-    );
-    Ok(())
-}
-
-#[test]
-fn a_remote_keep_both_copy_numbers_a_long_name_within_the_limit() -> Result<(), Box<dyn Error>> {
-    let _serial = serial()?;
-    let root = tempfile::tempdir()?;
-    let source = root.path().join("source.bin");
-    let target = root.path().join(format!("{}.bin", "t".repeat(251)));
-    let numbered = root.path().join(format!("{} (1).bin", "t".repeat(247)));
-    fs::write(&source, b"source contents")?;
-    fs::write(&target, b"existing")?;
-
-    let copied = glib::MainContext::default().block_on(copy_new_remote_file_with(
-        gio::File::for_path(&source),
-        gio::File::for_path(&target),
-        Taken::Number,
-        gio::Cancellable::new(),
-        Rc::new(|source, stage, _| {
-            Box::pin(async move {
-                fs::copy(
-                    source.path().expect("native source"),
-                    stage.path().expect("native stage"),
-                )
-                .map(drop)
-                .map_err(super::super::io_error)
-            })
-        }),
-        Rc::new(|stage, target, _| {
-            Box::pin(async move {
-                fs::rename(
-                    stage.path().expect("native stage"),
-                    target.path().expect("native target"),
-                )
-                .map_err(super::super::io_error)
-            })
-        }),
-    ))?;
-
-    assert_eq!(copied.path(), Some(numbered.clone()));
-    assert_eq!(fs::read(numbered)?, b"source contents");
-    assert_eq!(fs::read(&target)?, b"existing");
-    Ok(())
-}
-
-#[test]
-fn failed_incomplete_copy_cleanup_is_reported_as_a_failure() {
-    let error = copy_failure_after_cleanup(
-        glib::Error::new(gio::IOErrorEnum::Cancelled, "injected cancellation"),
-        Err(glib::Error::new(
-            gio::IOErrorEnum::Failed,
-            "injected cleanup failure",
-        )),
-    );
-
-    assert!(!error.matches(gio::IOErrorEnum::Cancelled));
-    assert!(
-        error
-            .to_string()
-            .contains("incomplete copy could not be removed")
-    );
-    assert!(error.to_string().contains("injected cleanup failure"));
-}
-
-#[test]
 fn cancelling_recursive_copy_removes_only_its_staging_output() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
     let root = tempfile::tempdir()?;
@@ -475,86 +284,104 @@ fn cancelling_a_new_file_copy_removes_the_incomplete_stage() -> Result<(), Box<d
     Ok(())
 }
 
+fn is_stage(name: &str) -> bool {
+    name.starts_with(".strata-copy-")
+}
+
+/// Fills the stage beneath `parent`, or a file in it when it is a folder.
+fn fill_the_stage(parent: PathBuf, folder: bool) -> Racer {
+    Box::new(move || {
+        let stage = names(&parent)
+            .expect("list")
+            .into_iter()
+            .find(|name| is_stage(name))
+            .map(|name| parent.join(name))
+            .expect("the stage");
+        let theirs = if folder { stage.join("theirs") } else { stage };
+        fs::write(theirs, b"theirs").expect("fill the stage");
+    })
+}
+
+/// Only a taken stage is left, holding what another program put there.
+fn assert_left_stages(root: &Path, folder: bool, taken: bool, row: &str) -> io::Result<()> {
+    let left = names(root)?
+        .into_iter()
+        .filter(|name| is_stage(name))
+        .map(|name| root.join(name))
+        .collect::<Vec<_>>();
+    match left.as_slice() {
+        [] => assert!(!taken, "{row}"),
+        [theirs] => {
+            let theirs = if folder {
+                theirs.join("theirs")
+            } else {
+                theirs.clone()
+            };
+            assert!(taken, "{row}");
+            assert_eq!(fs::read(theirs)?, b"theirs", "{row}");
+        }
+        _ => panic!("{row}: {left:?}"),
+    }
+    Ok(())
+}
+
+fn check_lost_stage_reply(op: Op, folder: bool, taken: bool) -> Result<(), Box<dyn Error>> {
+    let row = format!("{op:?}, taken: {taken}");
+    let root = tempfile::tempdir()?;
+    let (source, target) = (root.path().join("source"), root.path().join("target"));
+    let copied = if folder {
+        fs::create_dir(&source)?;
+        source.join("inner.txt")
+    } else {
+        source.clone()
+    };
+    fs::write(&copied, b"copied")?;
+    let racer = fill_the_stage(root.path().to_path_buf(), folder);
+    let scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            tmpfile: Support::Rejected(Errno::OPNOTSUPP),
+            lost_reply: vec![(op, ".strata-copy-*", Errno::EXIST)],
+            before: if taken {
+                vec![(Op::Stat, ".strata-copy-*", 0, racer)]
+            } else {
+                Vec::new()
+            },
+            ..Quirks::ext4()
+        },
+    );
+
+    glib::MainContext::default().block_on(copy_new_recursively(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+    ))?;
+
+    let stages = scope
+        .calls()
+        .into_iter()
+        .filter(|call| call.op == op)
+        .flat_map(|call| call.names)
+        .filter(|name| is_stage(&name.to_string_lossy()))
+        .collect::<HashSet<_>>();
+    assert_eq!(stages.len(), if taken { 2 } else { 1 }, "{row}");
+    let copy = if folder {
+        target.join("inner.txt")
+    } else {
+        target
+    };
+    assert_eq!(fs::read(copy)?, b"copied", "{row}");
+    assert_left_stages(root.path(), folder, taken, &row)?;
+    Ok(())
+}
+
 #[test]
 fn a_stage_name_left_by_a_lost_reply_is_adopted_and_a_taken_one_is_not()
 -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    let is_stage = |name: &str| name.starts_with(".strata-copy-");
     for (op, folder) in [(Op::Create, false), (Op::Mkdir, true)] {
         for taken in [false, true] {
-            let row = format!("{op:?}, taken: {taken}");
-            let root = tempfile::tempdir()?;
-            let (source, target) = (root.path().join("source"), root.path().join("target"));
-            let copied = if folder {
-                fs::create_dir(&source)?;
-                source.join("inner.txt")
-            } else {
-                source.clone()
-            };
-            fs::write(&copied, b"copied")?;
-            let parent = root.path().to_path_buf();
-            let racer: Racer = Box::new(move || {
-                let stage = names(&parent)
-                    .expect("list")
-                    .into_iter()
-                    .find(|name| is_stage(name))
-                    .map(|name| parent.join(name))
-                    .expect("the stage");
-                let theirs = if folder { stage.join("theirs") } else { stage };
-                fs::write(theirs, b"theirs").expect("fill the stage");
-            });
-            let scope = FsQuirks::install(
-                root.path(),
-                Quirks {
-                    tmpfile: Support::Rejected(Errno::OPNOTSUPP),
-                    lost_reply: vec![(op, ".strata-copy-*", Errno::EXIST)],
-                    before: if taken {
-                        vec![(Op::Stat, ".strata-copy-*", 0, racer)]
-                    } else {
-                        Vec::new()
-                    },
-                    ..Quirks::ext4()
-                },
-            );
-
-            glib::MainContext::default().block_on(copy_new_recursively(
-                gio::File::for_path(&source),
-                gio::File::for_path(&target),
-                gio::Cancellable::new(),
-            ))?;
-
-            let stages = scope
-                .calls()
-                .into_iter()
-                .filter(|call| call.op == op)
-                .flat_map(|call| call.names)
-                .filter(|name| is_stage(&name.to_string_lossy()))
-                .collect::<HashSet<_>>();
-            assert_eq!(stages.len(), if taken { 2 } else { 1 }, "{row}");
-            let copy = if folder {
-                target.join("inner.txt")
-            } else {
-                target
-            };
-            assert_eq!(fs::read(copy)?, b"copied", "{row}");
-            let left = names(root.path())?
-                .into_iter()
-                .filter(|name| is_stage(name))
-                .map(|name| root.path().join(name))
-                .collect::<Vec<_>>();
-            match left.as_slice() {
-                [] => assert!(!taken, "{row}"),
-                [theirs] => {
-                    let theirs = if folder {
-                        theirs.join("theirs")
-                    } else {
-                        theirs.clone()
-                    };
-                    assert!(taken, "{row}");
-                    assert_eq!(fs::read(theirs)?, b"theirs", "{row}");
-                }
-                _ => panic!("{row}: {left:?}"),
-            }
+            check_lost_stage_reply(op, folder, taken)?;
         }
     }
     Ok(())

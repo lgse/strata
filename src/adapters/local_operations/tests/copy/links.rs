@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use crate::services::{KeptCause, KeptItem, SkippedItem, SpecialKind, TransferReport};
+
 use super::*;
 
 fn links_refused_as_not_permitted() -> Quirks {
@@ -30,26 +32,46 @@ fn ntfs_3g_refusing_targets_as_illegal() -> Quirks {
     }
 }
 
+fn names_a_link(name: &OsStr) -> bool {
+    name.as_encoded_bytes().ends_with(b"link")
+}
+
 fn ext4_refusing_link_names_as_invalid() -> Quirks {
     Quirks {
-        invalid_name: Some(|name| {
-            name.as_encoded_bytes()
-                .ends_with(b"link")
-                .then_some(Errno::INVAL)
-        }),
+        invalid_name: Some(|name| names_a_link(name).then_some(Errno::INVAL)),
         ..Quirks::ext4()
     }
 }
 
 fn ext4_refusing_link_names_as_illegal() -> Quirks {
     Quirks {
-        invalid_name: Some(|name| {
-            name.as_encoded_bytes()
-                .ends_with(b"link")
-                .then_some(Errno::ILSEQ)
-        }),
+        invalid_name: Some(|name| names_a_link(name).then_some(Errno::ILSEQ)),
         ..Quirks::ext4()
     }
+}
+
+fn item(source: &Path, conflict: TransferConflict) -> PasteItem {
+    PasteItem {
+        source: Location::local(source),
+        conflict,
+        target_name: None,
+    }
+}
+
+fn conflict_for(replacing: bool) -> TransferConflict {
+    if replacing {
+        TransferConflict::ReplaceExisting
+    } else {
+        TransferConflict::FailIfExists
+    }
+}
+
+fn symlinks_asked(scope: &FsQuirks) -> usize {
+    scope
+        .calls()
+        .iter()
+        .filter(|call| call.op == Op::Symlink)
+        .count()
 }
 
 fn exfat_fuse_without_udev() -> Quirks {
@@ -80,7 +102,6 @@ struct Links {
 #[test]
 fn links_inside_a_copied_folder_are_left_out_where_the_destination_cannot_hold_them()
 -> Result<(), Box<dyn Error>> {
-    use crate::services::SpecialKind;
     let _serial = serial()?;
     let rows = [
         Links {
@@ -147,70 +168,82 @@ fn links_inside_a_copied_folder_are_left_out_where_the_destination_cannot_hold_t
             asked: [1, 1],
         },
     ];
-    for row in rows {
-        let label = row.label;
-        let root = tempfile::tempdir()?;
-        let source = root.path().join("source");
-        let disk = root.path().join("disk");
-        fs::create_dir_all(source.join("sub"))?;
-        fs::create_dir(&disk)?;
-        fs::write(source.join("a.txt"), b"a")?;
-        fs::write(source.join("sub/b.txt"), b"b")?;
-        std::os::unix::fs::symlink("a.txt", source.join("link"))?;
-        std::os::unix::fs::symlink("../a.txt", source.join("sub/link"))?;
-        let scope = FsQuirks::install(&disk, (row.quirks)());
-        for (copy, asked) in ["first", "second"].into_iter().zip(row.asked) {
-            let target = disk.join(copy);
-            scope.clear_calls();
-
-            let (copied, report) = reporting(
-                &source,
-                Destination::New(target.clone(), Taken::Fail),
-                Options {
-                    names: fixing(),
-                    ..Options::default()
-                },
-            );
-
-            let calls = scope.calls();
-            let symlinks = calls.iter().filter(|call| call.op == Op::Symlink).count();
-            assert_eq!(symlinks, asked, "{label}: {copy}");
-            let Some(left_out) = row.left_out else {
-                assert!(copied.is_err(), "{label}: {copy}");
-                assert_eq!(names(&disk)?, Vec::<String>::new(), "{label}");
-                continue;
-            };
-            copied.map_err(|error| format!("{label}: {error}"))?;
-            assert_eq!(fs::read(target.join("sub/b.txt"))?, b"b", "{label}");
-            let mut skipped = report
-                .skipped
-                .into_iter()
-                .map(|item| (item.location, item.kind))
-                .collect::<Vec<_>>();
-            skipped.sort_by(|left, right| left.0.compare(&right.0));
-            if left_out {
-                assert_eq!(names(&target)?, ["a.txt", "sub"], "{label}");
-                assert_eq!(names(&target.join("sub"))?, ["b.txt"], "{label}");
-                assert_eq!(
-                    skipped,
-                    [
-                        (Location::local(target.join("link")), SpecialKind::Symlink),
-                        (
-                            Location::local(target.join("sub/link")),
-                            SpecialKind::Symlink
-                        ),
-                    ],
-                    "{label}"
-                );
-            } else {
-                assert_eq!(
-                    fs::read_link(target.join("sub/link"))?,
-                    Path::new("../a.txt")
-                );
-                assert_eq!(skipped, [], "{label}");
-            }
-        }
+    for row in &rows {
+        check_links_inside(row)?;
     }
+    Ok(())
+}
+
+/// A source folder whose `link` and `sub/link` point at `a.txt`, and an
+/// empty `disk` to copy it onto.
+fn linked_folder(root: &Path) -> io::Result<(PathBuf, PathBuf)> {
+    let source = root.join("source");
+    let disk = root.join("disk");
+    fs::create_dir_all(source.join("sub"))?;
+    fs::create_dir(&disk)?;
+    fs::write(source.join("a.txt"), b"a")?;
+    fs::write(source.join("sub/b.txt"), b"b")?;
+    std::os::unix::fs::symlink("a.txt", source.join("link"))?;
+    std::os::unix::fs::symlink("../a.txt", source.join("sub/link"))?;
+    Ok((source, disk))
+}
+
+fn check_links_inside(row: &Links) -> Result<(), Box<dyn Error>> {
+    let label = row.label;
+    let root = tempfile::tempdir()?;
+    let (source, disk) = linked_folder(root.path())?;
+    let scope = FsQuirks::install(&disk, (row.quirks)());
+    for (copy, asked) in ["first", "second"].into_iter().zip(row.asked) {
+        let target = disk.join(copy);
+        scope.clear_calls();
+
+        let (copied, report) = reporting(
+            &source,
+            Destination::New(target.clone(), Taken::Fail),
+            Options {
+                names: fixing(),
+                ..Options::default()
+            },
+        );
+
+        assert_eq!(symlinks_asked(&scope), asked, "{label}: {copy}");
+        let Some(left_out) = row.left_out else {
+            assert!(copied.is_err(), "{label}: {copy}");
+            assert_eq!(names(&disk)?, Vec::<String>::new(), "{label}");
+            continue;
+        };
+        copied.map_err(|error| format!("{label}: {error}"))?;
+        assert_eq!(fs::read(target.join("sub/b.txt"))?, b"b", "{label}");
+        assert_links_copied_or_left_out(&target, report, left_out, label)?;
+    }
+    Ok(())
+}
+
+fn assert_links_copied_or_left_out(
+    target: &Path,
+    report: TransferReport,
+    left_out: bool,
+    label: &str,
+) -> io::Result<()> {
+    let mut skipped = report
+        .skipped
+        .into_iter()
+        .map(|item| (item.location, item.kind))
+        .collect::<Vec<_>>();
+    skipped.sort_by(|left, right| left.0.compare(&right.0));
+    if !left_out {
+        assert_eq!(
+            fs::read_link(target.join("sub/link"))?,
+            Path::new("../a.txt")
+        );
+        assert_eq!(skipped, [], "{label}");
+        return Ok(());
+    }
+    assert_eq!(names(target)?, ["a.txt", "sub"], "{label}");
+    assert_eq!(names(&target.join("sub"))?, ["b.txt"], "{label}");
+    let links =
+        ["link", "sub/link"].map(|link| (Location::local(target.join(link)), SpecialKind::Symlink));
+    assert_eq!(skipped, links, "{label}");
     Ok(())
 }
 
@@ -225,7 +258,6 @@ struct SelectedLinks {
 #[test]
 fn selected_links_the_destination_cannot_hold_are_left_out_and_the_paste_goes_on()
 -> Result<(), Box<dyn Error>> {
-    use crate::services::{KeptCause, KeptItem, SkippedItem, SpecialKind};
     let _serial = serial()?;
     let row = |label, quirks: Preset, moving, replacing, asked| SelectedLinks {
         label,
@@ -259,201 +291,233 @@ fn selected_links_the_destination_cannot_hold_are_left_out_and_the_paste_goes_on
         row("names invalid", invalid, false, false, 2),
         row("names illegal, moved", illegal, true, false, 2),
     ];
-    for row in rows {
-        let label = row.label;
-        let root = tempfile::tempdir()?;
-        let source = root.path().join("source");
-        let disk = root.path().join("disk");
-        fs::create_dir_all(&source)?;
-        fs::create_dir(&disk)?;
-        let links = ["a-link", "b-link"].map(|name| source.join(name));
-        let file = source.join("file.txt");
-        for link in &links {
-            std::os::unix::fs::symlink("file.txt", link)?;
-        }
-        fs::write(&file, b"file")?;
-        if row.replacing {
-            fs::write(disk.join("b-link"), b"earlier")?;
-        }
-        let scope = FsQuirks::install(&disk, (row.quirks)());
-        let conflict = if row.replacing {
-            TransferConflict::ReplaceExisting
-        } else {
-            TransferConflict::FailIfExists
-        };
-        let item = |source: &Path, conflict| PasteItem {
-            source: Location::local(source),
-            conflict,
-            target_name: None,
-        };
+    for row in &rows {
+        check_selected_links(row)?;
+    }
+    Ok(())
+}
 
-        let events = run_paste(PasteRequest {
-            id: OperationRequestId(1590),
-            destination: Location::local(&disk),
-            items: vec![
-                item(&links[0], TransferConflict::FailIfExists),
-                item(&links[1], conflict),
-                item(&file, TransferConflict::FailIfExists),
-            ],
-            move_sources: row.moving,
-        });
+fn check_selected_links(row: &SelectedLinks) -> Result<(), Box<dyn Error>> {
+    let label = row.label;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let disk = root.path().join("disk");
+    fs::create_dir_all(&source)?;
+    fs::create_dir(&disk)?;
+    let links = ["a-link", "b-link"].map(|name| source.join(name));
+    let file = source.join("file.txt");
+    for link in &links {
+        std::os::unix::fs::symlink("file.txt", link)?;
+    }
+    fs::write(&file, b"file")?;
+    if row.replacing {
+        fs::write(disk.join("b-link"), b"earlier")?;
+    }
+    let scope = FsQuirks::install(&disk, (row.quirks)());
 
-        let symlinks = scope
-            .calls()
-            .iter()
-            .filter(|call| call.op == Op::Symlink)
-            .count();
-        assert_eq!(symlinks, row.asked, "{label}");
-        for link in &links {
-            assert_eq!(fs::read_link(link)?, Path::new("file.txt"), "{label}");
-        }
-        assert_eq!(fs::read(disk.join("file.txt"))?, b"file", "{label}");
-        assert_eq!(file.exists(), !row.moving, "{label}");
+    let events = run_paste(PasteRequest {
+        id: OperationRequestId(1590),
+        destination: Location::local(&disk),
+        items: vec![
+            item(&links[0], TransferConflict::FailIfExists),
+            item(&links[1], conflict_for(row.replacing)),
+            item(&file, TransferConflict::FailIfExists),
+        ],
+        move_sources: row.moving,
+    });
+
+    assert_eq!(symlinks_asked(&scope), row.asked, "{label}");
+    for link in &links {
+        assert_eq!(fs::read_link(link)?, Path::new("file.txt"), "{label}");
+    }
+    assert_eq!(fs::read(disk.join("file.txt"))?, b"file", "{label}");
+    assert_eq!(file.exists(), !row.moving, "{label}");
+    assert_links_left_off(&disk, row.replacing, label)?;
+    assert_selected_links_reported(&events, row, (&links, &file), &disk);
+    assert!(
+        matches!(
+            terminal_transfer(&events),
+            Some(OperationEvent::Pasted { locations, .. })
+                if *locations == [Location::local(&file)]
+        ),
+        "{label}"
+    );
+    Ok(())
+}
+
+/// Neither link reached `disk`, which keeps what it held at `b-link`.
+fn assert_links_left_off(disk: &Path, replacing: bool, label: &str) -> io::Result<()> {
+    assert!(
+        fs::symlink_metadata(disk.join("a-link")).is_err(),
+        "{label}"
+    );
+    if replacing {
+        assert_eq!(fs::read(disk.join("b-link"))?, b"earlier", "{label}");
+    } else {
         assert!(
-            fs::symlink_metadata(disk.join("a-link")).is_err(),
-            "{label}"
-        );
-        if row.replacing {
-            assert_eq!(fs::read(disk.join("b-link"))?, b"earlier", "{label}");
-        } else {
-            assert!(
-                fs::symlink_metadata(disk.join("b-link")).is_err(),
-                "{label}"
-            );
-        }
-        let report = followed_report(&events);
-        if row.moving {
-            assert_eq!(
-                item_moves(&events),
-                [(
-                    Location::local(&file),
-                    Location::local(disk.join("file.txt"))
-                )],
-                "{label}"
-            );
-            let kept = links.clone().map(|link| KeptItem {
-                location: Location::local(link),
-                cause: KeptCause::Skipped(SpecialKind::Symlink),
-            });
-            assert_eq!(report.kept, kept, "{label}");
-            assert_eq!(report.skipped, [], "{label}");
-        } else {
-            let skipped = ["a-link", "b-link"].map(|name| SkippedItem {
-                location: Location::local(disk.join(name)),
-                kind: SpecialKind::Symlink,
-            });
-            assert_eq!(report.skipped, skipped, "{label}");
-            assert_eq!(report.kept, [], "{label}");
-        }
-        assert!(
-            matches!(
-                terminal_transfer(&events),
-                Some(OperationEvent::Pasted { locations, .. })
-                    if *locations == [Location::local(&file)]
-            ),
+            fs::symlink_metadata(disk.join("b-link")).is_err(),
             "{label}"
         );
     }
     Ok(())
 }
 
+/// A move keeps the links at the source and moves only the file; a copy
+/// reports the links it left out of the destination.
+fn assert_selected_links_reported(
+    events: &[OperationEvent],
+    row: &SelectedLinks,
+    (links, file): (&[PathBuf; 2], &Path),
+    disk: &Path,
+) {
+    let label = row.label;
+    let report = followed_report(events);
+    if !row.moving {
+        let skipped = ["a-link", "b-link"].map(|name| SkippedItem {
+            location: Location::local(disk.join(name)),
+            kind: SpecialKind::Symlink,
+        });
+        assert_eq!(
+            (report.skipped, report.kept),
+            (skipped.to_vec(), Vec::new()),
+            "{label}"
+        );
+        return;
+    }
+    assert_eq!(
+        item_moves(events),
+        [(
+            Location::local(file),
+            Location::local(disk.join("file.txt"))
+        )],
+        "{label}"
+    );
+    let kept = links.clone().map(|link| KeptItem {
+        location: Location::local(link),
+        cause: KeptCause::Skipped(SpecialKind::Symlink),
+    });
+    assert_eq!(
+        (report.kept, report.skipped),
+        (kept.to_vec(), Vec::new()),
+        "{label}"
+    );
+}
+
 #[test]
 fn malformed_link_targets_are_left_out_where_names_must_be_utf8() -> Result<(), Box<dyn Error>> {
-    use crate::services::{KeptCause, KeptItem, SkippedItem, SpecialKind};
     let _serial = serial()?;
-    let malformed = <OsStr as std::os::unix::ffi::OsStrExt>::from_bytes(b"x\xffy");
     let posix = Quirks::cifs_posix;
-    let rows: [(&str, Preset, bool, bool); 4] = [
+    let rows: [Malformed; 4] = [
         ("cifs-posix", posix, false, false),
         ("cifs-posix, moved", posix, true, false),
         ("cifs-posix, replacing", posix, false, true),
         ("ext4", Quirks::ext4, false, false),
     ];
-    for (label, preset, moving, replacing) in rows {
-        let held = label == "ext4";
-        let root = tempfile::tempdir()?;
-        let source = root.path().join("source");
-        let disk = root.path().join("disk");
-        let folder = source.join("folder");
-        fs::create_dir_all(&folder)?;
-        fs::create_dir(&disk)?;
-        let selected = source.join("bad");
-        std::os::unix::fs::symlink(malformed, &selected)?;
-        std::os::unix::fs::symlink(malformed, folder.join("bad"))?;
-        std::os::unix::fs::symlink("good", folder.join("good"))?;
-        if replacing {
-            fs::write(disk.join("bad"), b"earlier")?;
-        }
-        let scope = FsQuirks::install(&disk, preset());
-        let item = |source: &Path, conflict| PasteItem {
-            source: Location::local(source),
-            conflict,
-            target_name: None,
-        };
-        let conflict = if replacing {
-            TransferConflict::ReplaceExisting
-        } else {
-            TransferConflict::FailIfExists
-        };
-
-        let events = run_paste(PasteRequest {
-            id: OperationRequestId(1590),
-            destination: Location::local(&disk),
-            items: vec![
-                item(&folder, TransferConflict::FailIfExists),
-                item(&selected, conflict),
-            ],
-            move_sources: moving,
-        });
-
-        assert_eq!(
-            scope.count(Op::Symlink),
-            if held { 3 } else { 1 },
-            "{label}"
-        );
-        assert_eq!(
-            fs::read_link(disk.join("folder/good"))?,
-            Path::new("good"),
-            "{label}"
-        );
-        let report = followed_report(&events);
-        if held {
-            assert_eq!(
-                fs::read_link(disk.join("folder/bad"))?,
-                malformed,
-                "{label}"
-            );
-            assert_eq!(fs::read_link(disk.join("bad"))?, malformed, "{label}");
-            assert_eq!(report.skipped, [], "{label}");
-            continue;
-        }
-        assert_eq!(names(&disk.join("folder"))?, ["good"], "{label}");
-        if replacing {
-            assert_eq!(fs::read(disk.join("bad"))?, b"earlier", "{label}");
-        } else {
-            assert!(fs::symlink_metadata(disk.join("bad")).is_err(), "{label}");
-        }
-        if moving {
-            assert_eq!(names(&folder)?, ["bad"], "{label}");
-            assert_eq!(fs::read_link(&selected)?, malformed, "{label}");
-            let kept = [selected.clone(), folder.join("bad")].map(|path| KeptItem {
-                location: Location::local(path),
-                cause: KeptCause::Skipped(SpecialKind::Symlink),
-            });
-            let mut reported = report.kept.clone();
-            reported.sort_by(|left, right| left.location.compare(&right.location));
-            assert_eq!(reported, kept, "{label}");
-        } else {
-            let skipped = [disk.join("bad"), disk.join("folder/bad")].map(|path| SkippedItem {
-                location: Location::local(path),
-                kind: SpecialKind::Symlink,
-            });
-            let mut reported = report.skipped.clone();
-            reported.sort_by(|left, right| left.location.compare(&right.location));
-            assert_eq!(reported, skipped, "{label}");
-        }
+    for row in rows {
+        check_malformed_targets(row)?;
     }
     Ok(())
+}
+
+fn malformed() -> &'static OsStr {
+    <OsStr as std::os::unix::ffi::OsStrExt>::from_bytes(b"x\xffy")
+}
+
+/// A mount, and whether the paste moves or replaces a `bad` link already
+/// at the destination.
+type Malformed = (&'static str, Preset, bool, bool);
+
+fn check_malformed_targets(
+    (label, preset, moving, replacing): Malformed,
+) -> Result<(), Box<dyn Error>> {
+    let held = label == "ext4";
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let disk = root.path().join("disk");
+    let folder = source.join("folder");
+    fs::create_dir_all(&folder)?;
+    fs::create_dir(&disk)?;
+    let selected = source.join("bad");
+    std::os::unix::fs::symlink(malformed(), &selected)?;
+    std::os::unix::fs::symlink(malformed(), folder.join("bad"))?;
+    std::os::unix::fs::symlink("good", folder.join("good"))?;
+    if replacing {
+        fs::write(disk.join("bad"), b"earlier")?;
+    }
+    let scope = FsQuirks::install(&disk, preset());
+
+    let events = run_paste(PasteRequest {
+        id: OperationRequestId(1590),
+        destination: Location::local(&disk),
+        items: vec![
+            item(&folder, TransferConflict::FailIfExists),
+            item(&selected, conflict_for(replacing)),
+        ],
+        move_sources: moving,
+    });
+
+    assert_eq!(
+        scope.count(Op::Symlink),
+        if held { 3 } else { 1 },
+        "{label}"
+    );
+    assert_eq!(
+        fs::read_link(disk.join("folder/good"))?,
+        Path::new("good"),
+        "{label}"
+    );
+    let report = followed_report(&events);
+    if held {
+        let copied = [disk.join("folder/bad"), disk.join("bad")].map(fs::read_link);
+        let [in_folder, alone] = copied;
+        assert_eq!(
+            (in_folder?, alone?),
+            (PathBuf::from(malformed()), PathBuf::from(malformed())),
+            "{label}"
+        );
+        assert_eq!(report.skipped, [], "{label}");
+        return Ok(());
+    }
+    assert_eq!(names(&disk.join("folder"))?, ["good"], "{label}");
+    if replacing {
+        assert_eq!(fs::read(disk.join("bad"))?, b"earlier", "{label}");
+    } else {
+        assert!(fs::symlink_metadata(disk.join("bad")).is_err(), "{label}");
+    }
+    if moving {
+        assert_malformed_kept(&report, &selected, &folder, label)?;
+    } else {
+        assert_malformed_skipped(&report, &disk, label);
+    }
+    Ok(())
+}
+
+fn assert_malformed_kept(
+    report: &TransferReport,
+    selected: &Path,
+    folder: &Path,
+    label: &str,
+) -> io::Result<()> {
+    assert_eq!(names(folder)?, ["bad"], "{label}");
+    assert_eq!(fs::read_link(selected)?, malformed(), "{label}");
+    let kept = [selected.to_path_buf(), folder.join("bad")].map(|path| KeptItem {
+        location: Location::local(path),
+        cause: KeptCause::Skipped(SpecialKind::Symlink),
+    });
+    let mut reported = report.kept.clone();
+    reported.sort_by(|left, right| left.location.compare(&right.location));
+    assert_eq!(reported, kept, "{label}");
+    Ok(())
+}
+
+fn assert_malformed_skipped(report: &TransferReport, disk: &Path, label: &str) {
+    let skipped = [disk.join("bad"), disk.join("folder/bad")].map(|path| SkippedItem {
+        location: Location::local(path),
+        kind: SpecialKind::Symlink,
+    });
+    let mut reported = report.skipped.clone();
+    reported.sort_by(|left, right| left.location.compare(&right.location));
+    assert_eq!(reported, skipped, "{label}");
 }
 
 #[test]

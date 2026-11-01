@@ -16,6 +16,7 @@ mod links;
 mod names;
 mod recursive;
 mod refused;
+mod remote;
 mod specials;
 mod staged;
 
@@ -64,4 +65,12 @@ fn only_entry(folder: &Path, prefix: &str) -> PathBuf {
                 .is_some_and(|name| name.to_string_lossy().starts_with(prefix))
         })
         .expect("a stage")
+}
+
+/// Each `(path, contents)` beneath `root` reads as its contents.
+fn assert_files<C: AsRef<[u8]>>(root: &Path, files: &[(&str, C)]) -> io::Result<()> {
+    for (path, contents) in files {
+        assert_eq!(fs::read(root.join(path))?, contents.as_ref(), "{path}");
+    }
+    Ok(())
 }
