@@ -91,22 +91,7 @@ pub(super) fn build_icons_pane(inputs: &PaneBuild, options: IconsOptions) -> Pan
         inputs,
         &base.model,
     );
-    let sections: Rc<RefCell<Vec<PaneSection>>> = Rc::new(RefCell::new(Vec::new()));
-    let context = Rc::new(IconsContext {
-        browser: inputs.browser.clone(),
-        depth,
-        click: inputs.click.clone(),
-        transfer: inputs.transfer.clone(),
-        marks: inputs.marks.clone(),
-        state: inputs.state.clone(),
-        thumbnail_size: options.thumbnail_size.clone(),
-        source_index: base.source_index.clone(),
-        sections: Rc::downgrade(&sections),
-        density: Cell::new(options.density),
-        scrolling: Rc::new(Cell::new(false)),
-        filter_query: filter.query.clone(),
-        enter_target: filter.enter_target.clone(),
-    });
+    let (context, sections) = icons_context(inputs, &options, &base.source_index, &filter);
     let type_group_sorter = options
         .group_by_type
         .then(|| pane_type_group_sorter(&context.browser, depth));
@@ -123,14 +108,7 @@ pub(super) fn build_icons_pane(inputs: &PaneBuild, options: IconsOptions) -> Pan
         false,
         context.click.multiple_selection.clone(),
     );
-    let search = filter.wrap_search(
-        &collection,
-        inputs,
-        SearchPresentation::Icons {
-            thumbnail_size: context.thumbnail_size.clone(),
-            max_columns: density_icons_columns(context.density.get()),
-        },
-    );
+    let search = filter.wrap_search(&collection, inputs, search_presentation(&context));
     base.content.append(&search.widget);
     marquee.add_origin_surface(&base.header);
     let IconsControls {
@@ -155,6 +133,40 @@ pub(super) fn build_icons_pane(inputs: &PaneBuild, options: IconsOptions) -> Pan
     pane.sort_direction_button = Some(sort_direction_button);
     refresh_marquee_targets(&pane);
     pane
+}
+
+type Sections = Rc<RefCell<Vec<PaneSection>>>;
+
+fn icons_context(
+    inputs: &PaneBuild,
+    options: &IconsOptions,
+    source_index: &SourceIndexMap,
+    filter: &PaneFilter,
+) -> (Rc<IconsContext>, Sections) {
+    let sections: Sections = Rc::new(RefCell::new(Vec::new()));
+    let context = Rc::new(IconsContext {
+        browser: inputs.browser.clone(),
+        depth: inputs.depth,
+        click: inputs.click.clone(),
+        transfer: inputs.transfer.clone(),
+        marks: inputs.marks.clone(),
+        state: inputs.state.clone(),
+        thumbnail_size: options.thumbnail_size.clone(),
+        source_index: source_index.clone(),
+        sections: Rc::downgrade(&sections),
+        density: Cell::new(options.density),
+        scrolling: Rc::new(Cell::new(false)),
+        filter_query: filter.query.clone(),
+        enter_target: filter.enter_target.clone(),
+    });
+    (context, sections)
+}
+
+fn search_presentation(context: &IconsContext) -> SearchPresentation {
+    SearchPresentation::Icons {
+        thumbnail_size: context.thumbnail_size.clone(),
+        max_columns: density_icons_columns(context.density.get()),
+    }
 }
 
 fn icons_view_model(

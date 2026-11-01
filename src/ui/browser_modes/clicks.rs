@@ -12,7 +12,7 @@ use gtk::{gdk, gio, glib, prelude::*};
 
 use super::{
     ClickActivation, ClickCount,
-    filter::{FilteredFileClick, filtered_file_click, should_activate_filtered_pointer},
+    search_options::{FilteredFileClick, filtered_file_click, should_activate_filtered_pointer},
     source_index::{PanePositions, SourceIndexMap},
 };
 use crate::{

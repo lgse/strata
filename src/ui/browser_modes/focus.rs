@@ -63,18 +63,20 @@ impl ModeViews {
 
     /// Focus is on the pane surface, on an empty listing, or on its first item.
     fn focus_is_at_top(&self, pane: &Pane, focused: &gtk::Widget) -> bool {
-        let on_surface = *focused == *pane.stack.upcast_ref::<gtk::Widget>();
-        let empty_surface = pane
+        if *focused == *pane.stack.upcast_ref::<gtk::Widget>() {
+            return true;
+        }
+        let empty = pane
             .item_sections()
             .iter()
-            .all(|section| section.view_model.n_items() == 0)
-            && widget_has_focus(&pane.stack, Some(focused));
-        let first_item = pane
-            .item_sections()
+            .all(|section| section.view_model.n_items() == 0);
+        if empty && widget_has_focus(&pane.stack, Some(focused)) {
+            return true;
+        }
+        pane.item_sections()
             .into_iter()
             .find(|section| section.view_model.n_items() > 0)
-            .is_some_and(|section| self.focused_item_leads(&section, focused));
-        on_surface || empty_surface || first_item
+            .is_some_and(|section| self.focused_item_leads(&section, focused))
     }
 
     /// The focused item is first, or in Icons shares the first row.

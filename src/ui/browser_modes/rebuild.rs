@@ -35,28 +35,56 @@ impl ModeViews {
         self.mode = mode;
         match mode {
             BrowserMode::Columns => {}
-            BrowserMode::Icons => self.prepare_icons(),
-            BrowserMode::List => self.prepare_list(),
+            BrowserMode::Icons | BrowserMode::List => self.prepare_pane(mode),
         }
     }
 
-    fn prepare_icons(&mut self) {
+    /// Reuses the mode's pane when it still shows the active folder as it should,
+    /// and rebuilds it otherwise.
+    fn prepare_pane(&mut self, mode: BrowserMode) {
         let Some(depth) = self.browser.active_depth() else {
-            self.clear_icons();
+            self.clear_mode(mode);
             return;
         };
         let Some(snapshot) = self.browser.column_snapshot(depth) else {
             return;
         };
-        if let Some(pane) = self
-            .icons_panes
-            .first()
-            .filter(|pane| pane.shows(depth, &snapshot.location))
-        {
+        if let Some(pane) = self.reusable_pane(mode, depth, &snapshot) {
             apply_snapshot(pane, &snapshot, &self.browser);
             return;
         }
-        self.rebuild_icons();
+        match mode {
+            BrowserMode::Columns => {}
+            BrowserMode::Icons => self.rebuild_icons(),
+            BrowserMode::List => self.rebuild_list(),
+        }
+    }
+
+    fn clear_mode(&mut self, mode: BrowserMode) {
+        match mode {
+            BrowserMode::Columns => {}
+            BrowserMode::Icons => self.clear_icons(),
+            BrowserMode::List => self.clear_list(),
+        }
+    }
+
+    fn reusable_pane(
+        &self,
+        mode: BrowserMode,
+        depth: usize,
+        snapshot: &BrowserColumnSnapshot,
+    ) -> Option<&Pane> {
+        match mode {
+            BrowserMode::Columns => None,
+            BrowserMode::Icons => self
+                .icons_panes
+                .first()
+                .filter(|pane| pane.shows(depth, &snapshot.location)),
+            BrowserMode::List => self
+                .list_pane
+                .as_ref()
+                .filter(|pane| self.list_pane_is_current(pane, depth, snapshot)),
+        }
     }
 
     pub(super) fn grouping_for_snapshot(
@@ -76,25 +104,6 @@ impl ModeViews {
         let unsettled_camera =
             snapshot.location.is_camera_photo_root() && (snapshot.loading || device_order);
         self.group_by_type && !unsettled_camera
-    }
-
-    fn prepare_list(&mut self) {
-        let Some(depth) = self.browser.active_depth() else {
-            self.clear_list();
-            return;
-        };
-        let Some(snapshot) = self.browser.column_snapshot(depth) else {
-            return;
-        };
-        if let Some(pane) = self
-            .list_pane
-            .as_ref()
-            .filter(|pane| self.list_pane_is_current(pane, depth, &snapshot))
-        {
-            apply_snapshot(pane, &snapshot, &self.browser);
-            return;
-        }
-        self.rebuild_list();
     }
 
     /// The List pane already shows this folder with its grouping and sort.
