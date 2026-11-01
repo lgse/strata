@@ -2,7 +2,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::{model::{FileEntry, Location}, services::RequestId};
+use crate::{
+    model::{FileEntry, Location},
+    services::RequestId,
+};
 
 use super::{ColumnState, EntryInsertion, LoadState, NavigationState, merge_entries};
 
@@ -226,8 +229,7 @@ impl ColumnState {
             .iter()
             .filter(|entry| !existing.contains(&entry.location))
         {
-            self.selected_locations
-                .excludes_new(entry.location.clone());
+            self.selected_locations.excludes_new(entry.location.clone());
         }
     }
 

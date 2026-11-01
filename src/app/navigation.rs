@@ -9,11 +9,6 @@ use std::{
 #[cfg(test)]
 use std::cmp::Ordering;
 
-#[cfg(test)]
-use crate::{
-    model::{SortDirection, SortKey},
-    services::MetadataUpdate,
-};
 use crate::{
     app::peek::PeekState,
     model::{
@@ -21,6 +16,11 @@ use crate::{
         hidden_names::{self, Leftover},
     },
     services::RequestId,
+};
+#[cfg(test)]
+use crate::{
+    model::{SortDirection, SortKey},
+    services::MetadataUpdate,
 };
 
 mod cursor;
@@ -40,8 +40,8 @@ use fill::{adopt_selected_locations, adopt_selected_positions};
 use location_set::LocationSet;
 #[cfg(test)]
 use monitored::insert_monitored_entry;
-use ordering::{compare_entries, merge_entries};
 pub(crate) use ordering::{compare_display_names, sort_entries};
+use ordering::{compare_entries, merge_entries};
 use selection::SelectedLocations;
 
 #[derive(Clone, Debug, Eq, PartialEq)]

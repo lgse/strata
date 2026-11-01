@@ -66,9 +66,11 @@ impl LocationSet {
     pub(super) fn remove(&mut self, location: &Location) -> bool {
         match self {
             Self::Explicit(locations) => locations.remove(location),
-            Self::All { excluded, count } => {
-                step_count(count, excluded.insert(location.clone()), usize::saturating_sub)
-            }
+            Self::All { excluded, count } => step_count(
+                count,
+                excluded.insert(location.clone()),
+                usize::saturating_sub,
+            ),
         }
     }
 
@@ -104,7 +106,11 @@ impl LocationSet {
         }
     }
 
-    pub(super) fn equals_explicit(&self, locations: &HashSet<Location>, entries: &[FileEntry]) -> bool {
+    pub(super) fn equals_explicit(
+        &self,
+        locations: &HashSet<Location>,
+        entries: &[FileEntry],
+    ) -> bool {
         self.len() == locations.len()
             && match self {
                 Self::Explicit(selected) => selected == locations,

@@ -7,7 +7,10 @@ use std::{
 
 use crate::{
     model::Location,
-    services::{CancelledOperation, ItemIdentity, OperationEvent, PlacedSnapshot, ReplacedOriginal, TransferReport},
+    services::{
+        CancelledOperation, ItemIdentity, OperationEvent, PlacedSnapshot, ReplacedOriginal,
+        TransferReport,
+    },
 };
 
 use super::{

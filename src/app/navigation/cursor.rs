@@ -4,7 +4,9 @@ use std::{cmp::Ordering, collections::HashSet};
 
 use crate::model::FileEntry;
 
-use super::{ColumnState, LoadState, NavigationState, adopt_selected_locations, adopt_selected_positions};
+use super::{
+    ColumnState, LoadState, NavigationState, adopt_selected_locations, adopt_selected_positions,
+};
 
 impl ColumnState {
     fn shows(&self, entry: &FileEntry) -> bool {

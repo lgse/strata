@@ -2,7 +2,10 @@
 
 use std::collections::HashMap;
 
-use crate::{model::{FileEntry, Location, MetadataValue}, services::{MetadataUpdate, RequestId}};
+use crate::{
+    model::{FileEntry, Location, MetadataValue},
+    services::{MetadataUpdate, RequestId},
+};
 
 use super::{ColumnState, NavigationState};
 
@@ -157,7 +160,10 @@ fn update_every_matching_entry(
 }
 
 /// Takes a known `update` value, and returns whether it changed `current`.
-fn merge_known<T: Clone + PartialEq>(current: &mut MetadataValue<T>, update: &MetadataValue<T>) -> bool {
+fn merge_known<T: Clone + PartialEq>(
+    current: &mut MetadataValue<T>,
+    update: &MetadataValue<T>,
+) -> bool {
     if *update == MetadataValue::Unknown || current == update {
         return false;
     }
@@ -168,7 +174,10 @@ fn merge_known<T: Clone + PartialEq>(current: &mut MetadataValue<T>, update: &Me
 fn apply_metadata_update(entry: &mut FileEntry, update: &MetadataUpdate) -> bool {
     let changed = [
         merge_known(&mut entry.size, &update.size),
-        merge_known(&mut entry.modified_unix_seconds, &update.modified_unix_seconds),
+        merge_known(
+            &mut entry.modified_unix_seconds,
+            &update.modified_unix_seconds,
+        ),
         merge_known(&mut entry.mode, &update.mode),
         merge_known(&mut entry.image_dimensions, &update.image_dimensions),
         merge_known(&mut entry.child_count, &update.child_count),

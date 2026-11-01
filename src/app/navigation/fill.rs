@@ -4,7 +4,10 @@ use std::collections::HashSet;
 
 use crate::model::{FileEntry, Location};
 
-use super::{ColumnState, CursorToggle, NavigationState, SelectedLocations, lists_each_location_once, place_cursor, visible_positions};
+use super::{
+    ColumnState, CursorToggle, NavigationState, SelectedLocations, lists_each_location_once,
+    place_cursor, visible_positions,
+};
 
 impl NavigationState {
     pub fn select(&mut self, depth: usize, position: usize) -> bool {
@@ -83,7 +86,11 @@ impl NavigationState {
         self.replace_visible(depth, false)
     }
 
-    pub(super) fn replace_visible(&mut self, depth: usize, select_all: bool) -> Option<(usize, Vec<usize>)> {
+    pub(super) fn replace_visible(
+        &mut self,
+        depth: usize,
+        select_all: bool,
+    ) -> Option<(usize, Vec<usize>)> {
         self.visual = None;
         let column = self.columns.get_mut(depth)?;
         let visible = visible_positions(column);
@@ -300,7 +307,11 @@ impl NavigationState {
     }
 }
 
-pub(super) fn adopt_selected_locations(column: &mut ColumnState, locations: HashSet<Location>, commit: bool) {
+pub(super) fn adopt_selected_locations(
+    column: &mut ColumnState,
+    locations: HashSet<Location>,
+    commit: bool,
+) {
     if commit {
         column.load_cursor = None;
         column.drop_load_intents();
@@ -308,7 +319,11 @@ pub(super) fn adopt_selected_locations(column: &mut ColumnState, locations: Hash
     column.selected_locations = locations.into();
 }
 
-pub(super) fn adopt_selected_positions(column: &mut ColumnState, mut positions: Vec<usize>, commit: bool) {
+pub(super) fn adopt_selected_positions(
+    column: &mut ColumnState,
+    mut positions: Vec<usize>,
+    commit: bool,
+) {
     if commit {
         column.load_cursor = None;
         column.drop_load_intents();
@@ -335,10 +350,7 @@ impl ColumnState {
     /// while a different fill remains. After a clear, that cursor report is the
     /// click on the still-focused file, so it becomes the selection.
     fn classify_reported_fill(&mut self, positions: &[usize]) -> ReportedFill {
-        let Some(cursor) = self
-            .selected
-            .and_then(|cursor| self.entries.get(cursor))
-        else {
+        let Some(cursor) = self.selected.and_then(|cursor| self.entries.get(cursor)) else {
             return ReportedFill::Changed(None);
         };
         let (unchanged, located) = self.compare_reported_fill(positions);
@@ -354,9 +366,10 @@ impl ColumnState {
     /// Whether `positions` match the fill, with the locations they name when
     /// the fill keeps no positions to compare against.
     fn compare_reported_fill(&self, positions: &[usize]) -> (bool, Option<HashSet<Location>>) {
-        if let Some(previous) = self.selected_locations.exact_positions(|| {
-            lists_each_location_once(&self.entries, &self.each_location_once)
-        }) {
+        if let Some(previous) = self
+            .selected_locations
+            .exact_positions(|| lists_each_location_once(&self.entries, &self.each_location_once))
+        {
             return (previous == positions, None);
         }
         let locations: HashSet<_> = positions

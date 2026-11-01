@@ -2,9 +2,15 @@
 
 use std::{cmp::Ordering, collections::HashSet};
 
-use crate::{model::{FileEntry, Location, MetadataValue, SortKey, ViewPreferences}, services::{DirectoryChange, RequestId}};
+use crate::{
+    model::{FileEntry, Location, MetadataValue, SortKey, ViewPreferences},
+    services::{DirectoryChange, RequestId},
+};
 
-use super::{ColumnState, EntrySplice, EntrySpliceApplication, LoadState, NavigationState, compare_entries, merge_entries};
+use super::{
+    ColumnState, EntrySplice, EntrySpliceApplication, LoadState, NavigationState, compare_entries,
+    merge_entries,
+};
 
 impl NavigationState {
     pub fn set_preserve_fill_on_removal(&mut self, preserve: bool) {
@@ -334,7 +340,10 @@ impl RemovedEntries {
             if removals.contains(&entry.location) {
                 split.remove(entry.location);
             } else {
-                split.retain(entry, selected_position.is_some_and(|selected| position < selected));
+                split.retain(
+                    entry,
+                    selected_position.is_some_and(|selected| position < selected),
+                );
             }
         }
         split
@@ -511,9 +520,7 @@ impl<'a> MonitoredChange<'a> {
         if !self.preserve_fill
             && let Some(replacement) = &self.selected
         {
-            self.column
-                .selected_locations
-                .insert(replacement.clone());
+            self.column.selected_locations.insert(replacement.clone());
         }
     }
 

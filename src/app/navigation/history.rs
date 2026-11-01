@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-use std::{cell::{Cell, OnceCell}, collections::HashSet};
+use std::{
+    cell::{Cell, OnceCell},
+    collections::HashSet,
+};
 
-use crate::{model::Location, services::{DirectoryChange, RequestId}};
+use crate::{
+    model::Location,
+    services::{DirectoryChange, RequestId},
+};
 
 use super::{ColumnState, LoadState, NavigationPath, NavigationState, SelectedLocations};
 

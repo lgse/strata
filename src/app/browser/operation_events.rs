@@ -543,4 +543,3 @@ fn deleted_locations(event: &OperationEvent) -> Vec<Location> {
         _ => Vec::new(),
     }
 }
-

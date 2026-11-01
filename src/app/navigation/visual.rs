@@ -4,7 +4,10 @@ use std::collections::HashSet;
 
 use crate::model::Location;
 
-use super::{ColumnState, NavigationState, VisualKind, VisualRange, adopt_selected_locations, visible_positions};
+use super::{
+    ColumnState, NavigationState, VisualKind, VisualRange, adopt_selected_locations,
+    visible_positions,
+};
 
 impl NavigationState {
     /// A load cursor is not included in the range's base fill.

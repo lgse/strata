@@ -69,11 +69,7 @@ fn replay_succeeded(redo: bool, entry: &UndoEntry, event: &OperationEvent) -> bo
     }
 }
 
-fn push_applied_replay(
-    redo: bool,
-    applied: UndoEntry,
-    trashed: &HashMap<Location, ItemIdentity>,
-) {
+fn push_applied_replay(redo: bool, applied: UndoEntry, trashed: &HashMap<Location, ItemIdentity>) {
     if redo {
         push_regenerated_undo(match applied {
             UndoEntry::Trash { locations, .. } => UndoEntry::trashed(locations, trashed),

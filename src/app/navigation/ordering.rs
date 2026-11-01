@@ -73,7 +73,9 @@ fn takes_incoming(
     preferences: ViewPreferences,
 ) -> bool {
     match (existing, incoming) {
-        (Some(left), Some(right)) => compare_sort_items(right, left, preferences) != Ordering::Greater,
+        (Some(left), Some(right)) => {
+            compare_sort_items(right, left, preferences) != Ordering::Greater
+        }
         (None, Some(_)) => true,
         _ => false,
     }
@@ -220,7 +222,11 @@ fn compare_sort_items(left: &SortItem, right: &SortItem, preferences: ViewPrefer
         .then_with(|| left.entry.location.compare(&right.entry.location))
 }
 
-pub(super) fn compare_entries(left: &FileEntry, right: &FileEntry, preferences: ViewPreferences) -> Ordering {
+pub(super) fn compare_entries(
+    left: &FileEntry,
+    right: &FileEntry,
+    preferences: ViewPreferences,
+) -> Ordering {
     if preferences.sort_key == SortKey::DeviceOrder {
         return Ordering::Equal;
     }
