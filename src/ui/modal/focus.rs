@@ -320,7 +320,10 @@ fn shown_or_revealing(widget: &gtk::Widget) -> bool {
     true
 }
 
-pub(in crate::ui) fn remember_modal_focus(layer: &gtk::Box, overlay: &gtk::Overlay) -> Rc<Cell<bool>> {
+pub(in crate::ui) fn remember_modal_focus(
+    layer: &gtk::Box,
+    overlay: &gtk::Overlay,
+) -> Rc<Cell<bool>> {
     remember_removed_modal_focus(layer, overlay, true)
 }
 

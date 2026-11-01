@@ -169,10 +169,7 @@ impl ChooserShortcuts {
         STOP
     }
 
-    pub(super) fn location_keeps_key(
-        &self,
-        context: &KeyContext<'_>,
-    ) -> Option<glib::Propagation> {
+    pub(super) fn location_keeps_key(&self, context: &KeyContext<'_>) -> Option<glib::Propagation> {
         context
             .view()
             .location_has_focus()

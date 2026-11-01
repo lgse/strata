@@ -122,8 +122,7 @@ impl ChooserShortcuts {
         if direction == gtk::DirectionType::Right {
             self.focus_before_sidebar.borrow_mut().take();
             context.browser.focus_active();
-        } else if !self.sidebar_widget.child_focus(direction)
-            && direction == gtk::DirectionType::Up
+        } else if !self.sidebar_widget.child_focus(direction) && direction == gtk::DirectionType::Up
         {
             self.sidebar_toggle.grab_focus();
             context.state.window.set_focus_visible(true);

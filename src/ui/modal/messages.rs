@@ -56,7 +56,11 @@ struct Message<'a> {
     kind: MessageKind,
 }
 
-pub(in crate::ui) fn show_error_dialog(parent: &impl IsA<gtk::Widget>, message: &str, detail: &str) {
+pub(in crate::ui) fn show_error_dialog(
+    parent: &impl IsA<gtk::Widget>,
+    message: &str,
+    detail: &str,
+) {
     show_error_dialog_after_close(parent, message, detail, Rc::new(|| {}));
 }
 
@@ -72,7 +76,11 @@ pub(in crate::ui) fn show_partial_failure_dialog(parent: &impl IsA<gtk::Widget>,
     .show(parent, Rc::new(|| {}));
 }
 
-pub(in crate::ui) fn show_information_dialog(parent: &impl IsA<gtk::Widget>, message: &str, detail: &str) {
+pub(in crate::ui) fn show_information_dialog(
+    parent: &impl IsA<gtk::Widget>,
+    message: &str,
+    detail: &str,
+) {
     Message::information(message, None, detail).show(parent, Rc::new(|| {}));
 }
 

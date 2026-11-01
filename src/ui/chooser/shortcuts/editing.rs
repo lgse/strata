@@ -31,7 +31,10 @@ impl ChooserShortcuts {
     }
 
     pub(super) fn text_size(&self, context: &KeyContext<'_>) -> Option<glib::Propagation> {
-        let size = context.preferences.text_size().for_shortcut(&context.press)?;
+        let size = context
+            .preferences
+            .text_size()
+            .for_shortcut(&context.press)?;
         context.view().set_text_size(size);
         STOP
     }

@@ -82,7 +82,12 @@ pub(super) fn build_chooser_hosted(
         download_progress: RefCell::new(None),
     });
 
-    connect_actions(&state, &actions.accept, &actions.cancel, details.filename.as_ref());
+    connect_actions(
+        &state,
+        &actions.accept,
+        &actions.cancel,
+        details.filename.as_ref(),
+    );
     observe_browser(&state, &preview, &browser);
     #[cfg(test)]
     remember_destination_state(&state);
@@ -398,7 +403,11 @@ fn name_row(kind: &ChooserKind, details: &gtk::Box) -> Option<gtk::Entry> {
         }
         ChooserKind::Open {
             directory: false, ..
-        } => Some(name_entry(details, "Enter a filename or https:// URL", None)),
+        } => Some(name_entry(
+            details,
+            "Enter a filename or https:// URL",
+            None,
+        )),
         ChooserKind::Open {
             directory: true, ..
         } => None,

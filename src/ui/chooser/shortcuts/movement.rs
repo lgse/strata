@@ -128,8 +128,7 @@ impl ChooserShortcuts {
     }
 
     fn move_left(&self, context: &KeyContext<'_>) {
-        let to_sidebar =
-            context.view().first_column_has_focus() && self.sidebar_toggle.is_active();
+        let to_sidebar = context.view().first_column_has_focus() && self.sidebar_toggle.is_active();
         if to_sidebar && !context.arrow_scoped() {
             self.enter_sidebar(context);
         } else {

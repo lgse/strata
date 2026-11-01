@@ -14,12 +14,12 @@ mod messages;
 #[cfg(test)]
 mod tests;
 
-use focus::track_removed_layer;
 pub(in crate::ui) use focus::is_closing_layer;
-pub(crate) use focus::{remember_persistent_modal_focus, set_modal_focus_fallback};
+use focus::track_removed_layer;
 pub(super) use focus::{
     remember_modal_focus, remember_modal_focus_for_listing, set_modal_focus_restore,
 };
+pub(crate) use focus::{remember_persistent_modal_focus, set_modal_focus_fallback};
 pub(super) use messages::{
     show_delete_error_dialog, show_error_dialog, show_error_dialog_after_close,
     show_error_dialog_with_action, show_error_dialog_with_summary, show_information_dialog,

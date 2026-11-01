@@ -418,11 +418,7 @@ fn thumbnail_change(
     let image = row
         .child()
         .and_then(|content| content.first_child())
-        .and_then(|child| {
-            child
-                .downcast::<crate::ui::thumbnail::ThumbnailSlot>()
-                .ok()
-        })?;
+        .and_then(|child| child.downcast::<crate::ui::thumbnail::ThumbnailSlot>().ok())?;
     let fallback = fallback_icon(item);
     let changed = if visible {
         requested.insert(item.path.clone())

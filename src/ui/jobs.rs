@@ -439,8 +439,7 @@ fn dashboard_refresh(
         let (Some(list), Some(clear)) = (weak_list.upgrade(), weak_clear.upgrade()) else {
             return;
         };
-        if let (Some(running), Some(finished)) = (weak_running.upgrade(), weak_finished.upgrade())
-        {
+        if let (Some(running), Some(finished)) = (weak_running.upgrade(), weak_finished.upgrade()) {
             show_activity_summary(&running, &finished, &state.service);
         }
         render_rows(&list, &clear, &state, &callback);
