@@ -1,0 +1,28 @@
+{"scenario":"narrow-window-keeps-last-column","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"cost":{"columns":0.8},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Narrow window yields the column preview and keeps the last column visible; restores the same selection on widen; unique vs column-preview-fills-free-space and filled-preview-outlines-minimum (drag-based) which do not resize the window"}}
+{"note":"number","expr":{"of":{"pane":null},"get":"x"},"as":"browser_left"}
+{"select":{"entry":"folder"}}
+{"wait":{"directory":"folder"},"message":"the browser to be working in 'folder'"}
+{"settle":{"pane":"folder"}}
+{"select_with_keyboard":"inner.txt"}
+{"key":"space"}
+{"wait":{"preview":"inner"},"message":"the initial preview"}
+{"note":"number","expr":{"of":{"preview":true},"get":"width"},"as":"preferred"}
+{"resize":{"width":900}}
+{"wait":{"window_width":900},"message":"the resized window"}
+{"wait":{"compare":{"left":{"of":{"preview":true},"get":"width"},"op":"<","right":"$preferred"}},"message":"the preview minimum to yield"}
+{"wait":{"all":[{"compare":{"left":{"of":{"pane":"folder"},"get":"x"},"op":">=","right":"$browser_left"}},{"compare":{"left":{"of":{"pane":"folder"},"get":"right"},"op":"<=","right":{"of":{"window":true},"get":"right"}}}]},"message":"the entire last column to stay visible"}
+{"settle":{"pane":"folder"}}
+{"expect":{"compare":{"left":{"of":{"pane":"folder"},"get":"right"},"op":"<=","right":{"of":{"preview":true},"get":"x"}}}}
+{"resize":{"width":480}}
+{"wait":{"window_width":480},"message":"the resized window"}
+{"wait":{"preview":null},"message":"the preview to yield to browsing"}
+{"wait":{"focused":"inner.txt"},"message":"focus to return to the listing"}
+{"key":"Down"}
+{"wait":{"selected":["nested-notes.txt"]},"message":"the selection to become ['nested-notes.txt']"}
+{"resize":{"width":900}}
+{"wait":{"window_width":900},"message":"the resized window"}
+{"wait":{"preview":"nested preview fixture"},"message":"the same selection after expansion"}
+{"wait":{"all":[{"compare":{"left":{"of":{"pane":"folder"},"get":"x"},"op":">=","right":"$browser_left"}},{"compare":{"left":{"of":{"pane":"folder"},"get":"right"},"op":"<=","right":{"of":{"window":true},"get":"right"}}}]},"message":"the last column beside the resumed preview"}
+{"resize":{"width":1200}}
+{"wait":{"window_width":1200},"message":"the resized window"}
+{"wait":{"compare":{"left":{"of":{"preview":true},"get":"width"},"op":"==","right":"$preferred"}},"message":"the preferred preview width to return"}

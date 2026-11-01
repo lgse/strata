@@ -1,0 +1,5 @@
+{"scenario":"context-menu-baseline","modes":["list"],"prefs":{"browser_mode":"list"},"layout":"us","mutation":null,"known_bug":null,"fixture_root":"/tmp/strata-e2e-baseline","tree":{"documents":{"notes.txt":"notes\n","projects":{"release":{"summary.md":"# Release\n"}},"report.md":"# Report\n"},"pictures":{},"readme.md":"# Fixture\n","todo.txt":"todo\n"},"cost":{"list":0.6},"quality":{"impact":2,"coverage":2,"criticality":3,"diagnostic":1,"score":7,"note":"Context menu pixel baseline; right-click menu opening and Copy population are covered by many scenarios, only the image is unique"}}
+{"click":{"entry":"readme.md"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'readme.md'"}
+{"wait":{"menu_items":{"contains":["Copy"]}},"message":"the context menu to be populated"}
+{"baseline":"context-menu"}

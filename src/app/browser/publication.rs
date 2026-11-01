@@ -132,6 +132,7 @@ impl Browser {
                 truncated,
                 retry_metadata,
             } => {
+                self.note_listing_finished(depth);
                 self.emit(BrowserEvent::LoadFinished { depth, truncated });
                 self.report_unresolved_location_reveal(depth, plan.request_id);
                 if retry_metadata {

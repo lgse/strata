@@ -1,28 +1,31 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    cell::{Cell, RefCell},
+    cell::{Cell, OnceCell, RefCell},
     cmp::Ordering,
     rc::Rc,
 };
 
 use crate::services::DocumentTableCellLayout;
 use crate::ui::keys::{self, bindings::COPY};
-use gtk::{gio, glib, prelude::*};
+use gtk::{glib, prelude::*};
 
+mod model;
 mod selection;
+
+use model::RowModel;
 
 pub(super) struct TableState {
     rows: Rc<Vec<Vec<DocumentTableCellLayout>>>,
-    sort_keys: Rc<Vec<Vec<SortKey>>>,
+    column_sort_keys: Vec<OnceCell<ColumnSortKeys>>,
+    column_row_counts: Vec<usize>,
     header: bool,
     widths: RefCell<Vec<i32>>,
     manually_sized: Cell<bool>,
-    sort: Cell<Option<(usize, gtk::SortType)>>,
-    model: gtk::SortListModel,
+    sort: RefCell<Vec<(usize, gtk::SortType)>>,
+    model: RowModel,
 }
 
-#[derive(Clone)]
 enum SortKey {
     Number(f64),
     Text(String),
@@ -52,31 +55,167 @@ impl SortKey {
     }
 }
 
+enum ColumnSortKeys {
+    Dense(Vec<SortKey>),
+    Sparse(Vec<(usize, SortKey)>),
+}
+
+impl ColumnSortKeys {
+    fn new(rows: &[Vec<DocumentTableCellLayout>], column: usize, present: usize) -> Self {
+        // Dense indexing is faster, but may reserve at most twice the real
+        // cells. Sparse columns never expand to the table's full row count.
+        if present >= rows.len().div_ceil(2) {
+            Self::Dense(
+                rows.iter()
+                    .map(|row| {
+                        row.get(column)
+                            .map_or(SortKey::Empty, |cell| SortKey::new(&cell.text))
+                    })
+                    .collect(),
+            )
+        } else {
+            let mut keys = Vec::with_capacity(present);
+            keys.extend(rows.iter().enumerate().filter_map(|(row, cells)| {
+                cells
+                    .get(column)
+                    .map(|cell| (row, SortKey::new(&cell.text)))
+            }));
+            Self::Sparse(keys)
+        }
+    }
+
+    fn compare(&self, a: usize, b: usize) -> Ordering {
+        match self {
+            Self::Dense(keys) => keys[a].compare(&keys[b]),
+            Self::Sparse(keys) => {
+                let key = |row| {
+                    keys.binary_search_by_key(&row, |(row, _)| *row)
+                        .map_or(&SortKey::Empty, |index| &keys[index].1)
+                };
+                key(a).compare(key(b))
+            }
+        }
+    }
+}
+
 impl TableState {
     pub(super) fn new(rows: Vec<Vec<DocumentTableCellLayout>>) -> Rc<Self> {
         let header = rows
             .first()
             .is_some_and(|row| !row.is_empty() && row.iter().all(|cell| cell.header));
-        let columns = rows.iter().map(Vec::len).max().unwrap_or(0);
-        let store = gio::ListStore::new::<glib::BoxedAnyObject>();
-        for index in usize::from(header)..rows.len() {
-            store.append(&glib::BoxedAnyObject::new(index));
+        let mut column_row_counts = Vec::new();
+        for row in &rows {
+            if column_row_counts.len() <= row.len() {
+                column_row_counts.resize(row.len() + 1, 0);
+            }
+            column_row_counts[row.len()] += 1;
         }
-        // Missing ragged cells share Empty rather than expanding into a dense
-        // rows-by-columns matrix outside the parser's value budget.
-        let sort_keys = rows
-            .iter()
-            .map(|row| row.iter().map(|cell| SortKey::new(&cell.text)).collect())
-            .collect();
-        Rc::new(Self {
+        if header {
+            column_row_counts[rows[0].len()] -= 1;
+        }
+        let columns = column_row_counts.len().saturating_sub(1);
+        let mut present = 0;
+        // A row-width histogram gives every column's population in O(rows + columns).
+        for count in column_row_counts.iter_mut().rev() {
+            let at_width = *count;
+            *count = present;
+            present += at_width;
+        }
+        column_row_counts.truncate(columns);
+        let model = RowModel::new(rows.len());
+        let state = Rc::new(Self {
             rows: Rc::new(rows),
-            sort_keys: Rc::new(sort_keys),
+            column_sort_keys: (0..columns).map(|_| OnceCell::new()).collect(),
+            column_row_counts,
             header,
             widths: RefCell::new(vec![160; columns]),
             manually_sized: Cell::new(false),
-            sort: Cell::new((columns > 0).then_some((0, gtk::SortType::Ascending))),
-            model: gtk::SortListModel::new(Some(store), None::<gtk::Sorter>),
+            sort: RefCell::new(Vec::new()),
+            model,
+        });
+        if columns > 0 {
+            state.apply_sort(&[(0, gtk::SortType::Ascending)]);
+        } else {
+            state.restore_natural_order();
+        }
+        state
+    }
+
+    fn sort_keys_for_column(&self, column: usize) -> &ColumnSortKeys {
+        self.column_sort_keys[column].get_or_init(|| {
+            ColumnSortKeys::new(
+                &self.rows[usize::from(self.header)..],
+                column,
+                self.column_row_counts[column],
+            )
         })
+    }
+
+    fn apply_sort(&self, columns: &[(usize, gtk::SortType)]) {
+        let start = usize::from(self.header);
+        if self.sort.borrow().as_slice() == columns
+            && self.model.order().len() == self.rows.len() - start
+        {
+            return;
+        }
+        let previous_sort = self.sort.replace(columns.to_vec());
+        if columns.is_empty() {
+            self.restore_natural_order();
+            return;
+        }
+        let keys = columns
+            .iter()
+            .map(|&(column, direction)| (self.sort_keys_for_column(column), direction))
+            .collect::<Vec<_>>();
+        if previous_sort.len() == columns.len()
+            && previous_sort[0].0 == columns[0].0
+            && previous_sort[0].1 != columns[0].1
+            && previous_sort[1..] == columns[1..]
+        {
+            let mut order = self.model.order().to_vec();
+            order.reverse();
+            // Reverse primary-key groups, not their stable secondary ordering.
+            for group in order
+                .chunk_by_mut(|&a, &b| keys[0].0.compare(a - start, b - start) == Ordering::Equal)
+            {
+                group.reverse();
+            }
+            self.model.set_order(order);
+            return;
+        }
+        let mut order = (0..self.rows.len() - start).collect::<Vec<_>>();
+        if let [(ColumnSortKeys::Dense(keys), direction)] = keys.as_slice() {
+            if *direction == gtk::SortType::Descending {
+                order.sort_by(|&a, &b| keys[b].compare(&keys[a]));
+            } else {
+                order.sort_by(|&a, &b| keys[a].compare(&keys[b]));
+            }
+        } else {
+            order.sort_by(|&a, &b| {
+                for &(keys, direction) in &keys {
+                    let cmp = keys.compare(a, b);
+                    if cmp != Ordering::Equal {
+                        return if direction == gtk::SortType::Descending {
+                            cmp.reverse()
+                        } else {
+                            cmp
+                        };
+                    }
+                }
+                Ordering::Equal
+            });
+        }
+        if start > 0 {
+            for row in &mut order {
+                *row += start;
+            }
+        }
+        self.model.set_order(order);
+    }
+
+    fn restore_natural_order(&self) {
+        self.model
+            .set_order((usize::from(self.header)..self.rows.len()).collect());
     }
 
     pub(super) fn copy_text(&self) -> String {
@@ -84,14 +223,8 @@ impl TableState {
         if self.header {
             append_row(&mut text, &self.rows[0]);
         }
-        for position in 0..self.model.n_items() {
-            let item = self
-                .model
-                .item(position)
-                .expect("table model position")
-                .downcast::<glib::BoxedAnyObject>()
-                .expect("table row index");
-            append_row(&mut text, &self.rows[*item.borrow::<usize>()]);
+        for &row in self.model.order().iter() {
+            append_row(&mut text, &self.rows[row]);
         }
         text
     }
@@ -208,26 +341,7 @@ impl TableState {
                     }
                 }
             });
-            let keys = self.sort_keys.clone();
-            let sorter = gtk::CustomSorter::new(move |a, b| {
-                let a = *a
-                    .downcast_ref::<glib::BoxedAnyObject>()
-                    .expect("table sort row index")
-                    .borrow::<usize>();
-                let b = *b
-                    .downcast_ref::<glib::BoxedAnyObject>()
-                    .expect("table sort row index")
-                    .borrow::<usize>();
-                match keys[a]
-                    .get(index)
-                    .unwrap_or(&SortKey::Empty)
-                    .compare(keys[b].get(index).unwrap_or(&SortKey::Empty))
-                {
-                    Ordering::Less => gtk::Ordering::Smaller,
-                    Ordering::Equal => gtk::Ordering::Equal,
-                    Ordering::Greater => gtk::Ordering::Larger,
-                }
-            });
+            let sorter = gtk::CustomSorter::new(|_, _| gtk::Ordering::Equal);
             column.set_sorter(Some(&sorter));
             view.append_column(&column);
             columns.push(column);
@@ -257,11 +371,10 @@ impl TableState {
         {
             install_last_column_resize(&title, column);
         }
-        if let Some((index, direction)) = self.sort.get() {
+        if let Some(&(index, direction)) = self.sort.borrow().first() {
             view.sort_by_column(columns.get(index), direction);
         }
         if let Some(sorter) = view.sorter() {
-            self.model.set_sorter(Some(&sorter));
             let weak = Rc::downgrade(self);
             let weak_columns = columns
                 .iter()
@@ -282,13 +395,17 @@ impl TableState {
                 if let Some(state) = weak.upgrade()
                     && let Some(sorter) = sorter.downcast_ref::<gtk::ColumnViewSorter>()
                 {
-                    let primary = sorter.primary_sort_column();
-                    let index = weak_columns
-                        .iter()
-                        .position(|column| column.upgrade() == primary);
-                    state
-                        .sort
-                        .set(index.map(|index| (index, sorter.primary_sort_order())));
+                    let columns = (0..sorter.n_sort_columns())
+                        .filter_map(|position| {
+                            let (column, direction) = sorter.nth_sort_column(position);
+                            let column = column?;
+                            weak_columns
+                                .iter()
+                                .position(|weak| weak.upgrade().as_ref() == Some(&column))
+                                .map(|index| (index, direction))
+                        })
+                        .collect::<Vec<_>>();
+                    state.apply_sort(&columns);
                     if state.model.n_items() > 0 {
                         let weak_view = view.downgrade();
                         glib::idle_add_local_once(move || {
@@ -316,16 +433,16 @@ impl TableState {
             .map(|column| column.downgrade())
             .collect::<Vec<_>>();
         let measured_width = Cell::new(0);
-        view.add_tick_callback(move |view, _| {
+        let resize = Rc::new(move |view: &gtk::ColumnView| {
             let Some(state) = weak.upgrade() else {
-                return glib::ControlFlow::Break;
+                return;
             };
             let available = (view.width() - 2).max(0);
             if state.manually_sized.get()
                 || available == 0
                 || measured_width.replace(available) == available
             {
-                return glib::ControlFlow::Continue;
+                return;
             }
             let minimum_total = desired_widths
                 .iter()
@@ -355,7 +472,24 @@ impl TableState {
                 }
             }
             automatic_resize.set(false);
-            glib::ControlFlow::Continue
+        });
+        let weak_view = view.downgrade();
+        let resize_pending = Rc::new(Cell::new(false));
+        scroll.hadjustment().connect_page_size_notify(move |_| {
+            let Some(view) = weak_view.upgrade() else {
+                return;
+            };
+            if resize_pending.replace(true) {
+                return;
+            }
+            let resize = resize.clone();
+            let resize_pending = resize_pending.clone();
+            // Allocation and column notifications must settle before fitting.
+            view.add_tick_callback(move |view, _| {
+                resize(view);
+                resize_pending.set(false);
+                glib::ControlFlow::Break
+            });
         });
         let key = gtk::EventControllerKey::new();
         let state = self.clone();
@@ -440,3 +574,6 @@ fn append_row(text: &mut String, row: &[DocumentTableCellLayout]) {
     }
     text.push('\n');
 }
+
+#[cfg(test)]
+mod tests;

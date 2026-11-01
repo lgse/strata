@@ -2,7 +2,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    fs, io,
+    io,
     path::Path,
     rc::Rc,
 };
@@ -55,20 +55,8 @@ impl SaveNotices {
         windows.push(window.downgrade());
     }
 
-    /// `write` is one of the atomic writers in `crate::storage`. Success ends a
-    /// failure streak; a failure is returned for `write_failed`.
-    pub(super) fn write(
-        &self,
-        path: &Path,
-        contents: &str,
-        write: fn(&Path, &[u8]) -> io::Result<()>,
-    ) -> io::Result<()> {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        write(path, contents.as_bytes())?;
+    pub(super) fn saved(&self) {
         self.streak.set(Streak::Armed);
-        Ok(())
     }
 
     pub(super) fn write_failed(&self, path: &Path, error: &io::Error) {

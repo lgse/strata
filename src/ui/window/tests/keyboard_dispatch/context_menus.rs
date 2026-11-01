@@ -56,9 +56,12 @@ fn sidebar_context_shortcuts_open_place_trash_and_device_menus() {
             );
             state.append_trash_place();
             let trash = state
-                .places_for_test()
-                .last_child()
-                .and_downcast::<gtk::Button>()
+                .place_rows
+                .borrow()
+                .iter()
+                .rev()
+                .find(|(location, _)| *location == Location::uri("trash:///"))
+                .map(|(_, row)| row.clone())
                 .expect("trash row");
             let device = sidebar_button(crate::assets::icons::HARD_DRIVE, "Device");
             attach_device_actions_menu(

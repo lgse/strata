@@ -492,7 +492,6 @@ fn deleting_an_entry_respects_neighbor_visibility_and_cursor_fill() {
                     if batched {
                         browser.flush_deferred_file_operation_changes(
                             std::collections::HashMap::from([(0, vec![(parent.clone(), change)])]),
-                            false,
                         );
                     } else {
                         browser.handle_directory_change(0, &parent, change);

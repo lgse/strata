@@ -14,11 +14,11 @@ use candidates::Candidates;
 use chord_panel::ChordPanel;
 
 use super::keys::{
-    KeyPress, TEXT_EDITING,
+    KeyPress,
     bindings::{
-        DOWN, ENTER_ANY_SHIFT, ESCAPE_ANY, FIRST_ITEM, FOCUS_NEXT, FOCUS_PREVIOUS, LAST_ITEM, LEFT,
-        PAGE_DOWN, PAGE_UP, REFERENCE, REFERENCE_CATEGORIES, REFERENCE_LIST, REFERENCE_SEARCH,
-        RIGHT, SPACE, TENXER_REFERENCE, UP, VIM_DOWN, VIM_LEFT, VIM_RIGHT, VIM_UP,
+        DOWN, END_KEY, ENTER_ANY_SHIFT, ESCAPE_ANY, FOCUS_NEXT, FOCUS_PREVIOUS, HOME_KEY, LEFT,
+        PAGE_DOWN_KEY, PAGE_UP_KEY, REFERENCE, REFERENCE_CATEGORIES, REFERENCE_LIST,
+        REFERENCE_SEARCH, RIGHT, SPACE, UP,
     },
 };
 use super::{
@@ -134,7 +134,9 @@ impl ChordIndicator {
         self.set_with(None, Vec::new());
     }
 
-    fn set_with(&self, chord: Option<Chord>, rows: Vec<(String, String)>) {
+    /// Rows whose keys are unbound are left out.
+    fn set_with(&self, chord: Option<Chord>, mut rows: Vec<(String, String)>) {
+        rows.retain(|(keys, _)| !keys.is_empty());
         let previous = self.armed.replace(chord);
         if let Some(mark) = self.mark.upgrade() {
             mark.set_text(&chord.map(Chord::mark).unwrap_or_default());
@@ -497,6 +499,7 @@ impl PromptBar {
         entry.add_css_class("form-control");
         entry.add_css_class("shortcut-footer-prompt");
         entry.set_hexpand(true);
+        crate::ui::accessibility::set_labelled_by(&entry, &[label.upcast_ref()]);
         let hint = gtk::Label::new(None);
         hint.add_css_class("shortcut-footer-chord-hint");
         hint.set_ellipsize(gtk::pango::EllipsizeMode::End);
@@ -640,13 +643,15 @@ impl ShortcutFooter {
         count.set_visible(false);
         let paste = gtk::Label::new(Some(&crate::i18n::tr("Files on clipboard")));
         paste.add_css_class("shortcut-footer-paste");
-        crate::ui::accessibility::set_description(
-            &paste,
-            Some(&with_keys(
-                "Press %{keys} to paste into a supported directory.",
-                Keys::One(bindings::PASTE),
-            )),
-        );
+        crate::ui::shortcut_reference::follow_keys(&paste, |paste| {
+            crate::ui::accessibility::set_description(
+                paste,
+                Some(&with_keys(
+                    "Press %{keys} to paste into a supported directory.",
+                    Keys::One(bindings::PASTE.shown()),
+                )),
+            );
+        });
         paste.set_visible(false);
         let tag = gtk::Label::new(Some(crate::ui::tenxer_mode::TAG_TEXT));
         tag.add_css_class("tenxer-tag");
@@ -688,18 +693,25 @@ impl ShortcutFooter {
         let show_hints = Rc::new(Cell::new(true));
 
         let more = gtk::ToggleButton::new();
-        let reference = Keys::One(bindings::REFERENCE);
-        let more_label = with_keys("%{keys} Shortcuts", reference);
-        more.set_child(Some(&gtk::Label::new(Some(&more_label))));
+        let more_text = gtk::Label::new(None);
+        more.set_child(Some(&more_text));
         more.add_css_class("shortcut-footer-button");
-        super::accessibility::set_label(&more, &more_label);
-        crate::ui::accessibility::set_description(
-            &more,
-            Some(&with_keys(
-                "Show all file-view shortcuts (%{keys})",
-                reference,
-            )),
-        );
+        let more_text = more_text.downgrade();
+        crate::ui::shortcut_reference::follow_keys(&more, move |more| {
+            let reference = Keys::One(bindings::REFERENCE.alternate(0).shown());
+            let more_label = with_keys("%{keys} Shortcuts", reference);
+            if let Some(text) = more_text.upgrade() {
+                text.set_text(&more_label);
+            }
+            super::accessibility::set_label(more, &more_label);
+            crate::ui::accessibility::set_description(
+                more,
+                Some(&with_keys(
+                    "Show all file-view shortcuts (%{keys})",
+                    reference,
+                )),
+            );
+        });
         status.prepend(&more);
         let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         spacer.set_hexpand(true);
@@ -722,6 +734,7 @@ impl ShortcutFooter {
         search.set_placeholder_text(Some(&crate::i18n::tr("Search actions or keys…")));
         search.set_hexpand(true);
         search.add_css_class("shortcut-reference-search");
+        crate::ui::accessibility::set_label(&search, &crate::i18n::tr("Search actions or keys…"));
         header.append(&search);
         content.append(&header);
         let body = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -753,9 +766,17 @@ impl ShortcutFooter {
         content.append(&body);
         let footer_note = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         footer_note.add_css_class("shortcut-reference-footer");
-        let note_text = reference_note();
-        let note = gtk::Label::new(Some(&note_text));
-        note.set_attributes(Some(&hint_note_attributes(&note_text)));
+        let note = gtk::Label::new(None);
+        // The panel is outside the window until it opens, so the footer
+        // anchors the binding and a closed window releases it.
+        let noted = note.downgrade();
+        crate::ui::shortcut_reference::follow_keys(&root, move |_| {
+            if let Some(note) = noted.upgrade() {
+                let note_text = reference_note();
+                note.set_text(&note_text);
+                note.set_attributes(Some(&hint_note_attributes(&note_text)));
+            }
+        });
         note.set_wrap(true);
         note.add_css_class("shortcut-reference-note");
         note.set_hexpand(true);
@@ -863,6 +884,19 @@ impl ShortcutFooter {
                 .unwrap_or(glib::Propagation::Proceed)
         });
         footer.panel.add_controller(keys);
+        let unused = gtk::EventControllerKey::new();
+        super::keys::on_press(&unused, |_, press| {
+            if press.modifiers().intersects(
+                gdk::ModifierType::CONTROL_MASK
+                    | gdk::ModifierType::ALT_MASK
+                    | gdk::ModifierType::SUPER_MASK,
+            ) {
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
+        footer.search.add_controller(unused);
         footer.close_prompt_on_focus_loss();
         footer.set_mode(mode);
         footer
@@ -959,6 +993,38 @@ impl ShortcutFooter {
                 }
             },
         );
+        let reference = self.reference.downgrade();
+        let categories = self.categories.downgrade();
+        let search = self.search.downgrade();
+        let scroll = self.scroll.downgrade();
+        let selected = self.selected_category.clone();
+        let reference_scope = self.reference_scope.clone();
+        let primed = Cell::new(false);
+        manager.bind_preference(
+            &self.root,
+            // Labels leave out the keys a user added that type-to-search types.
+            |preferences| (preferences.keymap_revision(), preferences.type_to_search()),
+            move |_, _| {
+                if !primed.replace(true) {
+                    return;
+                }
+                if let (Some(reference), Some(categories), Some(search), Some(scroll)) = (
+                    reference.upgrade(),
+                    categories.upgrade(),
+                    search.upgrade(),
+                    scroll.upgrade(),
+                ) {
+                    rebuild_reference(
+                        &reference,
+                        &categories,
+                        &search,
+                        &scroll,
+                        &selected,
+                        &reference_scope,
+                    );
+                }
+            },
+        );
         let show_hints = self.show_hints.clone();
         let more = self.more.downgrade();
         manager.on_keybinding_hints_changed(&self.root, move |_, enabled| {
@@ -1011,7 +1077,8 @@ impl ShortcutFooter {
 
     /// Reports `source`'s filter in place of the directory count while its
     /// results are displayed, in every key map; the query mark and hit path
-    /// show only in 10xer mode. Call [`Self::refresh_filter`] when it changes.
+    /// show in 10xer mode and for a subfolder search in either map. Call
+    /// [`Self::refresh_filter`] when it changes.
     pub(in crate::ui) fn observe_filter(
         &self,
         source: impl Fn() -> Option<Option<FilterStatus>> + 'static,
@@ -1032,10 +1099,11 @@ impl ShortcutFooter {
             },
             None => None,
         };
-        // The default map keeps the pane's filter field on screen.
+        // The default map keeps the pane's filter field on screen, but a
+        // search started by a direct key has no field there.
         let named = status
             .as_ref()
-            .filter(|_| crate::ui::tenxer_mode::chrome_suppressed());
+            .filter(|status| status.search || crate::ui::tenxer_mode::chrome_suppressed());
         match named {
             Some(status) => {
                 let mark = if status.search {
@@ -1350,12 +1418,14 @@ impl ShortcutFooter {
     pub(in crate::ui) fn handle_key(&self, press: &KeyPress) -> Option<glib::Propagation> {
         const SHIFT: gdk::ModifierType = gdk::ModifierType::SHIFT_MASK;
         let reference_open = self.session.is_open();
-        let f1 = press.is(REFERENCE);
-        let tilde = self.tilde_toggles(press, reference_open);
-        if self.prompt_has_focus() && !f1 && !tilde && !reference_open {
+        // A key that types, as 10xer's ~ does, toggles only where it would not type.
+        let typed = press.text().is_some();
+        let f1 = press.is(REFERENCE) && !typed;
+        let typed_toggle = typed && self.typed_key_toggles(press, reference_open);
+        if self.prompt_has_focus() && !f1 && !typed_toggle && !reference_open {
             return None;
         }
-        if f1 || tilde {
+        if f1 || typed_toggle {
             if reference_open {
                 self.session.close();
             } else {
@@ -1417,44 +1487,37 @@ impl ShortcutFooter {
             return Some(glib::Propagation::Stop);
         }
         if category_focused {
-            let direction =
-                if press.is_any(&[VIM_UP, VIM_LEFT, UP.ignoring(SHIFT), LEFT.ignoring(SHIFT)]) {
-                    Some(-1)
-                } else if press.is_any(&[
-                    VIM_DOWN,
-                    VIM_RIGHT,
-                    DOWN.ignoring(SHIFT),
-                    RIGHT.ignoring(SHIFT),
-                ]) {
-                    Some(1)
-                } else if press.is(FIRST_ITEM.ignoring(SHIFT)) {
-                    Some(-100)
-                } else if press.is(LAST_ITEM.ignoring(SHIFT)) {
-                    Some(100)
-                } else {
-                    None
-                };
+            let direction = if press.is_any(&[
+                UP.ignoring(SHIFT).or_alternates(),
+                LEFT.ignoring(SHIFT).or_alternates(),
+            ]) {
+                Some(-1)
+            } else if press.is_any(&[
+                DOWN.ignoring(SHIFT).or_alternates(),
+                RIGHT.ignoring(SHIFT).or_alternates(),
+            ]) {
+                Some(1)
+            } else if press.is(HOME_KEY.ignoring(SHIFT)) {
+                Some(-100)
+            } else if press.is(END_KEY.ignoring(SHIFT)) {
+                Some(100)
+            } else {
+                None
+            };
             if let Some(direction) = direction {
                 self.move_category(direction);
                 return Some(glib::Propagation::Stop);
             }
-            if press.is_any(&[ENTER_ANY_SHIFT, SPACE.ignoring(SHIFT)]) {
+            if press.is(ENTER_ANY_SHIFT) || press.is(SPACE.ignoring(SHIFT)) {
                 return Some(glib::Propagation::Proceed);
             }
         }
-        let scrolls_search = [UP, DOWN, PAGE_UP, PAGE_DOWN]
-            .into_iter()
-            .any(|key| press.is(key.ignoring(SHIFT)));
+        let scrolls_search = press.is_any(&[UP.ignoring(SHIFT), DOWN.ignoring(SHIFT)])
+            || press.is_any(&[PAGE_UP_KEY.ignoring(SHIFT), PAGE_DOWN_KEY.ignoring(SHIFT)]);
         if (list_focused || (search_focused && scrolls_search)) && self.scroll_reference(press) {
             return Some(glib::Propagation::Stop);
         }
-        let commands = gdk::ModifierType::CONTROL_MASK
-            | gdk::ModifierType::ALT_MASK
-            | gdk::ModifierType::SUPER_MASK;
-        if search_focused
-            && (!press.modifiers().intersects(commands)
-                || TEXT_EDITING.iter().any(|(binding, _)| press.is(*binding)))
-        {
+        if search_focused {
             return Some(glib::Propagation::Proceed);
         }
         // No browsing shortcut may operate on files while the reference is open.
@@ -1513,6 +1576,8 @@ impl ShortcutFooter {
 
     fn scroll_reference(&self, press: &KeyPress) -> bool {
         const SHIFT: gdk::ModifierType = gdk::ModifierType::SHIFT_MASK;
+        // h and l do not scroll; j and k still match below as alternates.
+        let press = &press.untyped();
         let adjustment = self.scroll.vadjustment();
         let page = adjustment.page_size().max(1.0);
         let step = if adjustment.step_increment() >= 1.0 {
@@ -1525,18 +1590,18 @@ impl ShortcutFooter {
         } else {
             page
         };
-        let delta = if press.is_any(&[VIM_UP, UP.ignoring(SHIFT), LEFT.ignoring(SHIFT)]) {
+        let delta = if press.is_any(&[UP.ignoring(SHIFT).or_alternates(), LEFT.ignoring(SHIFT)]) {
             -step
-        } else if press.is_any(&[VIM_DOWN, DOWN.ignoring(SHIFT), RIGHT.ignoring(SHIFT)]) {
+        } else if press.is_any(&[DOWN.ignoring(SHIFT).or_alternates(), RIGHT.ignoring(SHIFT)]) {
             step
-        } else if press.is(PAGE_UP.ignoring(SHIFT)) {
+        } else if press.is(PAGE_UP_KEY.ignoring(SHIFT)) {
             -page_step
-        } else if press.is(PAGE_DOWN.ignoring(SHIFT)) {
+        } else if press.is(PAGE_DOWN_KEY.ignoring(SHIFT)) {
             page_step
-        } else if press.is(FIRST_ITEM.ignoring(SHIFT)) {
+        } else if press.is(HOME_KEY.ignoring(SHIFT)) {
             adjustment.set_value(adjustment.lower());
             return true;
-        } else if press.is(LAST_ITEM.ignoring(SHIFT)) {
+        } else if press.is(END_KEY.ignoring(SHIFT)) {
             adjustment.set_value((adjustment.upper() - page).max(adjustment.lower()));
             return true;
         } else {
@@ -1547,13 +1612,15 @@ impl ShortcutFooter {
         true
     }
 
-    /// In a text field, a key that reads as `~` only through the layout fallback
-    /// types its own character instead.
-    fn tilde_toggles(&self, press: &KeyPress, reference_open: bool) -> bool {
-        super::preferences::PreferenceManager::shared().tenxer_mode()
-            && press.is(TENXER_REFERENCE)
-            && (reference_open || !self.prompt_has_focus())
-            && !(press.used_fallback() && self.typing_has_focus())
+    fn typed_key_toggles(&self, press: &KeyPress, reference_open: bool) -> bool {
+        if !press.is(REFERENCE) {
+            return false;
+        }
+        if reference_open {
+            !(press.used_fallback() && self.typing_has_focus())
+        } else {
+            !self.prompt_has_focus() && !self.typing_has_focus()
+        }
     }
 
     fn typing_has_focus(&self) -> bool {
@@ -1567,17 +1634,21 @@ impl ShortcutFooter {
 fn reference_note() -> String {
     use bindings::{
         DOWN, ESCAPE, FOCUS_NEXT, REFERENCE_CATEGORIES, REFERENCE_LIST, REFERENCE_SEARCH, UP,
-        VIM_DOWN, VIM_UP,
     };
     let label = |shown| keys::label(&shown);
     rust_i18n::t!(
         "%{category_keys} categories · %{search_keys} search · %{list_keys} list · %{move_keys} move · %{cycle_keys} cycle · %{close_keys} close",
-        category_keys = label(Keys::One(REFERENCE_CATEGORIES)),
-        search_keys = label(Keys::One(REFERENCE_SEARCH)),
-        list_keys = label(Keys::One(REFERENCE_LIST)),
-        move_keys = label(Keys::Any(&[VIM_DOWN, VIM_UP, UP, DOWN])),
-        cycle_keys = label(Keys::One(FOCUS_NEXT)),
-        close_keys = label(Keys::One(ESCAPE))
+        category_keys = label(Keys::One(REFERENCE_CATEGORIES.shown())),
+        search_keys = label(Keys::One(REFERENCE_SEARCH.shown())),
+        list_keys = label(Keys::One(REFERENCE_LIST.shown())),
+        move_keys = label(Keys::Any(crate::ui::keys::shown![
+            DOWN.alternate(1),
+            UP.alternate(1),
+            UP.alternate(0),
+            DOWN.alternate(0)
+        ])),
+        cycle_keys = label(Keys::One(FOCUS_NEXT.shown())),
+        close_keys = label(Keys::One(ESCAPE.shown()))
     )
     .into_owned()
 }

@@ -7,7 +7,7 @@ use crate::{
     services::{DirectoryEvent, RequestId},
 };
 
-use super::{Browser, BrowserEvent, remote::RemoteTerminal};
+use super::{Browser, BrowserEvent, directory_changes::DepartureEvidence, remote::RemoteTerminal};
 
 mod metadata;
 
@@ -26,16 +26,30 @@ enum OpenLoad {
 impl Browser {
     pub(super) fn handle_directory_event(self: &Rc<Self>, event: DirectoryEvent) {
         match event {
+            DirectoryEvent::Stamp { request_id, stamp } => {
+                self.watch_answered_folder(request_id, Some(&stamp));
+                self.record_stamp(request_id, *stamp);
+            }
+            DirectoryEvent::ListingDigest {
+                request_id,
+                names_digest,
+            } => self.record_digest(request_id, names_digest),
             DirectoryEvent::Batch {
                 request_id,
                 entries,
-            } => self.receive_batch(request_id, entries),
+            } => {
+                self.watch_answered_folder(request_id, None);
+                self.receive_batch(request_id, entries);
+            }
             DirectoryEvent::Finished {
                 request_id,
                 truncated,
                 can_trash,
                 can_delete,
             } => {
+                if !truncated {
+                    self.watch_answered_folder(request_id, None);
+                }
                 self.receive_completion(
                     request_id,
                     LoadCompletion {
@@ -51,7 +65,9 @@ impl Browser {
             DirectoryEvent::Failed {
                 request_id,
                 message,
-            } => self.receive_failure(request_id, message),
+                refused,
+                denied,
+            } => self.receive_failure(request_id, message, refused, denied),
             DirectoryEvent::MetadataFilled {
                 request_id,
                 updates,
@@ -137,7 +153,15 @@ impl Browser {
     }
 
     fn receive_completion(self: &Rc<Self>, request_id: RequestId, completion: LoadCompletion) {
-        match self.open_load_target(request_id) {
+        let target = self.open_load_target(request_id);
+        if let Some(OpenLoad::Native(depth)) = target
+            && completion.truncated
+            && self.cut_short_of_a_complete_listing(depth, request_id)
+            && self.keep_listing(depth, request_id, false, false)
+        {
+            return;
+        }
+        match target {
             Some(OpenLoad::Native(depth)) => {
                 self.stage_batch(request_id, depth, Vec::new());
                 self.finish_staged_load(depth, request_id, completion);
@@ -171,7 +195,20 @@ impl Browser {
         }
     }
 
-    fn receive_failure(self: &Rc<Self>, request_id: RequestId, message: String) {
+    fn receive_failure(
+        self: &Rc<Self>,
+        request_id: RequestId,
+        message: String,
+        refused: bool,
+        denied: bool,
+    ) {
+        let depth = self.state.borrow().depth_for_request(request_id);
+        if depth.is_some_and(|depth| self.keep_listing(depth, request_id, true, refused)) {
+            return;
+        }
+        if let Some(depth) = depth {
+            self.note_listing_unfinished(depth, refused);
+        }
         match self.open_load_target(request_id) {
             Some(OpenLoad::Native(depth)) => {
                 self.staging.borrow_mut().remove(&depth);
@@ -191,15 +228,100 @@ impl Browser {
             }
             None => {}
         }
+        let administrator = denied
+            .then(|| self.state.borrow().depth_for_request(request_id))
+            .flatten()
+            .and_then(|depth| self.location_at(depth))
+            .and_then(|location| self.administrator_alternative(&location));
         let mut state = self.state.borrow_mut();
-        if let Some(depth) = state.fail(request_id, message.clone()) {
+        if let Some(depth) = state.fail(request_id, message.clone(), administrator.clone()) {
             drop(state);
-            self.emit(BrowserEvent::LoadFailed { depth, message });
+            self.emit(BrowserEvent::LoadFailed {
+                depth,
+                message,
+                administrator,
+            });
             self.check_failed_root_load(depth);
         } else if state.fail_peek(request_id, message.clone()) {
             drop(state);
             self.emit(BrowserEvent::PeekFailed { message });
         }
+    }
+}
+
+impl Browser {
+    fn cut_short_of_a_complete_listing(&self, depth: usize, request_id: RequestId) -> bool {
+        let listed = self
+            .staging
+            .borrow()
+            .get(&depth)
+            .filter(|staged| staged.request_id == request_id)
+            .map_or(0, |staged| staged.entries.len());
+        listed < super::MAX_DIRECTORY_ENTRIES
+            && self
+                .kept_listings
+                .borrow()
+                .get(&depth)
+                .is_some_and(|kept| kept.request_id == request_id && !kept.truncated)
+    }
+
+    fn keep_listing(
+        self: &Rc<Self>,
+        depth: usize,
+        request_id: RequestId,
+        failed: bool,
+        refused: bool,
+    ) -> bool {
+        let kept = self
+            .kept_listings
+            .borrow()
+            .get(&depth)
+            .copied()
+            .filter(|kept| kept.request_id == request_id);
+        let Some(kept) = kept else {
+            return false;
+        };
+        self.kept_listings.borrow_mut().remove(&depth);
+        let mut deltas = self
+            .staging
+            .borrow_mut()
+            .remove(&depth)
+            .map(|staging| staging.deltas)
+            .unwrap_or_default();
+        if let Some(sorting) = self.sorting.borrow_mut().remove(&depth) {
+            deltas.extend(sorting.deltas);
+        }
+        self.cancel_publish(depth);
+        if !self
+            .state
+            .borrow_mut()
+            .keep_listing(request_id, kept.truncated)
+        {
+            return false;
+        }
+        let owed = self.take_owed_refresh(depth);
+        self.note_listing_kept(depth);
+        self.emit(BrowserEvent::LoadFinished {
+            depth,
+            truncated: kept.truncated,
+        });
+        match kept.background {
+            true => self.owe_refresh(depth, owed),
+            false => self.note_listing_unfinished(depth, refused),
+        }
+        for (watched, change) in deltas {
+            self.handle_directory_change(depth, &watched, change);
+        }
+        if let Some(location) = self.location_at(depth).filter(|location| {
+            failed
+                && kept.background
+                && !Self::operation_touches(location)
+                && !self.departure_check_pending()
+        }) {
+            self.check_departed_directory(depth, location, DepartureEvidence::FailedLoad);
+        }
+        self.follow_responsiveness();
+        true
     }
 }
 

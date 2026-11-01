@@ -1,0 +1,25 @@
+{"scenario":"png-conversion-errors-keep-chooser","modes":["list"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"animated","vars":{"id":"animated"}},{"id":"corrupt","vars":{"id":"corrupt"}}],"portal":true,"session_bus":true,"cost":{"list-animated":1.3,"list-corrupt":1.3},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Animated and corrupt PNG conversion errors keep chooser open with Open enabled; unit test covers retry only, not the GUI error and sensitivity"}}
+{"portal_open":"PNG conversion test","options":{"current_folder":"$fixture","filters":[["PNG images",[[1,"image/png"]]]]},"variants":["animated"]}
+{"adopt":"PNG conversion test","timeout_ms":20000,"message":"PNG conversion test chooser","variants":["animated"]}
+{"http":"R0lGODlhAgADAIEAAP8AAAAAAAAAAAAAACH5BAAKAAAALAAAAAACAAMAAAgGAAEIHBgQACH5BAEKAAEALAAAAAACAAMAgQAA/wAAAAAAAAAAAAgGAAEIHBgQADs=","as":"url","variants":["animated"]}
+{"wait":{"present":{"role":"text","states":["editable"]}},"message":"Name field","variants":["animated"]}
+{"click":{"role":"text","states":["editable"]},"variants":["animated"]}
+{"key":"ctrl+a","variants":["animated"]}
+{"type":"$url","variants":["animated"]}
+{"key":"Return","variants":["animated"]}
+{"wait":{"presented":{"role":"alert","name_matches":"Animated\\ images\\ cannot\\ be\\ converted"}},"message":"image conversion error","timeout_ms":20000,"variants":["animated"]}
+{"portal_response":{"done":false},"variants":["animated"]}
+{"expect":{"absent":{"role":"dialog","name":"Convert image to PNG?"}},"variants":["animated"]}
+{"expect":{"state":{"target":{"role":"button","name":"Open"},"sensitive":true}},"variants":["animated"]}
+{"portal_open":"PNG conversion test","options":{"current_folder":"$fixture","filters":[["PNG images",[[1,"image/png"]]]]},"variants":["corrupt"]}
+{"adopt":"PNG conversion test","timeout_ms":20000,"message":"PNG conversion test chooser","variants":["corrupt"]}
+{"http":"/9j/Y29ycnVwdCBKUEVH","as":"url","variants":["corrupt"]}
+{"wait":{"present":{"role":"text","states":["editable"]}},"message":"Name field","variants":["corrupt"]}
+{"click":{"role":"text","states":["editable"]},"variants":["corrupt"]}
+{"key":"ctrl+a","variants":["corrupt"]}
+{"type":"$url","variants":["corrupt"]}
+{"key":"Return","variants":["corrupt"]}
+{"wait":{"presented":{"role":"alert","name_matches":"damaged\\ or\\ uses\\ unsupported"}},"message":"image conversion error","timeout_ms":20000,"variants":["corrupt"]}
+{"portal_response":{"done":false},"variants":["corrupt"]}
+{"expect":{"absent":{"role":"dialog","name":"Convert image to PNG?"}},"variants":["corrupt"]}
+{"expect":{"state":{"target":{"role":"button","name":"Open"},"sensitive":true}},"variants":["corrupt"]}

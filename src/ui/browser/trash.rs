@@ -3,12 +3,13 @@
 use crate::adapters::directory_summary::{DirectorySummary, summarize_directory};
 use crate::adapters::trash::{EmptyTrashOutcome, empty_trash};
 use crate::adapters::trash_restore::restore_destinations_for_locations;
-use crate::model::{EntryKind, FileEntry, Location};
+use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 use crate::services::{LoadHandle, RestoreTrashItem};
 use crate::ui::blur::BlurBin;
 use crate::ui::browser::ViewState;
 use crate::ui::browser::entry::{
-    aggregate_directory_summary, entry_icon, entry_kind_summary, format_file_size, item_count_label,
+    aggregate_directory_summary, delete_entry_size, entry_icon, entry_kind_summary,
+    format_file_size, item_count_label,
 };
 use crate::ui::controls::{
     ModalTone, focus_button, message_dialog_description, message_dialog_layout, modal_layout,
@@ -16,11 +17,11 @@ use crate::ui::controls::{
 use crate::ui::focus_navigation::vim_focus_direction;
 use crate::ui::keys::{
     self, KeyPress,
-    bindings::{ENTER_ANY, ESCAPE_ANY, LEFT, RIGHT, TENXER_DELETE_CONFIRM, VIM_LEFT, VIM_RIGHT},
+    bindings::{ENTER_ANY, ESCAPE_ANY, LEFT, RIGHT, TENXER_DELETE_CONFIRM},
 };
 use crate::ui::modal::{
     ModalHost, close_on_escape, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer,
-    show_error_dialog,
+    remember_modal_focus_for_listing, show_error_dialog,
 };
 use gtk::gdk::ModifierType as Modifiers;
 use gtk::prelude::*;
@@ -109,6 +110,86 @@ fn restore_error_summary(errors: &[String]) -> String {
     summary
 }
 
+/// How far a deletion that bypasses Trash reaches. A network or cloud
+/// provider may keep its own copy, so only local storage is "permanent".
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum DeletionReach {
+    /// Includes `fuseblk` drives and local FUSE overlays such as mergerfs.
+    Local,
+    Remote,
+}
+
+/// A mixed selection uses the stronger local warning.
+pub(super) fn deletion_reach(entries: &[FileEntry]) -> DeletionReach {
+    let mounts = crate::adapters::mount_watch::latest();
+    let remote = |location: &Location| match location.native_path() {
+        Some(path) => {
+            mounts.is_network_path(path)
+                && !mounts
+                    .fs_type_for(path)
+                    .is_some_and(crate::adapters::is_local_fuse_overlay)
+        }
+        None => {
+            !location.is_administrator()
+                && !location
+                    .uri_value()
+                    .and_then(glib::Uri::parse_scheme)
+                    .is_some_and(|scheme| scheme.eq_ignore_ascii_case("trash"))
+        }
+    };
+    if !entries.is_empty() && entries.iter().all(|entry| remote(&entry.location)) {
+        DeletionReach::Remote
+    } else {
+        DeletionReach::Local
+    }
+}
+
+/// The partial-failure dialog's button that opens the confirmation.
+pub(super) fn delete_retry_label(entries: &[FileEntry]) -> String {
+    crate::i18n::tr(match deletion_reach(entries) {
+        DeletionReach::Local => "Delete Permanently",
+        DeletionReach::Remote => "Delete without Trash",
+    })
+}
+
+fn reach_description(reach: DeletionReach, single: bool) -> String {
+    crate::i18n::tr(match (reach, single) {
+        (DeletionReach::Local, true) => {
+            "This item will be permanently deleted. This action cannot be undone."
+        }
+        (DeletionReach::Local, false) => {
+            "These items will be permanently deleted. This action cannot be undone."
+        }
+        (DeletionReach::Remote, true) => {
+            "This item will be deleted without using Trash. Strata can't undo this; whether it can be recovered depends on the storage provider."
+        }
+        (DeletionReach::Remote, false) => {
+            "These items will be deleted without using Trash. Strata can't undo this; whether they can be recovered depends on the storage provider."
+        }
+    })
+}
+
+/// Names the mount a failed trash attempt recorded, when the dialog's first
+/// item is on one.
+fn trash_unavailable_reason(entries: &[FileEntry]) -> Option<String> {
+    let first = &entries.first()?.location;
+    if first.is_administrator() {
+        return Some(crate::i18n::tr(
+            "Trash isn't available when browsing as administrator.",
+        ));
+    }
+    let parent = first.parent()?;
+    let (mount, _) = crate::adapters::trash_support::unsupported_reason_for(parent.native_path()?)?;
+    Some(
+        rust_i18n::t!(
+            "Trash isn't available on %{mount_point} (%{fs_type}).",
+            mount_point = mount.mount_point.display(),
+            fs_type = mount.fs_type
+        )
+        .into_owned(),
+    )
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum DeleteDialog {
     Permanent,
@@ -125,9 +206,9 @@ enum DeleteConfirmationFocus {
 
 fn delete_confirmation_focus_target(press: &KeyPress) -> Option<DeleteConfirmationFocus> {
     const ARROW_MODIFIERS: Modifiers = Modifiers::SHIFT_MASK.union(Modifiers::SUPER_MASK);
-    if press.is_any(&[LEFT.ignoring(ARROW_MODIFIERS), VIM_LEFT]) {
+    if press.is(LEFT.ignoring(ARROW_MODIFIERS).or_alternates()) {
         Some(DeleteConfirmationFocus::Cancel)
-    } else if press.is_any(&[RIGHT.ignoring(ARROW_MODIFIERS), VIM_RIGHT]) {
+    } else if press.is(RIGHT.ignoring(ARROW_MODIFIERS).or_alternates()) {
         Some(DeleteConfirmationFocus::Confirm)
     } else {
         None
@@ -147,6 +228,13 @@ fn delete_confirmation_rows(entries: &[FileEntry]) -> (&[FileEntry], usize) {
 /// Summary for the hidden remainder, or nothing when everything is shown.
 fn delete_confirmation_overflow_label(hidden: usize) -> Option<String> {
     (hidden > 0).then(|| crate::i18n::count("more_items", hidden))
+}
+
+fn delete_confirmation_file_size(size: &MetadataValue<u64>) -> String {
+    match size {
+        MetadataValue::Known(size) => format_file_size(*size),
+        MetadataValue::Unknown | MetadataValue::Unavailable => "—".to_owned(),
+    }
 }
 
 impl ViewState {
@@ -790,6 +878,9 @@ impl ViewState {
     fn trash_unsupported_for(&self, entries: &[FileEntry]) -> bool {
         !entries.is_empty()
             && entries.iter().all(|entry| {
+                if entry.location.is_administrator() {
+                    return true;
+                }
                 let parent = entry.location.parent();
                 (0..)
                     .map_while(|depth| {
@@ -824,27 +915,23 @@ impl ViewState {
             return;
         };
 
+        let reach = deletion_reach(&entries);
         let entries = Rc::new(entries);
         let count = entries.len();
-        let (title, confirm_label) = if trash {
-            (
-                rust_i18n::t!("Move %{value1} to Trash?", value1 = item_count_label(count))
-                    .into_owned(),
-                crate::i18n::tr("Move to Trash"),
-            )
-        } else {
-            (
-                rust_i18n::t!(
-                    "Permanently delete %{value1}?",
-                    value1 = item_count_label(count)
-                )
-                .into_owned(),
-                rust_i18n::t!(
-                    "Permanently delete %{value1}",
-                    value1 = item_count_label(count)
-                )
-                .into_owned(),
-            )
+        let items = item_count_label(count);
+        let (title, confirm_label) = match (trash, reach) {
+            (true, _) => (
+                rust_i18n::t!("Move %{value1} to Trash?", value1 = items),
+                crate::i18n::tr("Move to Trash").into(),
+            ),
+            (false, DeletionReach::Local) => (
+                rust_i18n::t!("Permanently delete %{value1}?", value1 = items),
+                rust_i18n::t!("Permanently delete %{value1}", value1 = items),
+            ),
+            (false, DeletionReach::Remote) => (
+                rust_i18n::t!("Delete %{value1} without Trash?", value1 = items),
+                rust_i18n::t!("Delete %{value1}", value1 = items),
+            ),
         };
         let layout = message_dialog_layout(
             crate::assets::icons::TRASH,
@@ -863,6 +950,7 @@ impl ViewState {
         let files = gtk::Box::new(gtk::Orientation::Vertical, 3);
         files.add_css_class("delete-confirmation-files");
         let (visible, hidden) = delete_confirmation_rows(&entries);
+        let mut metadata_labels = Vec::with_capacity(visible.len());
         for entry in visible {
             let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
             row.add_css_class("delete-confirmation-file");
@@ -878,12 +966,14 @@ impl ViewState {
                 } else if entry.is_directory() {
                     crate::i18n::tr("Folder")
                 } else {
-                    match entry.size {
-                        crate::model::MetadataValue::Known(size) => format_file_size(size),
-                        crate::model::MetadataValue::Unknown
-                        | crate::model::MetadataValue::Unavailable => "—".to_owned(),
-                    }
+                    let size = if entry.kind == EntryKind::FileSymbolicLink {
+                        &MetadataValue::Unknown
+                    } else {
+                        &entry.size
+                    };
+                    delete_confirmation_file_size(size)
                 }));
+            metadata_labels.push(metadata.downgrade());
             metadata.add_css_class("delete-confirmation-file-metadata");
             row.append(&icon);
             row.append(&name);
@@ -910,23 +1000,25 @@ impl ViewState {
         file_scroller.add_css_class("delete-confirmation-list");
         layout.body.append(&file_scroller);
         let single = count == 1;
-        let explanation = message_dialog_description(&crate::i18n::tr(match (kind, single) {
-            (DeleteDialog::Trash, true) => "This item can be restored from Trash.",
-            (DeleteDialog::Trash, false) => "These items can be restored from Trash.",
-            (DeleteDialog::TrashUnavailable, true) => {
-                "This location doesn't support Trash. This item will be permanently deleted. This action cannot be undone."
-            }
-            (DeleteDialog::TrashUnavailable, false) => {
-                "This location doesn't support Trash. These items will be permanently deleted. This action cannot be undone."
-            }
-            (DeleteDialog::Permanent, true) => {
-                "This item will be permanently deleted. This action cannot be undone."
-            }
-            (DeleteDialog::Permanent, false) => {
-                "These items will be permanently deleted. This action cannot be undone."
-            }
-        }));
-        layout.body.append(&explanation);
+        let paragraphs = match kind {
+            DeleteDialog::Trash => vec![crate::i18n::tr(if single {
+                "This item can be restored from Trash."
+            } else {
+                "These items can be restored from Trash."
+            })],
+            DeleteDialog::TrashUnavailable => [
+                Some(crate::i18n::tr("This location doesn't support Trash.")),
+                trash_unavailable_reason(&entries),
+                Some(reach_description(reach, single)),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
+            DeleteDialog::Permanent => vec![reach_description(reach, single)],
+        };
+        for paragraph in paragraphs {
+            layout.body.append(&message_dialog_description(&paragraph));
+        }
         let content = layout.content;
         let close = layout.close;
         let cancel = layout.cancel;
@@ -935,26 +1027,23 @@ impl ViewState {
         let spinner = layout.loading;
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+        remember_modal_focus_for_listing(&layer, &window_overlay);
         window_overlay.add_overlay(&layer);
         let cancelled_layer = layer.clone();
         let cancelled_overlay = window_overlay.clone();
         let cancelled_root = blurred_root.clone();
-        let cancelled_browser = self.browser.clone();
         cancel.connect_clicked(move |_| {
             dismiss_modal_layer(
                 &cancelled_layer,
                 &cancelled_overlay,
                 cancelled_root.as_ref(),
             );
-            cancelled_browser.focus_active();
         });
         let closed_layer = layer.clone();
         let closed_overlay = window_overlay.clone();
         let closed_root = blurred_root.clone();
-        let closed_browser = self.browser.clone();
         close.connect_clicked(move |_| {
             dismiss_modal_layer(&closed_layer, &closed_overlay, closed_root.as_ref());
-            closed_browser.focus_active();
         });
         let confirmed_layer = layer.clone();
         let confirmed_overlay = window_overlay.clone();
@@ -993,7 +1082,7 @@ impl ViewState {
                     }
                     let entries = Rc::try_unwrap(entries_for_dissolve)
                         .unwrap_or_else(|shared| shared.as_ref().clone());
-                    browser.delete(entries, true);
+                    browser.delete_permanently(entries, reach == DeletionReach::Remote);
                     browser.focus_active();
                 },
             );
@@ -1003,7 +1092,6 @@ impl ViewState {
         let escaped_layer = layer.clone();
         let escaped_overlay = window_overlay;
         let escaped_root = blurred_root;
-        let escaped_browser = self.browser.clone();
         let focused_cancel = cancel.clone();
         let focused_cancel_initial = cancel.clone();
         let focused_confirm = confirm.clone();
@@ -1011,7 +1099,6 @@ impl ViewState {
         keys::on_press(&keys, move |_, press| {
             if press.is(ESCAPE_ANY) {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
-                escaped_browser.focus_active();
                 glib::Propagation::Stop
             } else if press.is(ENTER_ANY) {
                 if let Some(button) = enter_buttons.iter().find(|button| button.has_focus()) {
@@ -1045,23 +1132,46 @@ impl ViewState {
         } else {
             focus_button(&confirm);
         }
-        if trash {
+        if trash
+            && !visible
+                .iter()
+                .any(|entry| entry.kind == EntryKind::FileSymbolicLink)
+        {
             return;
         }
-
         let weak_subtitle = subtitle.downgrade();
         let weak_spinner = spinner.downgrade();
         let task = glib::MainContext::default().spawn_local(async move {
-            let summary = aggregate_directory_summary(&entries).await;
+            let update_symlink_size = |index: usize, size: &MetadataValue<u64>| {
+                if let Some(label) = metadata_labels.get(index).and_then(|label| label.upgrade()) {
+                    label.set_label(&delete_confirmation_file_size(size));
+                }
+            };
+            if trash {
+                for (index, entry) in entries.iter().take(metadata_labels.len()).enumerate() {
+                    if entry.kind == EntryKind::FileSymbolicLink {
+                        update_symlink_size(index, &delete_entry_size(entry).await);
+                    }
+                }
+                return;
+            }
+            let summary = aggregate_directory_summary(&entries, update_symlink_size).await;
             let (Some(subtitle), Some(spinner)) = (weak_subtitle.upgrade(), weak_spinner.upgrade())
             else {
                 return;
             };
             subtitle.set_label(&rust_i18n::t!(
-                if summary.truncated() {
-                    "At least %{items} · at least %{size} will be permanently deleted"
-                } else {
-                    "%{items} · %{size} will be permanently deleted"
+                match (reach, summary.truncated()) {
+                    (DeletionReach::Local, true) => {
+                        "At least %{items} · at least %{size} will be permanently deleted"
+                    }
+                    (DeletionReach::Local, false) => {
+                        "%{items} · %{size} will be permanently deleted"
+                    }
+                    (DeletionReach::Remote, true) => {
+                        "At least %{items} · at least %{size} will be deleted"
+                    }
+                    (DeletionReach::Remote, false) => "%{items} · %{size} will be deleted",
                 },
                 items = item_count_label(summary.item_count),
                 size = format_file_size(summary.total_size)

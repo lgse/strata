@@ -207,6 +207,9 @@ impl ModeViews {
                 if let (Some(sorting), Some(preferences)) = (&pane.sorting, preferences) {
                     sorting.show(preferences.sort_key, preferences.sort_direction);
                 }
+                if let Some(sorter) = &pane.type_group_sorter {
+                    sorter.refresh(preferences);
+                }
             });
         }
         let changed_depth = match event {
@@ -227,6 +230,12 @@ impl ModeViews {
             self.update_camera_grouping(self.grouping_for_snapshot(depth, &snapshot));
         }
         match event {
+            BrowserEvent::ColumnNotResponding {
+                depth,
+                not_responding,
+            } => self.update_panes(*depth, |pane| {
+                pane.not_responding.set_visible(*not_responding);
+            }),
             BrowserEvent::SortingStarted { depth } => {
                 self.update_panes(*depth, Pane::start_sorting)
             }
@@ -277,8 +286,14 @@ impl ModeViews {
                     self.focus_visible_pane(*depth);
                 }
             }
-            BrowserEvent::LoadFailed { depth, message } => {
-                self.update_panes(*depth, |pane| pane.fail_loading(message));
+            BrowserEvent::LoadFailed {
+                depth,
+                message,
+                administrator,
+            } => {
+                self.update_panes(*depth, |pane| {
+                    pane.fail_loading(message, administrator.is_some());
+                });
                 if self.mode_pane(*depth).is_some() {
                     self.pane_navigation.borrow_mut().cancel();
                 }
@@ -304,10 +319,10 @@ impl ModeViews {
         // after the complete camera snapshot is sorted. Keep the existing view,
         // selection model and both scrollers instead of resetting the viewport.
         list.set_header_factory(None::<&gtk::ListItemFactory>);
-        let sorter =
-            grouped.then(|| super::pane_type_group_sorter(&self.browser, pane.depth, &pane.model));
-        model.set_section_sorter(sorter.as_ref());
-        model.set_sorter(sorter.as_ref());
+        let sorter = grouped.then(|| super::pane_type_group_sorter(&self.browser, pane.depth));
+        model.set_section_sorter(sorter.as_ref().map(|sorter| &sorter.sorter));
+        model.set_sorter(sorter.as_ref().map(|sorter| &sorter.sorter));
+        pane.type_group_sorter = sorter;
         if grouped {
             list.set_header_factory(Some(&super::type_group_header_factory()));
         }
@@ -545,7 +560,7 @@ impl Pane {
         self.show_count_after_update(defer_empty);
     }
 
-    fn fail_loading(&self, message: &str) {
+    fn fail_loading(&self, message: &str, offers_administrator: bool) {
         reconnect_pane_model(self);
         for section in self.all_sections() {
             section.syncing.set(false);
@@ -556,6 +571,7 @@ impl Pane {
             message = message
         ));
         self.status.add_css_class("error");
+        self.administrator.set_visible(offers_administrator);
         self.loading.show(STATUS_PAGE);
     }
 }

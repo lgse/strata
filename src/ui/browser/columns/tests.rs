@@ -265,7 +265,13 @@ fn switching_to_a_sibling_closes_the_old_child_without_an_exit_animation() {
             let sibling = fixture._root.path().join("sibling-0");
             std::fs::create_dir_all(&sibling).expect("sibling directory");
             fixture.view.browser().descend(0, Location::local(&sibling));
-            pump_until(|| column_loaded(&fixture.view, 1), "sibling column load");
+            pump_until(
+                || {
+                    fixture.view.browser().location_at(1) == Some(Location::local(&sibling))
+                        && column_loaded(&fixture.view, 1)
+                },
+                "sibling column load",
+            );
             assert!(
                 old_child.parent().is_none(),
                 "the replaced child goes at once so its replacement takes its place"
@@ -386,4 +392,164 @@ fn reveal_shows_a_fitting_column_whole_and_leaves_a_filling_one_alone() {
             "{left}..{right} seen from {current} in {page_size}"
         );
     }
+}
+
+fn hit_names(view: &BrowserView) -> std::collections::BTreeSet<String> {
+    if view.view_mode() == BrowserMode::Columns {
+        return view
+            .state
+            .columns
+            .borrow()
+            .first()
+            .map(|column| {
+                column
+                    .search_results
+                    .borrow()
+                    .iter()
+                    .map(|item| item.name.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+    }
+    view.state
+        .mode_views
+        .borrow()
+        .pane_searches()
+        .iter()
+        .filter_map(|search| search.results())
+        .flatten()
+        .map(|item| item.name)
+        .collect()
+}
+
+fn search_view(mode: BrowserMode, folder: &std::path::Path) -> (BrowserView, gtk::Window) {
+    let view = BrowserView::new(
+        Rc::new(crate::adapters::LocalFileSource),
+        crate::ui::browser::PeekBehavior::default(),
+    );
+    view.set_view_mode(mode);
+    let window = gtk::Window::builder()
+        .default_width(900)
+        .default_height(600)
+        .child(&view.widget())
+        .build();
+    window.present();
+    view.browser().navigate(Location::local(folder));
+    pump_until(|| column_loaded(&view, 0), "folder load");
+    (view, window)
+}
+
+fn close_search_view(view: &BrowserView, window: &gtk::Window) {
+    PreferenceManager::shared().release_bindings_within(&view.widget());
+    view.browser().clear_observer();
+    window.destroy();
+}
+
+#[test]
+fn search_hits_leave_only_once_a_worker_proves_them_gone() {
+    crate::test_support::gtk_test(
+        "ui::browser::columns::tests::search_hits_leave_only_once_a_worker_proves_them_gone",
+        || {
+            use crate::adapters::{FsOp, FsQuirks, Quirks};
+            PreferenceManager::shared().set_filter_include_subfolders(true);
+            for mode in [BrowserMode::Columns, BrowserMode::List] {
+                let fixture = tempfile::tempdir().expect("search fixture");
+                let deeper = fixture.path().join("nested/deeper");
+                std::fs::create_dir_all(&deeper).expect("nested folders");
+                let names = ["needle-kept.txt", "needle-gone.txt", "needle-flaky.txt"];
+                for name in names {
+                    std::fs::write(deeper.join(name), b"hit").expect("search hit");
+                }
+                let (view, window) = search_view(mode, fixture.path());
+                assert!(view.show_filter_with_query("needle"));
+                let all: std::collections::BTreeSet<String> =
+                    names.iter().map(|name| (*name).to_owned()).collect();
+                pump_until(|| hit_names(&view) == all, "every hit");
+
+                for name in ["needle-gone.txt", "needle-flaky.txt"] {
+                    std::fs::remove_file(deeper.join(name)).expect("remove a hit");
+                }
+                let gate = crate::test_support::Gate::default();
+                let scope = FsQuirks::install(
+                    fixture.path(),
+                    Quirks {
+                        fail: vec![(FsOp::Stat, "needle-flaky.txt", 0, rustix::io::Errno::IO)],
+                        before: vec![(FsOp::Stat, "needle-kept.txt", 0, gate.racer())],
+                        ..Quirks::default()
+                    },
+                );
+                view.state.prune_stale_search_results();
+                pump_until(|| gate.reached(), "the presence check reaches a worker");
+                let ticked = Rc::new(Cell::new(false));
+                let tick = ticked.clone();
+                glib::timeout_add_local_once(Duration::from_millis(5), move || tick.set(true));
+                pump_until(|| ticked.get(), "the window keeps running");
+                assert_eq!(hit_names(&view), all, "{mode:?}: hits stay while parked");
+
+                gate.release();
+                let kept: std::collections::BTreeSet<String> =
+                    ["needle-kept.txt", "needle-flaky.txt"]
+                        .into_iter()
+                        .map(str::to_owned)
+                        .collect();
+                pump_until(|| hit_names(&view) == kept, "the gone hit leaves");
+                pump_for(Duration::from_millis(50));
+                assert_eq!(
+                    hit_names(&view),
+                    kept,
+                    "{mode:?}: only a proven absence prunes"
+                );
+                drop(scope);
+                close_search_view(&view, &window);
+            }
+        },
+    );
+}
+
+#[test]
+fn search_asks_past_hits_proven_gone_until_present_ones_fill_the_view() {
+    crate::test_support::gtk_test(
+        "ui::browser::columns::tests::search_asks_past_hits_proven_gone_until_present_ones_fill_the_view",
+        || {
+            let limit = crate::services::SEARCH_RESULT_LIMIT;
+            PreferenceManager::shared().set_filter_include_subfolders(true);
+            for mode in [BrowserMode::Columns, BrowserMode::List] {
+                let fixture = tempfile::tempdir().expect("search fixture");
+                let deeper = fixture.path().join("nested/deeper");
+                std::fs::create_dir_all(&deeper).expect("nested folders");
+                let gone: Vec<_> = (0..limit * 3 / 2)
+                    .map(|index| deeper.join(format!("needle-{index:03}")))
+                    .collect();
+                for path in &gone {
+                    std::fs::write(path, b"hit").expect("top-ranked hit");
+                }
+                for index in 0..limit * 2 {
+                    std::fs::write(deeper.join(format!("needle-{index:03}-kept.txt")), b"hit")
+                        .expect("lower-ranked hit");
+                }
+                let (view, window) = search_view(mode, fixture.path());
+                assert!(view.show_filter_with_query("needle"));
+                pump_until(
+                    || {
+                        let names = hit_names(&view);
+                        names.len() == limit && names.iter().all(|name| !name.ends_with(".txt"))
+                    },
+                    "the top-ranked hits",
+                );
+
+                for path in &gone {
+                    std::fs::remove_file(path).expect("remove a hit");
+                }
+                assert!(view.show_filter_with_query("needl"));
+                pump_until(
+                    || {
+                        let names = hit_names(&view);
+                        names.len() == limit && names.iter().all(|name| name.ends_with("-kept.txt"))
+                    },
+                    "present hits fill the view",
+                );
+                close_search_view(&view, &window);
+            }
+        },
+    );
 }

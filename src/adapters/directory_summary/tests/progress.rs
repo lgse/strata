@@ -144,6 +144,7 @@ fn an_enumeration_failure_preserves_bytes_already_reported() {
         max_depth: MAX_DEPTH,
         total: Cell::default(),
         reported: Cell::default(),
+        stopped: Default::default(),
         on_progress: Box::new(move |_| {
             let (closed, error) = closed_enumerator.close(gio::Cancellable::NONE);
             assert!(closed, "close enumerator: {error:?}");

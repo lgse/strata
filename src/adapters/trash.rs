@@ -2,7 +2,11 @@
 
 //! Bounded GIO Trash deletion, independent of browser widgets.
 
+use std::path::{Path, PathBuf};
+
 use gio::prelude::*;
+
+use super::{ActiveOperation, MountTable, mount_watch};
 
 pub(crate) struct EmptyTrashOutcome {
     pub(crate) deleted: usize,
@@ -14,8 +18,34 @@ pub(crate) struct EmptyTrashOutcome {
 /// Deletes one batch at a time, independently of any prior measurement's budget or truncation.
 pub(crate) async fn empty_trash(
     root: &gio::File,
+    on_progress: impl FnMut(usize),
+) -> Result<EmptyTrashOutcome, glib::Error> {
+    let roots = trash_file_roots(
+        &glib::user_data_dir().join("Trash"),
+        &mount_watch::latest(),
+        rustix::process::getuid().as_raw(),
+    );
+    empty_releasing(root, roots, on_progress).await
+}
+
+fn trash_file_roots(home_trash: &Path, mounts: &MountTable, uid: u32) -> Vec<PathBuf> {
+    let mut roots = vec![home_trash.join("files")];
+    for mount in mounts.non_virtual_mounts() {
+        roots.push(mount.join(format!(".Trash-{uid}")).join("files"));
+        roots.push(mount.join(".Trash").join(uid.to_string()).join("files"));
+    }
+    roots
+}
+
+async fn empty_releasing(
+    root: &gio::File,
+    roots: Vec<PathBuf>,
     mut on_progress: impl FnMut(usize),
 ) -> Result<EmptyTrashOutcome, glib::Error> {
+    let operation = ActiveOperation::begin([]);
+    operation
+        .release_lexically(roots, &gio::Cancellable::new())
+        .await;
     let enumerator = root
         .enumerate_children_future(
             "standard::name,standard::display-name",

@@ -493,6 +493,8 @@ fn summary_lines_describe_runtime_scope_and_problems() {
 
 #[test]
 fn duplicate_ids_avoid_collisions_and_stay_within_the_limit() {
+    use futures_lite::future::block_on;
+
     let directory = tempfile::tempdir().expect("fixture");
     let store = crate::adapters::LocalActionStore::at(directory.path().join("actions"));
     let registry = ActionRegistry::new(store);
@@ -510,32 +512,199 @@ fn duplicate_ids_avoid_collisions_and_stay_within_the_limit() {
                 contents: "print('original')\n".to_owned(),
             }),
         };
-        registry.create(&source).expect("source");
+        block_on(registry.create(source.clone())).expect("source");
         let original = directory
             .path()
             .join("actions")
             .join(&id)
             .join("action.toml");
         let manifest = std::fs::read(&original).expect("original manifest");
+        let mut copies = Vec::new();
         for _ in 0..2 {
-            let mut copy = source.clone();
-            copy.definition.id = unique_copy_id(&registry, &id).expect("unused id");
-            assert_ne!(copy.definition.id, id);
-            assert!(crate::model::valid_action_id(&copy.definition.id));
-            copy.definition.name = "Copy".to_owned();
-            registry
-                .create(&copy)
+            let copy = block_on(registry.duplicate(id.clone(), "Copy".to_owned()))
                 .expect("copy saves without collision");
+            assert_ne!(copy, id);
+            assert!(crate::model::valid_action_id(&copy));
+            assert!(!copies.contains(&copy));
+            assert_eq!(
+                block_on(registry.read(copy.clone()))
+                    .expect("copy")
+                    .definition
+                    .name,
+                "Copy"
+            );
+            copies.push(copy);
         }
         assert_eq!(
             std::fs::read(&original).expect("original retained"),
             manifest
         );
         assert_eq!(
-            registry.read_script(&id).expect("source script"),
+            block_on(registry.read(id.clone()))
+                .expect("source script")
+                .script,
             source.script
         );
     }
     assert_eq!(copy_name("Resize"), "Resize copy");
     assert!(copy_name(&"n".repeat(200)).chars().count() <= crate::model::MAX_ACTION_NAME_CHARS);
+}
+
+fn while_the_writer_waits<T>(change: impl FnOnce() -> T, unchanged: impl FnOnce(&T)) -> T {
+    let held = crate::storage::writer::hold();
+    let changed = change();
+    for _ in 0..20 {
+        gtk::glib::MainContext::default().iteration(false);
+    }
+    unchanged(&changed);
+    drop(held);
+    crate::storage::writer::settle();
+    changed
+}
+
+fn wait_for(what: &str, done: impl Fn() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !done() {
+        assert!(std::time::Instant::now() < deadline, "waiting for {what}");
+        gtk::glib::MainContext::default().iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+}
+
+#[test]
+fn creating_duplicating_and_exporting_actions_save_from_the_settings_page() {
+    crate::test_support::gtk_test(
+        "ui::settings::actions::tests::creating_duplicating_and_exporting_actions_save_from_the_settings_page",
+        || {
+            let saved = crate::storage::config_directory().join("actions/saved");
+            std::fs::create_dir_all(&saved).expect("saved action folder");
+            std::fs::write(
+                saved.join("action.toml"),
+                "schema_version = 1\nid = \"saved\"\nname = \"Saved\"\n\n[when]\nextensions = [\"png\"]\n\n[run]\nruntime = \"command\"\nprogram = \"true\"\nargs = [\"{paths}\"]\n",
+            )
+            .expect("saved action");
+            let shared = while_the_writer_waits(crate::ui::actions::shared, |shared| {
+                assert!(shared.catalog().actions().is_empty(), "read on the writer");
+            });
+            wait_for("the first read", || shared.catalog().get("saved").is_some());
+            let later = crate::storage::config_directory().join("actions/later");
+            std::fs::create_dir_all(&later).expect("later action folder");
+            std::fs::write(
+                later.join("action.toml"),
+                std::fs::read_to_string(saved.join("action.toml"))
+                    .expect("saved manifest")
+                    .replace("\"saved\"", "\"later\""),
+            )
+            .expect("later action");
+            while_the_writer_waits(crate::ui::actions::shared, |shared| {
+                assert!(
+                    shared.catalog().get("later").is_none(),
+                    "read again on the writer"
+                );
+            });
+            wait_for("each opening to read again", || {
+                shared.catalog().get("later").is_some()
+            });
+
+            let directory = tempfile::tempdir().expect("fixture");
+            let store = crate::adapters::LocalActionStore::at(directory.path().join("actions"));
+            let state = Rc::new(PageState {
+                registry: ActionRegistry::new(store),
+                list: gtk::Box::new(gtk::Orientation::Vertical, 0),
+                problems: gtk::Box::new(gtk::Orientation::Vertical, 0),
+            });
+            let anchor = gtk::Button::new();
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            let mut definition = python_draft();
+            definition.id = "resize".to_owned();
+            definition.name = "Resize".to_owned();
+            let script = ActionScript {
+                file_name: "main.py".to_owned(),
+                contents: "print('resize')\n".to_owned(),
+            };
+            let created = Rc::new(RefCell::new(None));
+            while_the_writer_waits(
+                || {
+                    let created = created.clone();
+                    state.confirm_editor(
+                        EditorMode::Create,
+                        definition,
+                        Some(script),
+                        move |done| {
+                            created.replace(Some(done));
+                        },
+                    );
+                },
+                |()| {
+                    assert!(created.borrow().is_none(), "created on the writer");
+                    assert!(!directory.path().join("actions/resize").exists());
+                },
+            );
+            wait_for("the create", || created.borrow().is_some());
+            assert_eq!(created.take(), Some(Ok(())));
+            let created = state
+                .registry
+                .catalog()
+                .get("resize")
+                .cloned()
+                .expect("listed");
+            while_the_writer_waits(
+                || {
+                    state.duplicate(&anchor, &created);
+                    state.duplicate(&anchor, &created);
+                },
+                |()| assert_eq!(state.registry.catalog().actions().len(), 1),
+            );
+            wait_for("two copies", || {
+                state.registry.catalog().actions().len() == 3
+            });
+
+            let deleted = while_the_writer_waits(
+                || {
+                    let deleted = state.registry.delete("resize-copy".to_owned());
+                    state.set_enabled("resize-copy", false, &row);
+                    let mut renamed = created.definition.clone();
+                    renamed.name = "Renamed".to_owned();
+                    state.save(renamed, None, |saved| assert_eq!(saved, Ok(())));
+                    state.set_enabled("resize", false, &row);
+                    deleted
+                },
+                |_| assert!(directory.path().join("actions/resize-copy").exists()),
+            );
+            gtk::glib::MainContext::default()
+                .block_on(deleted)
+                .expect("deleted");
+            assert!(
+                !directory.path().join("actions/resize-copy").exists(),
+                "a toggle queued behind a delete never brings the action back"
+            );
+            wait_for("the toggle on top of the edit before it", || {
+                state.registry.catalog().get("resize-copy").is_none()
+                    && state
+                        .registry
+                        .catalog()
+                        .get("resize")
+                        .is_some_and(|action| {
+                            !action.definition.enabled && action.name() == "Renamed"
+                        })
+            });
+
+            let exported = directory.path().join("exported");
+            std::fs::create_dir(&exported).expect("export folder");
+            while_the_writer_waits(
+                || state.export_to(&anchor, "resize", &exported),
+                |()| {
+                    assert!(
+                        !exported.join("resize").exists(),
+                        "read on the writer before it is exported"
+                    );
+                },
+            );
+            wait_for("the export", || exported.join("resize/main.py").exists());
+            assert_eq!(
+                std::fs::read_to_string(exported.join("resize/main.py")).expect("exported script"),
+                "print('resize')\n"
+            );
+        },
+    );
 }

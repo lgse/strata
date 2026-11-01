@@ -11,12 +11,10 @@ pub(super) fn stepper(labels: [String; 3]) -> (gtk::Box, [gtk::Button; 3]) {
     control.set_hexpand(true);
     control.set_halign(gtk::Align::End);
     let buttons = std::array::from_fn(|index| {
-        let label = &labels[index];
         let button = gtk::Button::new();
         if index == 1 {
             button.add_css_class("appearance-text-value");
             button.set_hexpand(true);
-            super::accessibility::set_description(&button, Some(label));
         } else {
             let icon = if index == 0 {
                 crate::assets::icons::MINUS
@@ -28,13 +26,44 @@ pub(super) fn stepper(labels: [String; 3]) -> (gtk::Box, [gtk::Button; 3]) {
             image.set_valign(gtk::Align::Center);
             button.set_child(Some(&image));
             button.add_css_class("appearance-text-step");
-            super::accessibility::set_label(&button, label);
-            button.set_tooltip_text(Some(label));
         }
+        label_stepper_button(&button, &labels[index]);
         control.append(&button);
         button
     });
     (control, buttons)
+}
+
+/// The value button keeps its text and takes `label` as its description; the
+/// icon-only step buttons take it as their name and tooltip.
+pub(super) fn label_stepper_button(button: &gtk::Button, label: &str) {
+    if button.has_css_class("appearance-text-value") {
+        super::accessibility::set_description(button, Some(label));
+    } else {
+        super::accessibility::set_label(button, label);
+        button.set_tooltip_text(Some(label));
+    }
+}
+
+/// A numeric stepper with GTK's native spin actions, decrement before the entry.
+pub(super) fn number_stepper(min: u32, max: u32, step: u32) -> gtk::SpinButton {
+    let control = gtk::SpinButton::with_range(f64::from(min), f64::from(max), f64::from(step));
+    control.set_numeric(true);
+    control.set_width_chars(3);
+    control.set_alignment(0.5);
+    let mut child = control.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        if widget.has_css_class("down") {
+            widget.insert_before(&control, control.first_child().as_ref());
+            break;
+        }
+    }
+    control.set_update_policy(gtk::SpinButtonUpdatePolicy::IfValid);
+    crate::assets::use_bundled_spin_icons(&control);
+    control.add_css_class("form-control");
+    control.add_css_class("text-size-control");
+    control
 }
 
 pub(super) fn pane_header_action(widget: &impl IsA<gtk::Widget>) {
@@ -49,10 +78,18 @@ pub(super) fn form_entry() -> gtk::Entry {
     entry
 }
 
+type LengthMeasure = fn(&str) -> usize;
+
+#[derive(Clone)]
 pub(super) struct FormTextField {
     pub widget: gtk::Box,
     pub entry: gtk::Entry,
     remaining: gtk::Label,
+    measure: Rc<Cell<LengthMeasure>>,
+}
+
+fn character_count(text: &str) -> usize {
+    text.chars().count()
 }
 
 impl FormTextField {
@@ -71,29 +108,81 @@ impl FormTextField {
             widget,
             entry,
             remaining,
+            measure: Rc::new(Cell::new(character_count)),
         };
         field.refresh_remaining();
         let remaining = field.remaining.clone();
+        let measure = field.measure.clone();
         field.entry.connect_changed(move |entry| {
-            Self::update_remaining(entry, &remaining);
+            Self::update_remaining(entry, &remaining, measure.get());
         });
         let remaining = field.remaining.clone();
+        let measure = field.measure.clone();
         field.entry.connect_max_length_notify(move |entry| {
-            Self::update_remaining(entry, &remaining);
+            Self::update_remaining(entry, &remaining, measure.get());
         });
+        field.limit_insertions();
         field
     }
 
-    fn refresh_remaining(&self) {
-        Self::update_remaining(&self.entry, &self.remaining);
+    /// Measures the limit with `measure`, such as bytes or UTF-16 units, and
+    /// trims the current text to fit.
+    pub fn set_limit(&self, max_length: i32, measure: LengthMeasure) {
+        self.measure.set(measure);
+        if self.entry.max_length() != max_length {
+            self.entry.set_max_length(max_length);
+        }
+        let text = self.entry.text();
+        let fitting = fitting_prefix(&text, usize::try_from(max_length).unwrap_or(0), measure);
+        if fitting.len() < text.len() {
+            self.entry.set_text(fitting);
+        }
+        self.refresh_remaining();
     }
 
-    fn update_remaining(entry: &gtk::Entry, remaining: &gtk::Label) {
+    // GTK's own max length counts characters, so it cannot enforce other measures.
+    fn limit_insertions(&self) {
+        let Some(text) = self.entry.delegate().and_downcast::<gtk::Text>() else {
+            return;
+        };
+        let measure = self.measure.clone();
+        text.connect_insert_text(move |text, inserted, position| {
+            let measure = measure.get();
+            let max_length = text.max_length();
+            let room = usize::try_from(max_length)
+                .unwrap_or(0)
+                .saturating_sub(measure(&text.text()));
+            if max_length <= 0 || measure(inserted) <= room {
+                return;
+            }
+            let fitting = fitting_prefix(inserted, room, measure);
+            if !fitting.is_empty() {
+                text.insert_text(fitting, position);
+            }
+            text.stop_signal_emission_by_name("insert-text");
+        });
+    }
+
+    fn refresh_remaining(&self) {
+        Self::update_remaining(&self.entry, &self.remaining, self.measure.get());
+    }
+
+    fn update_remaining(entry: &gtk::Entry, remaining: &gtk::Label, measure: LengthMeasure) {
         let limit = entry.max_length();
         remaining.set_visible(limit > 0);
-        let count = (limit as usize).saturating_sub(entry.text().chars().count());
+        let count = (limit as usize).saturating_sub(measure(&entry.text()));
         remaining.set_text(&crate::i18n::count("chars_remaining", count));
     }
+}
+
+fn fitting_prefix(text: &str, room: usize, measure: LengthMeasure) -> &str {
+    let end = text
+        .char_indices()
+        .map(|(start, character)| start + character.len_utf8())
+        .take_while(|&end| measure(&text[..end]) <= room)
+        .last()
+        .unwrap_or(0);
+    &text[..end]
 }
 
 #[cfg(test)]
@@ -112,10 +201,10 @@ pub(super) fn copyable_command(command: &str) -> gtk::Overlay {
     overlay.set_child(Some(&field));
 
     let copy = gtk::Button::builder()
-        .tooltip_text(crate::i18n::tr("Copy install command"))
         .halign(gtk::Align::End)
         .valign(gtk::Align::Center)
         .build();
+    super::accessibility::set_tooltip_and_label(&copy, &crate::i18n::tr("Copy install command"));
     copy.add_css_class("preview-command-copy");
     copy.set_has_frame(false);
     copy.set_cursor_from_name(Some("pointer"));
@@ -130,14 +219,20 @@ pub(super) fn copyable_command(command: &str) -> gtk::Overlay {
         let generation = feedback_generation.get().saturating_add(1);
         feedback_generation.set(generation);
         crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::CHECK);
-        button.set_tooltip_text(Some(&crate::i18n::tr("Install command copied")));
+        super::accessibility::set_tooltip_and_label(
+            button,
+            &crate::i18n::tr("Install command copied"),
+        );
         let button = button.clone();
         let copy_icon = copy_icon.clone();
         let feedback_generation = feedback_generation.clone();
         glib::timeout_add_local_once(Duration::from_secs(2), move || {
             if feedback_generation.get() == generation {
                 crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::COPY);
-                button.set_tooltip_text(Some(&crate::i18n::tr("Copy install command")));
+                super::accessibility::set_tooltip_and_label(
+                    &button,
+                    &crate::i18n::tr("Copy install command"),
+                );
             }
         });
     });
@@ -550,17 +645,44 @@ pub(super) fn focus_button(button: &gtk::Button) {
 
 impl ModalLayout {
     pub fn set_loading(&self, loading: bool, description: Option<&str>) {
-        if loading {
-            let description =
-                description.map_or_else(|| crate::i18n::tr("Working…"), str::to_owned);
-            crate::ui::accessibility::set_description(&self.loading, Some(&description));
-            self.loading.set_visible(true);
-            self.loading.start();
-        } else {
-            self.loading.stop();
-            self.loading.set_visible(false);
-            crate::ui::accessibility::set_description(&self.loading, None);
-        }
+        set_modal_loading(&self.loading, loading, description);
+    }
+}
+
+fn modal_loading_spinner() -> gtk::Spinner {
+    let loading = gtk::Spinner::new();
+    loading.add_css_class("action-dialog-loading");
+    loading.set_visible(false);
+    loading
+}
+
+/// Starts a dialog spinner that may have run before. GTK 4.24 leaves a spinner
+/// restarted after being hidden blank or frozen, so this swaps in a fresh one
+/// and returns it.
+pub(super) fn restart_modal_loading(
+    spinner: &gtk::Spinner,
+    description: Option<&str>,
+) -> gtk::Spinner {
+    let fresh = modal_loading_spinner();
+    if let Some(parent) = spinner.parent().and_downcast::<gtk::Box>() {
+        parent.insert_child_after(&fresh, Some(spinner));
+        parent.remove(spinner);
+    }
+    set_modal_loading(&fresh, true, description);
+    fresh
+}
+
+/// [`ModalLayout::set_loading`] for a dialog that keeps only its spinner.
+pub(super) fn set_modal_loading(spinner: &gtk::Spinner, loading: bool, description: Option<&str>) {
+    if loading {
+        let description = description.map_or_else(|| crate::i18n::tr("Working…"), str::to_owned);
+        crate::ui::accessibility::set_description(spinner, Some(&description));
+        spinner.set_visible(true);
+        spinner.start();
+    } else {
+        spinner.stop();
+        spinner.set_visible(false);
+        crate::ui::accessibility::set_description(spinner, None);
     }
 }
 
@@ -660,14 +782,13 @@ pub(super) fn modal_layout_with_tone(
     heading.append(&title);
     heading.append(&subtitle);
 
-    let loading = gtk::Spinner::new();
-    loading.add_css_class("action-dialog-loading");
-    loading.set_visible(false);
+    let loading = modal_loading_spinner();
 
     let close = gtk::Button::new();
     close.add_css_class("action-dialog-close");
     close.set_valign(gtk::Align::Center);
     close.set_tooltip_text(Some(&crate::i18n::tr("Close dialog")));
+    super::accessibility::set_own_label(&close, &crate::i18n::tr("Close dialog"));
     close.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::X,
         16,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::media::Frame;
+use crate::{media::Frame, services::file_activity};
 
 pub(crate) fn stream(header: Header) -> Result<Session, String> {
     stream_to(header, header.duration_us)
@@ -263,4 +263,38 @@ fn storyboards_and_waveforms_share_one_background_slot() {
     drop(slot);
     wait_for(|| ACTIVE_BACKGROUND.load(Ordering::Acquire) == 0);
     assert!(BackgroundSlot::acquire().is_some());
+}
+
+#[test]
+fn a_clip_an_operation_fences_starts_no_decoder_under_either_name() {
+    let root = tempfile::tempdir().expect("root folder");
+    let real = root.path().canonicalize().expect("root path").join("real");
+    std::fs::create_dir(&real).expect("real folder");
+    std::fs::write(real.join("clip.mp4"), b"clip").expect("clip");
+    let link = root.path().join("link");
+    std::os::unix::fs::symlink(&real, &link).expect("symbolic link");
+    let source = SandboxedMedia {
+        path: link.join("clip.mp4"),
+        size: crate::services::MediaPreviewSize::new(16, 16),
+        backend: MediaPreviewBackend::Software,
+        input_owner: None,
+        audio_only: false,
+    };
+    let activity = file_activity::begin(file_activity::OperationScope::default());
+
+    for fenced in [&real, &link] {
+        let _fence = activity.fence([fenced.clone()]);
+        let refused = spawn_helper(
+            &source,
+            ParseOperation::AudioPeaks,
+            None,
+            &Cancellation::default(),
+        )
+        .err();
+        assert_eq!(
+            refused.as_deref(),
+            Some(file_activity::HELD_FOR_OPERATION),
+            "under {fenced:?}"
+        );
+    }
 }

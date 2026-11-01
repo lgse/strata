@@ -1,0 +1,20 @@
+{"scenario":"activation-without-default-opens-visible-app","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"$data/applications","mkdir":true}},{"fs":{"path":"$environment/record-files","write":"#!/bin/sh\nprintf \"%s\\n\" \"$$@\" > \"$environment/opened-files\"\n"}},{"fs":{"path":"$environment/record-files","chmod":"755"}},{"fs":{"path":"$data/applications/strata-review.desktop","write":"[Desktop Entry]\nType=Application\nName=Review Text Viewer\nExec=$environment/record-files %U\nMimeType=text/plain;inode/directory;\nNoDisplay=false\n"}},{"fs":{"path":"$config/mimeapps.list","write":"[Default Applications]\ntext/plain=strata-review.desktop;\ninode/directory=strata-review.desktop;\n[Added Associations]\ntext/plain=strata-review.desktop;\ninode/directory=strata-review.desktop;\n"}},{"fs":{"path":"$config/mimeapps.list","write":"[Default Applications]\ninode/directory=strata-review.desktop;\n[Added Associations]\ninode/directory=strata-review.desktop;\n"}}],"variants":[{"id":"false","vars":{"always":"False"}},{"id":"true","vars":{"always":"True"}}],"cost":{"columns-false":1.1,"columns-true":1.3},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Return on a file with no default opens the chooser and launches the chosen app; sole guard of this activation fallback route and the direct open after Always use (context-menu route is open-with-always-use-updates-default)"}}
+{"select_with_keyboard":"todo.txt"}
+{"key":"Return"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"expect":{"mentions":{"target":{"dialog":true},"text":"Review Text Viewer"}}}
+{"type":"Review Text Viewer"}
+{"click":{"role":"check box","name":"Always use for this file type","within":{"dialog":true}},"variants":["true"]}
+{"wait":{"state":{"target":{"role":"check box","name":"Always use for this file type","within":{"dialog":true}},"checked":true}},"message":"the default toggle to check","variants":["true"]}
+{"click":{"dialog_button":"Open"},"variants":["true"]}
+{"key":"Return","variants":["false"]}
+{"fs":{"path":"$environment/opened-files","lines":{"at_least":1}},"message":"the selected application to receive the activated file"}
+{"fs":{"path":"$environment/opened-files","opened":["$fixture/todo.txt"]},"timeout_ms":0}
+{"fs":{"path":"$config/mimeapps.list","default_app":{"for":"todo.txt","is":"strata-review.desktop"}},"timeout_ms":0,"variants":["true"]}
+{"fs":{"path":"$config/mimeapps.list","text":"[Default Applications]\ninode/directory=strata-review.desktop;\n[Added Associations]\ninode/directory=strata-review.desktop;\n"},"timeout_ms":0,"variants":["false"]}
+{"wait":{"dialog":null},"message":"the chooser to close"}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'"}
+{"fs":{"path":"$environment/opened-files","remove":true},"variants":["true"]}
+{"key":"Return","variants":["true"]}
+{"fs":{"path":"$environment/opened-files","lines":{"at_least":1}},"message":"the new default to open directly","variants":["true"]}
+{"expect":{"dialog":null},"variants":["true"]}

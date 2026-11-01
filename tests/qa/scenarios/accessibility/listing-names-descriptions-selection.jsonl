@@ -1,0 +1,20 @@
+{"scenario":"listing-names-descriptions-selection","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.4,"icons":0.4,"list":0.5},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Entry names, Folder/File descriptions and selected state in all views; unit test pins only kind labels; focusable overlaps focus-order-reaches-files"}}
+{"wait":{"present":{"pane":"$root"}},"message":"the $root pane"}
+{"expect":{"description":{"target":{"pane":"$root"},"text":"$view view"}}}
+{"expect":{"present":{"container":"$root"}}}
+{"expect":{"name":{"target":{"container":"$root"},"text":"$root"}}}
+{"expect":{"description":{"target":{"container":"$root"},"text":"Files"}}}
+{"expect":{"entries":["archive","documents","pictures","readme.md","todo.txt"],"dir":"$root"}}
+{"expect":{"description":{"target":{"entry":"archive","dir":"$root"},"text":"Folder"}},"message":"archive should be described as a Folder"}
+{"expect":{"state":{"target":{"entry":"archive","dir":"$root"},"focusable":true}},"message":"archive should be focusable"}
+{"expect":{"description":{"target":{"entry":"documents","dir":"$root"},"text":"Folder"}},"message":"documents should be described as a Folder"}
+{"expect":{"state":{"target":{"entry":"documents","dir":"$root"},"focusable":true}},"message":"documents should be focusable"}
+{"expect":{"description":{"target":{"entry":"pictures","dir":"$root"},"text":"Folder"}},"message":"pictures should be described as a Folder"}
+{"expect":{"state":{"target":{"entry":"pictures","dir":"$root"},"focusable":true}},"message":"pictures should be focusable"}
+{"expect":{"description":{"target":{"entry":"readme.md","dir":"$root"},"text":"File"}},"message":"readme.md should be described as a File"}
+{"expect":{"state":{"target":{"entry":"readme.md","dir":"$root"},"focusable":true}},"message":"readme.md should be focusable"}
+{"expect":{"description":{"target":{"entry":"todo.txt","dir":"$root"},"text":"File"}},"message":"todo.txt should be described as a File"}
+{"expect":{"state":{"target":{"entry":"todo.txt","dir":"$root"},"focusable":true}},"message":"todo.txt should be focusable"}
+{"select":{"entry":"todo.txt","dir":"$root"}}
+{"expect":{"state":{"target":{"entry":"todo.txt","dir":"$root"},"selected":true}}}
+{"expect":{"all":[{"state":{"target":{"entry":"archive","dir":"$root"},"selected":false}},{"state":{"target":{"entry":"documents","dir":"$root"},"selected":false}},{"state":{"target":{"entry":"pictures","dir":"$root"},"selected":false}},{"state":{"target":{"entry":"readme.md","dir":"$root"},"selected":false}}]}}

@@ -1,0 +1,39 @@
+{"scenario":"open-preview-keeps-focus-on-archives","modes":["list","icons"],"prefs":{"type_to_search":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"a.txt":"before","bundle.zip":"","c.txt":"middle","encrypted.zip":""},"setup":[{"fs":{"path":"bundle.zip","zip":[["top.txt","top"]]}},{"fs":{"path":"encrypted.zip","base64":"UEsDBAoACQAAABdsM12zQ1U4JwAAABsAAAANABwAcHJvdGVjdGVkLnR4dFVUCQADXuOual7jrmp1eAsAAQToAwAABOgDAACQyEkvHVKZmURUaFrAXIjmRah+W9tCT9En6fCshzKr4S/pzBgPWBlQSwcIs0NVOCcAAAAbAAAAUEsBAh4DCgAJAAAAF2wzXbNDVTgnAAAAGwAAAA0AGAAAAAAAAQAAAKSBAAAAAHByb3RlY3RlZC50eHRVVAUAA17jrmp1eAsAAQToAwAABOgDAABQSwUGAAAAAAEAAQBTAAAAfgAAAAAA"}}],"cost":{"list":0.8,"icons":0.8},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Keys stay in listing when moving onto plain or password archives in List and Icons; Columns path unit-tested in preview_ownership"}}
+{"select_with_keyboard":"a.txt","modes":["list"]}
+{"key":"space","modes":["list"]}
+{"wait":{"preview":"before"},"message":"the text preview","modes":["list"]}
+{"key":"Down","modes":["list"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","modes":["list"]}
+{"wait":{"preview":"top.txt"},"message":"the passive archive contents","modes":["list"]}
+{"sleep":300,"modes":["list"]}
+{"expect":{"focused":"bundle.zip"},"message":"the archive took the keys","modes":["list"]}
+{"expect":{"absent":{"role":"*","states":["selected"],"within":{"preview":true}}},"modes":["list"]}
+{"key":"Down","modes":["list"]}
+{"wait":{"focused":"c.txt"},"message":"keyboard focus to reach 'c.txt'","modes":["list"]}
+{"key":"Down","modes":["list"]}
+{"wait":{"focused":"encrypted.zip"},"message":"keyboard focus to reach 'encrypted.zip'","modes":["list"]}
+{"wait":{"preview":"Password-protected archive"},"message":"the password prompt","modes":["list"]}
+{"sleep":300,"modes":["list"]}
+{"expect":{"focused":"encrypted.zip"},"message":"the password prompt took the keys","modes":["list"]}
+{"expect":{"absent":{"role":"*","states":["editable","focused"],"within":{"preview":true}}},"modes":["list"]}
+{"key":"Home","modes":["list"]}
+{"wait":{"focused":"a.txt"},"message":"keyboard focus to reach 'a.txt'","modes":["list"]}
+{"select_with_keyboard":"a.txt","modes":["icons"]}
+{"key":"space","modes":["icons"]}
+{"wait":{"preview":"before"},"message":"the text preview","modes":["icons"]}
+{"key":"Right","modes":["icons"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","modes":["icons"]}
+{"wait":{"preview":"top.txt"},"message":"the passive archive contents","modes":["icons"]}
+{"sleep":300,"modes":["icons"]}
+{"expect":{"focused":"bundle.zip"},"message":"the archive took the keys","modes":["icons"]}
+{"expect":{"absent":{"role":"*","states":["selected"],"within":{"preview":true}}},"modes":["icons"]}
+{"key":"Right","modes":["icons"]}
+{"wait":{"focused":"c.txt"},"message":"keyboard focus to reach 'c.txt'","modes":["icons"]}
+{"key":"Right","modes":["icons"]}
+{"wait":{"focused":"encrypted.zip"},"message":"keyboard focus to reach 'encrypted.zip'","modes":["icons"]}
+{"wait":{"preview":"Password-protected archive"},"message":"the password prompt","modes":["icons"]}
+{"sleep":300,"modes":["icons"]}
+{"expect":{"focused":"encrypted.zip"},"message":"the password prompt took the keys","modes":["icons"]}
+{"expect":{"absent":{"role":"*","states":["editable","focused"],"within":{"preview":true}}},"modes":["icons"]}
+{"key":"Home","modes":["icons"]}
+{"wait":{"focused":"a.txt"},"message":"keyboard focus to reach 'a.txt'","modes":["icons"]}

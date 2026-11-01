@@ -1,0 +1,32 @@
+{"scenario":"reopen-closed-tabs","modes":["columns"],"layout":"us","mutation":null,"known_bug":null}
+{"key":"ctrl+t"}
+{"select":{"entry":"archive"}}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"active tab archive"}
+{"key":"ctrl+shift+1"}
+{"wait":{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}},"message":"active tab $root"}
+{"key":"ctrl+t"}
+{"select":{"entry":"pictures"}}
+{"wait":{"directory":"pictures"},"message":"the browser to be working in 'pictures'"}
+{"wait":{"state":{"target":{"role":"page tab","name":"pictures"},"selected":true}},"message":"active tab pictures"}
+{"key":"ctrl+shift+2"}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"active tab archive"}
+{"key":"ctrl+w"}
+{"wait":{"state":{"target":{"role":"page tab","name":"pictures"},"selected":true}},"message":"Ctrl+W to close the archive tab"}
+{"key":"ctrl+w"}
+{"wait":{"absent":{"role":"page tab","name":"pictures"}},"message":"Ctrl+W to close the pictures tab"}
+{"key":"ctrl+l"}
+{"wait":{"field":{"name":"Location (Ctrl+L)","focused":true}},"message":"the location editor to take focus"}
+{"key":"ctrl+shift+t"}
+{"wait":{"state":{"target":{"role":"page tab","name":"pictures"},"selected":true}},"message":"Ctrl+Shift+T from the location editor to reopen the last closed tab"}
+{"wait":{"directory":"pictures"},"message":"the reopened tab to show 'pictures'"}
+{"layout":"ru"}
+{"key":"ctrl+shift+t"}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"Ctrl+Shift+T on a Russian layout to reopen the earlier closed tab"}
+{"wait":{"directory":"archive"},"message":"the reopened tab to show 'archive'"}
+{"key":"ctrl+shift+t"}
+{"expect":{"compare":{"left":{"count":{"role":"page tab"}},"op":"==","right":3}},"timeout_ms":1000,"hold_ms":300,"message":"an empty history to open no tab"}
+{"key":"ctrl+shift+2"}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"archive reopened at its former second position"}
+{"key":"ctrl+shift+3"}
+{"wait":{"state":{"target":{"role":"page tab","name":"pictures"},"selected":true}},"message":"pictures reopened at its former third position"}

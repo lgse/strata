@@ -1,0 +1,11 @@
+{"scenario":"single-click-opens-directory-group","modes":["columns","icons","list"],"prefs":{"list_folder_clicks":1,"list_file_clicks":1,"grid_folder_clicks":1,"grid_file_clicks":1,"explorer_folder_clicks":1,"explorer_file_clicks":1},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.1,"icons":1.1,"list":1.1},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"single click on a member of a ctrl-selected group opens it; plain route is single-click-opens-directory"}}
+{"wait":{"selected":["archive"],"dir":"$root"},"message":"the selection to become ['archive']"}
+{"click":{"entry":"todo.txt","dir":"$root"},"mods":["ctrl"]}
+{"click":{"entry":"documents","dir":"$root"},"mods":["ctrl"]}
+{"wait":{"selected":["archive","documents","todo.txt"],"dir":"$root"},"message":"the selection to become ['archive', 'documents', 'todo.txt']"}
+{"sleep":600}
+{"click":{"entry":"documents","dir":"$root"}}
+{"wait":{"pane":"documents"},"message":"one click to open the directory in single-click mode"}
+{"wait":{"entry":"notes.txt"},"message":"the entry 'notes.txt' to appear"}
+{"wait":{"selected":[],"dir":"documents"},"message":"the selection to become []"}
+{"wait":{"selected":["documents"],"dir":"$root"},"message":"the selection to become ['documents']","modes":["columns"]}

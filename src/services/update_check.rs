@@ -10,19 +10,24 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use super::update_install::{
-    InstallRequest, UpdateMethod, aur_repository_version, omarchy_repository_version,
-    package_repository_version,
+    InstallRequest, UPDATE_MANIFEST_ASSETS, UpdateMethod, aur_repository_version,
+    omarchy_repository_version, package_repository_version,
 };
 use super::{
     DocumentBlock,
     network_error::NetworkError,
     parse_markdown,
-    release_channel::{BuildKind, Channel, ReleaseSummary, Version, best_update, rollback_target},
+    release_channel::{
+        BuildKind, Channel, ReleaseSummary, Version, best_update, installable_releases,
+        rollback_target,
+    },
 };
 
 const API_ROOT: &str = "https://api.github.com/repos/lgse/strata/releases";
 const COMMITS_ROOT: &str = "https://api.github.com/repos/lgse/strata/commits";
 const RELEASES_URL: &str = "https://github.com/lgse/strata/releases";
+/// GitHub does not count requests to this endpoint against the API rate limit.
+const CONNECTION_TEST_URL: &str = "https://api.github.com/rate_limit";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// Minimum interval between automatic checks against the same channel.
 const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
@@ -31,6 +36,10 @@ const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 /// installed one, so a bounded page is safe: an update this page cannot
 /// reach is older than one it can.
 const PREVIEW_PAGE_SIZE: u32 = 30;
+/// GitHub's largest page.
+const RELEASE_LIST_PAGE_SIZE: u32 = 100;
+/// Keeps one menu open well inside GitHub's unauthenticated rate limit.
+const RELEASE_LIST_MAX_PAGES: u32 = 5;
 
 impl BuildKind {
     /// The build kind's name in the app language, for display.
@@ -74,6 +83,12 @@ pub enum UpdateCheck {
         install: InstallRequest,
     },
     Failed(String),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReleaseChoice {
+    pub release: ReleaseMetadata,
+    pub install: InstallRequest,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -132,6 +147,18 @@ fn request_json<T: serde::de::DeserializeOwned>(url: &str) -> Result<T, ureq::Er
         .header("User-Agent", "strata-file-manager")
         .call()
         .and_then(|mut response| response.body_mut().read_json::<T>())
+}
+
+/// Reaches the update server the way an update check does, without using its rate limit.
+pub(super) fn test_connection() -> Result<(), NetworkError> {
+    agent()
+        .get(CONNECTION_TEST_URL)
+        .header("Accept", "application/vnd.github+json")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .header("User-Agent", "strata-file-manager")
+        .call()
+        .map(drop)
+        .map_err(|error| NetworkError::from_ureq(&error))
 }
 
 /// Converts a GitHub API release into [`release_channel`]'s pure
@@ -379,17 +406,77 @@ enum ChannelFetch {
 /// unreachable, since every caller of this function has already filtered
 /// through [`is_eligible`], but this avoids ever unwrapping the `Option`.
 fn available_check(release: &ReleaseSummary) -> UpdateCheck {
-    match &release.download_url {
-        Some(download_url) => UpdateCheck::Available {
+    match install_request(release) {
+        Some(install) => UpdateCheck::Available {
             release: release_metadata(release),
-            install: InstallRequest {
-                tag: release.tag.clone(),
-                asset_name: archive_name(&release.version.to_string()),
-                advertised_url: download_url.clone(),
-            },
+            install,
         },
         None => UpdateCheck::UpToDate,
     }
+}
+
+fn install_request(release: &ReleaseSummary) -> Option<InstallRequest> {
+    Some(InstallRequest {
+        tag: release.tag.clone(),
+        asset_name: archive_name(&release.version.to_string()),
+        advertised_url: release.download_url.clone()?,
+    })
+}
+
+fn has_update_manifest(release: &ReleaseResponse) -> bool {
+    UPDATE_MANIFEST_ASSETS
+        .iter()
+        .all(|name| release.assets.iter().any(|asset| asset.name == *name))
+}
+
+/// The releases `channel` offers that this machine can install, newest first.
+fn release_choices(channel: Channel, releases: &[ReleaseResponse]) -> Vec<ReleaseChoice> {
+    let summaries: Vec<_> = releases
+        .iter()
+        .filter(|release| has_update_manifest(release))
+        .filter_map(to_release_summary)
+        .collect();
+    installable_releases(channel, &summaries)
+        .into_iter()
+        .filter_map(|release| {
+            Some(ReleaseChoice {
+                install: install_request(release)?,
+                release: release_metadata(release),
+            })
+        })
+        .collect()
+}
+
+/// Unlike the update check, Stable also enumerates every release: GitHub has
+/// no final-only listing, so [`is_eligible`] alone drops the prereleases.
+fn fetch_release_choices(channel: Channel) -> Result<Vec<ReleaseChoice>, String> {
+    signed_release_pages(|page| {
+        request_json::<Vec<ReleaseResponse>>(&format!(
+            "{API_ROOT}?per_page={RELEASE_LIST_PAGE_SIZE}&page={page}"
+        ))
+    })
+    .map(|releases| release_choices(channel, &releases))
+    .map_err(|error| request_error_message(&error))
+}
+
+/// Pages through releases, newest first, until a page ends on a release
+/// published before signed manifests existed: everything after it is older still.
+fn signed_release_pages<E>(
+    mut fetch_page: impl FnMut(u32) -> Result<Vec<ReleaseResponse>, E>,
+) -> Result<Vec<ReleaseResponse>, E> {
+    let mut releases = Vec::new();
+    for page in 1..=RELEASE_LIST_MAX_PAGES {
+        let batch = fetch_page(page)?;
+        let last = batch.len() < RELEASE_LIST_PAGE_SIZE as usize
+            || batch
+                .last()
+                .is_none_or(|release| !has_update_manifest(release));
+        releases.extend(batch);
+        if last {
+            break;
+        }
+    }
+    Ok(releases)
 }
 
 /// The pure selection step of [`check_for_updates`], split out so it can be
@@ -674,6 +761,31 @@ pub fn check_for_updates(
                 }
             };
             let _sent = sender.send(result);
+        });
+    drop(spawned);
+    receiver
+}
+
+/// Lists the releases `channel` lets the user install, off the GTK thread.
+pub fn fetch_releases(channel: Channel) -> Receiver<Result<Vec<ReleaseChoice>, String>> {
+    let (sender, receiver) = mpsc::channel();
+    let spawned = std::thread::Builder::new()
+        .name("strata-release-list".into())
+        .spawn(move || {
+            let _sent = sender.send(fetch_release_choices(channel));
+        });
+    drop(spawned);
+    receiver
+}
+
+/// Resolves the source commit of a picked release, off the GTK thread.
+pub fn resolve_release_commit(mut release: ReleaseMetadata) -> Receiver<ReleaseMetadata> {
+    let (sender, receiver) = mpsc::channel();
+    let spawned = std::thread::Builder::new()
+        .name("strata-release-commit".into())
+        .spawn(move || {
+            resolve_commit(&mut release);
+            let _sent = sender.send(release);
         });
     drop(spawned);
     receiver

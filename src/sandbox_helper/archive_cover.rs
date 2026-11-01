@@ -92,13 +92,14 @@ pub(crate) fn render(input: &Path, format: CoverFormat, edge: i32) -> Result<Vec
                     let file = archive
                         .by_index_raw(i)
                         .map_err(|_| "Invalid cover archive")?;
+                    let name = file.name().map_err(|_| "Invalid cover archive")?;
                     if !file.is_dir()
-                        && image_name(file.name())
+                        && image_name(&name)
                         && first
                             .as_deref()
-                            .is_none_or(|name| compare_names(file.name(), name).is_lt())
+                            .is_none_or(|first| compare_names(&name, first).is_lt())
                     {
-                        first = Some(file.name().to_owned());
+                        first = Some(name.into_owned());
                     }
                 }
                 first.ok_or("Comic archive has no bounded image")?
@@ -214,11 +215,18 @@ fn epub_cover(archive: &mut zip::ZipArchive<fs::File>) -> Result<String, String>
     let base = package_path.rsplit_once('/').map_or("", |(base, _)| base);
     let relative = normalize_path(base, &href).ok_or("Invalid EPUB cover path")?;
     // Some EPUB 2 generators place a root-relative href in a nested package document.
-    if archive.file_names().any(|name| name == relative) {
+    if archive
+        .file_names()
+        .any(|name| name.is_ok_and(|name| name == relative))
+    {
         return Ok(relative);
     }
     normalize_path("", &href)
-        .filter(|name| archive.file_names().any(|entry| entry == name))
+        .filter(|name| {
+            archive
+                .file_names()
+                .any(|entry| entry.is_ok_and(|entry| entry == *name))
+        })
         .ok_or("EPUB cover is missing".into())
 }
 

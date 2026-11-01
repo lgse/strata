@@ -1,0 +1,16 @@
+{"scenario":"table-preview-keeps-secondary-sorts","modes":["columns"],"prefs":{"single_click_previews":false},"tree":{"data.csv":"name,group\nb,1\na,1\nA,1\na,2\nb,2\n"}}
+{"select_with_keyboard":"data.csv"}
+{"key":"space"}
+{"wait":{"present":{"role":"column header","name":"group","within":{"preview":true}}},"message":"the table's sortable group header"}
+{"click":{"role":"column header","name":"group","within":{"preview":true}}}
+{"wait":{"child_names":{"of":{"role":"list","within":{"role":"tree table","within":{"preview":true}}},"role":"table row","names":["a 1","A 1","b 1","a 2","b 2"]}},"message":"group ascending retains name order within ties"}
+{"click":{"role":"column header","name":"group","within":{"preview":true}}}
+{"wait":{"child_names":{"of":{"role":"list","within":{"role":"tree table","within":{"preview":true}}},"role":"table row","names":["a 2","b 2","a 1","A 1","b 1"]}},"message":"group descending retains ascending name order within ties"}
+{"click":{"role":"column header","name":"name","within":{"preview":true}}}
+{"wait":{"child_names":{"of":{"role":"list","within":{"role":"tree table","within":{"preview":true}}},"role":"table row","names":["a 2","a 1","A 1","b 2","b 1"]}},"message":"changing the primary header retains descending group as a tie breaker"}
+{"click":{"role":"column header","name":"name","within":{"preview":true}}}
+{"wait":{"child_names":{"of":{"role":"list","within":{"role":"tree table","within":{"preview":true}}},"role":"table row","names":["b 2","b 1","a 2","a 1","A 1"]}},"message":"descending names retain group ordering and stable equal casefold keys"}
+{"click":{"role":"column header","name":"name","within":{"preview":true}}}
+{"wait":{"child_names":{"of":{"role":"list","within":{"role":"tree table","within":{"preview":true}}},"role":"table row","names":["a 2","a 1","A 1","b 2","b 1"]}},"message":"reversing back to ascending reuses rows without disturbing equal-name groups"}
+{"click":{"role":"column header","name":"name","within":{"preview":true}}}
+{"wait":{"child_names":{"of":{"role":"list","within":{"role":"tree table","within":{"preview":true}}},"role":"table row","names":["b 2","b 1","a 2","a 1","A 1"]}},"message":"repeated reversals preserve descending groups and stable identical rows"}

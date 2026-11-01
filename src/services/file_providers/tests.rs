@@ -26,6 +26,13 @@ fn discovery_refuses_symlinks_writable_registration_and_relative_programs() {
     let t = tempfile::tempdir().expect("temp");
     let d = registration(t.path(), vec![python(), "-c".into(), "pass".into()]);
     assert_eq!(discover(t.path()).len(), 1);
+    fs::write(d.join(DISABLED_FILE), b"").expect("marker");
+    assert!(
+        discover(t.path()).is_empty(),
+        "a disabled marker skips the registration"
+    );
+    fs::remove_file(d.join(DISABLED_FILE)).expect("marker");
+    assert_eq!(discover(t.path()).len(), 1);
     fs::set_permissions(d.join("provider.json"), fs::Permissions::from_mode(0o666)).expect("chmod");
     assert!(discover(t.path()).is_empty());
     fs::set_permissions(d.join("provider.json"), fs::Permissions::from_mode(0o600)).expect("chmod");
@@ -115,6 +122,7 @@ fn provider_frames_restrict_icons_size_and_action_ids() {
         icon: None,
         command: vec![python()],
         icons: BTreeMap::new(),
+        category: None,
     };
     for bad in [
         serde_json::json!({"version":1,"id":1,"actions":[{"id":"../../run","label":"No","icon":null}]}),
@@ -262,6 +270,7 @@ fn manifest() -> Manifest {
         icon: None,
         command: vec![python()],
         icons: BTreeMap::new(),
+        category: None,
     }
 }
 
@@ -368,6 +377,36 @@ fn responses_require_method_fields_and_validate_partial_outcomes() {
             valid
         );
     }
+}
+
+#[test]
+fn placement_parses_send_to_and_tolerates_future_values_on_any_node() {
+    let parse = |placement: serde_json::Value| {
+        let frame = serde_json::json!({"version":1,"id":1,"actions":[
+            {"id":"pixel","label":"Pixel","placement":placement,
+             "children":[{"id":"root","label":"Drive root","placement":"send-to"}]}
+        ]});
+        checked_reply(&serde_json::to_vec(&frame).expect("json"), &manifest())
+    };
+    let known = parse("send-to".into()).expect("known placement");
+    let root = &known.actions.expect("actions")[0];
+    assert!(root.sends_to());
+    assert_eq!(root.placement, Some(Placement::SendTo));
+    assert!(
+        root.children.as_ref().expect("children")[0].sends_to(),
+        "a child's placement is the host's to ignore, not a protocol error"
+    );
+    let entry = parse("send-to-entry".into()).expect("entry placement");
+    let root = &entry.actions.expect("actions")[0];
+    assert!(root.sends_to());
+    assert_eq!(root.placement, Some(Placement::SendToEntry));
+    let future = parse("float-to-top".into()).expect("future placement");
+    let root = &future.actions.expect("actions")[0];
+    assert!(!root.sends_to());
+    assert_eq!(root.placement, Some(Placement::Unrecognized));
+    assert!(parse(7.into()).is_err(), "placement keeps its string type");
+    let absent = parse(serde_json::Value::Null).expect("null means no placement");
+    assert_eq!(absent.actions.expect("actions")[0].placement, None);
 }
 
 #[test]

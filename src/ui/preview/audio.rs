@@ -21,7 +21,11 @@ use crate::{
     ui::media::DecodedMedia,
 };
 
-use super::{ListingPosition, ease_in::EaseIn};
+use super::{
+    ListingPosition,
+    components::{DetailsHeader, label, navigation_button, navigation_row},
+    ease_in::EaseIn,
+};
 
 const EASE_IN_RAMP: std::time::Duration = std::time::Duration::from_millis(500);
 
@@ -86,32 +90,6 @@ pub(super) struct AudioView {
     ease: Rc<EaseIn>,
 }
 
-fn label(class: &str) -> gtk::Label {
-    let label = gtk::Label::new(None);
-    label.add_css_class(class);
-    label.set_xalign(0.0);
-    label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    label
-}
-
-/// `tooltip` names `binding` with `%{keys}`.
-fn transport_button(
-    icon: &str,
-    name: &str,
-    tooltip: &str,
-    binding: crate::ui::keys::Binding,
-) -> gtk::Button {
-    let button = gtk::Button::new();
-    button.add_css_class("preview-media-button");
-    button.set_child(Some(&crate::assets::primary_icon(icon, 18)));
-    button.set_tooltip_text(Some(&crate::ui::shortcut_reference::with_keys(
-        tooltip,
-        crate::ui::keys::Keys::One(binding),
-    )));
-    crate::ui::accessibility::set_label(&button, &crate::i18n::tr(name));
-    button
-}
-
 impl AudioView {
     /// `navigate(-1 | 1)` moves the listing to the previous or next audio file.
     pub(super) fn new(volume: &gtk::Widget, navigate: Rc<dyn Fn(i32)>) -> Rc<Self> {
@@ -121,22 +99,18 @@ impl AudioView {
         root.set_vexpand(true);
         root.set_layout_manager(Some(glib::Object::new::<layout::NowPlayingLayout>()));
 
-        let eyebrow = label("preview-audio-eyebrow");
-        eyebrow.set_hexpand(true);
-        let eyebrow_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        eyebrow_row.append(&eyebrow);
-        eyebrow_row.append(volume);
-        let title = label("preview-audio-title");
+        let DetailsHeader {
+            root: header,
+            eyebrow,
+            title,
+        } = DetailsHeader::new(Some(volume));
+        title.add_css_class("preview-audio-title");
         let artist = label("preview-audio-artist");
         let album = label("preview-audio-album");
         album.set_hexpand(true);
         let byline = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         byline.append(&artist);
         byline.append(&album);
-        let header = gtk::Box::new(gtk::Orientation::Vertical, 2);
-        header.add_css_class("preview-audio-header");
-        header.append(&eyebrow_row);
-        header.append(&title);
         header.append(&byline);
         let error = gtk::Box::new(gtk::Orientation::Vertical, 4);
         error.set_visible(false);
@@ -147,37 +121,31 @@ impl AudioView {
         let total = label("preview-media-time");
         total.add_css_class("preview-audio-time");
         total.set_xalign(1.0);
-        let previous = transport_button(
+        let previous = navigation_button(
             crate::assets::icons::SKIP_BACK,
             "Previous audio file",
             "Previous audio file (%{keys})",
-            crate::ui::keys::bindings::MEDIA_PREVIOUS,
+            Some(crate::ui::keys::bindings::MEDIA_PREVIOUS),
         );
-        let next = transport_button(
+        let next = navigation_button(
             crate::assets::icons::SKIP_FORWARD,
             "Next audio file",
             "Next audio file (%{keys})",
-            crate::ui::keys::bindings::MEDIA_NEXT,
+            Some(crate::ui::keys::bindings::MEDIA_NEXT),
         );
         let play_icon = crate::assets::primary_icon(crate::assets::icons::PLAY, 22);
         let play = gtk::Button::new();
         play.add_css_class("preview-media-center");
         play.add_css_class("preview-audio-play");
         play.set_child(Some(&play_icon));
-        play.set_tooltip_text(Some(&crate::ui::shortcut_reference::with_keys(
+        crate::ui::shortcut_reference::follow_tooltip(
+            &play,
             "Play/Pause (%{keys})",
-            crate::ui::keys::Keys::One(crate::ui::keys::bindings::MEDIA_PLAY_PAUSE),
-        )));
+            crate::ui::keys::Keys::One(crate::ui::keys::bindings::MEDIA_PLAY_PAUSE.shown()),
+        );
         crate::ui::accessibility::set_label(&play, &crate::i18n::tr("Play or pause"));
-        let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        buttons.set_valign(gtk::Align::Center);
-        buttons.append(&previous);
-        buttons.append(&play);
-        buttons.append(&next);
-        let transport = gtk::CenterBox::new();
-        transport.add_css_class("preview-audio-transport");
+        let transport = navigation_row(&previous, &play, &next, 10);
         transport.set_start_widget(Some(&elapsed));
-        transport.set_center_widget(Some(&buttons));
         transport.set_end_widget(Some(&total));
 
         let artwork = artwork::Artwork::new();

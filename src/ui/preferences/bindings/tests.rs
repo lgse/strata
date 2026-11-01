@@ -88,10 +88,13 @@ fn failed_saves_still_apply_and_retry_without_repeating_notifications() {
             fs::create_dir_all(settings_path()).expect("block settings file with a directory");
             manager.set_folder_peeking(true);
             assert_eq!(*values.borrow(), [false, true]);
+            crate::storage::writer::settle();
             assert!(manager.persistence_dirty.get());
             fs::remove_dir(settings_path()).expect("remove write failure fixture");
             manager.set_folder_peeking(true);
+            crate::storage::writer::settle();
             assert!(!manager.persistence_dirty.get());
+            crate::storage::writer::settle();
             assert!(read_preferences().expect("retried save").folder_peeking);
             assert_eq!(*values.borrow(), [false, true]);
         },

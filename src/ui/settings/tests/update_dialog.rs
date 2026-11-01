@@ -4,7 +4,7 @@ use gtk::gdk;
 
 use super::super::*;
 use super::{FakeInstaller, GUARD_REJECTION, offered_request, page_text, wait_until};
-use crate::test_support::gtk_test;
+use crate::test_support::{gtk_test, gtk_test_with_env};
 
 #[derive(Clone, Copy, Debug)]
 enum Dismisser {
@@ -79,7 +79,7 @@ fn wait_until_dismissed(dialog: &UpdateDialog) {
     wait_until("the dialog to dismiss", || dialog.layer.parent().is_none());
 }
 
-fn release() -> ReleaseMetadata {
+pub(super) fn release() -> ReleaseMetadata {
     ReleaseMetadata {
         version: "99.0.0".to_owned(),
         url: "https://github.com/lgse/strata/releases/tag/v99.0.0".to_owned(),
@@ -93,12 +93,13 @@ fn release() -> ReleaseMetadata {
 }
 
 fn open_dialog(installer: &FakeInstaller) -> (gtk::Window, UpdateDialog) {
-    open_dialog_for(installer, &release())
+    open_dialog_for(installer, &release(), UpdateMethod::InPlace)
 }
 
 fn open_dialog_for(
     installer: &FakeInstaller,
     release: &ReleaseMetadata,
+    update_method: UpdateMethod,
 ) -> (gtk::Window, UpdateDialog) {
     PreferenceManager::shared().set_release_channel(Channel::Stable);
     let overlay = gtk::Overlay::new();
@@ -117,7 +118,8 @@ fn open_dialog_for(
         release,
         offered_request(),
         install_guard(),
-        UpdateMethod::InPlace,
+        update_method,
+        UpdateOffer::Available,
         installer.launcher(),
     )
     .expect("update dialog");
@@ -405,7 +407,7 @@ fn update_dialog_notes_hide_html_comments() {
                     ..release()
                 };
                 let installer = FakeInstaller::default();
-                let (window, dialog) = open_dialog_for(&installer, &release);
+                let (window, dialog) = open_dialog_for(&installer, &release, UpdateMethod::InPlace);
 
                 let text = page_text(dialog.layer.upcast_ref());
                 assert!(
@@ -415,6 +417,88 @@ fn update_dialog_notes_hide_html_comments() {
                 assert!(!text.contains("<!--"), "comment shown in {text:?}");
                 window.destroy();
             }
+        },
+    );
+}
+
+const NO_TERMINAL: [(&str, &str); 2] =
+    [("PATH", "/nonexistent/strata-test-path"), ("TERMINAL", "")];
+
+#[test]
+fn omarchy_update_without_a_terminal_reports_and_reenables_the_action() {
+    gtk_test_with_env(
+        "ui::settings::tests::update_dialog::omarchy_update_without_a_terminal_reports_and_reenables_the_action",
+        NO_TERMINAL,
+        || {
+            let installer = FakeInstaller::default();
+            let (window, dialog) = open_dialog_for(&installer, &release(), UpdateMethod::Omarchy);
+
+            dialog.action.emit_clicked();
+
+            assert!(!dialog.action.is_sensitive(), "one launch at a time");
+            wait_until("the launch to fail", || {
+                dialog.status.text().contains("No terminal emulator")
+            });
+            let status = dialog.status.text();
+            assert!(
+                status.starts_with("Couldn’t open Omarchy Update"),
+                "{status}"
+            );
+            assert!(dialog.action.is_sensitive(), "the action retries");
+            assert!(dialog.layer.parent().is_some(), "the dialog stays open");
+            assert!(installer.requests().is_empty());
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn aur_helpers_are_found_off_the_ui_thread_and_the_update_actions_use_that_answer() {
+    let bin = tempfile::tempdir().expect("isolated PATH");
+    gtk_test_with_env(
+        "ui::settings::tests::update_dialog::aur_helpers_are_found_off_the_ui_thread_and_the_update_actions_use_that_answer",
+        [
+            ("PATH", bin.path().as_os_str()),
+            ("TERMINAL", std::ffi::OsStr::new("")),
+        ],
+        || {
+            use std::os::unix::fs::PermissionsExt;
+            let bin = std::path::PathBuf::from(std::env::var_os("PATH").expect("isolated PATH"));
+            let helper = bin.join("paru");
+            std::fs::write(&helper, "#!/bin/sh\n").expect("AUR helper stub");
+            std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755))
+                .expect("executable AUR helper stub");
+            InstallSource::seed_for_test(
+                "manager = \"pacman\"\npackage = \"strata-bin\"\naur_helpers = [\"yay\", \"paru\"]\n",
+            );
+            let managed = InstallSource::detect()
+                .managed()
+                .expect("a managed install");
+            assert_eq!(aur_update_action_label(), "View on AUR");
+
+            let resolved = Rc::new(std::cell::Cell::new(None));
+            let answer = resolved.clone();
+            resolve_update_method_async(move |method| answer.set(Some(method)));
+            wait_until("the update method", || resolved.get().is_some());
+            assert_eq!(resolved.get(), Some(UpdateMethod::Aur));
+            assert_eq!(aur_update_action_label(), "Open AUR Update");
+            let summary = managed_install_summary(managed);
+            assert!(
+                summary.contains("Update Strata with: paru -Syu strata-bin"),
+                "{summary}"
+            );
+
+            let answer = Rc::new(RefCell::new(None));
+            let launched = answer.clone();
+            glib::MainContext::default().spawn_local(async move {
+                launched.replace(Some(launch_aur_update().await));
+            });
+            wait_until("the AUR launch to answer", || answer.borrow().is_some());
+            let error = answer
+                .take()
+                .expect("an answer")
+                .expect_err("no terminal to open");
+            assert!(error.contains("No terminal emulator"), "{error}");
         },
     );
 }

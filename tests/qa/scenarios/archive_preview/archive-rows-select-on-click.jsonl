@@ -1,0 +1,39 @@
+{"scenario":"archive-rows-select-on-click","modes":["list"],"prefs":{"browser_mode":"list","type_to_search":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"a.txt":"before","bundle.zip":"","z.txt":"after"},"setup":[{"fs":{"path":"bundle.zip","zip":[["docs/inside.txt","inside"],["docs/inner/deep.txt","deep"],["docs/more/a.txt","a"],["docs/more/b.txt","b"],["top.txt","top"],["zz.txt","last"]]}}],"cost":{"list":2.6},"quality":{"impact":2,"coverage":4,"criticality":3,"diagnostic":3,"score":30,"note":"Hover-no-select, click, Ctrl+click, edge click and double-click in list archive preview; only QA guard of pointer routes (sibling covers keyboard)"}}
+{"select":{"entry":"bundle.zip"}}
+{"key":"space"}
+{"wait":{"preview":"docs/"},"message":"the archive contents"}
+{"wait":{"state":{"target":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"docs/"}},"selected":true}},"message":"the first member to be highlighted"}
+{"settle":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"zz.txt"}}}
+{"move":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"zz.txt"}}}
+{"settle":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"zz.txt"}}}
+{"sleep":300}
+{"expect":{"state":{"target":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"zz.txt"}},"selected":false}},"message":"hovering selected a member"}
+{"expect":{"state":{"target":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"docs/"}},"selected":true}}}
+{"key":"Down"}
+{"wait":{"state":{"target":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"top.txt"}},"selected":true}},"message":"Down to continue from the highlighted member, not the hovered one"}
+{"click":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"top.txt"}}}
+{"wait":{"state":{"target":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"top.txt"}},"selected":true}},"message":"the clicked file"}
+{"expect":{"all":[{"preview":"top.txt"},{"not":{"preview":"inside.txt"}}]}}
+{"key":"Down"}
+{"wait":{"state":{"target":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"zz.txt"}},"selected":true}},"message":"Down from the clicked file"}
+{"click":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"docs/"}},"mods":["ctrl"]}
+{"wait":{"preview":"inside.txt"},"message":"a Ctrl+click to open the folder"}
+{"key":"Left"}
+{"wait":{"preview":"top.txt"},"message":"Left to return to the archive root"}
+{"click":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"docs/"}},"at":["50%",1]}
+{"wait":{"preview":"inside.txt"},"message":"a click on the row's edge to open the folder"}
+{"key":"Left"}
+{"wait":{"preview":"top.txt"},"message":"Left to return to the archive root"}
+{"sleep":600}
+{"click":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"docs/"}},"count":2}
+{"wait":{"preview":"inner/"},"message":"a double-click to open the folder"}
+{"expect":{"not":{"preview":"deep.txt"}},"message":"a double-click opened two levels"}
+{"expect":{"state":{"target":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"inner/"}},"selected":true}}}
+{"sleep":600}
+{"click":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"more/"}},"count":2}
+{"wait":{"preview":"b.txt"},"message":"a double-click to open the second folder"}
+{"sleep":300}
+{"expect":{"state":{"target":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"a.txt"}},"selected":true}},"message":"the double-click's second release moved the highlight"}
+{"key":"Escape"}
+{"wait":{"preview":null},"message":"Escape to close the archive preview"}
+{"fs":{"path":".","names":["a.txt","bundle.zip","z.txt"]},"timeout_ms":0}

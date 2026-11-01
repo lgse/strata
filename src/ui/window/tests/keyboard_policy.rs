@@ -241,6 +241,44 @@ fn window_actions_run_once_the_dispatcher_yields_and_claim_no_other_key() {
 }
 
 #[test]
+fn the_open_reference_yields_input_method_keys_and_runs_no_window_action() {
+    gtk_test(
+        "ui::window::tests::keyboard_policy::the_open_reference_yields_input_method_keys_and_runs_no_window_action",
+        || {
+            PreferenceManager::shared().set_tenxer_mode(false);
+            let (window, _content) = policy_window();
+            let runs = record_window_actions(&window);
+            assert!(dispatch(&window, Key::F1, NONE));
+            settle_policy();
+            assert!(reference_search_has_focus(&window));
+            for modifiers in [CONTROL, ModifierType::SUPER_MASK] {
+                assert!(
+                    !dispatch(&window, Key::space, modifiers),
+                    "{modifiers:?}+Space must reach the search's input method"
+                );
+            }
+            for (key, modifiers, action) in WINDOW_SHORTCUTS {
+                dispatch(&window, key, modifiers);
+                assert!(
+                    runs.take().is_empty(),
+                    "{action} ran while the reference was open"
+                );
+            }
+            assert!(reference_search_has_focus(&window));
+            window.destroy();
+        },
+    );
+}
+
+fn reference_search_has_focus(window: &gtk::ApplicationWindow) -> bool {
+    gtk::prelude::RootExt::focus(window).is_some_and(|focus| {
+        focus
+            .ancestor(gtk::Entry::static_type())
+            .is_some_and(|search| search.has_css_class("shortcut-reference-search"))
+    })
+}
+
+#[test]
 fn tenxer_window_actions_follow_the_saved_mode_across_windows() {
     gtk_test(
         "ui::window::tests::keyboard_policy::tenxer_window_actions_follow_the_saved_mode_across_windows",

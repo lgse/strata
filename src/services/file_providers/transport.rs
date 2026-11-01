@@ -345,15 +345,16 @@ fn run(
         let (stream, peer) = UnixStream::pair()?;
         stream.set_read_timeout(Some(Duration::from_millis(25)))?;
         stream.set_write_timeout(Some(Duration::from_millis(250)))?;
-        let child = Command::new(&manifest.command[0])
+        let mut command = Command::new(&manifest.command[0]);
+        command
             .args(&manifest.command[1..])
             .current_dir("/")
             .process_group(0)
             .stdin(Stdio::from(std::os::fd::OwnedFd::from(peer.try_clone()?)))
             .stdout(Stdio::from(std::os::fd::OwnedFd::from(peer)))
-            .stderr(Stdio::null())
-            .spawn()?;
-        Ok((stream, child))
+            .stderr(Stdio::null());
+        crate::child_environment::restore_command(&mut command);
+        Ok((stream, command.spawn()?))
     };
     let (mut stream, mut child) = spawn().map_err(|_| Failure {
         reason: "spawn failure",

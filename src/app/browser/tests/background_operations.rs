@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::test_support::operations::{HeldOperations, entry};
+use crate::services::PlacedSnapshot;
+use crate::test_support::operations::{HeldOperations, entry, operation_event};
 
 fn copy(browser: &Rc<Browser>, name: &str) -> OperationRequestId {
     browser.transfer(
@@ -9,6 +10,7 @@ fn copy(browser: &Rc<Browser>, name: &str) -> OperationRequestId {
         vec![PasteItem {
             source: Location::local(format!("/fixture/{name}")),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         }],
         false,
         false,
@@ -133,10 +135,12 @@ fn background_copy_preserves_partial_redo_undo_and_remaining_items() {
         MoveRecord {
             original: Location::local("/fixture/first.txt"),
             current: Location::local("/fixture/moved/first.txt"),
+            renamed: Vec::new(),
         },
         MoveRecord {
             original: Location::local("/fixture/second.txt"),
             current: Location::local("/fixture/moved/second.txt"),
+            renamed: Vec::new(),
         },
     ];
     push_pending_redo(UndoEntry::Move(records.clone()));
@@ -228,6 +232,7 @@ fn background_completion_preserves_grouped_undo_across_both_creation_windows() {
         let records = vec![MoveRecord {
             original: Location::local("/fixture/input.txt"),
             current: Location::local("/fixture/group/input.txt"),
+            renamed: Vec::new(),
         }];
         push_pending_undo(UndoEntry::Move(records.clone()));
         assert_eq!(
@@ -258,6 +263,17 @@ fn parked_delete_finishes_without_cancelling_foreground_and_respects_permanent_u
         let events = Rc::new(RefCell::new(Vec::new()));
         let observed = events.clone();
         browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+        let trashed = (!permanent).then(|| folder_identity(7, 1));
+        if let Some(identity) = trashed {
+            operations.emit(
+                id,
+                OperationEvent::ItemTrashed {
+                    request_id: id,
+                    location: deleted.clone(),
+                    identity,
+                },
+            );
+        }
         operations.emit(
             id,
             OperationEvent::DeleteProgress {
@@ -276,14 +292,19 @@ fn parked_delete_finishes_without_cancelling_foreground_and_respects_permanent_u
         );
         assert!(browser.is_current_operation(foreground));
         assert!(!operations.cancelled(foreground));
-        assert_eq!(location_changes(&events.borrow()), [removed(&deleted)]);
+        assert_eq!(
+            location_changes(&events.borrow()),
+            [LocationChange::Removed {
+                location: deleted.clone(),
+                trash_identity: trashed,
+            }]
+        );
         assert_eq!(
             pending_undo_entry(),
-            if permanent {
-                None
-            } else {
-                Some(UndoEntry::Trash(vec![deleted]))
-            }
+            trashed.map(|identity| UndoEntry::Trash {
+                locations: vec![deleted.clone()],
+                originals: HashMap::from([(deleted, identity)]),
+            })
         );
     }
 }
@@ -356,5 +377,272 @@ fn parking_deletion_flushes_its_changes_without_flushing_the_next_deletion() {
             .expect("completed deletion column")
             .count,
         0
+    );
+}
+
+fn renamed(name: &str) -> crate::services::TransferReport {
+    crate::services::TransferReport {
+        renamed: vec![crate::services::RenamedItem {
+            requested: Location::local(format!("/fixture/destination/folder/{name}")),
+            saved_as: Location::local(format!("/fixture/destination/folder/{name} (1)")),
+            cause: crate::services::RenameCause::Alias,
+        }],
+        ..Default::default()
+    }
+}
+
+fn reported(events: &[BrowserEvent]) -> Vec<(usize, &crate::services::TransferReport)> {
+    events
+        .iter()
+        .enumerate()
+        .filter_map(|(index, event)| match operation_event(event) {
+            BrowserEvent::ItemsReported { report }
+            | BrowserEvent::OperationFailed { report, .. }
+            | BrowserEvent::OperationCancelled { report, .. }
+            | BrowserEvent::OperationCompletedWithErrors { report, .. }
+                if !report.is_empty() =>
+            {
+                Some((index, report))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_transfer_reports_its_items_once_after_it_ends() {
+    type Terminal = fn(OperationRequestId) -> OperationEvent;
+    // Whether the ending's outcome carries the report, by whether it runs in the background.
+    type Carries = fn(bool) -> bool;
+    let terminals: [(Terminal, Carries); 7] = [
+        (
+            |request_id| OperationEvent::Pasted {
+                request_id,
+                locations: Vec::new(),
+            },
+            |_| false,
+        ),
+        (
+            |request_id| OperationEvent::TransferFailed {
+                request_id,
+                completed_locations: Vec::new(),
+                message: "Failed".into(),
+            },
+            |_| true,
+        ),
+        (
+            |request_id| OperationEvent::Failed {
+                request_id,
+                message: "Failed".into(),
+                password_failure: None,
+            },
+            |_| true,
+        ),
+        (
+            |request_id| OperationEvent::Cancelled {
+                request_id,
+                result: crate::services::CancelledOperation::default(),
+            },
+            |_| true,
+        ),
+        (
+            |request_id| OperationEvent::CompletedWithErrors {
+                request_id,
+                deleted_locations: Vec::new(),
+                retryable_locations: Vec::new(),
+                has_non_retryable_failures: true,
+                message: "Failed".into(),
+            },
+            |_| true,
+        ),
+        (
+            |request_id| OperationEvent::RestoreCompletedWithErrors {
+                request_id,
+                restored_locations: Vec::new(),
+                restored: Vec::new(),
+                message: "Failed".into(),
+            },
+            |_| true,
+        ),
+        (
+            |request_id| OperationEvent::Restored {
+                request_id,
+                locations: Vec::new(),
+                restored: Vec::new(),
+            },
+            |background| background,
+        ),
+    ];
+    for background in [false, true] {
+        for (terminal, carries) in terminals {
+            let carried = carries(background);
+            let browser = Browser::new(Rc::new(FakeFileSource));
+            let operations = Rc::new(HeldOperations::default());
+            browser.set_operation_provider(operations.clone());
+            let events = Rc::new(RefCell::new(Vec::new()));
+            let observed = events.clone();
+            browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+            let id = copy(&browser, "folder");
+            let report = |name| OperationEvent::ItemsReported {
+                request_id: id,
+                report: renamed(name),
+            };
+            operations.emit(id, report("Makefile"));
+            if background {
+                assert!(browser.background_file_operation(id));
+            }
+            operations.emit(id, report("README"));
+            let mut again = renamed("README (1)");
+            again.renamed[0].saved_as = Location::local("/fixture/destination/folder/README (2)");
+            again.renamed[0].cause = crate::services::RenameCause::Taken;
+            operations.emit(
+                id,
+                OperationEvent::ItemsReported {
+                    request_id: id,
+                    report: again.clone(),
+                },
+            );
+            assert!(reported(&events.borrow()).is_empty(), "reported early");
+
+            let ending = terminal(id);
+            let row = format!("{ending:?}, background: {background}");
+            operations.emit(id, ending);
+
+            let events = events.borrow();
+            let mut expected = renamed("Makefile");
+            let mut readme = renamed("README");
+            readme.renamed[0].saved_as = again.renamed[0].saved_as.clone();
+            expected.extend(readme);
+            let reports = reported(&events);
+            assert_eq!(
+                reports
+                    .iter()
+                    .map(|(_, report)| *report)
+                    .collect::<Vec<_>>(),
+                [&expected],
+                "{row}"
+            );
+            let ended = events.iter().position(|event| {
+                matches!(
+                    operation_event(event),
+                    BrowserEvent::TransferCompleted
+                        | BrowserEvent::OperationFailed { .. }
+                        | BrowserEvent::OperationCancelled { .. }
+                        | BrowserEvent::OperationCompletedWithErrors { .. }
+                )
+            });
+            if carried {
+                assert_eq!(ended, Some(reports[0].0), "{row}");
+            } else {
+                assert!(ended < Some(reports[0].0), "{row}");
+            }
+        }
+    }
+}
+
+#[test]
+fn a_background_merge_records_what_it_placed_for_undo() {
+    PENDING_UNDO.with(|pending| *pending.borrow_mut() = UndoState::default());
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let operations = Rc::new(HeldOperations::default());
+    browser.set_operation_provider(operations.clone());
+    let id = copy(&browser, "folder");
+    let created = Location::local("/fixture/destination/folder/new.txt");
+    let overwritten = Location::local("/fixture/destination/folder/notes.txt");
+    let placed = HashMap::from([
+        (created.clone(), PlacedSnapshot::new(())),
+        (overwritten.clone(), PlacedSnapshot::new(())),
+    ]);
+    let original = folder_identity(7, 1);
+    assert!(browser.background_file_operation(id));
+
+    operations.emit(
+        id,
+        OperationEvent::ItemTrashed {
+            request_id: id,
+            location: overwritten.clone(),
+            identity: original,
+        },
+    );
+    for (created, overwritten, placed) in [
+        (
+            vec![created.clone()],
+            vec![overwritten.clone()],
+            HashMap::new(),
+        ),
+        (Vec::new(), Vec::new(), placed.clone()),
+    ] {
+        operations.emit(
+            id,
+            OperationEvent::Merged {
+                request_id: id,
+                source: Location::local("/fixture/folder"),
+                created,
+                overwritten,
+                placed,
+            },
+        );
+    }
+    operations.emit(
+        id,
+        OperationEvent::Pasted {
+            request_id: id,
+            locations: Vec::new(),
+        },
+    );
+
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Merge {
+            created: vec![created],
+            overwritten: vec![overwritten.clone()],
+            originals: HashMap::from([(overwritten, original)]),
+            placed,
+        })
+    );
+}
+
+#[test]
+fn a_background_merge_undo_removes_merged_items_under_the_names_they_were_saved_as() {
+    PENDING_UNDO.with(|pending| *pending.borrow_mut() = UndoState::default());
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let operations = Rc::new(HeldOperations::default());
+    browser.set_operation_provider(operations.clone());
+    let id = copy(&browser, "folder");
+    assert!(browser.background_file_operation(id));
+
+    operations.emit(
+        id,
+        OperationEvent::Merged {
+            request_id: id,
+            source: Location::local("/fixture/folder"),
+            created: vec![Location::local("/fixture/destination/folder/makefile")],
+            overwritten: Vec::new(),
+            placed: HashMap::new(),
+        },
+    );
+    operations.emit(
+        id,
+        OperationEvent::ItemsReported {
+            request_id: id,
+            report: renamed("makefile"),
+        },
+    );
+    operations.emit(
+        id,
+        OperationEvent::Pasted {
+            request_id: id,
+            locations: Vec::new(),
+        },
+    );
+
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Merge {
+            created: vec![Location::local("/fixture/destination/folder/makefile (1)")],
+            overwritten: Vec::new(),
+            originals: HashMap::new(),
+            placed: HashMap::new(),
+        })
     );
 }

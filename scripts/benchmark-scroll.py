@@ -19,12 +19,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPOSITORY / "tests" / "e2e"))
 
-from harness.display import HeadlessDisplay  # noqa: E402
-from harness.environment import TestEnvironment, process_environment  # noqa: E402
-from harness.process import ManagedProcess, terminate  # noqa: E402
-from harness.xtest import XTestConnection  # noqa: E402
+from headless.display import HeadlessDisplay  # noqa: E402
+from headless.environment import TestEnvironment, process_environment  # noqa: E402
+from headless.process import ManagedProcess, terminate  # noqa: E402
+from headless.xtest import XTestConnection  # noqa: E402
 
 MODES = ("columns", "list", "icons")
 FIXTURES = ("mixed", "images", "folders", "clipboard")

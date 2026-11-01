@@ -192,6 +192,38 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
                         gtk::gdk::Key::space,
                         gtk::gdk::ModifierType::SHIFT_MASK
                     ));
+                    let space_is_typed = |field: &str| {
+                        assert!(
+                            state
+                                .view
+                                .selected_search_results()
+                                .is_some_and(|hits| !hits.is_empty()),
+                            "{mode:?}: the hit stays selected in the {field}"
+                        );
+                        assert!(
+                            !press(
+                                &window_keys,
+                                gtk::gdk::Key::space,
+                                gtk::gdk::ModifierType::empty()
+                            ),
+                            "{mode:?}: the {field} types Space with a hit selected"
+                        );
+                    };
+                    if let Some(filename) = state.filename.as_ref() {
+                        assert!(filename.grab_focus());
+                        space_is_typed("file name");
+                    }
+                    state.view.begin_location_edit();
+                    wait_until(|| state.view.location_has_focus());
+                    space_is_typed("location");
+                    state.view.cancel_location_edit();
+                    assert!(
+                        find(state.window.upcast_ref(), &|widget| {
+                            widget.is_mapped() && widget.has_css_class("preview-pane")
+                        })
+                        .is_none()
+                    );
+                    field.grab_focus_without_selecting();
                     let capture = |name| {
                         if mode == BrowserMode::Columns
                             && !save
@@ -501,6 +533,90 @@ fn escape_on_a_focused_result_dismisses_the_filter_without_cancelling() {
                         && state.view.filter_focus().is_none()
                         && state.view.item_view_has_focus()
                 });
+                state.cancel();
+            }
+        },
+    );
+}
+
+/// Search rows leave Down to GTK's list; a modified Down alternate reaches it too.
+#[test]
+fn modified_down_alternate_moves_through_search_results() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::filtered_preview::modified_down_alternate_moves_through_search_results",
+        || {
+            use crate::ui::keys::{Binding, Keymap, Map, bindings::DOWN, use_keymap};
+            let mut down = DOWN.defaults(Map::Default).to_vec();
+            down.push(Binding::ctrl(gtk::gdk::Key::j));
+            let _keymap = use_keymap(Keymap::defaults().with(Map::Default, DOWN, down));
+            crate::ui::prepare_portal_ui();
+            let root = tempfile::tempdir().expect("fixture");
+            for name in ["notes-a.txt", "notes-b.txt"] {
+                std::fs::write(root.path().join(name), "text").expect("file");
+            }
+            for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+                PreferenceManager::shared().set_browser_mode(mode);
+                let state = build_chooser(
+                    ChooserRequest {
+                        token: format!("alternate-result-{mode:?}"),
+                        title: "Chooser".into(),
+                        accept_label: "Open".into(),
+                        modal: false,
+                        parent: None,
+                        parent_size_hint: None,
+                        initial_directory: root.path().into(),
+                        kind: ChooserKind::Open {
+                            directory: false,
+                            multiple: false,
+                        },
+                        filters: Vec::new(),
+                        current_filter: None,
+                        choices: Vec::new(),
+                    },
+                    Arc::new(AtomicBool::new(false)),
+                    |_| {},
+                )
+                .expect("chooser");
+                let initialized = Rc::new(Cell::new(false));
+                let notify = initialized.clone();
+                glib::idle_add_local_once(move || notify.set(true));
+                wait_until(|| initialized.get());
+                let browser = state.view.browser();
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
+                });
+                assert!(state.view.show_filter_with_query("notes"));
+                let field = gtk::prelude::RootExt::focus(&state.window)
+                    .and_then(|focused| focused.ancestor(gtk::Entry::static_type()))
+                    .and_downcast::<gtk::Entry>()
+                    .expect("focused filter entry");
+                wait_until(|| state.view.filter_result_names().len() == 2);
+                assert!(press(
+                    &keys(&field),
+                    gtk::gdk::Key::Down,
+                    gtk::gdk::ModifierType::empty()
+                ));
+                wait_until(|| {
+                    state.view.filter_focus() == Some(crate::ui::browser::FilterFocus::Results)
+                });
+                let selected = || {
+                    state
+                        .view
+                        .selected_search_result()
+                        .map(|result| result.location)
+                };
+                let first = selected().expect("first result");
+                assert!(
+                    press(
+                        &keys(&state.window),
+                        gtk::gdk::Key::j,
+                        gtk::gdk::ModifierType::CONTROL_MASK
+                    ),
+                    "{mode:?}"
+                );
+                wait_until(|| selected().is_some_and(|location| location != first));
                 state.cancel();
             }
         },

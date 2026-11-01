@@ -9,7 +9,7 @@ use crate::{
     assets,
     model::{ActionRuntime, ExecutionMode},
 };
-use gtk::prelude::*;
+use gtk::{gio, glib, prelude::*};
 
 pub(super) fn indicator(
     runtime: Rc<Cell<ActionRuntime>>,
@@ -37,21 +37,32 @@ pub(super) fn indicator(
         .build();
     row.append(&label);
 
-    let update: Rc<dyn Fn(bool)> = Rc::new({
+    let show = Rc::new({
         let row = row.downgrade();
         let label = label.downgrade();
         let icons = icons.downgrade();
+        move |state: &str, text: &str, detail: &str| {
+            let (Some(row), Some(label), Some(icons)) =
+                (row.upgrade(), label.upgrade(), icons.upgrade())
+            else {
+                return;
+            };
+            for class in ["available", "unavailable"] {
+                row.remove_css_class(class);
+            }
+            row.add_css_class(state);
+            icons.set_visible_child_name(state);
+            label.set_text(text);
+            label.update_property(&[gtk::accessible::Property::Description(detail)]);
+        }
+    });
+    let update: Rc<dyn Fn(bool)> = Rc::new({
         let python = python.downgrade();
         let bash = bash.downgrade();
         let previous = RefCell::new(None);
+        let latest = Rc::new(Cell::new(0u64));
         move |force| {
-            let (Some(row), Some(label), Some(icons), Some(python), Some(bash)) = (
-                row.upgrade(),
-                label.upgrade(),
-                icons.upgrade(),
-                python.upgrade(),
-                bash.upgrade(),
-            ) else {
+            let (Some(python), Some(bash)) = (python.upgrade(), bash.upgrade()) else {
                 return;
             };
             let runtime = runtime.get();
@@ -77,37 +88,54 @@ pub(super) fn indicator(
                 return;
             }
             previous.replace(Some(key));
-            let (state, text, detail) = match target {
-                Ok(target) => match crate::adapters::resolve_action_executable(&target) {
-                    Some(path) => (
-                        "available",
-                        rust_i18n::t!("%{runtime} available", runtime = runtime.label())
-                            .into_owned(),
-                        rust_i18n::t!("Executable: %{value1}\nInterpreter availability only. Script syntax and external dependencies are not checked. Nothing is executed by this check.", value1 = path.display()).into_owned(),
-                    ),
-                    None => (
+            let request = latest.get().wrapping_add(1);
+            latest.set(request);
+            let target = match target {
+                Ok(target) => target,
+                Err(error) => {
+                    show(
                         "unavailable",
-                        rust_i18n::t!(
+                        &crate::i18n::tr("Invalid interpreter — cannot run"),
+                        &error,
+                    );
+                    return;
+                }
+            };
+            let show = show.clone();
+            let latest = latest.clone();
+            glib::spawn_future_local(async move {
+                let lookup = gio::spawn_blocking({
+                    let target = target.clone();
+                    move || crate::adapters::resolve_action_executable(&target)
+                });
+                let Ok(found) = lookup.await else {
+                    return;
+                };
+                if latest.get() != request {
+                    return;
+                }
+                match found {
+                    Some(path) => show(
+                        "available",
+                        &rust_i18n::t!("%{runtime} available", runtime = runtime.label()),
+                        &rust_i18n::t!(
+                            "Executable: %{value1}\nInterpreter availability only. Script syntax and external dependencies are not checked. Nothing is executed by this check.",
+                            value1 = path.display()
+                        ),
+                    ),
+                    None => show(
+                        "unavailable",
+                        &rust_i18n::t!(
                             "%{runtime} not found — cannot run",
                             runtime = runtime.label()
-                        )
-                        .into_owned(),
-                        rust_i18n::t!("Executable not found: %{target}. Install it and reopen this dialog, or choose an installed executable. You can still save this draft.", target = target).into_owned(),
+                        ),
+                        &rust_i18n::t!(
+                            "Executable not found: %{target}. Install it and reopen this dialog, or choose an installed executable. You can still save this draft.",
+                            target = target
+                        ),
                     ),
-                },
-                Err(error) => (
-                    "unavailable",
-                    crate::i18n::tr("Invalid interpreter — cannot run"),
-                    error,
-                ),
-            };
-            for class in ["available", "unavailable"] {
-                row.remove_css_class(class);
-            }
-            row.add_css_class(state);
-            icons.set_visible_child_name(state);
-            label.set_text(&text);
-            label.update_property(&[gtk::accessible::Property::Description(&detail)]);
+                }
+            });
         }
     });
     update(true);

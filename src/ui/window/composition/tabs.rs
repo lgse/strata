@@ -9,6 +9,7 @@ use gtk::{gio, glib, prelude::*};
 
 use crate::{
     adapters::location_for_file,
+    app::Presence,
     model::Location,
     ui::{
         blur::BlurBin,
@@ -27,10 +28,27 @@ use strip::TabStrip;
 #[cfg(test)]
 mod tests;
 
+struct ClosedTab {
+    location: Location,
+    index: usize,
+}
+
 struct Tab {
     id: u64,
     content: Rc<WindowContent>,
     focus: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
+    checking: RefCell<Option<Location>>,
+    folder: RefCell<Option<String>>,
+}
+
+impl Tab {
+    fn location(&self) -> Option<Location> {
+        self.content
+            .browser
+            .browser()
+            .active_location()
+            .or_else(|| self.checking.borrow().clone())
+    }
 }
 
 pub(in crate::ui::window) struct TabWindow {
@@ -40,9 +58,11 @@ pub(in crate::ui::window) struct TabWindow {
     drag_token: String,
     strip: TabStrip,
     tabs: RefCell<Vec<Rc<Tab>>>,
+    closed_tabs: RefCell<Vec<ClosedTab>>,
     active: Cell<u64>,
     next_id: Cell<u64>,
     hints: Cell<bool>,
+    presence: Cell<(Presence, bool)>,
     restoring: Cell<bool>,
     persist: bool,
 }
@@ -73,13 +93,16 @@ impl TabWindow {
             stack,
             strip,
             tabs: RefCell::new(Vec::new()),
+            closed_tabs: RefCell::new(Vec::new()),
             active: Cell::new(0),
             next_id: Cell::new(1),
             hints: Cell::new(false),
+            presence: Cell::new((Presence::default(), false)),
             restoring: Cell::new(false),
             persist,
             drag_token: glib::uuid_string_random().to_string(),
         });
+        state.strip.install_drop(&state);
         state.add(None);
         let weak = Rc::downgrade(&state);
         crate::ui::decoration::follow_control_layout(window, move |_| {
@@ -90,6 +113,7 @@ impl TabWindow {
         state.install_actions(window);
         state.install_keys(window);
         super::super::install_modal_focus_trap(window);
+        keys::install_native_aliases(window);
         let weak = Rc::downgrade(&state);
         crate::ui::modal::set_modal_focus_fallback(
             window.upcast_ref(),
@@ -134,10 +158,12 @@ impl TabWindow {
                 "toggle-arrow-scope",
                 "new-tab",
                 "close-tab",
+                "reopen-tab",
                 "previous-tab",
                 "select-tab",
                 "open-tab-at",
                 "open-window-at",
+                "sidebar-tab-drag",
             ] {
                 window.remove_action(name);
             }
@@ -150,7 +176,32 @@ impl TabWindow {
                 state.show_hints(false);
             }
         });
+        let weak = Rc::downgrade(&state);
+        crate::ui::presence::follow(window, move |presence, power_saver| {
+            if let Some(state) = weak.upgrade() {
+                state.set_presence(presence, power_saver);
+            }
+        });
         state
+    }
+
+    fn set_presence(&self, presence: Presence, power_saver: bool) {
+        self.presence.set((presence, power_saver));
+        self.share_presence();
+    }
+
+    fn share_presence(&self) {
+        let (presence, power_saver) = self.presence.get();
+        let browsers: Vec<_> = self
+            .tabs
+            .borrow()
+            .iter()
+            .map(|tab| (tab.id == self.active.get(), tab.content.browser.clone()))
+            .collect();
+        for (active, browser) in browsers {
+            let presence = if active { presence } else { Presence::Hidden };
+            browser.set_presence(presence, power_saver);
+        }
     }
 
     fn active_tab(&self) -> Rc<Tab> {
@@ -176,22 +227,45 @@ impl TabWindow {
         if self.blocked() {
             return;
         }
-        let location = self.active_browser().browser().active_location();
-        self.add(location.or_else(|| Some(super::super::startup_location(&self.preferences))));
+        match self.active_browser().browser().active_location() {
+            Some(location) => self.add(Some(location)),
+            None => {
+                self.add(None);
+                super::super::open_default_folder(
+                    &self.active_browser().browser(),
+                    &self.preferences,
+                );
+            }
+        }
+    }
+
+    fn reopen_closed_tab(self: &Rc<Self>) {
+        if self.blocked() {
+            return;
+        }
+        let closed = self.closed_tabs.borrow_mut().pop();
+        let Some(closed) = closed else {
+            return;
+        };
+        self.open_in_new_tab(closed.location);
+        let target = self.tabs.borrow().get(closed.index).map(|tab| tab.id);
+        if let Some(target) = target {
+            self.reorder(self.active.get(), target);
+        }
     }
 
     fn open_in_new_tab(self: &Rc<Self>, location: Location) {
         if self.blocked() || self.window.upgrade().is_none() {
             return;
         }
-        tracing::debug!(location = %location.display_path(), "opening location in new tab");
+        tracing::debug!(location = %location.diagnostic_path(), "opening location in new tab");
         self.add(None);
         super::super::open_argument::route_location(self.active_browser(), location);
     }
 
     fn open_in_new_window(self: &Rc<Self>, location: Location) -> Option<BrowserView> {
         let application = self.window.upgrade()?.application()?;
-        tracing::debug!(location = %location.display_path(), "opening location in new window");
+        tracing::debug!(location = %location.diagnostic_path(), "opening location in new window");
         Some(super::super::open_argument::present_location_window(
             &application,
             location,
@@ -210,6 +284,8 @@ impl TabWindow {
             id,
             content: content.clone(),
             focus: RefCell::new(None),
+            checking: RefCell::new(None),
+            folder: RefCell::new(None),
         });
         self.stack
             .add_named(&content.overlay, Some(&id.to_string()));
@@ -221,10 +297,13 @@ impl TabWindow {
         });
         self.tabs.borrow_mut().push(tab);
         self.strip.add(self, id, &content.browser);
+        strip::install_new_tab_drop(self, &content.header.new_tab);
         let weak = Rc::downgrade(self);
         content.browser.observe_tab_location(move |location| {
             if let Some(state) = weak.upgrade() {
-                state.strip.label(id, &tab_label(location));
+                let label = tab_label(location);
+                state.strip.label(id, &label);
+                state.set_folder(id, location.map(|_| label));
                 state.persist_session();
             }
         });
@@ -234,6 +313,7 @@ impl TabWindow {
             content.sidebar.schedule_after_first_paint(&content.overlay);
         }
         self.select(id);
+        self.share_presence();
         self.refresh_chrome();
         if let Some(location) = location {
             content.browser.navigate_location(location);
@@ -252,16 +332,28 @@ impl TabWindow {
         };
         if self.active.get() != 0 {
             let previous = self.active_tab();
-            *previous.focus.borrow_mut() =
-                gtk::prelude::RootExt::focus(&window).map(|widget| widget.downgrade());
+            // Drop focus on the strip, header or footer: a click focuses a tab
+            // button before `clicked` runs, and a restored tab is left before
+            // its listing loads, with GTK's default focus on the footer.
+            let content = &previous.content;
+            let panes = [
+                content.browser.widget(),
+                content.sidebar.widget.clone(),
+                content.preview.widget(),
+            ];
+            *previous.focus.borrow_mut() = gtk::prelude::RootExt::focus(&window)
+                .filter(|widget| panes.iter().any(|pane| widget.is_ancestor(pane)))
+                .map(|widget| widget.downgrade());
             previous.content.footer.shortcuts.cancel_chord();
             previous.content.browser.cancel_location_edit();
         }
         self.active.set(id);
+        self.share_presence();
         self.stack.set_visible_child(&tab.content.overlay);
         tab.content.activate_actions(&window);
         self.refresh_chrome();
         self.strip.select(id);
+        self.refresh_title();
         let saved = tab
             .focus
             .borrow()
@@ -300,6 +392,22 @@ impl TabWindow {
             window.close();
             return;
         }
+        if let Some(location) = tabs[index].location() {
+            let mut closed = self.closed_tabs.borrow_mut();
+            if closed.len() == 20 {
+                closed.remove(0);
+            }
+            closed.push(ClosedTab { location, index });
+        }
+        drop(tabs);
+        self.discard(id);
+    }
+
+    fn discard(&self, id: u64) {
+        let tabs = self.tabs.borrow();
+        let Some(index) = tabs.iter().position(|tab| tab.id == id) else {
+            return;
+        };
         let tab = tabs[index].clone();
         let next = tabs[if index + 1 < tabs.len() {
             index + 1
@@ -319,9 +427,36 @@ impl TabWindow {
         self.persist_session();
     }
 
+    fn set_folder(&self, id: u64, folder: Option<String>) {
+        let Some(tab) = self.tabs.borrow().iter().find(|tab| tab.id == id).cloned() else {
+            return;
+        };
+        tab.folder.replace(folder);
+        if id == self.active.get() {
+            self.refresh_title();
+        }
+    }
+
+    fn refresh_title(&self) {
+        let Some(window) = self.window.upgrade() else {
+            return;
+        };
+        let title = self
+            .tabs
+            .borrow()
+            .iter()
+            .find(|tab| tab.id == self.active.get())
+            .and_then(|tab| tab.folder.borrow().clone())
+            .map_or_else(
+                || "Strata".to_owned(),
+                |folder| format!("{folder} — Strata"),
+            );
+        window.set_title(Some(&title));
+    }
+
     fn refresh_chrome(&self) {
         let multiple = self.tabs.borrow().len() > 1;
-        self.strip.widget().set_visible(multiple);
+        self.strip.refresh_visibility();
         let layout = crate::ui::decoration::current_control_layout(&self.stack);
         for tab in self.tabs.borrow().iter() {
             let header = &tab.content.header;
@@ -357,6 +492,19 @@ impl TabWindow {
     }
 
     fn install_actions(self: &Rc<Self>, window: &gtk::ApplicationWindow) {
+        let sidebar_drag =
+            gio::SimpleAction::new("sidebar-tab-drag", Some(&bool::static_variant_type()));
+        let weak = Rc::downgrade(self);
+        sidebar_drag.connect_activate(move |_, parameter| {
+            if let Some(state) = weak.upgrade() {
+                let active = parameter
+                    .and_then(|value| value.get::<bool>())
+                    .unwrap_or(false);
+                state.strip.show_open_drop(active && !state.blocked());
+            }
+        });
+        window.add_action(&sidebar_drag);
+
         let create = gio::SimpleAction::new("new-tab", None);
         let weak = Rc::downgrade(self);
         create.connect_activate(move |_, _| {
@@ -374,6 +522,15 @@ impl TabWindow {
             }
         });
         window.add_action(&close);
+
+        let reopen = gio::SimpleAction::new("reopen-tab", None);
+        let weak = Rc::downgrade(self);
+        reopen.connect_activate(move |_, _| {
+            if let Some(state) = weak.upgrade() {
+                state.reopen_closed_tab();
+            }
+        });
+        window.add_action(&reopen);
 
         let previous = gio::SimpleAction::new("previous-tab", None);
         let weak = Rc::downgrade(self);
@@ -429,16 +586,32 @@ impl TabWindow {
     }
 
     fn reorder(&self, source: u64, target: u64) {
-        if source == target || self.blocked() {
+        let tabs = self.tabs.borrow();
+        let (Some(from), Some(to)) = (
+            tabs.iter().position(|tab| tab.id == source),
+            tabs.iter().position(|tab| tab.id == target),
+        ) else {
+            return;
+        };
+        drop(tabs);
+        self.reorder_at(source, to + usize::from(from < to));
+    }
+
+    fn reorder_at(&self, source: u64, insertion: usize) {
+        if self.blocked() {
             return;
         }
         let mut tabs = self.tabs.borrow_mut();
         let Some(from) = tabs.iter().position(|tab| tab.id == source) else {
             return;
         };
-        let Some(to) = tabs.iter().position(|tab| tab.id == target) else {
+        if insertion > tabs.len() {
             return;
-        };
+        }
+        let to = insertion - usize::from(from < insertion);
+        if from == to {
+            return;
+        }
         let tab = tabs.remove(from);
         tabs.insert(to, tab);
         self.strip
@@ -481,7 +654,7 @@ impl TabWindow {
         let mut locations = Vec::with_capacity(tabs.len());
         let mut active = 0;
         for tab in tabs.iter() {
-            let Some(location) = tab.content.browser.browser().active_location() else {
+            let Some(location) = tab.location() else {
                 continue;
             };
             if tab.id == self.active.get() {
@@ -515,16 +688,50 @@ impl TabWindow {
             return;
         }
         self.restoring.set(true);
-        self.active_browser()
-            .navigate_location(session.tabs[0].clone());
-        for location in session.tabs.iter().skip(1) {
-            self.add(Some(location.clone()));
+        let active = session.active.min(session.tabs.len() - 1);
+        for (index, location) in session.tabs.into_iter().enumerate() {
+            if index > 0 {
+                self.add(None);
+            }
+            self.reopen(&self.active_tab(), location);
         }
-        self.select_index(session.active.min(session.tabs.len() - 1));
+        self.select_index(active);
         self.restoring.set(false);
     }
 
+    fn reopen(self: &Rc<Self>, tab: &Tab, location: Location) {
+        if location.native_path().is_none() {
+            tab.content.browser.navigate_location(location);
+            return;
+        }
+        self.strip.label(tab.id, &tab_label(Some(&location)));
+        tab.checking.replace(Some(location.clone()));
+        let weak = Rc::downgrade(self);
+        let id = tab.id;
+        super::super::open_checked(&tab.content.browser.browser(), location, move || {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let tab = state.tabs.borrow().iter().find(|tab| tab.id == id).cloned();
+            let Some(tab) = tab else {
+                return;
+            };
+            tab.checking.take();
+            if state.tabs.borrow().len() > 1 && !state.blocked() {
+                state.discard(id);
+            } else {
+                super::super::open_default_folder(
+                    &tab.content.browser.browser(),
+                    &state.preferences,
+                );
+            }
+        });
+    }
+
     fn handle_key(self: &Rc<Self>, press: &KeyPress) -> glib::Propagation {
+        if press.is(ESCAPE_ANY) && self.strip.cancel_drag() {
+            return glib::Propagation::Stop;
+        }
         // GDK reports a modifier key's state from before its own press.
         self.show_hints((press.modifiers() | press.modifier_key()) == TAB_NUMBERS.modifiers());
         if self.blocked() || !is_tab_shortcut(press) {
@@ -535,9 +742,11 @@ impl TabWindow {
             self.new_tab();
         } else if press.is(TAB_CLOSE) {
             self.close(self.active.get());
-        } else if press.is_any(&[TAB_NEXT, TAB_NEXT_PAGE_DOWN]) {
+        } else if press.is(TAB_REOPEN) {
+            self.reopen_closed_tab();
+        } else if press.is(TAB_NEXT) {
             self.cycle(1);
-        } else if press.is_any(&[TAB_PREVIOUS, TAB_PREVIOUS_PAGE_UP]) {
+        } else if press.is(TAB_PREVIOUS) {
             self.cycle(-1);
         } else if press.is(TAB_MOVE_LEFT) {
             self.move_active_tab(-1);
@@ -582,19 +791,23 @@ pub(in crate::ui::window) fn is_tab_shortcut(press: &KeyPress) -> bool {
     press.is_any(&[
         TAB_NEW,
         TAB_CLOSE,
+        TAB_REOPEN,
         TAB_NEXT,
         TAB_PREVIOUS,
-        TAB_NEXT_PAGE_DOWN,
-        TAB_PREVIOUS_PAGE_UP,
         TAB_MOVE_LEFT,
         TAB_MOVE_RIGHT,
     ]) || tab_number(press).is_some()
 }
 
 /// A tab digit, unless the key types the `+` or `−` of a text size shortcut,
-/// as the 1 key does with Shift on Swiss German.
+/// as the 1 key does with Shift on Swiss German. Only the primary enlarging
+/// key counts, so German Shift+0, which types `=`, still selects tab 10.
 fn tab_number(press: &KeyPress) -> Option<u8> {
-    if press.is_any(&[TEXT_LARGER, TEXT_SMALLER]) {
+    if TEXT_LARGER
+        .primary()
+        .is_some_and(|primary| press.is(primary))
+        || press.is(TEXT_SMALLER)
+    {
         return None;
     }
     press.digit_in(TAB_NUMBERS)
@@ -612,7 +825,7 @@ pub(in crate::ui::window) fn tab_index(digit: u8) -> usize {
 
 fn tab_label(location: Option<&Location>) -> String {
     let Some(location) = location else {
-        return "Home".into();
+        return crate::i18n::tr("Home");
     };
     if let Some(path) = location.native_path() {
         if Some(path)
@@ -628,11 +841,11 @@ fn tab_label(location: Option<&Location>) -> String {
     }
     let uri = location.uri_value().unwrap_or_default();
     match uri {
-        "trash:///" => "Trash".into(),
-        "recent:///" => "Recent".into(),
-        "network:///" => "Network".into(),
+        "trash:///" => crate::i18n::tr("Trash"),
+        "recent:///" => crate::i18n::tr("Recent"),
+        "network:///" => crate::i18n::tr("Network"),
         _ => gio::File::for_uri(uri).basename().map_or_else(
-            || "Location".into(),
+            || crate::i18n::tr("Location"),
             |name| name.to_string_lossy().into_owned(),
         ),
     }

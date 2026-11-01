@@ -9,7 +9,10 @@ use super::super::fixtures::{
 use super::{
     ArchiveError, ArchiveOutcome, extract_7z_from_reader, extract_tar, extract_zip_from_archive,
 };
-use crate::{model::Location, services::ArchiveFormat};
+use crate::{
+    model::Location,
+    services::{ArchiveFormat, TransferReport},
+};
 use gtk::glib;
 use std::{
     error::Error,
@@ -47,6 +50,7 @@ fn decode_fixture(
                 password,
                 progress,
                 &cancelled,
+                &mut TransferReport::default(),
             )
         }
         ArchiveFormat::SevenZ => extract_7z_from_reader(
@@ -58,6 +62,7 @@ fn decode_fixture(
                 .unwrap_or_default(),
             progress,
             &cancelled,
+            &mut TransferReport::default(),
         ),
         ArchiveFormat::Tar | ArchiveFormat::TarGz => extract_tar(
             archive,
@@ -66,6 +71,7 @@ fn decode_fixture(
             format == ArchiveFormat::TarGz,
             progress,
             &cancelled,
+            &mut TransferReport::default(),
         ),
         ArchiveFormat::Rar => unreachable!("no fixture test exercises RAR through this helper"),
     }
@@ -221,6 +227,7 @@ fn seven_z_extraction_preserves_all_file_contents() -> Result<(), Box<dyn Error>
                 sevenz_rust2::Password::empty(),
                 &progress,
                 &never_cancelled(),
+                &mut TransferReport::default(),
             )?)?,
             Some("folder".to_owned())
         );
@@ -258,6 +265,7 @@ fn seven_z_extraction_preserves_all_empty_files_and_directories() -> Result<(), 
             sevenz_rust2::Password::empty(),
             &progress,
             &never_cancelled(),
+            &mut TransferReport::default(),
         )?)?,
         Some("folder".to_owned())
     );
@@ -297,6 +305,7 @@ fn tar_extraction_skips_root_directories_and_preserves_contents() -> Result<(), 
                     gzip,
                     &progress,
                     &never_cancelled(),
+                    &mut TransferReport::default(),
                 )?)?,
                 Some("content".to_owned()),
             );
@@ -334,11 +343,12 @@ fn tar_extraction_root_only_completes_without_a_name_and_respects_cancellation()
                 gzip,
                 &progress,
                 &never_cancelled(),
+                &mut TransferReport::default(),
             )?)?,
             None,
         );
         assert!(matches!(
-            extract_tar(&archive, &destination, "archive", gzip, &progress, &always_cancelled())?,
+            extract_tar(&archive, &destination, "archive", gzip, &progress, &always_cancelled(), &mut TransferReport::default())?,
             ArchiveOutcome::Cancelled { completed, failed, not_attempted }
                 if completed.is_empty() && failed.is_empty() && not_attempted.is_empty()
         ));
@@ -373,7 +383,8 @@ fn tar_extraction_rejects_empty_paths_and_root_file_entries() -> Result<(), Box<
                         "archive",
                         gzip,
                         &progress,
-                        &never_cancelled()
+                        &never_cancelled(),
+                        &mut TransferReport::default(),
                     ),
                     Err(ArchiveError::Failed(_))
                 ),
@@ -534,6 +545,104 @@ fn multi_root_zip_keeps_member_names_inside_the_fresh_folder() -> Result<(), Box
 }
 
 #[test]
+fn zip_extraction_skips_root_directories_and_preserves_contents() -> Result<(), Box<dyn Error>> {
+    for root_entry in ["./", ".\\"] {
+        let root = tempfile::tempdir()?;
+        let destination = root.path().join("destination");
+        fs::create_dir(&destination)?;
+        let archive = root.path().join("root-entry.zip");
+        write_zip(
+            &archive,
+            &[
+                (root_entry, b""),
+                (
+                    "./hello.txt",
+                    b"Hello from a ZIP with a root directory marker.\n",
+                ),
+            ],
+        )?;
+        let progress = Arc::new(AtomicUsize::new(0));
+        assert_eq!(
+            completed_extract(decode_fixture(
+                &archive,
+                &destination,
+                ArchiveFormat::Zip,
+                None,
+                &progress,
+            )?)?,
+            Some("hello.txt".to_owned()),
+            "{root_entry:?}"
+        );
+        assert_eq!(progress.load(Ordering::Relaxed), 1, "{root_entry:?}");
+        assert_eq!(
+            fs::read(destination.join("hello.txt"))?,
+            b"Hello from a ZIP with a root directory marker.\n"
+        );
+        assert_eq!(fs::read_dir(&destination)?.count(), 1, "{root_entry:?}");
+    }
+    Ok(())
+}
+
+#[test]
+fn sevenz_extraction_skips_a_root_directory_and_preserves_contents() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+    let archive = root.path().join("content.7z");
+    let mut writer = sevenz_rust2::ArchiveWriter::create(&archive)?;
+    writer.push_archive_entry::<io::Cursor<&[u8]>>(
+        sevenz_rust2::ArchiveEntry::new_directory("."),
+        None,
+    )?;
+    writer.push_archive_entry(
+        sevenz_rust2::ArchiveEntry::new_file("./hello.txt"),
+        Some(io::Cursor::new(&b"hello\n"[..])),
+    )?;
+    writer.finish()?;
+    let progress = Arc::new(AtomicUsize::new(0));
+    assert_eq!(
+        completed_extract(decode_fixture(
+            &archive,
+            &destination,
+            ArchiveFormat::SevenZ,
+            None,
+            &progress,
+        )?)?,
+        Some("hello.txt".to_owned())
+    );
+    assert_eq!(progress.load(Ordering::Relaxed), 1);
+    assert_eq!(fs::read(destination.join("hello.txt"))?, b"hello\n");
+    Ok(())
+}
+
+#[test]
+fn zip_extraction_rejects_root_files_and_parent_only_directories() -> Result<(), Box<dyn Error>> {
+    for name in [".", "../", "foo/../"] {
+        let root = tempfile::tempdir()?;
+        let destination = root.path().join("destination");
+        fs::create_dir(&destination)?;
+        let archive = root.path().join("content.zip");
+        write_zip(&archive, &[(name, b"payload")])?;
+        let progress = Arc::new(AtomicUsize::new(0));
+        match decode_fixture(&archive, &destination, ArchiveFormat::Zip, None, &progress) {
+            Err(ArchiveError::Failed(message)) => {
+                assert!(
+                    message.contains("Refusing empty archive path") && message.contains(name),
+                    "{name:?}: {message}"
+                );
+            }
+            other => panic!("accepted {name:?}: {other:?}"),
+        }
+        assert_eq!(progress.load(Ordering::Relaxed), 0, "{name:?}");
+        assert!(
+            fs::read_dir(&destination)?.next().is_none(),
+            "{name:?} wrote into the destination"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn zip_extraction_stops_and_drops_incomplete_output_when_cancelled() -> Result<(), Box<dyn Error>> {
     let root = tempfile::tempdir()?;
     let destination = root.path().join("destination");
@@ -553,6 +662,7 @@ fn zip_extraction_stops_and_drops_incomplete_output_when_cancelled() -> Result<(
         None,
         &Arc::new(AtomicUsize::new(0)),
         &Arc::new(AtomicBool::new(true)),
+        &mut TransferReport::default(),
     )?;
 
     match outcome {
@@ -593,6 +703,7 @@ fn tar_extraction_stops_without_scanning_remaining_entries() -> Result<(), Box<d
         false,
         &Arc::new(AtomicUsize::new(0)),
         &always_cancelled(),
+        &mut TransferReport::default(),
     )?;
 
     match outcome {
@@ -697,6 +808,7 @@ fn sevenz_cancellation_keeps_streamless_and_duplicate_members_pending() -> Resul
             sevenz_rust2::Password::empty(),
             &progress,
             &always_cancelled(),
+            &mut TransferReport::default(),
         )?;
         let ArchiveOutcome::Cancelled {
             completed,
@@ -754,6 +866,7 @@ fn sevenz_mid_copy_cancellation_tracks_header_identity_and_destination_renames()
                 sevenz_rust2::Password::empty(),
                 &progress,
                 &cancelled,
+                &mut TransferReport::default(),
             )?;
             let ArchiveOutcome::Cancelled {
                 completed,
@@ -849,6 +962,7 @@ fn pending_unsafe_names_are_sanitized_by_every_decoder() -> Result<(), Box<dyn E
                     None,
                     &progress,
                     &cancelled,
+                    &mut TransferReport::default(),
                 )?
             }
             ArchiveFormat::SevenZ => extract_7z_from_reader(
@@ -858,6 +972,7 @@ fn pending_unsafe_names_are_sanitized_by_every_decoder() -> Result<(), Box<dyn E
                 sevenz_rust2::Password::empty(),
                 &progress,
                 &cancelled,
+                &mut TransferReport::default(),
             )?,
             ArchiveFormat::Tar | ArchiveFormat::TarGz => extract_tar(
                 &archive,
@@ -866,6 +981,7 @@ fn pending_unsafe_names_are_sanitized_by_every_decoder() -> Result<(), Box<dyn E
                 format == ArchiveFormat::TarGz,
                 &progress,
                 &cancelled,
+                &mut TransferReport::default(),
             )?,
             ArchiveFormat::Rar => unreachable!("RAR compression is not supported"),
         };
@@ -899,6 +1015,7 @@ fn sevenz_extraction_reports_remaining_entries_when_cancelled() -> Result<(), Bo
         sevenz_rust2::Password::empty(),
         &Arc::new(AtomicUsize::new(0)),
         &always_cancelled(),
+        &mut TransferReport::default(),
     )?;
 
     match outcome {
@@ -1077,6 +1194,7 @@ fn gzip_trailer_mismatch_fails_after_the_last_member() -> Result<(), Box<dyn Err
             true,
             &progress,
             &never_cancelled(),
+            &mut TransferReport::default(),
         );
 
         let kept = format!(
@@ -1131,6 +1249,7 @@ fn truncated_gzip_trailer_is_damaged() -> Result<(), Box<dyn Error>> {
         true,
         &Arc::new(AtomicUsize::new(0)),
         &never_cancelled(),
+        &mut TransferReport::default(),
     );
 
     let kept = format!(
@@ -1567,6 +1686,7 @@ fn wrong_password_for_content_encrypted_7z_is_retryable() -> Result<(), Box<dyn 
         "wrong".into(),
         &Arc::new(AtomicUsize::new(0)),
         &never_cancelled(),
+        &mut TransferReport::default(),
     ) else {
         panic!("a wrong password must fail extraction");
     };
@@ -1584,6 +1704,7 @@ fn wrong_password_for_content_encrypted_7z_is_retryable() -> Result<(), Box<dyn 
         "secret".into(),
         &Arc::new(AtomicUsize::new(0)),
         &never_cancelled(),
+        &mut TransferReport::default(),
     )?)?;
     assert_eq!(
         fs::read(correct_destination.path().join("document.txt"))?,
@@ -1648,6 +1769,7 @@ fn tar_extraction_skips_pax_global_headers() -> Result<(), Box<dyn Error>> {
                 gzip,
                 &progress,
                 &never_cancelled(),
+                &mut TransferReport::default(),
             )?)?,
             Some("project".to_owned()),
         );
@@ -2120,7 +2242,7 @@ fn zip_prefers_the_extended_timestamp_over_the_dos_time() -> Result<(), Box<dyn 
         .compression_method(zip::CompressionMethod::Stored)
         .last_modified_time(dos);
     let mut extended = options.into_full_options();
-    extended.add_extra_data(0x5455, zip_extended_timestamp(STORED_TIME)?, false)?;
+    extended.add_extra_field(0x5455, zip_extended_timestamp(STORED_TIME)?, false)?;
     let mut writer = zip::ZipWriter::new(fs::File::create(&archive)?);
     writer.start_file("extended.txt", extended)?;
     writer.write_all(b"extended")?;
@@ -2128,7 +2250,7 @@ fn zip_prefers_the_extended_timestamp_over_the_dos_time() -> Result<(), Box<dyn 
     writer.write_all(b"dos")?;
     // A signed UT time of -1 is before 1970, so the DOS time applies.
     let mut negative = options.into_full_options();
-    negative.add_extra_data(0x5455, [1, 0xff, 0xff, 0xff, 0xff], false)?;
+    negative.add_extra_field(0x5455, [1, 0xff, 0xff, 0xff, 0xff], false)?;
     writer.start_file("negative.txt", negative)?;
     writer.write_all(b"negative")?;
     writer.finish()?;
@@ -2197,6 +2319,7 @@ fn every_gzip_member_of_a_tar_gz_is_read_and_verified() -> Result<(), Box<dyn Er
             true,
             &Arc::new(AtomicUsize::new(0)),
             &never_cancelled(),
+            &mut TransferReport::default(),
         );
 
         if corrupt_second_member {
@@ -2247,6 +2370,7 @@ fn zero_padding_after_the_last_gzip_member_is_not_damage() -> Result<(), Box<dyn
             true,
             &Arc::new(AtomicUsize::new(0)),
             &never_cancelled(),
+            &mut TransferReport::default(),
         );
 
         let label = format!(

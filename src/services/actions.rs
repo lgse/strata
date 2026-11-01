@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     ffi::OsString,
     fmt,
+    future::Future,
     path::{Path, PathBuf},
     rc::Rc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
+
+use futures_channel::oneshot;
 
 use crate::model::{
     ActionDefinition, ActionError, ActionInput, ArgumentToken, InterpreterFamily, MenuPlacement,
@@ -96,6 +103,13 @@ impl ActionCatalog {
         Self { actions, failures }
     }
 
+    fn stored(stored: StoredActions) -> Self {
+        Self::new(
+            stored.actions.into_iter().map(Rc::new).collect(),
+            stored.failures,
+        )
+    }
+
     pub fn actions(&self) -> &[Rc<ActionHandle>] {
         &self.actions
     }
@@ -104,6 +118,7 @@ impl ActionCatalog {
         &self.failures
     }
 
+    #[cfg(test)]
     pub fn get(&self, id: &str) -> Option<&Rc<ActionHandle>> {
         self.actions.iter().find(|action| action.id() == id)
     }
@@ -112,7 +127,7 @@ impl ActionCatalog {
         let mut matched: Vec<_> = self
             .actions
             .iter()
-            .filter(|action| action.definition.enabled && action.definition.when.matches(inputs))
+            .filter(|action| applies(action, inputs))
             .map(|action| MatchedAction {
                 action: action.clone(),
                 placement: action.definition.menu,
@@ -140,9 +155,22 @@ impl ActionCatalog {
             .take(NUMBERED_ACTIONS)
             .collect()
     }
+
+    /// The action at `index` in the order Settings lists them, disabled ones
+    /// included, when it is enabled, runnable and accepts every input.
+    pub fn listed(&self, index: usize, inputs: &[ActionInput]) -> Option<Rc<ActionHandle>> {
+        self.actions
+            .get(index)
+            .filter(|action| applies(action, inputs) && action.is_available())
+            .cloned()
+    }
 }
 
 const NUMBERED_ACTIONS: usize = 10;
+
+fn applies(action: &ActionHandle, inputs: &[ActionInput]) -> bool {
+    action.definition.enabled && action.definition.when.matches(inputs)
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ActionScript {
@@ -262,9 +290,28 @@ impl From<ActionError> for ActionStoreError {
     }
 }
 
-pub trait ActionStore {
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct StoredActions {
+    pub actions: Vec<ActionHandle>,
+    pub failures: Vec<ActionLoadFailure>,
+}
+
+impl StoredActions {
+    #[cfg(test)]
+    pub fn get(&self, id: &str) -> Option<&ActionHandle> {
+        self.actions.iter().find(|action| action.id() == id)
+    }
+}
+
+pub trait ActionStore: Send + Sync {
     /// A broken definition must not hide unrelated actions.
-    fn load(&self) -> ActionCatalog;
+    fn load(&self) -> StoredActions;
+
+    fn locate(&self, stored: StoredActions) -> StoredActions;
+
+    fn definition(&self, id: &str) -> Result<ActionDefinition, ActionStoreError>;
+
+    fn read(&self, id: &str) -> Result<ActionWriteRequest, ActionStoreError>;
 
     fn create(&self, request: &ActionWriteRequest) -> Result<(), ActionStoreError>;
 
@@ -272,82 +319,258 @@ pub trait ActionStore {
 
     fn delete(&self, id: &str) -> Result<(), ActionStoreError>;
 
-    fn read_script(&self, id: &str) -> Result<Option<ActionScript>, ActionStoreError>;
+    fn read_import(&self, source: &Path) -> Result<ActionWriteRequest, ActionStoreError>;
 
-    fn import(&self, source: &Path) -> Result<String, ActionStoreError>;
+    fn import(&self, request: ActionWriteRequest) -> Result<String, ActionStoreError>;
 
-    fn export(&self, id: &str, destination: &Path) -> Result<PathBuf, ActionStoreError>;
+    fn export(
+        &self,
+        request: &ActionWriteRequest,
+        destination: &Path,
+    ) -> Result<PathBuf, ActionStoreError>;
 }
 
 pub struct ActionRegistry {
-    store: Rc<dyn ActionStore>,
+    store: Arc<dyn ActionStore>,
     catalog: RefCell<Rc<ActionCatalog>>,
+    queued: Cell<u64>,
+    adopted: Cell<u64>,
+    unread: Arc<AtomicUsize>,
     listeners: Rc<Listeners<Rc<dyn Fn()>>>,
 }
 
 impl ActionRegistry {
-    pub fn new(store: Rc<dyn ActionStore>) -> Self {
-        let catalog = Rc::new(store.load());
-        Self {
+    pub fn new(store: Arc<dyn ActionStore>) -> Rc<Self> {
+        Rc::new(Self {
             store,
-            catalog: RefCell::new(catalog),
+            catalog: RefCell::default(),
+            queued: Cell::new(0),
+            adopted: Cell::new(0),
+            unread: Arc::default(),
             listeners: Rc::new(Listeners::new()),
-        }
+        })
     }
 
     pub fn catalog(&self) -> Rc<ActionCatalog> {
         self.catalog.borrow().clone()
     }
 
-    pub fn reload(&self) -> Rc<ActionCatalog> {
-        let reloaded = Rc::new(self.store.load());
-        if catalog_equivalent(&self.catalog.borrow(), &reloaded) {
-            return self.catalog.borrow().clone();
+    pub fn reload(self: &Rc<Self>) -> impl Future<Output = Rc<ActionCatalog>> + use<> {
+        let unread = self.unread.clone();
+        unread.fetch_add(1, Ordering::SeqCst);
+        let (order, loaded) = self.queue(move |store| {
+            unread.fetch_sub(1, Ordering::SeqCst);
+            store.load()
+        });
+        let this = self.clone();
+        async move {
+            if let Ok(stored) = loaded.await {
+                this.adopt(order, stored).await;
+            }
+            this.catalog()
         }
-        self.catalog.replace(reloaded.clone());
-        self.notify();
-        reloaded
     }
 
-    pub fn create(&self, request: &ActionWriteRequest) -> Result<(), ActionStoreError> {
-        self.store.create(request)?;
-        self.reload();
-        Ok(())
+    pub fn reload_waiting(&self) -> bool {
+        self.unread.load(Ordering::SeqCst) > 0
     }
 
-    pub fn write(&self, request: &ActionWriteRequest) -> Result<(), ActionStoreError> {
-        self.store.write(request)?;
-        self.reload();
-        Ok(())
+    pub fn definition(
+        &self,
+        id: String,
+    ) -> impl Future<Output = Result<ActionDefinition, ActionStoreError>> + use<> {
+        let (_, read) = self.queue(move |store| store.definition(&id));
+        async move { answered(read.await.ok()) }
     }
 
-    pub fn delete(&self, id: &str) -> Result<(), ActionStoreError> {
-        self.store.delete(id)?;
-        self.reload();
-        Ok(())
+    pub fn read(
+        &self,
+        id: String,
+    ) -> impl Future<Output = Result<ActionWriteRequest, ActionStoreError>> + use<> {
+        let (_, read) = self.queue(move |store| store.read(&id));
+        async move { answered(read.await.ok()) }
     }
 
-    pub fn read_script(&self, id: &str) -> Result<Option<ActionScript>, ActionStoreError> {
-        self.store.read_script(id)
+    pub fn create(
+        self: &Rc<Self>,
+        request: ActionWriteRequest,
+    ) -> impl Future<Output = Result<(), ActionStoreError>> + use<> {
+        self.change(move |store| store.create(&request))
     }
 
-    pub fn import(&self, source: &Path) -> Result<String, ActionStoreError> {
-        let id = self.store.import(source)?;
-        self.reload();
-        Ok(id)
+    pub fn write(
+        self: &Rc<Self>,
+        request: ActionWriteRequest,
+    ) -> impl Future<Output = Result<(), ActionStoreError>> + use<> {
+        self.change(move |store| store.write(&request))
     }
 
-    pub fn export(&self, id: &str, destination: &Path) -> Result<PathBuf, ActionStoreError> {
-        self.store.export(id, destination)
+    pub fn set_enabled(
+        self: &Rc<Self>,
+        id: String,
+        enabled: bool,
+    ) -> impl Future<Output = Result<(), ActionStoreError>> + use<> {
+        self.change(move |store| {
+            let mut definition = store.definition(&id)?;
+            definition.enabled = enabled;
+            store.write(&ActionWriteRequest {
+                definition,
+                script: None,
+            })
+        })
+    }
+
+    pub fn delete(
+        self: &Rc<Self>,
+        id: String,
+    ) -> impl Future<Output = Result<(), ActionStoreError>> + use<> {
+        self.change(move |store| store.delete(&id))
+    }
+
+    pub fn duplicate(
+        self: &Rc<Self>,
+        id: String,
+        name: String,
+    ) -> impl Future<Output = Result<String, ActionStoreError>> + use<> {
+        self.change(move |store| {
+            let mut copy = store.read(&id)?;
+            copy.definition.name = name;
+            for candidate in copy_ids(&id) {
+                copy.definition.id = candidate;
+                match store.create(&copy) {
+                    Err(ActionStoreError::AlreadyExists(_)) => {}
+                    created => return created.map(|()| copy.definition.id),
+                }
+            }
+            Err(ActionStoreError::Io(
+                rust_i18n::t!("No free action name is available for “%{id}”", id = id).into_owned(),
+            ))
+        })
+    }
+
+    pub fn import(
+        self: &Rc<Self>,
+        source: PathBuf,
+    ) -> impl Future<Output = Result<String, ActionStoreError>> + use<> {
+        let store = self.store.clone();
+        let read = outside(move || store.read_import(&source));
+        let this = self.clone();
+        async move {
+            let request = answered(read.await)?;
+            this.change(move |store| store.import(request)).await
+        }
+    }
+
+    pub fn export(
+        &self,
+        id: String,
+        destination: PathBuf,
+    ) -> impl Future<Output = Result<PathBuf, ActionStoreError>> + use<> {
+        let read = self.read(id);
+        let store = self.store.clone();
+        async move {
+            let request = read.await?;
+            answered(outside(move || store.export(&request, &destination)).await)
+        }
     }
 
     pub(crate) fn observe(&self, callback: Rc<dyn Fn()>) -> ListenerGuard<Rc<dyn Fn()>> {
         self.listeners.add(callback)
     }
 
+    fn change<T, C>(
+        self: &Rc<Self>,
+        change: C,
+    ) -> impl Future<Output = Result<T, ActionStoreError>> + use<T, C>
+    where
+        T: Send + 'static,
+        C: FnOnce(&dyn ActionStore) -> Result<T, ActionStoreError> + Send + 'static,
+    {
+        let (order, changed) = self.queue(move |store| {
+            let changed = change(store)?;
+            Ok((changed, store.load()))
+        });
+        let this = self.clone();
+        async move {
+            let (changed, stored) = answered(changed.await.ok())?;
+            this.adopt(order, stored).await;
+            Ok(changed)
+        }
+    }
+
+    fn queue<T: Send + 'static>(
+        &self,
+        job: impl FnOnce(&dyn ActionStore) -> T + Send + 'static,
+    ) -> (u64, oneshot::Receiver<T>) {
+        let order = self.queued.get() + 1;
+        self.queued.set(order);
+        let store = self.store.clone();
+        (order, crate::storage::writer::run(move || job(&*store)))
+    }
+
+    async fn adopt(&self, order: u64, stored: StoredActions) {
+        let store = self.store.clone();
+        let Some(located) = outside(move || store.locate(stored)).await else {
+            return;
+        };
+        if self.adopted.get() > order {
+            return;
+        }
+        self.adopted.set(order);
+        let catalog = ActionCatalog::stored(located);
+        if catalog_equivalent(&self.catalog.borrow(), &catalog) {
+            return;
+        }
+        self.catalog.replace(Rc::new(catalog));
+        self.notify();
+    }
+
     fn notify(&self) {
         self.listeners.notify(|callback| callback());
     }
+}
+
+fn outside<T: Send + 'static>(
+    job: impl FnOnce() -> T + Send + 'static,
+) -> impl Future<Output = Option<T>> {
+    let (answer, answered) = oneshot::channel();
+    let started = std::thread::Builder::new()
+        .name("strata-actions".to_owned())
+        .spawn(move || {
+            let _ = answer.send(job());
+        })
+        .is_ok();
+    async move {
+        if !started {
+            return None;
+        }
+        answered.await.ok()
+    }
+}
+
+fn copy_ids(id: &str) -> impl Iterator<Item = String> + use<'_> {
+    (0..1000)
+        .map(move |suffix| {
+            let suffix = if suffix == 0 {
+                "-copy".to_owned()
+            } else {
+                format!("-copy-{suffix}")
+            };
+            let stem: String = id
+                .chars()
+                .take(crate::model::MAX_ACTION_ID_CHARS - suffix.len())
+                .collect();
+            format!("{stem}{suffix}")
+        })
+        .filter(move |candidate| candidate != id)
+}
+
+fn answered<T>(answer: Option<Result<T, ActionStoreError>>) -> Result<T, ActionStoreError> {
+    answer.unwrap_or_else(|| {
+        Err(ActionStoreError::Io(crate::i18n::tr(
+            super::UNEXPECTED_SYSTEM_ERROR,
+        )))
+    })
 }
 
 fn catalog_equivalent(left: &ActionCatalog, right: &ActionCatalog) -> bool {

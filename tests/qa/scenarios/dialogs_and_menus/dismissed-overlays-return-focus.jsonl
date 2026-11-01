@@ -1,0 +1,46 @@
+{"scenario":"dismissed-overlays-return-focus","modes":["columns"],"layout":"us","quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Settings, search, jump-to-folder, Compress and delete-confirmation backdrop dismissals return focus to the entry; dialog Escape: modal-dialog-blocks-window-shortcuts"}}
+{"select_with_keyboard":"todo.txt"}
+{"key":"ctrl+comma"}
+{"wait":{"present":{"role":"button","name":"Close settings"}},"message":"Ctrl+, to open Settings"}
+{"key":"Escape"}
+{"wait":{"absent":{"role":"button","name":"Close settings"}},"message":"Escape to close Settings"}
+{"wait":{"focused":"todo.txt"},"message":"focus to return to 'todo.txt' after Settings closed with Escape in Columns"}
+{"key":"Up"}
+{"wait":{"focused":"readme.md"},"message":"Up to move the returned focus to 'readme.md'"}
+{"key":"ctrl+2"}
+{"wait":{"all":[{"view_mode":"Icons"},{"focused":"readme.md"}]},"message":"the switch to Icons to keep focus on 'readme.md'"}
+{"key":"ctrl+k"}
+{"wait":{"field":{}},"message":"Ctrl+K to open the command palette with its field focused"}
+{"key":"ctrl+k"}
+{"wait":{"editable_fields":0},"message":"Ctrl+K again to close the command palette"}
+{"wait":{"focused":"readme.md"},"message":"focus to return to 'readme.md' after Ctrl+K closed the palette in Icons"}
+{"key":"Right"}
+{"wait":{"focused":"todo.txt"},"message":"Right to move the returned focus to 'todo.txt'"}
+{"key":"ctrl+3"}
+{"wait":{"all":[{"view_mode":"List"},{"focused":"todo.txt"}]},"message":"the switch to List to keep focus on 'todo.txt'"}
+{"key":"ctrl+shift+k"}
+{"wait":{"field":{}},"message":"Ctrl+Shift+K to open the palette with its field focused"}
+{"key":"Escape"}
+{"wait":{"editable_fields":0},"message":"Escape to close the palette"}
+{"wait":{"focused":"todo.txt"},"message":"focus to return to 'todo.txt' after Escape closed the palette in List"}
+{"key":"Up"}
+{"wait":{"focused":"readme.md"},"message":"Up to move the returned focus to 'readme.md'"}
+{"click":{"entry":"readme.md"},"button":3}
+{"wait":{"present":{"menu_item":"Compress…"}},"message":"the menu item 'Compress…'"}
+{"settle":{"menu_item":"Compress…"}}
+{"click":{"menu_item":"Compress…"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"all":[{"dialog":true},{"field":{}}]},"message":"the Compress dialog with its name field focused"}
+{"click":{"window":true},"at":[5,5]}
+{"wait":{"dialog":null},"message":"a click outside the Compress dialog to dismiss it"}
+{"wait":{"focused":"readme.md"},"message":"focus to return to 'readme.md' after a click outside closed the Compress dialog in List"}
+{"key":"Down"}
+{"wait":{"focused":"todo.txt"},"message":"Down to move the returned focus to 'todo.txt'"}
+{"key":"shift+Delete"}
+{"wait":{"dialog":"Permanently delete 1 item?"},"message":"the delete confirmation opens over the selected file"}
+{"click":{"window":true},"at":[5,100]}
+{"wait":{"dialog":null},"message":"the delete confirmation closes on a backdrop click"}
+{"wait":{"focused":"todo.txt"},"message":"the delete backdrop restores focus without confirming deletion"}
+{"key":"Up"}
+{"wait":{"focused":"readme.md"},"message":"arrow navigation works after cancelling deletion on its backdrop"}
+{"fs":{"path":"todo.txt","text":"todo\n"},"timeout_ms":0,"message":"backdrop dismissal never deletes the selected file"}

@@ -51,6 +51,125 @@ fn selection_highlight_shrinks_and_clears_without_erasing_markup() {
 }
 
 #[test]
+fn retained_selections_follow_live_theme_in_two_windows_and_rebuilt_tables() {
+    crate::test_support::gtk_test(
+        "ui::table_view::selection::tests::retained_selections_follow_live_theme_in_two_windows_and_rebuilt_tables",
+        || {
+            let themes = crate::ui::theme::ThemeManager::shared();
+            let context = glib::MainContext::default();
+            let fixture = || {
+                let table = TableState::new(vec![vec![DocumentTableCellLayout {
+                    text: "value".into(),
+                    header: false,
+                    spans: Vec::new(),
+                }]]);
+                let selection = Selection::new(table.clone());
+                selection.range.set(Some(Range {
+                    anchor: Point {
+                        row: 0,
+                        column: 0,
+                        offset: 0,
+                    },
+                    focus: Point {
+                        row: 0,
+                        column: 0,
+                        offset: 5,
+                    },
+                }));
+                let factory = gtk::SignalListItemFactory::new();
+                factory.connect_setup(|_, item| {
+                    item.downcast_ref::<gtk::ListItem>()
+                        .expect("list item")
+                        .set_child(Some(&gtk::Label::new(Some("value"))));
+                });
+                let for_bind = selection.clone();
+                factory.connect_bind(move |_, item| {
+                    let item = item.downcast_ref::<gtk::ListItem>().expect("list item");
+                    let label = item.child().and_downcast::<gtk::Label>().expect("cell");
+                    for_bind.bind(&label, item, 0);
+                });
+                let view =
+                    gtk::ColumnView::new(Some(gtk::NoSelection::new(Some(table.model.clone()))));
+                view.append_column(&gtk::ColumnViewColumn::new(Some("Field"), Some(factory)));
+                let scroll = gtk::ScrolledWindow::builder().child(&view).build();
+                selection.install(&view, &scroll);
+                let window = gtk::Window::builder().child(&scroll).build();
+                window.present();
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+                let cell = loop {
+                    while context.pending() {
+                        context.iteration(false);
+                    }
+                    if let Some(cell) = descendant(window.upcast_ref(), &|label: &gtk::Label| {
+                        label.text() == "value"
+                    }) {
+                        break cell;
+                    }
+                    assert!(std::time::Instant::now() < deadline, "selected cell bound");
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                };
+                (window, cell, selection)
+            };
+            let colors = |label: &gtk::Label| {
+                let mut colors = label
+                    .layout()
+                    .attributes()
+                    .into_iter()
+                    .flat_map(|attributes| attributes.attributes())
+                    .filter_map(|attribute| {
+                        attribute
+                            .downcast_ref::<gtk::pango::AttrColor>()
+                            .map(|color| color.color().to_str().to_string())
+                    })
+                    .collect::<Vec<_>>();
+                colors.sort();
+                colors
+            };
+            let mut windows = vec![fixture(), fixture()];
+            let original = colors(&windows[0].1);
+            assert!(
+                !original.is_empty(),
+                "selection is highlighted before Settings opens"
+            );
+            assert_eq!(colors(&windows[1].1), original);
+            let mut preview = themes.starter_tokens();
+            preview.accent = "#ff0000".into();
+            preview.background = "#0000ff".into();
+            themes.preview(&preview).expect("valid live theme preview");
+            while context.pending() {
+                context.iteration(false);
+            }
+            let changed = colors(&windows[0].1);
+            assert_ne!(
+                changed, original,
+                "theme preview recolors the retained selection"
+            );
+            assert_eq!(colors(&windows[1].1), changed, "both windows update");
+            windows[0].0.close();
+            windows[0] = fixture();
+            assert_eq!(
+                colors(&windows[0].1),
+                changed,
+                "rebuilt tables use the active theme"
+            );
+            themes.cancel_preview();
+            while context.pending() {
+                context.iteration(false);
+            }
+            for (window, label, selection) in windows {
+                assert_eq!(
+                    colors(&label),
+                    original,
+                    "cancelling restores the selection colors"
+                );
+                assert_eq!(selection.copy_text().as_deref(), Some("value"));
+                window.close();
+            }
+        },
+    );
+}
+
+#[test]
 fn selection_copies_sorted_rows_partial_unicode_and_ragged_cells() {
     crate::test_support::gtk_test(
         "ui::table_view::selection::tests::selection_copies_sorted_rows_partial_unicode_and_ragged_cells",
@@ -128,10 +247,10 @@ fn selection_copies_sorted_rows_partial_unicode_and_ragged_cells() {
                 focus: Point {
                     row: 2,
                     column: 1,
-                    offset: 4,
+                    offset: 0,
                 },
             }));
-            assert_eq!(sparse.copy_text().as_deref(), Some("a\n\nz\ttail"));
+            assert_eq!(sparse.copy_text().as_deref(), Some("a\nz\ttail\n\t"));
         },
     );
 }

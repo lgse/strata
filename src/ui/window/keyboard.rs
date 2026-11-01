@@ -12,7 +12,8 @@ use crate::{
     services::NavigationHistory,
     ui::{
         browser::BrowserView,
-        keys::{self, Binding, KeyPress, SHORTCUT_MODIFIERS, TEXT_EDITING, bindings::*},
+        browser_modes::ThumbnailResize,
+        keys::{self, Command, KeyPress, Map, SHORTCUT_MODIFIERS, TEXT_EDITING, bindings::*},
         modal::is_closing_layer,
         preview::PreviewDrawer,
         shortcut_footer::ShortcutFooter,
@@ -25,6 +26,7 @@ use super::{SidebarState, SidebarView, TypeToSearch, topmost_modal_layer, visibl
 mod chooser;
 pub(super) mod chords;
 mod commands;
+mod direct;
 mod escape;
 mod files;
 mod focus;
@@ -38,14 +40,15 @@ use sidebar::{SidebarChord, activate_sidebar_focus, move_sidebar_focus, sidebar_
 // None tries the next Strata stage; Some(Proceed) gives the event to GTK instead.
 type KeyResult = Option<Propagation>;
 
-/// Window actions that run once every other stage yields the key. The flag
-/// marks those 10xer mode leaves unbound.
-const WINDOW_ACTIONS: [(Binding, &str, bool); 5] = [
-    (SEARCH, "search", false),
-    (JUMP_TO_FOLDER, "jump-folder", true),
-    (TERMINAL, "open-terminal", true),
-    (REFRESH, "refresh", false),
-    (ARROW_SCOPE, "toggle-arrow-scope", true),
+/// Window actions that run once every other stage yields the key, wherever
+/// the active table binds them. 10xer runs its terminal key only from the file
+/// list and sidebar, so it is left out here in that map.
+const WINDOW_ACTIONS: [(Command, &str); 5] = [
+    (SEARCH, "search"),
+    (JUMP_TO_FOLDER, "jump-folder"),
+    (TERMINAL, "open-terminal"),
+    (REFRESH, "refresh"),
+    (ARROW_SCOPE, "toggle-arrow-scope"),
 ];
 
 pub(super) struct DispatcherParts {
@@ -77,6 +80,7 @@ pub(super) fn install_on(
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let weak_browser = Rc::downgrade(&parts.view.browser());
     let preferences = parts.type_to_search.preferences.clone();
+    let wheel_view = parts.view.downgrade();
     let dispatcher = Rc::new(Dispatcher::bind(window, sidebar, parts, None));
     submit_prompt_on_activate(&dispatcher, weak_browser.clone());
     let key_root = root.as_ref().downgrade();
@@ -99,22 +103,26 @@ pub(super) fn install_on(
     });
     window.add_controller(keys.clone());
 
-    // Ctrl+wheel mirrors the Ctrl +/- text-size shortcut. Capture phase so
-    // scrolled windows cannot consume it first; the PDF preview's own zoom is
-    // left alone by passing through scrolls inside its scroll container.
-    // DISCRETE is avoided: it swallows sub-step smooth deltas before they
-    // reach descendant scrolled windows, killing touchpad scrolling.
-    let wheel = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+    // Ctrl+wheel mirrors the Ctrl +/- text-size shortcut, and Ctrl+Shift+wheel
+    // the Ctrl+Alt +/- thumbnail one. Capture phase so scrolled windows cannot
+    // consume it first; the PDF preview's own zoom is left alone by passing
+    // through scrolls inside its scroll container. DISCRETE is avoided: it
+    // swallows sub-step smooth deltas before they reach descendant scrolled
+    // windows, killing touchpad scrolling.
+    let wheel = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::BOTH_AXES);
     wheel.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let zoom = Rc::new(TextZoomScroll::default());
+    let zoom = Rc::new(WheelZoom::default());
     let wheel_root = root.as_ref().downgrade();
-    wheel.connect_scroll(move |controller, _, dy| {
+    wheel.connect_scroll(move |controller, dx, dy| {
         if !wheel_root
             .upgrade()
             .is_some_and(|root| root.is_mapped() && root.can_target())
         {
             return Propagation::Proceed;
         }
+        let Some(view) = wheel_view.upgrade() else {
+            return Propagation::Proceed;
+        };
         let modifiers = controller.current_event_state();
         // Scroll events carry no position, so ask the seat where the pointer is.
         let target = controller
@@ -128,7 +136,14 @@ pub(super) fn install_on(
                 let (dx, dy) = native.surface_transform();
                 native.pick(x - dx, y - dy, gtk::PickFlags::DEFAULT)
             });
-        zoom.handle(&preferences, modifiers, controller.unit(), target, dy)
+        zoom.handle(
+            &preferences,
+            &view,
+            modifiers,
+            controller.unit(),
+            target,
+            (dx, dy),
+        )
     });
     window.add_controller(wheel.clone());
     let controllers = vec![keys.upcast(), wheel.upcast()];
@@ -205,6 +220,10 @@ impl ChooserKeys {
     pub(in crate::ui) fn handle(&self, press: &KeyPress) -> KeyResult {
         let browser = self.browser.upgrade()?;
         self.dispatcher.handle_chooser_key(&browser, press)
+    }
+
+    pub(in crate::ui) fn reference_is_open(&self) -> bool {
+        self.dispatcher.shortcuts.reference_is_open()
     }
 
     /// Returns false for a folder or no entry so the caller can navigate instead.
@@ -411,17 +430,19 @@ fn clear_find_on_mode_exit(
     );
 }
 
-/// Accumulates fractional scroll deltas into whole text-size steps so smooth
-/// devices zoom in the same increments as wheel clicks. Resets when the input
-/// reverses direction, changes units, or is not claimed for zooming.
+/// Accumulates fractional Ctrl+wheel deltas into whole steps so smooth devices
+/// zoom in the same increments as wheel clicks: interface text, or Icons
+/// thumbnails with Shift. Resets when the input reverses direction, changes
+/// units or target, or is not claimed for zooming.
 #[derive(Default)]
-pub(super) struct TextZoomScroll {
+pub(super) struct WheelZoom {
     pending: Cell<f64>,
     direction: Cell<i8>,
     unit: Cell<Option<gtk::gdk::ScrollUnit>>,
+    thumbnails: Cell<bool>,
 }
 
-impl TextZoomScroll {
+impl WheelZoom {
     /// Surface-unit deltas arrive in pixels; 10 px make one wheel step, the
     /// same mapping GTK's discrete conversion uses.
     const SURFACE_PIXELS_PER_STEP: f64 = 10.0;
@@ -431,7 +452,7 @@ impl TextZoomScroll {
         self.direction.set(0);
     }
 
-    pub(super) fn accumulate(&self, unit: gtk::gdk::ScrollUnit, dy: f64) -> i32 {
+    fn accumulate(&self, unit: gtk::gdk::ScrollUnit, dy: f64) -> i32 {
         let direction = dy.signum() as i8;
         let unit_changed = self.unit.replace(Some(unit)) != Some(unit);
         let direction_changed = direction != 0 && self.direction.replace(direction) != direction;
@@ -449,58 +470,58 @@ impl TextZoomScroll {
         steps
     }
 
-    fn handle(
+    pub(super) fn handle(
         &self,
         preferences: &crate::ui::preferences::PreferenceManager,
+        view: &BrowserView,
         modifiers: Modifiers,
         unit: gtk::gdk::ScrollUnit,
         target: Option<gtk::Widget>,
-        dy: f64,
+        (dx, dy): (f64, f64),
     ) -> Propagation {
+        let thumbnails = modifiers.contains(Modifiers::SHIFT_MASK);
+        // Some systems turn Shift+wheel into horizontal scrolling.
+        let delta = if thumbnails && dy == 0.0 { dx } else { dy };
+        if delta == 0.0 {
+            return Propagation::Proceed;
+        }
         if !modifiers.contains(Modifiers::CONTROL_MASK)
             || modifiers.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
-            || dy == 0.0
             || target.as_ref().is_some_and(inside_pdf_scroll)
+            || (thumbnails && view.view_mode() != crate::ui::browser_modes::BrowserMode::Icons)
         {
             self.reset();
             return Propagation::Proceed;
         }
-        let steps = self.accumulate(unit, dy);
-        if steps == 0 {
-            return Propagation::Stop;
+        if self.thumbnails.replace(thumbnails) != thumbnails {
+            self.reset();
         }
-        handle_text_zoom_scroll(preferences, modifiers, target, f64::from(steps))
+        let steps = self.accumulate(unit, delta);
+        if steps != 0 {
+            if thumbnails {
+                view.resize_icons_thumbnails(ThumbnailResize::Step(-steps));
+            } else {
+                view.set_text_size(preferences.text_size().stepped(-steps));
+            }
+        }
+        Propagation::Stop
     }
 }
 
-pub(super) fn handle_text_zoom_scroll(
-    preferences: &crate::ui::preferences::PreferenceManager,
-    modifiers: Modifiers,
-    target: Option<gtk::Widget>,
-    dy: f64,
-) -> Propagation {
-    if !modifiers.contains(Modifiers::CONTROL_MASK)
-        || modifiers.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
-        || dy == 0.0
-        || target.as_ref().is_some_and(inside_pdf_scroll)
-    {
-        return Propagation::Proceed;
-    }
-    preferences.set_text_size(preferences.text_size().stepped(-dy as i32));
-    Propagation::Stop
-}
-
-/// Window commands that 10xer mode leaves unbound, so the file list swallows them.
+/// Default-map keys of window commands that 10xer mode leaves unbound or binds
+/// to other keys, so the file list swallows them, and Ctrl+T.
 fn claims_unbound_command(press: &KeyPress) -> bool {
-    press.is_any(&[
+    [
         DUPLICATE,
         FILTER,
         SIDEBAR,
-        RENAME_R,
-        TAB_NEW,
+        RENAME,
         ARROW_SCOPE,
         JUMP_TO_FOLDER,
-    ])
+    ]
+    .into_iter()
+    .any(|command| press.is(command.in_map(Map::Default)) && !press.is(command.in_map(Map::Tenxer)))
+        || press.is(TAB_NEW)
 }
 
 fn claims_file_list_typing(press: &KeyPress) -> bool {
@@ -542,6 +563,8 @@ struct Dispatcher {
     shortcuts: ShortcutFooter,
     history: Rc<NavigationHistory>,
     rename_target: Rc<RefCell<Option<crate::model::FileEntry>>>,
+    /// Only the latest typed name submitted may act after its check.
+    typed_name_revision: Rc<Cell<u64>>,
     /// Cursor and fill changes must not retarget an open prompt.
     destination_targets: Rc<RefCell<Vec<crate::model::FileEntry>>>,
     destination_revision: Rc<Cell<u64>>,
@@ -552,10 +575,8 @@ struct Dispatcher {
 }
 
 struct KeyEvent {
-    /// **h j k l** already read as arrows where they navigate.
     press: KeyPress,
     focused: Option<gtk::Widget>,
-    vim_navigation: bool,
     header_left_boundary: bool,
 }
 
@@ -568,8 +589,10 @@ impl KeyEvent {
         !self.press.modifiers().intersects(modifiers)
     }
 
+    /// The arrow an alias reads as, which GTK's list bindings never see.
     fn vim_arrow(&self) -> Option<gtk::gdk::Key> {
-        self.vim_navigation
+        self.press
+            .aliased()
             .then(|| crate::ui::focus_navigation::spatial_arrow(&self.press))
             .flatten()
             .map(keys::Binding::key)
@@ -599,6 +622,7 @@ impl Dispatcher {
             shortcuts: parts.shortcuts,
             history: parts.history,
             rename_target: Rc::default(),
+            typed_name_revision: Rc::default(),
             destination_targets: Rc::default(),
             destination_revision: Rc::default(),
             destinations: crate::ui::folder_picker::FolderPicker::default(),
@@ -627,9 +651,11 @@ impl Dispatcher {
             open_with_on_destroy.invalidate();
         });
         let rename_target = dispatcher.rename_target.clone();
+        let typed_name_revision = dispatcher.typed_name_revision.clone();
         let destination_targets = dispatcher.destination_targets.clone();
         let destinations = dispatcher.destinations.clone();
         dispatcher.shortcuts.connect_prompt_reset(move || {
+            typed_name_revision.set(typed_name_revision.get().wrapping_add(1));
             drop(rename_target.take());
             drop(destination_targets.take());
             destinations.cancel();
@@ -647,6 +673,9 @@ impl Dispatcher {
     }
 
     fn handle_chooser_key(&self, browser: &Rc<Browser>, press: &KeyPress) -> KeyResult {
+        if let Some(result) = self.rename_tab(press) {
+            return Some(result);
+        }
         if !self.type_to_search.preferences.tenxer_mode() {
             return self.tenxer_keys(browser, press);
         }
@@ -659,7 +688,7 @@ impl Dispatcher {
         {
             // The open reference's search entry counts as focused text; its
             // keys, Escape included, must reach the reference, not the request.
-            if press.is(REFERENCE.ignoring(SHORTCUT_MODIFIERS))
+            if press.is(REFERENCE.in_map(Map::Default).ignoring(SHORTCUT_MODIFIERS))
                 || self.shortcuts.reference_is_open()
             {
                 return self.shortcuts.handle_key(press);
@@ -674,14 +703,26 @@ impl Dispatcher {
         if !press.is_modifier() {
             self.open_with.invalidate();
         }
+        if let Some(result) = self.rename_tab(press) {
+            return result;
+        }
         let preferences = &self.type_to_search.preferences;
-        if let Some(size) = preferences.text_size().for_shortcut(press) {
-            // Text-size shortcuts run before the chord consumer. Drop the mark
-            // first, then resize, matching Ctrl+, opening Settings.
+        // Text-size shortcuts and a focused document's zoom reset run before
+        // the chord consumer. Drop the mark first, matching Ctrl+, opening
+        // Settings.
+        if self.preview.reset_pdf_zoom(press) {
             self.shortcuts.cancel_chord();
-            if !self.preview.reset_pdf_zoom(press) {
-                preferences.set_text_size(size);
-            }
+            return Propagation::Stop;
+        }
+        if let Some(size) = preferences.text_size().for_shortcut(press) {
+            self.shortcuts.cancel_chord();
+            self.view.set_text_size(size);
+            return Propagation::Stop;
+        }
+        if let Some(change) = ThumbnailResize::for_shortcut(press)
+            && self.view.resize_icons_thumbnails(change)
+        {
+            self.shortcuts.cancel_chord();
             return Propagation::Stop;
         }
         if let Some(result) = self.input_owner(browser, press) {
@@ -690,19 +731,13 @@ impl Dispatcher {
         if let Some(result) = self.tenxer_keys(browser, press) {
             return result;
         }
-        let focused = gtk::prelude::RootExt::focus(&self.window);
-        let navigated = crate::ui::focus_navigation::navigation_key(
-            press,
-            preferences.type_to_search_active(),
-            focused.as_ref(),
-        );
         let mut event = KeyEvent {
-            press: navigated,
-            focused,
-            vim_navigation: navigated != *press,
+            press: *press,
+            focused: gtk::prelude::RootExt::focus(&self.window),
             header_left_boundary: false,
         };
         self.window_commands(&event)
+            .or_else(|| self.direct_commands(&event))
             .or_else(|| self.default_tab_navigation(&event))
             .or_else(|| self.inline_editing(&event))
             .or_else(|| self.filter_and_location_commands(&event))
@@ -714,7 +749,9 @@ impl Dispatcher {
                 // Search rows own navigation; directory commands must not act on hidden selections.
                 if self.view.selected_search_results().is_some()
                     && !event.text_has_focus()
-                    && !event.press.is(DELETE.ignoring(SHORTCUT_MODIFIERS))
+                    && !event.press.is(MOVE_TO_TRASH
+                        .in_map(Map::Default)
+                        .ignoring(SHORTCUT_MODIFIERS))
                 {
                     if event.press.is_any(&[COPY, CUT, PASTE, SELECT_ALL])
                         && let Some(result) = self.clipboard_command(&event)
@@ -769,6 +806,10 @@ impl Dispatcher {
         if self.native_menu_owns_input() {
             return Some(Propagation::Proceed);
         }
+        if press.is(ESCAPE_ANY) && self.view.cancel_column_drag() {
+            self.shortcuts.cancel_chord();
+            return Some(Propagation::Stop);
+        }
         let mut focused = gtk::prelude::RootExt::focus(&self.window);
         while let Some(widget) = focused {
             if widget.has_css_class("file-operation-card") {
@@ -808,6 +849,9 @@ impl Dispatcher {
     /// Where GTK's accelerators ran: window actions, then a focused text
     /// field's editing keys.
     fn after_yield(&self, press: &KeyPress) -> Propagation {
+        if self.shortcuts.reference_is_open() {
+            return edit_focused_text(&self.window, press);
+        }
         match self.window_action(press) {
             Propagation::Proceed => edit_focused_text(&self.window, press),
             handled => handled,
@@ -817,15 +861,17 @@ impl Dispatcher {
     /// Like a GTK accelerator, an enabled action consumes its key even when the
     /// action's guard then declines to run.
     fn window_action(&self, press: &KeyPress) -> Propagation {
-        let Some((_, name, unbound_in_tenxer)) = WINDOW_ACTIONS
+        let Some((command, name)) = WINDOW_ACTIONS
             .iter()
-            .find(|(binding, _, _)| press.is(*binding))
+            .find(|(command, _)| press.is(*command))
         else {
             return Propagation::Proceed;
         };
-        let bound = !(*unbound_in_tenxer && self.type_to_search.preferences.tenxer_mode());
+        if *command == TERMINAL && self.type_to_search.preferences.tenxer_mode() {
+            return Propagation::Proceed;
+        }
         match self.window.downcast_ref::<gtk::ApplicationWindow>() {
-            Some(window) if bound && window.is_sensitive() && window.is_action_enabled(name) => {
+            Some(window) if window.is_sensitive() && window.is_action_enabled(name) => {
                 gtk::gio::prelude::ActionGroupExt::activate_action(window, name, None);
                 Propagation::Stop
             }
@@ -932,7 +978,9 @@ impl Dispatcher {
             return Some(Propagation::Stop);
         }
         if claims_unbound_command(press)
-            || (self.view.item_view_has_focus() && claims_file_list_typing(press))
+            || (self.view.item_view_has_focus()
+                && claims_file_list_typing(press)
+                && !self.runs_directly(press))
         {
             return Some(Propagation::Stop);
         }
@@ -967,9 +1015,7 @@ impl Dispatcher {
     }
 
     fn tenxer_sidebar(&self, browser: &Browser, press: &KeyPress) -> KeyResult {
-        if press.is_any(&[CONTEXT_MENU, CONTEXT_MENU_F10])
-            && sidebar::open_sidebar_context_menu(&self.sidebar.widget)
-        {
+        if press.is(CONTEXT_MENU) && sidebar::open_sidebar_context_menu(&self.sidebar.widget) {
             self.shortcuts.cancel_chord();
             return Some(Propagation::Stop);
         }
@@ -1016,11 +1062,11 @@ impl Dispatcher {
         if held.contains(Modifiers::SHIFT_MASK) && !press.is(FOCUS_PREVIOUS) {
             return Some(Propagation::Stop);
         }
-        if press.is_any(&[VIM_LEFT, VIM_DOWN]) {
+        if press.is_any(&[LEFT.alternates(), DOWN.alternates()]) {
             self.return_from_header(browser);
-        } else if press.is_any(&[ENTER, SPACE]) {
+        } else if press.is(ENTER) || press.is(SPACE) {
             crate::ui::focus_navigation::activate(self.window.upcast_ref());
-        } else if !press.is(DELETE) {
+        } else if !press.is(MOVE_TO_TRASH.in_map(Map::Default)) {
             return None;
         }
         Some(Propagation::Stop)

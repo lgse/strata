@@ -1,0 +1,21 @@
+{"scenario":"builtin-places-reorder-survive-restart","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"row-before","vars":{"id":"row-before"}},{"id":"row-after","vars":{"id":"row-after"}},{"id":"gap-before","vars":{"id":"gap-before"}},{"id":"gap-after","vars":{"id":"gap-after"}}],"cost":{"columns-row-before":0.7,"columns-row-after":0.7,"columns-gap-before":0.7,"columns-gap-after":0.7},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Dragging built-in places (Trash before/after Home, row and gap targets) reorders them and survives restart; only QA drag of built-in places"}}
+{"expect":{"child_names":{"of":{"parent":{"sidebar":"Home"}},"role":"button","names":{"starts_with":["Home","Trash"]}}},"variants":["row-before"]}
+{"drag":{"from":{"sidebar":"Trash"},"from_at":["50%","50%"],"to":{"sidebar":"Home"},"to_at":["50%","1/5"]},"steps":12,"variants":["row-before"]}
+{"wait":{"child_names":{"of":{"parent":{"sidebar":"Home"}},"role":"button","names":{"starts_with":["Trash","Home"]}}},"message":"the dropped Trash row to precede Home","variants":["row-before"]}
+{"restart":true,"variants":["row-before"]}
+{"expect":{"child_names":{"of":{"parent":{"sidebar":"Home"}},"role":"button","names":{"starts_with":["Trash","Home"]}}},"variants":["row-before"]}
+{"expect":{"child_names":{"of":{"parent":{"sidebar":"Home"}},"role":"button","names":{"starts_with":["Home","Trash"]}}},"variants":["row-after"]}
+{"drag":{"from":{"sidebar":"Home"},"from_at":["50%","50%"],"to":{"sidebar":"Trash"},"to_at":["50%","end-1/5"]},"steps":12,"variants":["row-after"]}
+{"wait":{"child_names":{"of":{"parent":{"sidebar":"Home"}},"role":"button","names":{"starts_with":["Trash","Home"]}}},"message":"the dropped Trash row to precede Home","variants":["row-after"]}
+{"restart":true,"variants":["row-after"]}
+{"expect":{"child_names":{"of":{"parent":{"sidebar":"Home"}},"role":"button","names":{"starts_with":["Trash","Home"]}}},"variants":["row-after"]}
+{"expect":{"child_names":{"of":{"parent":{"sidebar":"Home"}},"role":"button","names":{"starts_with":["Home","Trash"]}}},"variants":["gap-before"]}
+{"drag":{"from":{"sidebar":"Trash"},"from_at":["50%","50%"],"to":{"sidebar":"Home"},"to_at":["50%","start-1"]},"steps":12,"variants":["gap-before"]}
+{"wait":{"child_names":{"of":{"parent":{"sidebar":"Home"}},"role":"button","names":{"starts_with":["Trash","Home"]}}},"message":"the dropped Trash row to precede Home","variants":["gap-before"]}
+{"restart":true,"variants":["gap-before"]}
+{"expect":{"child_names":{"of":{"parent":{"sidebar":"Home"}},"role":"button","names":{"starts_with":["Trash","Home"]}}},"variants":["gap-before"]}
+{"expect":{"child_names":{"of":{"parent":{"sidebar":"Home"}},"role":"button","names":{"starts_with":["Home","Trash"]}}},"variants":["gap-after"]}
+{"drag":{"from":{"sidebar":"Home"},"from_at":["50%","50%"],"to":{"sidebar":"Trash"},"to_at":["50%","end+1"]},"steps":12,"variants":["gap-after"]}
+{"wait":{"child_names":{"of":{"parent":{"sidebar":"Home"}},"role":"button","names":{"starts_with":["Trash","Home"]}}},"message":"the dropped Trash row to precede Home","variants":["gap-after"]}
+{"restart":true,"variants":["gap-after"]}
+{"expect":{"child_names":{"of":{"parent":{"sidebar":"Home"}},"role":"button","names":{"starts_with":["Trash","Home"]}}},"variants":["gap-after"]}

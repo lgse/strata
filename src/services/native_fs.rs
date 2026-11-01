@@ -5,33 +5,53 @@ use std::{
     ffi::{OsStr, OsString},
     fs,
     io::Read,
-    os::unix::ffi::OsStringExt,
+    os::unix::{ffi::OsStringExt, fs::MetadataExt},
     path::Path,
 };
+
+use rustix::fs::FileType;
 
 use crate::model::EntryKind;
 
 const MAX_HIDDEN_FILE_BYTES: u64 = 1024 * 1024;
 
 pub(crate) fn native_kind(file_type: fs::FileType, path: &Path) -> EntryKind {
-    if file_type.is_dir() {
-        return EntryKind::Directory;
+    let file_type = if file_type.is_dir() {
+        FileType::Directory
+    } else if file_type.is_file() {
+        FileType::RegularFile
+    } else if file_type.is_symlink() {
+        FileType::Symlink
+    } else {
+        FileType::Unknown
+    };
+    listed_kind(file_type, path)
+}
+
+pub(crate) fn listed_kind(file_type: FileType, path: &Path) -> EntryKind {
+    match file_type {
+        FileType::Directory => EntryKind::Directory,
+        FileType::RegularFile => EntryKind::File,
+        FileType::Symlink => symlink_kind(path),
+        _ => EntryKind::Other,
     }
-    if file_type.is_file() {
-        return EntryKind::File;
-    }
-    if !file_type.is_symlink() {
-        return EntryKind::Other;
-    }
-    symlink_kind(path)
 }
 
 pub(crate) fn symlink_kind(path: &Path) -> EntryKind {
-    match fs::metadata(path) {
-        Ok(metadata) if metadata.is_dir() => EntryKind::DirectorySymbolicLink,
-        Ok(metadata) if metadata.is_file() => EntryKind::FileSymbolicLink,
-        Ok(_) => EntryKind::Other,
-        Err(_) => EntryKind::SymbolicLink,
+    crate::util::ui_thread::assert_off();
+    link_target_kind(
+        fs::metadata(path)
+            .ok()
+            .map(|metadata| FileType::from_raw_mode(metadata.mode())),
+    )
+}
+
+pub(crate) fn link_target_kind(target: Option<FileType>) -> EntryKind {
+    match target {
+        Some(FileType::Directory) => EntryKind::DirectorySymbolicLink,
+        Some(FileType::RegularFile) => EntryKind::FileSymbolicLink,
+        Some(_) => EntryKind::Other,
+        None => EntryKind::SymbolicLink,
     }
 }
 

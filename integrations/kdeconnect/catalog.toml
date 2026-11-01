@@ -1,0 +1,16 @@
+schema_version = 1
+id = "kdeconnect"
+name = "KDE Connect"
+description = "Send selected files to a paired phone, tablet or computer from the Send to… menu."
+category = "devices"
+maintainer = "HopelessBhai"
+runtime = "python3"
+entry = "provider.py"
+
+[[requirements]]
+command = "kdeconnect-cli"
+packages = { pacman = "kdeconnect", apt = "kdeconnect", dnf = "kde-connect", zypper = "kdeconnect-kde" }
+
+[[requirements]]
+module = "gi"
+packages = { pacman = "python-gobject", apt = "python3-gi", dnf = "python3-gobject", zypper = "python3-gobject" }

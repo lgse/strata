@@ -139,8 +139,7 @@ fn recent_entries_use_the_native_target_and_keep_recency_separate() {
     let entry = recent_entry_from_target(
         &recent,
         "recent:///1".to_owned(),
-        target,
-        target_info("target.txt", 7, 123),
+        entry_from_info(target, target_info("target.txt", 7, 123)),
     )
     .expect("the target should produce an operational entry");
 
@@ -159,8 +158,7 @@ fn recent_entries_keep_non_native_target_uris_clean() {
     let entry = recent_entry_from_target(
         &recent,
         "recent:///2".to_owned(),
-        target,
-        target_info("target.txt", 7, 123),
+        entry_from_info(target, target_info("target.txt", 7, 123)),
     )
     .expect("the target should produce an operational entry");
 
@@ -196,8 +194,7 @@ fn recent_target_redirects_that_return_to_recent_are_not_operational_entries() {
         recent_entry_from_target(
             &recent,
             "recent:///3".to_owned(),
-            target_location,
-            target_info
+            entry_from_info(target_location, target_info)
         )
         .is_none()
     );
@@ -337,10 +334,11 @@ fn browse_activation_navigates_or_requests_mounting_of_the_resolved_share() {
                             BrowserEvent::NavigationRejected {
                                 parent_depth: 0,
                                 error,
+                                ..
                             } => {
                                 !in_place && error == expected
                             }
-                            BrowserEvent::LocationNavigationRejected { error } => {
+                            BrowserEvent::LocationNavigationRejected { error, .. } => {
                                 in_place && error == expected
                             }
                             _ => false,

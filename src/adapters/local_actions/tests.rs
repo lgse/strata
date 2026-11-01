@@ -25,8 +25,21 @@ entrypoint = "main.py"
 mode = "per-item"
 "#;
 
-fn store(directory: &tempfile::TempDir) -> Rc<LocalActionStore> {
+fn store(directory: &tempfile::TempDir) -> std::sync::Arc<LocalActionStore> {
     LocalActionStore::at(directory.path().join("actions"))
+}
+
+fn request(
+    manifest: &str,
+    script: Option<(&str, &str)>,
+) -> Result<ActionWriteRequest, ActionStoreError> {
+    Ok(ActionWriteRequest {
+        definition: crate::model::ActionDefinition::parse(manifest)?,
+        script: script.map(|(file_name, contents)| ActionScript {
+            file_name: file_name.to_owned(),
+            contents: contents.to_owned(),
+        }),
+    })
 }
 
 fn write_action(
@@ -34,14 +47,31 @@ fn write_action(
     manifest: &str,
     script: Option<(&str, &str)>,
 ) -> Result<(), ActionStoreError> {
-    let definition = crate::model::ActionDefinition::parse(manifest)?;
-    store.write(&ActionWriteRequest {
-        definition,
-        script: script.map(|(file_name, contents)| ActionScript {
-            file_name: file_name.to_owned(),
-            contents: contents.to_owned(),
-        }),
-    })
+    store.create(&request(manifest, script)?)
+}
+
+fn edit_action(
+    store: &LocalActionStore,
+    manifest: &str,
+    script: Option<(&str, &str)>,
+) -> Result<(), ActionStoreError> {
+    store.write(&request(manifest, script)?)
+}
+
+fn located(store: &LocalActionStore) -> StoredActions {
+    store.locate(store.load())
+}
+
+fn import(store: &LocalActionStore, source: &Path) -> Result<String, ActionStoreError> {
+    store.import(store.read_import(source)?)
+}
+
+fn export(
+    store: &LocalActionStore,
+    id: &str,
+    destination: &Path,
+) -> Result<std::path::PathBuf, ActionStoreError> {
+    store.export(&store.read(id)?, destination)
 }
 
 fn modes(path: &Path) -> u32 {
@@ -63,8 +93,8 @@ fn writes_and_loads_a_python_action() {
     )
     .expect("action writes");
 
-    let catalog = store.load();
-    assert!(catalog.failures().is_empty(), "{:?}", catalog.failures());
+    let catalog = located(&store);
+    assert!(catalog.failures.is_empty(), "{:?}", catalog.failures);
     let handle = catalog.get("resize-images").expect("action loads");
     assert_eq!(handle.name(), "Resize images");
     assert_eq!(handle.directory, store.root().join("resize-images"));
@@ -79,7 +109,7 @@ fn writes_and_loads_a_python_action() {
         } => {
             assert!(
                 Path::new(interpreter).is_absolute(),
-                "the interpreter is resolved once, at load time"
+                "the interpreter is resolved once, when the actions are read"
             );
             assert!(script.ends_with("resize-images/main.py"));
             assert_eq!(*family, InterpreterFamily::Python);
@@ -140,8 +170,9 @@ fn creating_an_action_never_replaces_an_existing_path() {
     );
     assert_eq!(
         store
-            .read_script("resize-images")
+            .read("resize-images")
             .expect("script")
+            .script
             .expect("Python")
             .contents,
         "print('original')\n"
@@ -166,8 +197,8 @@ fn creating_an_action_never_replaces_an_existing_path() {
 fn a_missing_actions_directory_is_an_empty_catalog() {
     let fixture = tempfile::tempdir().expect("fixture");
     let catalog = store(&fixture).load();
-    assert!(catalog.actions().is_empty());
-    assert!(catalog.failures().is_empty());
+    assert!(catalog.actions.is_empty());
+    assert!(catalog.failures.is_empty());
 }
 
 #[test]
@@ -187,14 +218,14 @@ fn refuses_a_manifest_whose_id_disagrees_with_its_directory() {
     .expect("rename");
 
     let catalog = store.load();
-    assert!(catalog.actions().is_empty());
+    assert!(catalog.actions.is_empty());
     assert!(
         matches!(
-            catalog.failures()[0].error,
+            catalog.failures[0].error,
             ActionStoreError::IdMismatch { .. }
         ),
         "{:?}",
-        catalog.failures()
+        catalog.failures
     );
 }
 
@@ -220,15 +251,15 @@ fn reports_actions_with_problems_instead_of_hiding_them() {
 
     let catalog = store.load();
     let mut failures: Vec<_> = catalog
-        .failures()
+        .failures
         .iter()
         .map(|failure| failure.directory.clone())
         .collect();
     failures.sort();
     assert_eq!(failures, vec!["broken", "empty", "resize-images"]);
-    assert!(catalog.actions().is_empty());
+    assert!(catalog.actions.is_empty());
     let missing = catalog
-        .failures()
+        .failures
         .iter()
         .find(|failure| failure.directory == "resize-images")
         .expect("entrypoint failure");
@@ -238,7 +269,7 @@ fn reports_actions_with_problems_instead_of_hiding_them() {
     ));
     assert!(
         catalog
-            .failures()
+            .failures
             .iter()
             .any(|failure| failure.directory == "empty"
                 && matches!(failure.error, ActionStoreError::NotAnActionDirectory(_))),
@@ -264,11 +295,11 @@ fn refuses_links_and_non_regular_files() {
     let catalog = store.load();
     assert!(
         catalog
-            .failures()
+            .failures
             .iter()
             .any(|failure| failure.directory == "linked-dir"),
         "a symlinked action directory must not load from outside: {:?}",
-        catalog.failures()
+        catalog.failures
     );
 
     let action = store.root().join("resize-images");
@@ -276,7 +307,7 @@ fn refuses_links_and_non_regular_files() {
     symlink("/bin/echo", action.join("main.py")).expect("symlink");
     let error = store
         .load()
-        .failures()
+        .failures
         .iter()
         .find(|failure| failure.directory == "resize-images")
         .map(|failure| failure.error.clone())
@@ -293,7 +324,7 @@ fn refuses_links_and_non_regular_files() {
     assert!(
         store
             .load()
-            .failures()
+            .failures
             .iter()
             .any(|failure| matches!(failure.error, ActionStoreError::NotARegularFile(_))),
     );
@@ -313,8 +344,8 @@ fn reports_an_unavailable_interpreter_without_hiding_the_action() {
     )
     .expect("write accepts a shebang whose interpreter may be absent");
 
-    let catalog = store.load();
-    assert!(catalog.failures().is_empty(), "{:?}", catalog.failures());
+    let catalog = located(&store);
+    assert!(catalog.failures.is_empty(), "{:?}", catalog.failures);
     let handle = catalog.get("resize-images").expect("action loads");
     assert!(!handle.is_available());
     let reason = handle.unavailable_reason().expect("reason");
@@ -353,7 +384,7 @@ fn rejects_a_script_name_that_disagrees_with_the_entrypoint() {
     let store = store(&fixture);
     let definition = crate::model::ActionDefinition::parse(PYTHON_MANIFEST).expect("definition");
     let error = store
-        .write(&ActionWriteRequest {
+        .create(&ActionWriteRequest {
             definition,
             script: Some(ActionScript {
                 file_name: "../escape.py".to_owned(),
@@ -383,7 +414,7 @@ fn metadata_only_edits_keep_the_existing_script_and_get_validated() {
     .expect("action writes");
 
     let renamed = PYTHON_MANIFEST.replace("Resize images", "Resized images");
-    write_action(&store, &renamed, None).expect("metadata-only edit succeeds");
+    edit_action(&store, &renamed, None).expect("metadata-only edit succeeds");
     let handle = store.load();
     assert_eq!(
         handle.get("resize-images").map(|handle| handle.name()),
@@ -395,7 +426,7 @@ fn metadata_only_edits_keep_the_existing_script_and_get_validated() {
     );
 
     fs::remove_file(store.root().join("resize-images/main.py")).expect("remove");
-    let error = write_action(&store, &renamed, None).expect_err("missing script");
+    let error = edit_action(&store, &renamed, None).expect_err("missing script");
     assert!(
         matches!(error, ActionStoreError::MissingEntrypoint(_)),
         "{error:?}"
@@ -428,6 +459,18 @@ fn delete_removes_one_action_and_refuses_the_rest() {
     );
     store.delete("resize-images").expect("action deletes");
     assert!(!store.root().join("resize-images").exists());
+    assert!(matches!(
+        edit_action(
+            &store,
+            PYTHON_MANIFEST,
+            Some(("main.py", "#!/usr/bin/env python3\n"))
+        ),
+        Err(ActionStoreError::NotFound(_))
+    ));
+    assert!(
+        !store.root().join("resize-images").exists(),
+        "a save queued behind a delete never brings the action back"
+    );
 
     let outside = fixture.path().join("outside");
     fs::create_dir_all(&outside).expect("outside");
@@ -452,7 +495,7 @@ fn import_copies_only_the_manifest_and_its_entrypoint_and_disables_it() {
     fs::write(source.join("extra/payload.bin"), "not copied").expect("extra");
     fs::write(source.join("notes.md"), "not copied").expect("notes");
 
-    let id = store.import(&source).expect("import succeeds");
+    let id = import(&store, &source).expect("import succeeds");
     assert_eq!(id, "resize-images");
     let action = store.root().join("resize-images");
     assert!(action.join("action.toml").is_file());
@@ -468,7 +511,7 @@ fn import_copies_only_the_manifest_and_its_entrypoint_and_disables_it() {
         "imported actions stay disabled until reviewed"
     );
 
-    let second = store.import(&source).expect("second import succeeds");
+    let second = import(&store, &source).expect("second import succeeds");
     assert_eq!(
         second, "resize-images-1",
         "a taken id gains a numeric suffix instead of overwriting"
@@ -485,13 +528,13 @@ fn import_copies_only_the_manifest_and_its_entrypoint_and_disables_it() {
     let empty = fixture.path().join("not-an-action");
     fs::create_dir_all(&empty).expect("directory");
     assert!(matches!(
-        store.import(&empty),
+        import(&store, &empty),
         Err(ActionStoreError::NotAnActionDirectory(_))
     ));
 
     let link = fixture.path().join("link");
     symlink(&source, &link).expect("symlink");
-    assert!(store.import(&link).is_err());
+    assert!(import(&store, &link).is_err());
 }
 
 #[test]
@@ -507,9 +550,7 @@ fn export_writes_a_portable_copy_and_refuses_to_overwrite() {
     let destination = fixture.path().join("exported");
     fs::create_dir_all(&destination).expect("destination");
 
-    let target = store
-        .export("resize-images", &destination)
-        .expect("export succeeds");
+    let target = export(&store, "resize-images", &destination).expect("export succeeds");
     assert_eq!(target, destination.join("resize-images"));
     assert!(target.join("action.toml").is_file());
     assert!(target.join("main.py").is_file());
@@ -523,11 +564,11 @@ fn export_writes_a_portable_copy_and_refuses_to_overwrite() {
     assert_eq!(parsed.id, "resize-images");
 
     assert!(matches!(
-        store.export("resize-images", &destination),
+        export(&store, "resize-images", &destination),
         Err(ActionStoreError::AlreadyExists(_))
     ));
     assert!(matches!(
-        store.export("missing", &destination),
+        export(&store, "missing", &destination),
         Err(ActionStoreError::NotFound(_))
     ));
 }
@@ -548,7 +589,7 @@ runtime = "command"
 program = "definitely-not-a-real-program-xyz"
 "#;
     write_action(&store, manifest, None).expect("command action writes");
-    let catalog = store.load();
+    let catalog = located(&store);
     let handle = catalog.get("build").expect("action loads");
     assert!(!handle.is_available());
     assert!(
@@ -576,10 +617,59 @@ runtime = "command"
 program = "tools/run"
 "#;
     write_action(&store, manifest, None).expect("writes");
-    let catalog = store.load();
+    let catalog = located(&store);
     let handle = catalog.get("relative").expect("loads");
     assert!(
         !handle.is_available(),
         "a relative program path is never resolved against the working directory"
     );
+}
+
+#[test]
+fn a_mount_that_stopped_answering_is_not_waited_on() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let store = store(&fixture);
+    write_action(
+        &store,
+        PYTHON_MANIFEST,
+        Some(("main.py", "#!/usr/bin/env python3\n")),
+    )
+    .expect("action writes");
+    let exported = store.read("resize-images").expect("action reads");
+    let mount = fixture.path().join("mount");
+    let program = mount.join("bin/tool");
+    let incoming = mount.join("incoming");
+    fs::create_dir_all(program.parent().expect("bin")).expect("bin");
+    fs::write(&program, "#!/bin/sh\n").expect("program");
+    fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).expect("executable");
+    fs::create_dir_all(&incoming).expect("source");
+    fs::write(incoming.join("action.toml"), PYTHON_MANIFEST).expect("manifest");
+    fs::write(incoming.join("main.py"), "#!/usr/bin/env python3\n").expect("script");
+    let tool = program.to_str().expect("UTF-8 fixture");
+    assert_eq!(resolve_executable(tool), Some(program.clone()));
+
+    let stuck = mount_lanes::admit(&mount, Class::Interactive).expect("admitted");
+    std::thread::sleep(mount_lanes::STALLED_AFTER + std::time::Duration::from_millis(100));
+    assert_eq!(resolve_executable(tool), None, "a program lookup");
+    assert!(
+        matches!(store.read_import(&incoming), Err(ActionStoreError::Io(_))),
+        "an import"
+    );
+    assert!(
+        matches!(
+            store.export(&exported, &mount),
+            Err(ActionStoreError::Io(_))
+        ),
+        "an export"
+    );
+    assert!(!mount.join("resize-images").exists());
+
+    drop(stuck);
+    assert_eq!(
+        resolve_executable(tool),
+        Some(program),
+        "the mount is asked again once nothing waits on it"
+    );
+    assert!(store.read_import(&incoming).is_ok());
+    assert!(store.export(&exported, &mount).is_ok());
 }

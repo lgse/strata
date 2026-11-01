@@ -1,0 +1,13 @@
+schema_version = 1
+id = "localsend"
+name = "LocalSend"
+description = "Open selected files and folders in LocalSend from the Send to… menu to share them with nearby devices."
+category = "devices"
+maintainer = "l0gicgate"
+runtime = "python3"
+entry = "provider.py"
+
+# No official distribution repository packages LocalSend; see README.md.
+[[requirements]]
+command = "localsend"
+alternatives = ["localsend_app"]

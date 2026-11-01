@@ -32,6 +32,7 @@ pub(super) fn theme_editor(manager: Rc<ThemeManager>) -> ThemeEditor {
     panel.append(&editor_header());
     let name = form_entry();
     name.set_placeholder_text(Some(&crate::i18n::tr("Theme name")));
+    crate::ui::accessibility::set_label(&name, &crate::i18n::tr("Theme name"));
     panel.append(&name);
 
     let values = Rc::new(RefCell::new(starter_tokens(&manager)));
@@ -200,6 +201,7 @@ fn color_field_row(
             preview.applied.set(Some(generation));
         }
     });
+    crate::ui::accessibility::set_labelled_by(&picker, &[label.upcast_ref()]);
     field_row.append(&picker);
     field_row.append(&label);
     (field_row, picker)
@@ -235,7 +237,8 @@ fn editor_actions(manager: Rc<ThemeManager>, form: ThemeEditorForm) -> gtk::Box 
     save.connect_clicked(move |_| {
         let mut tokens = values.borrow().clone();
         tokens.name = name.text().trim().to_owned();
-        match manager.save_custom_theme(tokens) {
+        let (preview, error, revealer) = (preview.clone(), error.clone(), revealer.clone());
+        manager.save_custom_theme(tokens, move |saved| match saved {
             Ok(_) => {
                 // Saving selects the theme, which ends the preview.
                 preview.applied.set(None);
@@ -246,7 +249,7 @@ fn editor_actions(manager: Rc<ThemeManager>, form: ThemeEditorForm) -> gtk::Box 
                 error.set_text(&save_error_text(&message));
                 error.set_visible(true);
             }
-        }
+        });
     });
     actions
 }

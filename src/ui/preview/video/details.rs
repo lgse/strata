@@ -7,7 +7,7 @@ use gtk::{gio, glib};
 use crate::{
     model::FileEntry,
     sandbox::{Cancellation, ParseOperation, metadata::MediaMetadata},
-    services::SandboxedMedia,
+    services::{SandboxedMedia, file_activity},
     ui::preview::audio::details::{LOAD_SETTLE, Lru, TrackKey, parse},
 };
 
@@ -30,18 +30,21 @@ pub(super) fn cached_details(key: &TrackKey) -> Option<Rc<VideoDetails>> {
     DETAILS.with_borrow_mut(|cache| cache.get(key))
 }
 
-pub(super) fn sidecar_captions(video: &Path) -> usize {
+pub(super) fn sidecar_captions(video: &Path) -> Option<usize> {
     let (Some(directory), Some(stem)) = (
         video.parent(),
         video.file_stem().and_then(|stem| stem.to_str()),
     ) else {
-        return 0;
+        return Some(0);
     };
-    let Ok(entries) = std::fs::read_dir(directory) else {
-        return 0;
+    let mut entries = match file_activity::list(directory) {
+        Ok(entries) => entries,
+        Err(error) if file_activity::is_refusal(&error) => return None,
+        Err(_) => return Some(0),
     };
     let prefix = format!("{}.", stem.to_ascii_lowercase());
-    entries
+    let count = entries
+        .by_ref()
         .take(SIDECAR_SCAN_LIMIT)
         .filter_map(Result::ok)
         .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
@@ -52,7 +55,8 @@ pub(super) fn sidecar_captions(video: &Path) -> usize {
                     .iter()
                     .any(|extension| name.ends_with(&format!(".{extension}")))
         })
-        .count()
+        .count();
+    (!entries.stopped()).then_some(count)
 }
 
 pub(super) struct DetailsLoad(Cancellation);
@@ -96,7 +100,7 @@ fn load_details_with(
                 .and_then(|json| MediaMetadata::from_json(&json, false).ok())?;
             Some(VideoDetails {
                 metadata,
-                sidecar_captions: original.as_deref().map_or(0, sidecar_captions),
+                sidecar_captions: original.as_deref().map_or(Some(0), sidecar_captions)?,
             })
         })
         .await

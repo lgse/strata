@@ -2,7 +2,7 @@
 
 use super::*;
 
-fn main_context_lock() -> std::sync::MutexGuard<'static, ()> {
+fn main_context_lock() -> crate::test_support::MainContextGuard<'static> {
     crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .expect("main context lock")

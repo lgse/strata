@@ -6,6 +6,35 @@ use std::io::Write;
 fn render(input: &Path, value: &str) -> Result<Vec<u8>, String> {
     let format = ModelFormat::for_name(input.as_os_str()).expect("model format");
     render_reporting(input, &format!("{}:{value}", format.argument()), &|_| {})
+        .map(|result| result.png)
+}
+
+#[test]
+fn camera_views_render_distinct_images_and_reject_unknown_views() {
+    let directory = tempfile::tempdir().expect("fixture directory");
+    let path = directory.path().join("camera.stl");
+    fs::write(&path, "solid sample\nvertex 0 0 0\nvertex 4 0 0\nvertex 0 2 1\nvertex 0 0 0\nvertex 0 2 1\nvertex 1 1 3\nendsolid").expect("STL");
+    let mut images = Vec::new();
+    for view in ["front-left", "front-right", "back-right", "back-left"] {
+        let result = render_reporting(&path, &format!("stl:200x200:00ff00:101010:{view}"), &|_| {})
+            .expect("mesh metadata");
+        assert_eq!(
+            result.mesh,
+            Some(ModelMesh {
+                view: ModelView::from_argument(view).expect("view"),
+                encoding: ModelEncoding::AsciiStl,
+                triangles: 2
+            })
+        );
+        let png = result.png;
+        assert!(Pixmap::decode_png(&png).is_ok());
+        assert!(
+            !images.contains(&png),
+            "camera {view} must change the rendered image"
+        );
+        images.push(png);
+    }
+    assert!(render(&path, "200x200:00ff00:101010:unknown").is_err());
 }
 
 #[test]
@@ -18,7 +47,7 @@ fn model_progress_tracks_parsing_rendering_and_encoding_and_stops_on_failure() {
         stages.borrow_mut().push(stage)
     })
     .expect("model render");
-    assert!(Pixmap::decode_png(&png).is_ok());
+    assert!(Pixmap::decode_png(&png.png).is_ok());
     assert_eq!(
         *stages.borrow(),
         vec![
@@ -45,7 +74,7 @@ fn large_binary_stl_is_accepted_and_over_limit_reports_triangles() {
         bytes[80..84].copy_from_slice(&count.to_le_bytes());
         let result = stl(&bytes);
         if accepted {
-            assert_eq!(result.expect("81 MB STL").len(), count as usize);
+            assert_eq!(result.expect("81 MB STL").0.len(), count as usize);
         } else {
             assert!(
                 result
@@ -80,7 +109,7 @@ fn freecad_thumbnail_needs_no_geometry_reader_and_missing_thumbnail_is_unavailab
                 .expect("thumbnail");
         }
         package.finish().expect("finished package");
-        let result = render(&path, "200x200:00ff00:101010");
+        let result = render(&path, "200x200:00ff00:101010:back-right");
         if include_thumbnail {
             let png = result.expect("FreeCAD thumbnail");
             assert_eq!(
@@ -113,13 +142,18 @@ fn binary_stl_with_solid_header_is_not_misread_as_ascii() {
             bytes[at..at + 4].copy_from_slice(&value.to_le_bytes());
         }
     }
-    assert_eq!(stl(&bytes).expect("binary STL"), vec![points]);
+    assert_eq!(
+        stl(&bytes).expect("binary STL"),
+        (vec![points], ModelEncoding::BinaryStl)
+    );
 }
 
 #[test]
 fn ascii_stl_parses_faces_and_rejects_non_finite_coordinates() {
     let source = b"solid sample\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\nendloop\nendfacet\nendsolid";
-    assert_eq!(stl(source).expect("ASCII STL").len(), 1);
+    let (faces, encoding) = stl(source).expect("ASCII STL");
+    assert_eq!(faces.len(), 1);
+    assert_eq!(encoding, ModelEncoding::AsciiStl);
     assert!(stl(b"solid sample\nvertex 0 0 0\nvertex NaN 0 0\nvertex 0 1 0\nendsolid").is_err());
 }
 
@@ -338,10 +372,46 @@ fn missing_geometry_references_are_rejected() {
 fn overlapping_faces_exhaust_the_raster_budget_without_finishing() {
     let faces = vec![[[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]]; 1000];
     let stages = std::cell::RefCell::new(Vec::new());
-    let error = shade(&faces, 800, 800, [255; 3], [0; 3], &|stage| {
-        stages.borrow_mut().push(stage)
-    })
+    let error = shade(
+        &faces,
+        800,
+        800,
+        [255; 3],
+        [0, 0, 0, 255],
+        ModelView::default(),
+        &|stage| stages.borrow_mut().push(stage),
+    )
     .expect_err("bounded failure");
     assert!(error.contains("rendering limit"));
     assert!(!stages.borrow().contains(&ModelPreviewStage::Finishing));
+}
+
+#[test]
+fn thumbnail_surface_is_transparent_and_truncated_stl_is_rejected() {
+    let directory = tempfile::tempdir().expect("model fixture");
+    let path = directory.path().join("thumbnail.stl");
+    fs::write(
+        &path,
+        "solid sample\nvertex 0 0 0\nvertex 4 0 0\nvertex 0 2 1\nendsolid",
+    )
+    .expect("STL");
+    let transparent = render(&path, "256x256:cccccc:transparent").expect("thumbnail");
+    let transparent = Pixmap::decode_png(&transparent).expect("PNG");
+    assert!(transparent.pixels().iter().any(|pixel| pixel.alpha() == 0));
+    assert!(
+        transparent
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.alpha() == 255)
+    );
+    let opaque = render(&path, "256x256:cccccc:202024").expect("interactive preview");
+    let opaque = Pixmap::decode_png(&opaque).expect("PNG");
+    assert!(opaque.pixels().iter().all(|pixel| pixel.alpha() == 255));
+
+    for count in [2u32, (MAX_MODEL_TRIANGLES as u32) + 1] {
+        let mut truncated = [0; 84];
+        truncated[80..84].copy_from_slice(&count.to_le_bytes());
+        fs::write(&path, truncated).expect("truncated binary STL header");
+        assert!(render(&path, "256x256:cccccc:transparent").is_err());
+    }
 }

@@ -1,0 +1,20 @@
+{"scenario":"alt-up-and-history","modes":["columns","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.9,"list":1.0},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"alt+Up to parent and alt+Left/alt+Right history round trip with selection and focus; alt+Right forward and columns closed-child check unique in QA, alt+Up partly overlaps return-restores-nested-scroll"}}
+{"select":{"entry":"documents"},"modes":["columns"]}
+{"click":{"entry":"documents"},"count":2,"modes":["list"]}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"key":"alt+Up"}
+{"wait":{"directory":"$root"},"message":"the browser to be working in '$root'"}
+{"settle":{"pane":"$root"}}
+{"wait":{"selected":["documents"],"dir":"$root"},"message":"the selection to become ['documents']"}
+{"wait":{"focused":"documents"},"message":"keyboard focus to reach 'documents'"}
+{"expect":{"panes":{"excludes":["documents"]}},"message":"the child column stays closed","modes":["columns"]}
+{"key":"alt+Left"}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"key":"alt+Right"}
+{"wait":{"directory":"$root"},"message":"the browser to be working in '$root'"}
+{"settle":{"pane":"$root"}}
+{"wait":{"selected":["documents"],"dir":"$root"},"message":"the selection to become ['documents']"}
+{"wait":{"focused":"documents"},"message":"keyboard focus to reach 'documents'"}
+{"expect":{"panes":{"excludes":["documents"]}},"message":"the child column stays closed","modes":["columns"]}

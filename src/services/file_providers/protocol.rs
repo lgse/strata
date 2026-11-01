@@ -84,6 +84,18 @@ pub(crate) struct Decoration {
     pub priority: u8,
 }
 
+/// Where a root action is shown; values from newer revisions use the section.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum Placement {
+    /// A destination inside the provider's Send to… submenu.
+    SendTo,
+    /// The provider's only Send to… item, shown in place of its submenu.
+    SendToEntry,
+    #[serde(other)]
+    Unrecognized,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub(crate) struct MenuAction {
     pub id: String,
@@ -91,6 +103,16 @@ pub(crate) struct MenuAction {
     pub icon: Option<String>,
     pub context: Option<String>,
     pub children: Option<Vec<MenuAction>>,
+    pub placement: Option<Placement>,
+}
+
+impl MenuAction {
+    pub(crate) fn sends_to(&self) -> bool {
+        matches!(
+            self.placement,
+            Some(Placement::SendTo | Placement::SendToEntry)
+        )
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]

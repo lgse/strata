@@ -1,0 +1,12 @@
+diff --git a/src/ui/browser/events.rs b/src/ui/browser/events.rs
+index 8ae665f2..c1a507af 100644
+--- a/src/ui/browser/events.rs
++++ b/src/ui/browser/events.rs
+@@ -704,6 +704,7 @@ impl ViewState {
+                         false,
+                     );
+                 }
++                #[cfg(any())]
+                 show_error_dialog(
+                     &self.overlay,
+                     &crate::i18n::tr("Unable to rename item"),

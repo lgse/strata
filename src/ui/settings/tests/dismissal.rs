@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
+    cell::Cell,
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -61,7 +62,8 @@ fn editor_revealer(layer: &gtk::Widget) -> gtk::Revealer {
 }
 
 fn settles(condition: impl Fn() -> bool) -> bool {
-    let deadline = Instant::now() + Duration::from_secs(3);
+    // Generous for CI: runners can stall for seconds under parallel load.
+    let deadline = Instant::now() + Duration::from_secs(10);
     while !condition() {
         if Instant::now() >= deadline {
             return false;
@@ -100,6 +102,14 @@ fn close(route: Close, layer: &gtk::Box, window: &gtk::Window) {
             assert!(handled, "Settings handles Escape");
         }
         Close::Backdrop => {
+            let painted = Rc::new(Cell::new(false));
+            let ready = painted.clone();
+            let clock = layer.frame_clock().expect("Settings frame clock");
+            let handler = clock.connect_after_paint(move |_| ready.set(true));
+            layer.queue_draw();
+            let ready = settles(|| painted.get());
+            clock.disconnect(handler);
+            assert!(ready, "Settings must render before a pointer dismissal");
             let controllers = layer.observe_controllers();
             let click = (0..controllers.n_items())
                 .filter_map(|index| controllers.item(index).and_downcast::<gtk::GestureClick>())
@@ -153,6 +163,7 @@ fn closing_settings_cancels_the_theme_preview_and_collapses_the_editor() {
                     PreferenceManager::shared(),
                     Rc::new(|_| {}),
                     super::super::install_guard(),
+                    Rc::new(|_| {}),
                 );
                 overlay.add_overlay(&layer);
                 let window = gtk::Window::builder()

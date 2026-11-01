@@ -1,0 +1,12 @@
+{"scenario":"trashing-open-folder-opens-next","modes":["columns"],"prefs":{"browser_mode":"columns","list_folder_clicks":1},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.9},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Context-menu Move to Trash on an open column folder opens the next sibling (#1497); unique pointer route, delete-to-trash is keyboard file-only"}}
+{"fs":{"path":".","populate":{"aa-first":{"a.txt":"a\n"},"aa-second":{"b.txt":"b\n"}}}}
+{"click":{"entry":"aa-first"}}
+{"wait":{"panes":{"ends_with":["aa-first"]}},"message":"the clicked folder to open"}
+{"click":{"entry":"aa-first","dir":"$root"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'aa-first'"}
+{"wait":{"present":{"menu_item":"Move to Trash"}},"message":"the menu item 'Move to Trash'"}
+{"settle":{"menu_item":"Move to Trash"}}
+{"click":{"menu_item":"Move to Trash"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"fs":{"path":"aa-first","exists":false},"message":"the folder to move to the Trash"}
+{"wait":{"panes":{"ends_with":["aa-second"]}},"message":"the folder now in its place to open"}

@@ -1,0 +1,17 @@
+{"scenario":"invalid-archive-name-keeps-dialog","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.9},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Invalid archive name typed in Compress dialog keeps it open with no archive; provider escape rejection is unit-tested, dialog Return route only here"}}
+{"click":{"entry":"readme.md"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'readme.md'"}
+{"wait":{"present":{"menu_item":"Compress…"}},"message":"the menu item 'Compress…'"}
+{"settle":{"menu_item":"Compress…"}}
+{"click":{"menu_item":"Compress…"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"key":"ctrl+a"}
+{"type":"../escape"}
+{"wait":{"field":{"of":"field","text":"../escape"}},"message":"'../escape' to reach the name field"}
+{"key":"Return"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"expect":{"dialog":"Compress 1 item"},"message":"an invalid name must keep the dialog open"}
+{"fs":{"path":"escape.zip","exists":false},"timeout_ms":0,"message":"an invalid name must not produce an archive"}
+{"key":"Escape"}

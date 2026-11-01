@@ -11,14 +11,14 @@ use crate::{
     services::CrossVolumeDropStrategy,
     ui::{
         browser_modes::{BrowserMode, ClickActivation, ClickCount},
-        controls::{menu_option, segmented_control},
+        controls::{menu_option, number_stepper, segmented_control},
         preferences::PreferenceManager,
     },
 };
 
 use super::{
     ResponsiveActivationRow, append_heading,
-    bindings::{bind_choice, bind_switch, show_choice_value},
+    bindings::{bind_choice, bind_number, bind_switch, show_choice_value},
     page_content, scrollable_page, settings_option,
 };
 
@@ -28,6 +28,12 @@ pub(super) fn general_page(
     let preferences = page_content();
 
     append_language_option(&preferences, &manager);
+    let units = super::unit_system_control(&manager);
+    preferences.append(&super::control_row(
+        "Units",
+        "For things like distances, heights and volumes.",
+        &units,
+    ));
     append_browsing_options(&preferences, &manager);
     append_sidebar_options(&preferences, &manager);
 
@@ -57,7 +63,16 @@ pub(super) fn general_page(
     append_date_format_option(&date_time, &manager);
 
     let performance = super::settings_group(&preferences, "PERFORMANCE");
-    append_auto_refresh_option(&performance, &manager);
+    append_preference_switch(
+        &performance,
+        &manager,
+        PreferenceSwitch {
+            title: "Watch network folders",
+            description: "Check open folders on network shares every few seconds for changes made on other computers. When off, those changes show only after a refresh.",
+            read: PreferenceManager::watch_network_folders,
+            write: PreferenceManager::set_watch_network_folders,
+        },
+    );
     append_thumbnail_workers_option(&performance, &manager);
     append_video_preview_option(&performance, &manager);
 
@@ -242,55 +257,25 @@ fn date_format_label(format: crate::util::DateFormat) -> &'static str {
 }
 
 fn append_thumbnail_workers_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
-    let (control, [decrease, reset, increase]) = crate::ui::controls::stepper(
-        [
-            "Decrease thumbnail workers",
-            "Reset thumbnail workers",
-            "Increase thumbnail workers",
-        ]
-        .map(crate::i18n::tr),
-    );
-    for (button, increase) in [(decrease, false), (increase, true)] {
-        manager.bind_preference(
-            &button,
-            PreferenceManager::thumbnail_workers,
-            move |widget, workers| {
-                widget.set_sensitive(if increase {
-                    workers < crate::sandbox::browser::MAX_WORKERS
-                } else {
-                    workers > 1
-                });
-            },
-        );
-        let manager = manager.clone();
-        button.connect_clicked(move |_| {
-            let workers = manager.thumbnail_workers();
-            manager.set_thumbnail_workers(if increase {
-                workers.saturating_add(1)
-            } else {
-                workers.saturating_sub(1)
-            });
-        });
-    }
-    manager.bind_preference(
-        &reset,
-        PreferenceManager::thumbnail_workers,
-        |widget, workers| {
-            widget
-                .downcast_ref::<gtk::Button>()
-                .expect("worker count")
-                .set_label(&workers.to_string());
-        },
-    );
-    let manager = manager.clone();
-    reset.connect_clicked(move |_| {
-        manager.set_thumbnail_workers(crate::sandbox::browser::default_worker_limit())
-    });
-    content.append(&super::control_row(
-        "Thumbnail workers",
-        "Parallel thumbnail decoders across all windows. More workers use more CPU and memory. Click the number to reset to the recommended default.",
+    let control = number_stepper(1, crate::sandbox::browser::MAX_WORKERS as u32, 1);
+    crate::ui::accessibility::set_label(&control, &crate::i18n::tr("Thumbnail workers"));
+    bind_number(
+        manager,
         &control,
-    ));
+        |manager| manager.thumbnail_workers() as f64,
+        |manager, value| manager.set_thumbnail_workers(value as usize),
+    );
+    control.set_halign(gtk::Align::Start);
+    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    controls.set_valign(gtk::Align::Center);
+    controls.append(&control);
+    let row = super::control_row(
+        "Thumbnail workers",
+        "Parallel thumbnail decoders across all windows. More workers use more CPU and memory.",
+        &controls,
+    );
+    row.add_css_class("settings-text-size-row");
+    content.append(&row);
 }
 
 #[derive(Clone, Copy)]
@@ -553,10 +538,11 @@ fn bind_tenxer_unused_subtitle(
         return;
     };
     let unused = crate::ui::tenxer_mode::UNUSED_SUBTITLE;
+    // Bound after the row's own rendering, so it has the last word.
     manager.bind_preference(
         &description,
-        PreferenceManager::tenxer_mode,
-        move |widget, enabled| {
+        PreferenceManager::shown_keys,
+        move |widget, (enabled, ..)| {
             if let Some(label) = widget.downcast_ref::<gtk::Label>() {
                 label.set_text(&super::translated(if enabled { unused } else { normal }));
                 label.set_visible(true);
@@ -758,10 +744,11 @@ fn append_sidebar_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
         label.add_css_class("settings-word-wrap");
         content.append(&label);
         button.set_child(Some(&content));
-        button.update_property(&[
-            gtk::accessible::Property::Label(&crate::i18n::tr(switch.title)),
-            gtk::accessible::Property::Description(&crate::i18n::tr(switch.description)),
-        ]);
+        crate::ui::accessibility::set_own_label(&button, &crate::i18n::tr(switch.title));
+        crate::ui::accessibility::set_description(
+            &button,
+            Some(&crate::i18n::tr(switch.description)),
+        );
         super::bindings::bind_toggle(manager, &button, switch.read, switch.write);
         chips.append(&button);
     }
@@ -801,17 +788,6 @@ pub(super) fn cross_volume_drop_strategy_label(strategy: CrossVolumeDropStrategy
         CrossVolumeDropStrategy::Move => "Always move",
         CrossVolumeDropStrategy::Ask => "Always ask",
     }
-}
-
-fn append_auto_refresh_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
-    let control = super::bindings::choice_menu(
-        manager,
-        "Auto-refresh folder",
-        &crate::ui::preferences::AUTO_REFRESH_CHOICES,
-        PreferenceManager::auto_refresh_interval,
-        PreferenceManager::set_auto_refresh_interval,
-    );
-    content.append(&super::control_row("Auto-refresh folder", "Reload the current folder on a timer. Useful for network shares where file monitors miss changes.", &control));
 }
 
 fn append_video_preview_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) -> gtk::Box {
@@ -964,11 +940,10 @@ fn click_activation_option(
         control.add_css_class("click-activation-control");
         // Include the view and item kind so assistive tools distinguish all twelve choices.
         for button in buttons {
-            button.update_relation(&[gtk::accessible::Relation::LabelledBy(&[
-                title.upcast_ref(),
-                label.upcast_ref(),
-                button.upcast_ref(),
-            ])]);
+            crate::ui::accessibility::set_labelled_by(
+                button,
+                &[title.upcast_ref(), label.upcast_ref(), button.upcast_ref()],
+            );
         }
         label.add_css_class("activation-inline-label");
         label.set_visible(false);

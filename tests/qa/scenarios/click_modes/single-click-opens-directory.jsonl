@@ -1,0 +1,5 @@
+{"scenario":"single-click-opens-directory","modes":["columns","icons","list"],"prefs":{"list_folder_clicks":1,"list_file_clicks":1,"grid_folder_clicks":1,"grid_file_clicks":1,"explorer_folder_clicks":1,"explorer_file_clicks":1},"layout":"us","mutation":"click-modes","known_bug":null,"cost":{"columns":0.4,"icons":0.5,"list":0.5},"quality":{"impact":4,"coverage":2,"criticality":3,"diagnostic":4,"score":16,"note":"Single click opens a folder in all modes; -group superset repeats it after a multi-select, unit test covers action logic"}}
+{"click":{"entry":"documents","dir":"$root"}}
+{"wait":{"pane":"documents"},"message":"one click to open the directory in single-click mode"}
+{"wait":{"entry":"notes.txt"},"message":"the entry 'notes.txt' to appear"}
+{"wait":{"selected":[],"dir":"documents"},"message":"the selection to become []"}

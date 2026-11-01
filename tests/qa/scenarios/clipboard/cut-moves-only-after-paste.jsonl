@@ -1,0 +1,12 @@
+{"scenario":"cut-moves-only-after-paste","modes":["columns","icons","list"],"layout":"us","mutation":"cut","known_bug":null,"cost":{"columns":0.8,"icons":0.9,"list":0.9},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":4,"score":33,"note":"Ctrl+X then Ctrl+V moves file only at paste; context-menu-cut-and-paste covers menu route, not keyboard cut"}}
+{"select":{"entry":"todo.txt"}}
+{"key":"ctrl+x"}
+{"fs":{"path":"todo.txt","exists":true},"timeout_ms":0,"message":"cut must not touch the filesystem before the paste"}
+{"select":{"entry":"archive"},"modes":["columns"]}
+{"click":{"entry":"archive"},"count":2,"modes":["icons","list"]}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
+{"settle":{"pane":"archive"}}
+{"move":{"pane":"archive"}}
+{"key":"ctrl+v"}
+{"fs":{"path":"archive/todo.txt","exists":true},"message":"the cut file to arrive in archive"}
+{"fs":{"path":"todo.txt","exists":false},"message":"the cut file to leave its source directory"}

@@ -5,7 +5,8 @@ mod tests;
 
 use std::{
     fs,
-    io::{Read, Write},
+    io::{self, Read, Write},
+    os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -26,6 +27,23 @@ const CHUNK: usize = 64 * 1024;
 const PROGRESS_STRIDE: u64 = 256 * 1024;
 
 pub(crate) const DOWNLOAD_PREFIX: &str = "strata-download-";
+
+// The shared temp directory is listable by every local user, and tempfile and
+// `File::create` follow the umask (typically 0755/0644).
+pub(crate) fn private_download_dir() -> io::Result<tempfile::TempDir> {
+    tempfile::Builder::new()
+        .prefix(DOWNLOAD_PREFIX)
+        .permissions(fs::Permissions::from_mode(0o700))
+        .tempdir()
+}
+
+pub(crate) fn create_private_file(path: &Path) -> io::Result<fs::File> {
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)
+}
 
 #[derive(Debug)]
 pub(crate) enum RemoteDownload {
@@ -113,18 +131,15 @@ fn fetch(
         .get("content-length")
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.parse::<u64>().ok());
-    let directory = tempfile::Builder::new()
-        .prefix(DOWNLOAD_PREFIX)
-        .tempdir()
-        .map_err(|error| {
-            rust_i18n::t!(
-                "Could not create a temporary folder: %{error}",
-                error = io_error_detail(&error)
-            )
-            .into_owned()
-        })?;
+    let directory = private_download_dir().map_err(|error| {
+        rust_i18n::t!(
+            "Could not create a temporary folder: %{error}",
+            error = io_error_detail(&error)
+        )
+        .into_owned()
+    })?;
     let path = directory.path().join(&name);
-    let mut file = fs::File::create(&path).map_err(|error| write_failed(&error))?;
+    let mut file = create_private_file(&path).map_err(|error| write_failed(&error))?;
     let mut reader = response.body_mut().as_reader();
     let mut buffer = [0_u8; CHUNK];
     let mut downloaded = 0_u64;

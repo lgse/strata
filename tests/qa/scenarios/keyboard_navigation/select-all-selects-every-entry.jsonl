@@ -1,0 +1,4 @@
+{"scenario":"select-all-selects-every-entry","modes":["columns","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.4,"list":0.4},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"Ctrl+A selects all entries in columns and list; select_all logic unit-tested in src/app/browser/tests/selection.rs, other QA scenarios press Ctrl+A mostly as setup"}}
+{"select":{"entry":"readme.md"}}
+{"key":"ctrl+a"}
+{"wait":{"selected":["archive","documents","pictures","readme.md","todo.txt"]},"message":"Ctrl+A to select every entry in the pane"}

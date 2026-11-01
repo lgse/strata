@@ -18,7 +18,9 @@ use crate::{
     services::{
         ArchivePreviewTree, DocumentLayout, LoadHandle, MediaPreviewSize, PdfTextLayer, Preview,
         PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId,
-        SecretString, normalize_preview_text,
+        SecretString,
+        file_activity::{self, Notice},
+        normalize_preview_text,
     },
 };
 
@@ -26,25 +28,26 @@ use super::keys::{
     self, KeyPress,
     bindings::{
         COPY, MEDIA_MUTE, MEDIA_NEXT, MEDIA_PLAY_PAUSE, MEDIA_PREVIOUS, MEDIA_SEEK_BACK,
-        MEDIA_SEEK_FORWARD, MEDIA_VOLUME_DOWN, MEDIA_VOLUME_UP, PEEK, SELECT_ALL, SPACE,
+        MEDIA_SEEK_FORWARD, MEDIA_VOLUME_DOWN, MEDIA_VOLUME_UP, PREVIEW, SELECT_ALL,
     },
 };
-use super::{
-    blur::BlurBin, browser::format_file_size, controls::form_password_entry,
-    controls::modal_layout, modal::close_on_escape,
-};
+use super::{browser::format_file_size, controls::form_password_entry};
 
 mod archive;
 pub(super) mod audio;
+mod components;
 mod ease_in;
 mod find;
 mod keyboard;
 mod layout;
 pub(in crate::ui) use layout::{separator, separator_width};
 pub(in crate::ui) mod media_layout;
+mod model;
 #[cfg(test)]
 mod pdf_ranges_tests;
 mod pdf_text;
+mod player_layout;
+mod route;
 mod session;
 pub(super) mod video;
 mod waveform;
@@ -57,7 +60,6 @@ const SOURCE_INSERT_CHUNK_BYTES: usize = 4 * 1024;
 const SOURCE_INSERT_CHUNK_LINES: usize = 64;
 pub(crate) const FOCUS_PREVIEW_DELAY: Duration = Duration::from_millis(75);
 const PREVIEW_SPINNER_DELAY: Duration = Duration::from_millis(120);
-const PRINT_TEXT_BYTE_LIMIT: usize = 16 * 1024 * 1024;
 const TRANSITION: Duration = Duration::from_millis(260);
 const PDF_PAGE_GAP: i32 = 6;
 const HANDOFF_MARGIN_US: u64 = 1_000_000;
@@ -91,7 +93,9 @@ pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
     if !matches!(entry.kind, EntryKind::File | EntryKind::FileSymbolicLink) {
         return false;
     }
-    if crate::services::is_model(&entry.native_name) {
+    if crate::services::is_model(entry)
+        || crate::services::route_preview::RouteFormat::for_name(&entry.native_name).is_some()
+    {
         return entry.location.native_path().is_some();
     }
     if crate::sandbox::CoverFormat::for_name(&entry.native_name).is_some() {
@@ -100,10 +104,10 @@ pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
 
     let native_path = entry.location.native_path();
     let (content_type, uncertain) =
-        gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
+        crate::services::guess_content_type(Path::new(&entry.native_name));
     let content = crate::services::content_family(&content_type);
     if crate::services::table::is_workbook(&content_type, &entry.native_name)
-        || crate::services::docx::is_document(&content_type, &entry.native_name)
+        || crate::sandbox::DocumentFormat::for_file(&content_type, &entry.native_name).is_some()
     {
         return native_path.is_some();
     }
@@ -125,14 +129,6 @@ pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
         || gio::content_type_is_a(&content_type, "text/plain")
         || crate::services::has_plain_text_extension(&entry.native_name)
         || crate::services::is_extensionless_dotfile(&entry.native_name)
-}
-
-struct PrintProgress {
-    layer: gtk::Box,
-    overlay: gtk::Overlay,
-    blurred_root: Option<BlurBin>,
-    status: gtk::Label,
-    progress: gtk::ProgressBar,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -194,7 +190,7 @@ struct PreviewState {
     raw_details_scroll: gtk::ScrolledWindow,
     raw_metadata_load: RefCell<Option<super::raw_details::MetadataLoad>>,
     open: gtk::Button,
-    print: gtk::Button,
+    allow_external_open: bool,
     wrap: gtk::ToggleButton,
     text_view: RefCell<Option<sourceview5::View>>,
     text_scroll: RefCell<Option<gtk::ScrolledWindow>>,
@@ -206,6 +202,10 @@ struct PreviewState {
     media_toggle_mute: RefCell<Option<Rc<dyn Fn()>>>,
     audio: RefCell<Option<AudioPreview>>,
     video: RefCell<Option<VideoPreview>>,
+    model: RefCell<Option<model::ModelPreview>>,
+    route: RefCell<Option<Rc<route::RoutePlayer>>>,
+    model_spinner: gtk::Spinner,
+    model_view: Cell<crate::services::ModelView>,
     handed_off: RefCell<Option<crate::model::Location>>,
     continue_playback: RefCell<Option<PlaybackContinuation>>,
     split: RefCell<Option<gtk::Paned>>,
@@ -215,11 +215,7 @@ struct PreviewState {
     pending_show: RefCell<Option<glib::SourceId>>,
     load: RefCell<Option<LoadHandle>>,
     loading_delay: RefCell<Option<glib::SourceId>>,
-    loading_label: RefCell<Option<gtk::Label>>,
     pdf_loads: Rc<RefCell<HashMap<i32, LoadHandle>>>,
-    print_load: RefCell<Option<LoadHandle>>,
-    print_progress: RefCell<Option<PrintProgress>>,
-    print_request: Cell<Option<PreviewRequestId>>,
     current_request: Cell<Option<PreviewRequestId>>,
     next_request: Cell<u64>,
     // Only explicit opens claim keyboard focus; implicit preview updates must not steal it.
@@ -232,6 +228,8 @@ struct PreviewState {
     animation_generation: Rc<Cell<u64>>,
     keyboard_view: RefCell<Option<super::browser::WeakBrowserView>>,
     claim_on_resume: Cell<bool>,
+    released_from: Cell<Option<Option<usize>>>,
+    operations: RefCell<Option<file_activity::Subscription>>,
 }
 
 use keyboard::MediaSeek;
@@ -242,7 +240,7 @@ pub(in crate::ui) use keyboard::{
 #[cfg(test)]
 mod tests;
 
-pub(super) const PREVIEW_LABEL: &str = "Preview";
+pub(crate) const PREVIEW_LABEL: &str = "Preview";
 
 #[derive(Clone)]
 pub struct PreviewDrawer {
@@ -270,11 +268,18 @@ impl PreviewDrawer {
             .tooltip_text(crate::i18n::tr("Open in default application"))
             .valign(gtk::Align::Center)
             .build();
+        super::accessibility::set_label(&open, &crate::i18n::tr("Open in default application"));
         open.set_child(Some(&crate::assets::chrome_icon(
             crate::assets::icons::EXTERNAL_LINK,
         )));
         open.add_css_class("preview-header-action");
         open.set_visible(allow_external_open);
+        let model_spinner = gtk::Spinner::builder()
+            .valign(gtk::Align::Center)
+            .visible(false)
+            .build();
+        model_spinner.add_css_class("preview-spinner");
+        model_spinner.add_css_class("preview-header-spinner");
         let document_view_icon = crate::assets::primary_icon(crate::assets::icons::FILE_CODE, 16);
         let document_view_button = gtk::Button::builder()
             .tooltip_text(crate::i18n::tr("View source"))
@@ -283,22 +288,12 @@ impl PreviewDrawer {
             .build();
         document_view_button.set_child(Some(&document_view_icon));
         document_view_button.add_css_class("preview-header-action");
-        document_view_button.update_property(&[gtk::accessible::Property::Label(
-            &crate::i18n::tr("View source"),
-        )]);
-        let print = gtk::Button::builder()
-            .tooltip_text(crate::i18n::tr("Print"))
-            .valign(gtk::Align::Center)
-            .build();
-        print.set_child(Some(&crate::assets::chrome_icon(
-            crate::assets::icons::PRINTER,
-        )));
-        print.add_css_class("preview-header-action");
-        print.set_visible(false);
+        super::accessibility::set_label(&document_view_button, &crate::i18n::tr("View source"));
         let wrap = gtk::ToggleButton::builder()
             .tooltip_text(crate::i18n::tr("Toggle word wrap"))
             .valign(gtk::Align::Center)
             .build();
+        super::accessibility::set_label(&wrap, &crate::i18n::tr("Toggle word wrap"));
         wrap.set_child(Some(&crate::assets::chrome_icon(
             crate::assets::icons::WRAP_TEXT,
         )));
@@ -307,12 +302,14 @@ impl PreviewDrawer {
         let close = gtk::Button::builder().valign(gtk::Align::Center).build();
         super::preferences::PreferenceManager::shared().bind_preference(
             &close,
-            super::preferences::PreferenceManager::tenxer_mode,
-            |close, tenxer| {
-                close.set_tooltip_text(Some(&crate::ui::shortcut_reference::with_keys(
+            super::preferences::PreferenceManager::shown_keys,
+            |close, _| {
+                let label = crate::ui::shortcut_reference::with_keys(
                     "Close preview (%{keys})",
-                    keys::Keys::One(if tenxer { PEEK } else { SPACE }),
-                )));
+                    keys::Keys::One(PREVIEW.shown()),
+                );
+                close.set_tooltip_text(Some(&label));
+                super::accessibility::set_label(close, &label);
             },
         );
         close.set_child(Some(&crate::assets::chrome_icon(
@@ -348,8 +345,8 @@ impl PreviewDrawer {
         find_button.set_visible(false);
         header.append(&document_view_button);
         header.append(&find_button);
+        header.append(&model_spinner);
         header.append(&open);
-        header.append(&print);
         header.append(&wrap);
         header.append(&close);
         pane.append(&header);
@@ -428,7 +425,7 @@ impl PreviewDrawer {
             raw_details_scroll,
             raw_metadata_load: RefCell::new(None),
             open: open.clone(),
-            print: print.clone(),
+            allow_external_open,
             wrap: wrap.clone(),
             text_view: RefCell::new(None),
             text_scroll: RefCell::new(None),
@@ -445,11 +442,7 @@ impl PreviewDrawer {
             pending_show: RefCell::new(None),
             load: RefCell::new(None),
             loading_delay: RefCell::new(None),
-            loading_label: RefCell::new(None),
             pdf_loads: Rc::new(RefCell::new(HashMap::new())),
-            print_load: RefCell::new(None),
-            print_progress: RefCell::new(None),
-            print_request: Cell::new(None),
             current_request: Cell::new(None),
             next_request: Cell::new(1),
             focus_archive_on_ready: Cell::new(false),
@@ -465,9 +458,15 @@ impl PreviewDrawer {
             keyboard_view: RefCell::new(None),
             audio: RefCell::new(None),
             video: RefCell::new(None),
+            model: RefCell::new(None),
+            route: RefCell::new(None),
+            model_spinner,
+            model_view: Cell::default(),
             handed_off: RefCell::new(None),
             continue_playback: RefCell::new(None),
             claim_on_resume: Cell::new(false),
+            released_from: Cell::new(None),
+            operations: RefCell::new(None),
         });
         let weak = Rc::downgrade(&state);
         state.enabled_action.connect_activate(move |_, _| {
@@ -510,15 +509,6 @@ impl PreviewDrawer {
                 state.stop();
             }
         });
-        let weak = Rc::downgrade(&state);
-        print.connect_clicked(move |_| {
-            if let Some(state) = weak.upgrade() {
-                if let Some(stream) = state.media.borrow().as_ref() {
-                    stream.set_playing(false);
-                }
-                state.print();
-            }
-        });
         let preferences = super::preferences::PreferenceManager::shared();
         let weak = Rc::downgrade(&state);
         preferences.bind_preference(
@@ -546,11 +536,18 @@ impl PreviewDrawer {
                 };
                 let entry = state.current.borrow().clone();
                 if let Some(entry) = entry
-                    && crate::services::is_model(&entry.native_name)
-                    && state.revealer.reveals_child()
+                    && (crate::services::is_model(&entry)
+                        || crate::services::route_preview::RouteFormat::for_name(
+                            &entry.native_name,
+                        )
+                        .is_some())
                     && state.current_request.get().is_some()
                 {
-                    state.load(entry, 0);
+                    if state.sizing.is_suspended() {
+                        state.sizing.defer_load();
+                    } else if state.revealer.reveals_child() {
+                        state.load(entry, 0);
+                    }
                 }
             },
         );
@@ -597,7 +594,57 @@ impl PreviewDrawer {
         self.state.media.borrow().clone()
     }
 
+    pub(in crate::ui) fn follow_operations(&self, browser: &Rc<Browser>) {
+        let weak_state = Rc::downgrade(&self.state);
+        let weak_browser = Rc::downgrade(browser);
+        let subscription = file_activity::observe(move |notice| {
+            let Some(state) = weak_state.upgrade() else {
+                return;
+            };
+            match notice {
+                Notice::Releasing(_) => {
+                    let changing = state.current.borrow().as_ref().is_some_and(|entry| {
+                        entry
+                            .local_thumbnail_path()
+                            .is_some_and(|path| notice.covers(path))
+                    });
+                    if changing {
+                        let depth = state.current_depth.get();
+                        state.clear_target();
+                        state.released_from.set(Some(depth));
+                    }
+                }
+                Notice::Lifted(_) => {
+                    let Some(depth) = state.released_from.get() else {
+                        return;
+                    };
+                    let Some(browser) = weak_browser.upgrade() else {
+                        return;
+                    };
+                    let depth = depth.or_else(|| browser.active_depth());
+                    let entry = depth
+                        .and_then(|depth| browser.cursor_entry(depth))
+                        .and_then(|entry| preview_target(Some(entry)));
+                    if entry
+                        .as_ref()
+                        .and_then(FileEntry::local_thumbnail_path)
+                        .is_some_and(file_activity::is_changing)
+                    {
+                        return;
+                    }
+                    state.released_from.set(None);
+                    if let Some(entry) = entry.filter(|_| state.is_enabled()) {
+                        state.show_after_focus_change(entry, depth);
+                    }
+                }
+                Notice::Ended(_) => {}
+            }
+        });
+        self.state.operations.replace(Some(subscription));
+    }
+
     pub fn observe_browser(&self, browser: &Rc<Browser>) {
+        self.follow_operations(browser);
         let weak_state = Rc::downgrade(&self.state);
         let weak_browser = Rc::downgrade(browser);
         self.state.open.connect_clicked(move |_| {
@@ -776,10 +823,6 @@ impl PreviewDrawer {
     pub fn toggle(&self, entry: Option<FileEntry>, depth: Option<usize>) {
         self.state.toggle(entry, depth);
     }
-
-    pub fn print_entry(&self, entry: FileEntry) {
-        self.state.print_entry(entry);
-    }
 }
 
 impl Drop for PreviewState {
@@ -790,6 +833,9 @@ impl Drop for PreviewState {
 
 impl PreviewState {
     fn media_command(self: &Rc<Self>, command: MediaCommand) -> bool {
+        if let Some(route) = self.route.borrow().as_ref() {
+            return route.command(command);
+        }
         match command {
             MediaCommand::Previous => return self.step_media(-1, true),
             MediaCommand::Next => return self.step_media(1, true),
@@ -896,6 +942,8 @@ impl PreviewState {
             .is_none_or(|current| current.location != entry.location)
         {
             self.reset_find();
+            self.model_view.set(Default::default());
+            self.model.borrow_mut().take();
         }
         self.cancel_pending_show();
         self.retain_pending_playback(&entry);
@@ -945,7 +993,6 @@ impl PreviewState {
         self.set_enabled(false);
         self.child_pane.set(false);
         self.clear_target();
-        self.cancel_print();
         // Destroying a focused prompt does not always report a focus leave.
         self.content.set_focusable(false);
         self.set_keyboard_owner(false);
@@ -995,246 +1042,6 @@ impl PreviewState {
     fn finish_close(&self) {
         self.stop();
         self.pane.set_size_request(MIN_WIDTH, -1);
-    }
-
-    fn print(self: &Rc<Self>) {
-        let Some(entry) = self.current.borrow().clone() else {
-            return;
-        };
-        self.print_entry(entry);
-    }
-
-    fn print_entry(self: &Rc<Self>, entry: FileEntry) {
-        self.cancel_print();
-        let parent = self.pane.root().and_downcast::<gtk::Window>();
-        let (content_type, _) =
-            gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
-        if content_type == "application/pdf" {
-            self.show_print_progress();
-        }
-        self.load_print_page(entry, parent, 0, Rc::new(RefCell::new(Vec::new())));
-    }
-
-    fn cancel_print(&self) {
-        self.print_request.set(None);
-        self.print_load.take();
-        self.dismiss_print_progress();
-    }
-
-    fn show_print_progress(self: &Rc<Self>) {
-        if self.print_progress.borrow().is_some() {
-            return;
-        }
-        let Some(window_overlay) = self
-            .pane
-            .root()
-            .and_downcast::<gtk::Window>()
-            .and_then(|window| window.child())
-            .and_downcast::<gtk::Overlay>()
-        else {
-            return;
-        };
-        let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
-        if let Some(root) = blurred_root.as_ref() {
-            root.set_blurred(true);
-        }
-
-        let layout = modal_layout(
-            crate::assets::icons::PRINTER,
-            &crate::i18n::tr("Preparing PDF"),
-            &crate::i18n::tr("Rendering pages for the print dialog"),
-            &crate::i18n::tr("Cancel"),
-        );
-        layout.content.add_css_class("compact");
-        layout.close.set_visible(false);
-        layout.cancel.set_visible(false);
-        let status = gtk::Label::new(Some(&crate::i18n::tr("Rendering pages…")));
-        status.add_css_class("modal-progress-status");
-        status.set_xalign(0.0);
-        let progress = gtk::ProgressBar::new();
-        progress.add_css_class("modal-progress");
-        progress.set_fraction(0.0);
-        layout.body.append(&status);
-        layout.body.append(&progress);
-        let content = layout.content;
-        let cancel = layout.confirm;
-
-        let layer = super::browser::modal_layer(
-            &content,
-            &window_overlay,
-            blurred_root.clone(),
-            Some(Rc::new(|| true)),
-        );
-        window_overlay.add_overlay(&layer);
-        self.print_progress.replace(Some(PrintProgress {
-            layer: layer.clone(),
-            overlay: window_overlay,
-            blurred_root,
-            status,
-            progress,
-        }));
-        let weak = Rc::downgrade(self);
-        cancel.connect_clicked(move |_| {
-            if let Some(state) = weak.upgrade() {
-                state.cancel_print();
-            }
-        });
-        let weak = Rc::downgrade(self);
-        close_on_escape(&layer, move || {
-            if let Some(state) = weak.upgrade() {
-                state.cancel_print();
-            }
-        });
-        cancel.grab_focus();
-    }
-
-    fn update_print_progress(self: &Rc<Self>, completed: i32, total: i32) {
-        self.show_print_progress();
-        let progress = self.print_progress.borrow();
-        let Some(dialog) = progress.as_ref() else {
-            return;
-        };
-        let (status, fraction) = print_progress_for_page(completed, total);
-        dialog.status.set_text(&status);
-        dialog.progress.set_fraction(fraction);
-    }
-
-    fn dismiss_print_progress(&self) {
-        if let Some(dialog) = self.print_progress.take() {
-            super::browser::dismiss_modal_layer(
-                &dialog.layer,
-                &dialog.overlay,
-                dialog.blurred_root.as_ref(),
-            );
-        }
-    }
-
-    fn load_print_page(
-        self: &Rc<Self>,
-        entry: FileEntry,
-        parent: Option<gtk::Window>,
-        pdf_page: i32,
-        rendered: Rc<RefCell<Vec<Vec<u8>>>>,
-    ) {
-        let request_id = PreviewRequestId(self.next_request.get());
-        self.next_request
-            .set(self.next_request.get().saturating_add(1));
-        self.print_request.set(Some(request_id));
-        let weak = Rc::downgrade(self);
-        let entry_for_event = entry.clone();
-        let emit = Rc::new(move |event| {
-            let Some(state) = weak.upgrade() else {
-                return;
-            };
-            state.print_entry_event(
-                request_id,
-                entry_for_event.clone(),
-                parent.clone(),
-                rendered.clone(),
-                event,
-            );
-        });
-        let load = self.provider.load(
-            PreviewRequest {
-                id: request_id,
-                entry,
-                text_byte_limit: PRINT_TEXT_BYTE_LIMIT,
-                render_document: false,
-                pdf_page,
-                media_size: self.media_preview_size(),
-                model_palette: super::theme::ThemeManager::shared().active_model_palette(),
-                archive_password: None,
-            },
-            emit,
-        );
-        self.print_load.replace(Some(load));
-    }
-
-    fn print_entry_event(
-        self: &Rc<Self>,
-        expected: PreviewRequestId,
-        entry: FileEntry,
-        parent: Option<gtk::Window>,
-        rendered: Rc<RefCell<Vec<Vec<u8>>>>,
-        event: PreviewEvent,
-    ) {
-        if self.print_request.get() != Some(expected) {
-            return;
-        }
-        match event {
-            PreviewEvent::Ready(preview) if preview.request_id == expected => {
-                self.print_request.set(None);
-                self.print_load.take();
-                match preview.content {
-                    PreviewContent::Text { content, truncated } => {
-                        if truncated {
-                            show_print_error(
-                                parent.as_ref(),
-                                "This text file is too large to print safely.",
-                            );
-                        } else {
-                            print_text(content, &entry.display_name, parent.as_ref());
-                        }
-                    }
-                    PreviewContent::Document {
-                        source, truncated, ..
-                    } => {
-                        if truncated {
-                            show_print_error(
-                                parent.as_ref(),
-                                "This text file is too large to print safely.",
-                            );
-                        } else {
-                            print_text(source, &entry.display_name, parent.as_ref());
-                        }
-                    }
-                    PreviewContent::Rasterized { png } => {
-                        self.dismiss_print_progress();
-                        print_rasterized(vec![png], &entry.display_name, parent.as_ref());
-                    }
-                    PreviewContent::Pdf {
-                        png, page, pages, ..
-                    } => {
-                        rendered.borrow_mut().push(png);
-                        let page_count = pages.clamp(1, 10_000);
-                        let completed =
-                            i32::try_from(rendered.borrow().len()).unwrap_or(page_count);
-                        if page.saturating_add(1) < page_count {
-                            self.update_print_progress(completed, page_count);
-                            self.load_print_page(entry, parent, page.saturating_add(1), rendered);
-                        } else {
-                            self.dismiss_print_progress();
-                            let pages = std::mem::take(&mut *rendered.borrow_mut());
-                            print_rasterized(pages, &entry.display_name, parent.as_ref());
-                        }
-                    }
-                    PreviewContent::Image
-                    | PreviewContent::Model { .. }
-                    | PreviewContent::Media
-                    | PreviewContent::SandboxedMedia { .. }
-                    | PreviewContent::Archive { .. }
-                    | PreviewContent::Rendered { .. }
-                    | PreviewContent::Unsupported => {
-                        self.dismiss_print_progress();
-                        show_print_error(parent.as_ref(), "This file type cannot be printed.");
-                    }
-                }
-            }
-            PreviewEvent::Failed {
-                request_id,
-                message,
-                ..
-            } if request_id == expected => {
-                self.print_request.set(None);
-                self.print_load.take();
-                self.dismiss_print_progress();
-                show_print_error(parent.as_ref(), &message);
-            }
-            PreviewEvent::Progress { .. }
-            | PreviewEvent::Ready(_)
-            | PreviewEvent::Failed { .. }
-            | PreviewEvent::NeedsPassword { .. } => {}
-        }
     }
 
     fn media_preview_size(&self) -> MediaPreviewSize {
@@ -1317,7 +1124,17 @@ impl PreviewState {
         render_document: bool,
         archive_password: Option<SecretString>,
     ) {
+        if self
+            .current
+            .borrow()
+            .as_ref()
+            .is_none_or(|current| current.location != entry.location)
+        {
+            self.model_view.set(Default::default());
+            self.model.borrow_mut().take();
+        }
         self.raw_metadata_load.borrow_mut().take();
+        self.released_from.set(None);
         if super::raw_details::supports(&entry) {
             let load = self
                 .raw_details
@@ -1340,7 +1157,9 @@ impl PreviewState {
         );
         self.size.set_text(&metadata_size(&entry));
         crate::util::set_modified_date(&self.modified, Some(&entry), "—");
-        self.content_type.set_text(file_extension(&entry));
+        if self.model.borrow().is_none() {
+            self.content_type.set_text(file_extension(&entry));
+        }
         self.load.borrow_mut().take();
         self.pdf_loads.borrow_mut().clear();
 
@@ -1372,6 +1191,7 @@ impl PreviewState {
                 pdf_page,
                 media_size: self.media_preview_size(),
                 model_palette: super::theme::ThemeManager::shared().active_model_palette(),
+                model_view: self.model_view.get(),
                 archive_password,
             },
             emit,
@@ -1391,8 +1211,8 @@ impl PreviewState {
         }
         match event {
             PreviewEvent::Progress { stage, .. } => {
-                if let Some(label) = self.loading_label.borrow().as_ref() {
-                    label.set_text(&stage.label());
+                if let Some(model) = self.model.borrow().as_ref() {
+                    model.set_progress(stage);
                 }
             }
             PreviewEvent::Ready(preview) if preview.request_id == expected => {
@@ -1412,12 +1232,33 @@ impl PreviewState {
                 // Failures carry English source messages: known ones have catalog
                 // entries, and system error text passes through unchanged.
                 let detail = crate::i18n::tr(&message);
+                if let Some(model) = self
+                    .model
+                    .borrow()
+                    .as_ref()
+                    .filter(|model| model.picture.paintable().is_some())
+                {
+                    self.model_view.set(model.view());
+                    model.show_error(&detail);
+                    return;
+                }
                 if message == crate::services::INCORRECT_ARCHIVE_PASSWORD {
                     self.render_archive_password_prompt(entry, Some(&detail));
+                } else if message == file_activity::HELD_FOR_OPERATION
+                    && !file_activity::is_releasing()
+                {
+                    self.current_request.set(None);
+                    self.show_after_focus_change(entry, self.current_depth.get());
                 } else {
+                    if message == file_activity::HELD_FOR_OPERATION {
+                        self.released_from.set(Some(self.current_depth.get()));
+                    }
                     self.current_request.set(None);
                     let title = crate::i18n::tr("Preview unavailable");
-                    if !self.show_audio_error(&title, &detail, None)
+                    if message == crate::sandbox::PDF_PASSWORD_PROTECTED && self.allow_external_open
+                    {
+                        self.show_message_with_external_open(&title, &detail);
+                    } else if !self.show_audio_error(&title, &detail, None)
                         && !self.show_video_error(&title, &detail, None)
                     {
                         self.show_message(&title, &detail);
@@ -1530,14 +1371,17 @@ impl PreviewState {
             .take()
             .is_some_and(|pending| pending.request == Some(preview.request_id));
         self.content_type.set_text(&preview.content_type);
-        self.reset_content(
-            matches!(preview.content, PreviewContent::SandboxedMedia { .. })
-                .then(|| media_family(&preview.content_type))
-                .flatten(),
-        );
+        let reuse_model = matches!(preview.content, PreviewContent::Model { mesh: Some(_), .. })
+            && self.model.borrow().is_some();
+        if !reuse_model {
+            self.reset_content(
+                matches!(preview.content, PreviewContent::SandboxedMedia { .. })
+                    .then(|| media_family(&preview.content_type))
+                    .flatten(),
+            );
+        }
         match preview.content {
             PreviewContent::Text { content, truncated } => {
-                self.print.set_visible(true);
                 self.wrap.set_visible(true);
                 let (view, virtualized) = self.source_preview.show(
                     &preview.entry,
@@ -1568,7 +1412,6 @@ impl PreviewState {
                 warnings,
                 truncated,
             } => {
-                self.print.set_visible(true);
                 self.wrap.set_visible(true);
                 self.wrap.set_active(
                     super::preferences::PreferenceManager::shared().preview_text_wrap(),
@@ -1586,16 +1429,26 @@ impl PreviewState {
                 );
             }
             PreviewContent::Rendered { document, warnings } => {
-                let (view, state) =
-                    super::virtual_preview::rendered_document(document, warnings, false, None);
+                let word_processor = crate::sandbox::DocumentFormat::for_file(
+                    &preview.content_type,
+                    &preview.entry.native_name,
+                )
+                .is_some();
+                let (view, state) = super::virtual_preview::rendered_document(
+                    document,
+                    warnings,
+                    word_processor,
+                    None,
+                );
                 self.rendered_text.replace(Some(state));
                 self.content.append(&view);
             }
-            PreviewContent::Rasterized { png } | PreviewContent::Model { png, .. } => {
-                let model = crate::services::is_model(&preview.entry.native_name);
+            PreviewContent::Route { preview } => self.render_route(preview),
+            PreviewContent::Model { png, mesh } => self.render_model(png, mesh),
+            PreviewContent::Rasterized { png } => {
+                let model = crate::services::is_model(&preview.entry);
                 let cover =
                     crate::sandbox::CoverFormat::for_name(&preview.entry.native_name).is_some();
-                self.print.set_visible(!model && !cover);
                 let bytes = glib::Bytes::from_owned(png);
                 match gtk::gdk::Texture::from_bytes(&bytes) {
                     Ok(texture) => {
@@ -1682,7 +1535,7 @@ impl PreviewState {
                         self.render_video(preview.entry, source, &media, &preferences);
                         None
                     }
-                    None => {
+                    None | Some(MediaFamily::Route) => {
                         let (overlay, center_play) = self.build_media_view(&media);
                         let section = media_layout::section(&overlay, &media);
                         self.content.append(&section);
@@ -1711,7 +1564,7 @@ impl PreviewState {
                                     audio.view.start_silently();
                                 }
                             }
-                            None => {}
+                            None | Some(MediaFamily::Route) => {}
                         }
                     }
                     self.sizing.play_or_defer(&media);
@@ -1735,7 +1588,6 @@ impl PreviewState {
                 pages,
                 text_layer,
             } => {
-                self.print.set_visible(true);
                 self.render_pdf_viewer(preview.entry, png, page, pages, text_layer);
             }
             PreviewContent::Archive { tree } => {
@@ -1957,8 +1809,7 @@ impl PreviewState {
         let (label, icon) = document_view_action(self.document_view.get());
         let label = crate::i18n::tr(label);
         self.document_view_button.set_tooltip_text(Some(&label));
-        self.document_view_button
-            .update_property(&[gtk::accessible::Property::Label(&label)]);
+        super::accessibility::set_label(&self.document_view_button, &label);
         crate::assets::set_primary_icon(&self.document_view_icon, icon);
     }
 
@@ -2079,9 +1930,7 @@ impl PreviewState {
             text_area.set_hexpand(true);
             text_area.set_vexpand(true);
             text_area.set_accessible_role(gtk::AccessibleRole::Img);
-            text_area.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
-                "PDF page text",
-            ))]);
+            super::accessibility::set_label(&text_area, &crate::i18n::tr("PDF page text"));
             let spinner = gtk::Spinner::new();
             spinner.set_halign(gtk::Align::Center);
             spinner.set_valign(gtk::Align::Center);
@@ -2260,6 +2109,7 @@ impl PreviewState {
                     pdf_page: page_index,
                     media_size: render_size,
                     model_palette: super::theme::ThemeManager::shared().active_model_palette(),
+                    model_view: Default::default(),
                     archive_password: None,
                 },
                 emit,
@@ -2580,10 +2430,9 @@ impl PreviewState {
         let pause_icon = crate::assets::primary_icon(crate::assets::icons::PAUSE, 18);
         let play_button = gtk::Button::new();
         play_button.add_css_class("preview-media-button");
-        play_button.set_tooltip_text(Some(&crate::ui::shortcut_reference::with_keys(
-            "Play/Pause (%{keys})",
-            keys::Keys::One(MEDIA_PLAY_PAUSE),
-        )));
+        let keys = keys::Keys::One(MEDIA_PLAY_PAUSE.shown());
+        crate::ui::shortcut_reference::follow_tooltip(&play_button, "Play/Pause (%{keys})", keys);
+        crate::ui::shortcut_reference::follow_label(&play_button, "Play/Pause (%{keys})", keys);
         play_button.set_child(Some(if media.is_playing() {
             &pause_icon
         } else {
@@ -2809,6 +2658,7 @@ impl PreviewState {
         self.media.borrow().is_some()
             || self.audio.borrow().is_some()
             || self.video.borrow().is_some()
+            || self.route.borrow().is_some()
     }
 
     fn stepping_family(&self) -> Option<MediaFamily> {
@@ -2941,6 +2791,10 @@ impl PreviewState {
     }
 
     fn reset_content(&self, keep: Option<MediaFamily>) {
+        if let Some(route) = self.route.borrow_mut().take() {
+            route.pause();
+        }
+        self.model.borrow_mut().take();
         let owned = self.content_owns_keys();
         self.detach_find();
         self.rendered_text.borrow_mut().take();
@@ -2961,13 +2815,12 @@ impl PreviewState {
         let retained = match keep {
             Some(MediaFamily::Audio) => audio.is_some(),
             Some(MediaFamily::Video) => video.is_some(),
-            None => false,
+            None | Some(MediaFamily::Route) => false,
         };
         if !retained {
             self.media_toggle_mute.replace(None);
             self.media_volume_slider.replace(None);
         }
-        self.print.set_visible(false);
         self.wrap.set_visible(false);
         self.text_view.take();
         self.text_scroll.take();
@@ -2995,6 +2848,11 @@ impl PreviewState {
     }
 
     fn show_loading(self: &Rc<Self>, request_id: PreviewRequestId) {
+        if let Some(model) = self.model.borrow().as_ref() {
+            self.cancel_loading();
+            model.set_loading(self.model_view.get());
+            return;
+        }
         let family = self.current.borrow().as_ref().and_then(entry_family);
         self.reset_content(family);
         self.cancel_loading();
@@ -3012,18 +2870,10 @@ impl PreviewState {
             }
             return;
         }
-        let weak = Rc::downgrade(self);
-        if self
-            .current
-            .borrow()
-            .as_ref()
-            .is_some_and(|entry| crate::services::is_model(&entry.native_name))
-        {
-            let label = gtk::Label::new(Some(&crate::i18n::tr("Waiting for preview…")));
-            label.add_css_class("preview-feedback-detail");
-            label.set_wrap(true);
-            self.loading_label.replace(Some(label));
+        if self.show_model_loading() {
+            return;
         }
+        let weak = Rc::downgrade(self);
         let source = glib::timeout_add_local_once(PREVIEW_SPINNER_DELAY, move || {
             let Some(state) = weak.upgrade() else {
                 return;
@@ -3037,24 +2887,13 @@ impl PreviewState {
             spinner.set_halign(gtk::Align::Center);
             spinner.set_valign(gtk::Align::Center);
             spinner.start();
-            if let Some(label) = state.loading_label.borrow().as_ref() {
-                let loading = gtk::Box::new(gtk::Orientation::Vertical, 12);
-                loading.set_halign(gtk::Align::Center);
-                loading.set_valign(gtk::Align::Center);
-                loading.set_vexpand(true);
-                loading.append(&spinner);
-                loading.append(label);
-                state.content.append(&loading);
-            } else {
-                spinner.set_vexpand(true);
-                state.content.append(&spinner);
-            }
+            spinner.set_vexpand(true);
+            state.content.append(&spinner);
         });
         self.loading_delay.replace(Some(source));
     }
 
     fn cancel_loading(&self) {
-        self.loading_label.borrow_mut().take();
         if let Some(source) = self.loading_delay.borrow_mut().take() {
             source.remove();
         }
@@ -3124,13 +2963,25 @@ impl PreviewState {
         self.show_message_with_icon(title, detail, None, None);
     }
 
+    fn show_message_with_external_open(&self, title: &str, detail: &str) {
+        let feedback = self.show_message_with_icon(title, detail, None, None);
+        let open = gtk::Button::with_label(&crate::i18n::tr("Open"));
+        open.add_css_class("suggested-action");
+        open.add_css_class("preview-feedback-action");
+        open.set_halign(gtk::Align::Center);
+        let header_open = self.open.clone();
+        open.connect_clicked(move |_| header_open.emit_clicked());
+        feedback.append(&open);
+        self.hand_keys_to(&open);
+    }
+
     fn show_message_with_icon(
         &self,
         title: &str,
         detail: &str,
         icon: Option<&str>,
         command: Option<&str>,
-    ) {
+    ) -> gtk::Box {
         self.clear_content();
         let box_ = gtk::Box::new(gtk::Orientation::Vertical, 7);
         box_.add_css_class("preview-feedback");
@@ -3155,6 +3006,7 @@ impl PreviewState {
             box_.append(&super::controls::copyable_command(command));
         }
         self.content.append(&box_);
+        box_
     }
 }
 
@@ -3172,10 +3024,9 @@ impl VolumeControls {
     ) -> Self {
         let toggle = gtk::Button::new();
         toggle.add_css_class("preview-media-button");
-        toggle.set_tooltip_text(Some(&crate::ui::shortcut_reference::with_keys(
-            "Mute/unmute (%{keys})",
-            keys::Keys::One(MEDIA_MUTE),
-        )));
+        let keys = keys::Keys::One(MEDIA_MUTE.shown());
+        crate::ui::shortcut_reference::follow_tooltip(&toggle, "Mute/unmute (%{keys})", keys);
+        crate::ui::shortcut_reference::follow_label(&toggle, "Mute/unmute (%{keys})", keys);
         let muted = preferences.preview_muted();
         let icon = crate::assets::primary_icon(
             if muted {
@@ -3313,6 +3164,7 @@ impl ListingPosition {
 enum MediaFamily {
     Audio,
     Video,
+    Route,
 }
 
 fn media_family(content_type: &str) -> Option<MediaFamily> {
@@ -3337,16 +3189,21 @@ fn entry_family(entry: &FileEntry) -> Option<MediaFamily> {
         .and_then(|extension| extension.to_str())
         .filter(|_| !entry.is_directory())
         .map(str::to_ascii_lowercase)?;
-    if entry.duration_seconds == MetadataValue::Unavailable {
-        return None;
+    if crate::services::route_preview::RouteFormat::for_name(&entry.native_name).is_some() {
+        return Some(MediaFamily::Route);
     }
-    FAMILIES.with_borrow_mut(|known| {
+    let family = FAMILIES.with_borrow_mut(|known| {
         *known.entry(extension).or_insert_with_key(|extension| {
             media_family(
-                &gio::content_type_guess(Some(Path::new(&format!("a.{extension}"))), None::<&[u8]>)
-                    .0,
+                &crate::services::guess_content_type(Path::new(&format!("a.{extension}"))).0,
             )
         })
+    });
+    // Elementary streams can have valid video dimensions without a duration.
+    family.filter(|family| {
+        entry.duration_seconds != MetadataValue::Unavailable
+            || (*family == MediaFamily::Video
+                && matches!(entry.image_dimensions, MetadataValue::Known(_)))
     })
 }
 
@@ -3361,185 +3218,6 @@ fn is_audio_type(content_type: &str) -> bool {
                 | "audio/x-midi"
                 | "audio/sp-midi"
         )
-}
-
-fn print_progress_for_page(completed: i32, total: i32) -> (String, f64) {
-    let total = total.max(1);
-    let completed = completed.clamp(0, total);
-    (
-        rust_i18n::t!(
-            "Rendering page %{completed} of %{total}",
-            completed = crate::i18n::integer(completed as u64),
-            total = crate::i18n::integer(total as u64)
-        )
-        .into_owned(),
-        f64::from(completed) / f64::from(total),
-    )
-}
-
-fn print_page_starts(line_ranges: &[(f64, f64)], page_height: f64) -> Vec<f64> {
-    if page_height <= 0.0 {
-        return vec![0.0];
-    }
-    let mut starts = vec![0.0];
-    let mut page_start = 0.0;
-    for &(top, bottom) in line_ranges {
-        if bottom - page_start > page_height && top > page_start {
-            starts.push(top);
-            page_start = top;
-        }
-    }
-    starts
-}
-
-fn print_text(text: String, job_name: &str, parent: Option<&gtk::Window>) {
-    let operation = gtk::PrintOperation::new();
-    operation.set_job_name(job_name);
-    operation.set_allow_async(true);
-    operation.set_unit(gtk::Unit::Points);
-    let print_layout = Rc::new(RefCell::new(None::<(gtk::pango::Layout, Vec<f64>, f64)>));
-    let layout_for_begin = print_layout.clone();
-    operation.connect_begin_print(move |operation, context| {
-        let layout = context.create_pango_layout();
-        layout.set_font_description(Some(&gtk::pango::FontDescription::from_string(
-            "Monospace 10",
-        )));
-        layout.set_width((context.width() * f64::from(gtk::pango::SCALE)) as i32);
-        layout.set_wrap(gtk::pango::WrapMode::WordChar);
-        layout.set_text(&text);
-
-        let mut line_ranges = Vec::new();
-        let mut iter = layout.iter();
-        loop {
-            let (top, bottom) = iter.line_yrange();
-            line_ranges.push((
-                f64::from(top) / f64::from(gtk::pango::SCALE),
-                f64::from(bottom) / f64::from(gtk::pango::SCALE),
-            ));
-            if !iter.next_line() {
-                break;
-            }
-        }
-        let page_height = context.height();
-        let page_starts = print_page_starts(&line_ranges, page_height);
-        operation.set_n_pages(i32::try_from(page_starts.len()).unwrap_or(i32::MAX));
-        layout_for_begin.replace(Some((layout, page_starts, page_height)));
-    });
-    operation.connect_draw_page(move |_, context, page| {
-        let print_layout = print_layout.borrow();
-        let Some((layout, page_starts, page_height)) = print_layout.as_ref() else {
-            return;
-        };
-        let Some(page_start) = usize::try_from(page)
-            .ok()
-            .and_then(|page| page_starts.get(page))
-        else {
-            return;
-        };
-        let cr = context.cairo_context();
-        if cr.save().is_err() {
-            return;
-        }
-        cr.rectangle(0.0, 0.0, context.width(), *page_height);
-        cr.clip();
-        cr.translate(0.0, -*page_start);
-        cr.set_source_rgb(0.0, 0.0, 0.0);
-        pangocairo::functions::show_layout(&cr, layout);
-        let _ = cr.restore();
-    });
-    run_print_operation(&operation, parent);
-}
-
-fn show_print_error(parent: Option<&gtk::Window>, detail: &str) {
-    let dialog = gtk::AlertDialog::builder()
-        .message(crate::i18n::tr("Unable to prepare file for printing"))
-        .detail(crate::i18n::tr(detail))
-        .buttons([crate::i18n::tr("Close")])
-        .build();
-    dialog.show(parent);
-}
-
-/// Opens the native print dialog and prints the rasterized pages as a job named `job_name`.
-fn print_rasterized(pages: Vec<Vec<u8>>, job_name: &str, parent: Option<&gtk::Window>) {
-    let Ok(page_count) = i32::try_from(pages.len()) else {
-        return;
-    };
-    let operation = gtk::PrintOperation::new();
-    operation.set_job_name(job_name);
-    operation.set_allow_async(true);
-    operation.set_n_pages(page_count);
-    operation.connect_draw_page(move |_, context, page| {
-        let Some(png) = usize::try_from(page).ok().and_then(|page| pages.get(page)) else {
-            return;
-        };
-        let Ok(surface) = cairo::ImageSurface::create_from_png(&mut &png[..]) else {
-            return;
-        };
-        let cr = context.cairo_context();
-        let _ = paint_print_page(&cr, &surface, context.width(), context.height());
-    });
-    run_print_operation(&operation, parent);
-}
-
-fn run_print_operation(operation: &gtk::PrintOperation, parent: Option<&gtk::Window>) {
-    if let Err(error) = operation.run(gtk::PrintOperationAction::PrintDialog, parent) {
-        tracing::warn!(
-            error_domain = ?error.domain(),
-            error_code = error.code(),
-            "unable to open print dialog"
-        );
-    }
-}
-
-/// Returns `(x, y, dest_width, dest_height, scale)` so `image` fits `page` preserving aspect ratio.
-fn print_fit(
-    page_width: f64,
-    page_height: f64,
-    image_width: f64,
-    image_height: f64,
-) -> Option<(f64, f64, f64, f64, f64)> {
-    if page_width <= 0.0 || page_height <= 0.0 || image_width <= 0.0 || image_height <= 0.0 {
-        return None;
-    }
-    let scale = (page_width / image_width).min(page_height / image_height);
-    let dest_width = image_width * scale;
-    let dest_height = image_height * scale;
-    Some((
-        (page_width - dest_width) / 2.0,
-        (page_height - dest_height) / 2.0,
-        dest_width,
-        dest_height,
-        scale,
-    ))
-}
-
-fn paint_print_page(
-    cr: &cairo::Context,
-    surface: &cairo::ImageSurface,
-    page_width: f64,
-    page_height: f64,
-) -> bool {
-    let Some((x, y, dest_width, dest_height, scale)) = print_fit(
-        page_width,
-        page_height,
-        surface.width() as f64,
-        surface.height() as f64,
-    ) else {
-        return false;
-    };
-    if cr.save().is_err() {
-        return false;
-    }
-    cr.rectangle(x, y, dest_width, dest_height);
-    cr.clip();
-    cr.scale(scale, scale);
-    if cr.set_source_surface(surface, x / scale, y / scale).is_ok() {
-        let painted = cr.paint().is_ok();
-        let _ = cr.restore();
-        return painted;
-    }
-    let _ = cr.restore();
-    false
 }
 
 fn accepts_preview_event(
@@ -3574,8 +3252,7 @@ fn document_view_action(view: DocumentView) -> (&'static str, &'static str) {
 
 impl SourcePreviewView {
     fn new() -> Self {
-        let buffer = sourceview5::Buffer::new(None);
-        super::theme::register_source_buffer(&buffer);
+        let buffer = super::theme::new_source_buffer();
         let view = sourceview5::View::builder()
             .buffer(&buffer)
             .cursor_visible(true)
@@ -3615,7 +3292,7 @@ impl SourcePreviewView {
                 self.view.unparent();
             }
         }
-        let languages = sourceview5::LanguageManager::default();
+        let languages = super::theme::source_languages();
         let language = languages.guess_language(entry.location.native_path(), Some(content_type));
         if language.is_none() && super::virtual_preview::use_virtual_plain_source(content) {
             let wrapped = super::preferences::PreferenceManager::shared().preview_text_wrap();
@@ -3625,8 +3302,7 @@ impl SourcePreviewView {
             return (container.upcast(), true);
         }
         let display = normalize_preview_text(content).into_owned();
-        let buffer = sourceview5::Buffer::new(None);
-        super::theme::register_source_buffer(&buffer);
+        let buffer = super::theme::new_source_buffer();
         buffer.set_highlight_syntax(false);
         buffer.set_language(language.as_ref());
         self.view.set_buffer(Some(&buffer));
@@ -3766,9 +3442,7 @@ fn metadata_value(description: &str) -> gtk::Label {
     let value = gtk::Label::new(Some("—"));
     value.set_ellipsize(gtk::pango::EllipsizeMode::End);
     value.set_xalign(0.0);
-    value.update_property(&[gtk::accessible::Property::Description(&crate::i18n::tr(
-        description,
-    ))]);
+    super::accessibility::set_description(&value, Some(&crate::i18n::tr(description)));
     value
 }
 
@@ -4164,7 +3838,7 @@ fn install_preview_drag(widget: &impl IsA<gtk::Widget>, state: &Rc<PreviewState>
         {
             source.set_icon(Some(&texture), hot_x, hot_y);
         }
-        super::browser::file_drag_content(&entries)
+        super::browser::file_drag_content(source, &entries)
     });
     let weak = Rc::downgrade(state);
     drag.connect_drag_begin(move |_, _| {

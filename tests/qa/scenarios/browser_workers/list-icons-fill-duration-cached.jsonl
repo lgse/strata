@@ -1,0 +1,25 @@
+{"scenario":"list-icons-fill-duration-cached","modes":["list"],"prefs":{"browser_mode":"list"},"layout":"us","mutation":null,"known_bug":null,"env":{"STRATA_THUMBNAIL_WORKERS":"2","STRATA_THUMBNAIL_IDLE_SECONDS":"60","RUST_LOG":"strata=info,strata::sandbox::browser=debug"},"setup":[{"fs":{"path":"photos-a","mkdir":true}},{"fs":{"path":"photos-a/photo-{0..5}.png","image":{"width":320,"height":180,"rgb":[40,160,80],"width_step":1}}},{"fs":{"path":"photos-a/model.3mf","zip":[["3D/3dmodel.model","geometry must not be parsed"],["Metadata/thumbnail.png",{"image":{"width":32,"height":32,"rgb":[220,40,80]}}],["Metadata/broken-thumbnail.png","invalid image"]]}},{"fs":{"path":"photos-a/model.FCStd","zip":[["3D/3dmodel.model","geometry must not be parsed"],["thumbnails/Thumbnail.png",{"image":{"width":32,"height":32,"rgb":[220,40,80]}}]]}},{"fs":{"path":"photos-a/plain.stl","write":"solid empty\nendsolid\n"}},{"fs":{"path":"photos-b","mkdir":true}},{"fs":{"path":"photos-b/photo-{0..5}.png","image":{"width":320,"height":180,"rgb":[40,160,80],"width_step":1}}},{"fs":{"path":"photos-b/model.3mf","zip":[["3D/3dmodel.model","geometry must not be parsed"],["Metadata/thumbnail.png",{"image":{"width":32,"height":32,"rgb":[220,40,80]}}],["Metadata/broken-thumbnail.png","invalid image"]]}},{"fs":{"path":"photos-b/model.FCStd","zip":[["3D/3dmodel.model","geometry must not be parsed"],["thumbnails/Thumbnail.png",{"image":{"width":32,"height":32,"rgb":[220,40,80]}}]]}},{"fs":{"path":"photos-b/plain.stl","write":"solid empty\nendsolid\n"}},{"fs":{"path":"photos-c","mkdir":true}},{"fs":{"path":"photos-c/photo-{0..5}.png","image":{"width":320,"height":180,"rgb":[40,160,80],"width_step":1}}},{"fs":{"path":"photos-c/model.3mf","zip":[["3D/3dmodel.model","geometry must not be parsed"],["Metadata/thumbnail.png",{"image":{"width":32,"height":32,"rgb":[220,40,80]}}],["Metadata/broken-thumbnail.png","invalid image"]]}},{"fs":{"path":"photos-c/model.FCStd","zip":[["3D/3dmodel.model","geometry must not be parsed"],["thumbnails/Thumbnail.png",{"image":{"width":32,"height":32,"rgb":[220,40,80]}}]]}},{"fs":{"path":"photos-c/plain.stl","write":"solid empty\nendsolid\n"}}],"cost":{"list":1.0},"quality":{"impact":2,"coverage":3,"criticality":4,"diagnostic":3,"score":25,"note":"Unique: list-to-Icons switch fills video duration and source size labels and checks cached thumbnails are not regenerated; icons-rename-reuses-thumbnail-details covers Icons dimensions and the Columns path only"}}
+{"fs":{"path":"media-details","mkdir":true}}
+{"fs":{"path":"media-details/photo.png","image":{"width":640,"height":360,"rgb":[0,128,0]}}}
+{"fs":{"path":"media-details/page.pdf","pdf_image":{"width":400,"height":200,"rgb":[0,0,255]}}}
+{"fs":{"path":"media-details/shape.svg","write":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"256\" height=\"128\"><rect width=\"256\" height=\"128\" fill=\"green\"/></svg>"}}
+{"fs":{"path":"media-details/clip.mp4","ffmpeg":["-f","lavfi","-i","color=c=blue:s=320x180:r=12:d=2","-c:v","libx264","-pix_fmt","yuv420p","-threads","1"]}}
+{"fs":{"path":"media-details/sound.wav","ffmpeg":["-f","lavfi","-i","sine=frequency=440:duration=3","-c:a","pcm_s16le","-threads","1"]}}
+{"click":{"entry":"media-details"},"count":2}
+{"wait":{"directory":"media-details"},"message":"the browser to be working in 'media-details'"}
+{"settle":{"pane":"media-details"}}
+{"fs":{"path":"media-details/clip.mp4","cached_in":"$cache/thumbnails/large","is":"file"},"message":"sandboxed thumbnail for clip.mp4"}
+{"fs":{"path":"media-details/photo.png","cached_in":"$cache/thumbnails/large","is":"file"},"message":"sandboxed thumbnail for photo.png"}
+{"fs":{"path":"media-details/page.pdf","cached_in":"$cache/thumbnails/large","is":"file"},"message":"sandboxed thumbnail for page.pdf"}
+{"fs":{"path":"media-details/shape.svg","cached_in":"$cache/thumbnails/large","is":"file"},"message":"sandboxed thumbnail for shape.svg"}
+{"fs":{"path":"media-details/clip.mp4","cached_in":"$cache/thumbnails/large","keep_mtime":"stored"}}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"radio menu item","name":"Icons"}},"message":"the Icons option"}
+{"click":{"role":"radio menu item","name":"Icons"}}
+{"wait":{"view_mode":"Icons"},"message":"the browser to switch to the Icons view"}
+{"wait":{"present":{"role":"label","name":"0:02"}},"message":"source detail 0:02"}
+{"wait":{"present":{"role":"label","name":"0:03"}},"message":"source detail 0:03"}
+{"wait":{"present":{"role":"label","name":"640×360"}},"message":"source detail 640×360"}
+{"wait":{"present":{"role":"label","name":"256×128"}},"message":"source detail 256×128"}
+{"fs":{"path":"media-details/clip.mp4","cached_in":"$cache/thumbnails/large","mtime_of":"stored"},"timeout_ms":0}
+{"log":{"count":"browser sandbox started","at_most":2},"timeout_ms":0}

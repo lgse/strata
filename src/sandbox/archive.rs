@@ -6,7 +6,7 @@ use std::{
     fs,
     io::Read,
     path::Path,
-    process::{Child, Stdio},
+    process::Stdio,
     sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
 };
@@ -34,8 +34,7 @@ pub(crate) fn stream_rar(
 ) -> Result<(), wire::Failure> {
     let mut child = spawn(archive_path, password)?;
     let stdout = child
-        .stdout
-        .take()
+        .stdout()
         .ok_or_else(|| "Missing RAR extraction pipe".to_owned())?;
     let reader = TimedPipeReader {
         fd: stdout,
@@ -80,7 +79,7 @@ fn drive(
     }
 }
 
-fn reap(child: &mut Child, cancelled: &AtomicBool) -> Result<(), String> {
+fn reap(child: &mut Renderer, cancelled: &AtomicBool) -> Result<(), String> {
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
         if cancelled.load(Ordering::Relaxed) {
@@ -110,7 +109,7 @@ fn reap(child: &mut Child, cancelled: &AtomicBool) -> Result<(), String> {
     }
 }
 
-fn spawn(archive_path: &Path, password: Option<&str>) -> Result<Child, String> {
+fn spawn(archive_path: &Path, password: Option<&str>) -> Result<Renderer, String> {
     let archive_path = archive_path
         .canonicalize()
         .map_err(|error| crate::services::io_error_message(&error))?;
@@ -143,7 +142,7 @@ fn rar_extraction_command(
     command.args(["--setenv", "MALLOC_ARENA_MAX", "1"]);
     command.arg("--");
     command
-        .arg(option_env!("STRATA_SANDBOX_PRLIMIT").unwrap_or("/usr/bin/prlimit"))
+        .arg(&super::runtime::current().prlimit)
         .arg(format!("--as={ADDRESS_SPACE_LIMIT_BYTES}"))
         .arg(format!("--cpu={RAR_CPU_TIME_LIMIT_SECS}"))
         .arg("--fsize=0")

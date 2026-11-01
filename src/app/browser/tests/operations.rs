@@ -18,6 +18,7 @@ fn deleted_trash_entries_refresh_the_trash_root() {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_uri: None,
     };
 
@@ -174,7 +175,7 @@ fn restoration_monitor_changes_publish_once_after_the_terminal_event() {
         request_id,
         completed: 1,
         total: 2,
-        restored_location: Some(first.location.clone()),
+        restored_location: Some(Location::local("/restored/first")),
     });
 
     assert_eq!(
@@ -266,6 +267,7 @@ fn every_recent_spelling_is_rejected_by_creation_and_transfer_commands() {
             vec![PasteItem {
                 source: Location::local("/fixture/source.txt"),
                 conflict: TransferConflict::FailIfExists,
+                target_name: None,
             }],
             false,
             true,
@@ -310,15 +312,16 @@ fn large_restore_progress_defers_model_removal() {
 }
 
 #[test]
-fn cancellation_refreshes_an_affected_remote_root_and_its_open_descendants() {
+fn cancellation_refreshes_only_an_affected_remote_folder_and_its_open_descendants() {
     let enumerate_calls = Rc::new(Cell::new(0));
     let browser = Browser::new(Rc::new(CountingFileSource {
         enumerate_calls: enumerate_calls.clone(),
     }));
-    let root = Location::uri("smb://host/share");
-    browser.navigate(root.clone());
-    browser.descend(0, Location::uri("smb://host/share/child"));
-    assert_eq!(enumerate_calls.get(), 2);
+    let affected = Location::uri("smb://host/share/child");
+    browser.navigate(Location::uri("smb://host/share"));
+    browser.descend(0, affected.clone());
+    browser.descend(1, Location::uri("smb://host/share/child/grandchild"));
+    assert_eq!(enumerate_calls.get(), 3);
 
     let events = Rc::new(RefCell::new(Vec::new()));
     let observed = events.clone();
@@ -351,12 +354,12 @@ fn cancellation_refreshes_an_affected_remote_root_and_its_open_descendants() {
             completed: vec![Location::uri("smb://host/share/completed")],
             failed: vec![Location::uri("smb://host/share/interrupted")],
             not_attempted: vec![Location::uri("smb://host/share/not-attempted")],
-            affected_locations: HashSet::from([root]),
+            affected_locations: HashSet::from([affected]),
         },
     });
 
     assert_eq!(browser.current_operation.get(), None);
-    assert_eq!(enumerate_calls.get(), 2);
+    assert_eq!(enumerate_calls.get(), 3);
     let affected_locations = events
         .borrow()
         .iter()
@@ -368,7 +371,7 @@ fn cancellation_refreshes_an_affected_remote_root_and_its_open_descendants() {
         })
         .expect("cancellation event");
     browser.refresh_after_cancellation(&affected_locations);
-    assert_eq!(enumerate_calls.get(), 4);
+    assert_eq!(enumerate_calls.get(), 5);
     assert!(
         events
             .borrow()
@@ -384,6 +387,256 @@ fn cancellation_refreshes_an_affected_remote_root_and_its_open_descendants() {
             ..
         }
     )));
+}
+
+#[test]
+fn a_stopped_transfer_reloads_its_destination_once() {
+    struct Destination {
+        watched: bool,
+        loads: Cell<usize>,
+    }
+
+    impl FileSource for Destination {
+        fn validate_location(&self, _: &Location) -> Result<(), LocationValidationError> {
+            Ok(())
+        }
+
+        fn enumerate(
+            &self,
+            request: DirectoryRequest,
+            emit: Rc<dyn Fn(DirectoryEvent)>,
+        ) -> LoadHandle {
+            self.loads.set(self.loads.get() + 1);
+            emit(DirectoryEvent::Finished {
+                request_id: request.id,
+                truncated: false,
+                can_trash: None,
+                can_delete: None,
+            });
+            LoadHandle::new(|| {})
+        }
+
+        fn watch(&self, _: Location, _: bool, _: WatchCallback) -> Option<LoadHandle> {
+            self.watched.then(|| LoadHandle::new(|| {}))
+        }
+    }
+
+    type Ending = fn(OperationRequestId) -> OperationEvent;
+    let cancelled: Ending = |request_id| OperationEvent::Cancelled {
+        request_id,
+        result: CancelledOperation {
+            affected_locations: HashSet::from([Location::uri("sftp://host/destination")]),
+            ..CancelledOperation::default()
+        },
+    };
+    let failed: Ending = |request_id| OperationEvent::Failed {
+        request_id,
+        message: "failed".to_owned(),
+        password_failure: None,
+    };
+    let transfer_failed: Ending = |request_id| OperationEvent::TransferFailed {
+        request_id,
+        completed_locations: Vec::new(),
+        message: "failed".to_owned(),
+    };
+    let rows = [
+        ("cancelled", false, false, false, cancelled, 1),
+        ("failed", false, false, false, failed, 1),
+        ("transfer failed", false, false, false, transfer_failed, 1),
+        (
+            "transfer failed, watched",
+            false,
+            true,
+            false,
+            transfer_failed,
+            0,
+        ),
+        (
+            "transfer failed, rescanned",
+            false,
+            true,
+            true,
+            transfer_failed,
+            1,
+        ),
+        (
+            "cancelled in the background",
+            true,
+            false,
+            false,
+            cancelled,
+            1,
+        ),
+        ("failed in the background", true, false, false, failed, 1),
+        (
+            "transfer failed in the background",
+            true,
+            false,
+            false,
+            transfer_failed,
+            1,
+        ),
+    ];
+    for (row, background, watched, rescanned, ending, reloads) in rows {
+        let destination = Location::uri("sftp://host/destination");
+        let source = Rc::new(Destination {
+            watched,
+            loads: Cell::new(0),
+        });
+        let browser = Browser::new(source.clone());
+        let operations = Rc::new(crate::test_support::operations::HeldOperations::default());
+        browser.set_operation_provider(operations.clone());
+        browser.navigate(destination.clone());
+        browser.transfer(
+            destination.clone(),
+            vec![PasteItem {
+                source: Location::uri("sftp://host/source/item.txt"),
+                conflict: TransferConflict::FailIfExists,
+                target_name: None,
+            }],
+            false,
+            false,
+        );
+        let id = browser.last_started_operation().expect("copy started");
+        if background {
+            assert!(browser.background_file_operation(id), "{row}");
+        }
+        if rescanned {
+            browser.handle_directory_change(0, &destination, DirectoryChange::Rescan);
+        }
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let observed = events.clone();
+        browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+        let loaded = source.loads.get();
+
+        operations.emit(id, ending(id));
+        for event in events.take() {
+            match crate::test_support::operations::operation_event(&event) {
+                BrowserEvent::OperationCancelled {
+                    affected_locations, ..
+                } => browser.refresh_after_cancellation(affected_locations),
+                BrowserEvent::OperationRefreshRequired { depths } => {
+                    browser.refresh_operation_columns(depths)
+                }
+                _ => {}
+            }
+        }
+
+        assert_eq!(source.loads.get() - loaded, reloads, "{row}");
+    }
+}
+
+#[test]
+fn a_restore_reloads_the_open_folders_without_a_monitor_it_changed() {
+    struct Watched(CountingFileSource);
+
+    impl FileSource for Watched {
+        fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
+            self.0.validate_location(location)
+        }
+
+        fn enumerate(
+            &self,
+            request: DirectoryRequest,
+            emit: Rc<dyn Fn(DirectoryEvent)>,
+        ) -> LoadHandle {
+            self.0.enumerate(request, emit)
+        }
+
+        fn watch(
+            &self,
+            _location: Location,
+            _include_hidden: bool,
+            _notify: Rc<dyn Fn(DirectoryChange)>,
+        ) -> Option<LoadHandle> {
+            Some(LoadHandle::new(|| {}))
+        }
+    }
+
+    type Ending = fn(OperationRequestId, Vec<Location>) -> OperationEvent;
+    let folder = Location::uri("smb://host/share/folder");
+    let into_folder = Location::uri("smb://host/share/folder/restored.txt");
+    let restored: Ending = |request_id, restored| OperationEvent::Restored {
+        request_id,
+        locations: vec![Location::uri("trash:///restored")],
+        restored,
+    };
+    let restored_with_errors: Ending =
+        |request_id, restored| OperationEvent::RestoreCompletedWithErrors {
+            request_id,
+            restored_locations: vec![Location::uri("trash:///restored")],
+            restored,
+            message: "one item failed".to_owned(),
+        };
+    let undone_with_errors: Ending = |request_id, _| OperationEvent::CompletedWithErrors {
+        request_id,
+        deleted_locations: Vec::new(),
+        retryable_locations: Vec::new(),
+        has_non_retryable_failures: true,
+        message: "one item failed".to_owned(),
+    };
+    let rows = [
+        (
+            "restored into it",
+            restored,
+            vec![into_folder.clone()],
+            None,
+            false,
+            1,
+        ),
+        (
+            "restored into it with errors",
+            restored_with_errors,
+            vec![into_folder],
+            None,
+            false,
+            1,
+        ),
+        (
+            "restored it",
+            restored,
+            vec![folder.clone()],
+            None,
+            false,
+            2,
+        ),
+        (
+            "a merge undo in it restored nothing",
+            undone_with_errors,
+            Vec::new(),
+            Some(folder.clone()),
+            false,
+            1,
+        ),
+        (
+            "restored a watched folder",
+            restored,
+            vec![folder.clone()],
+            None,
+            true,
+            0,
+        ),
+    ];
+    for (row, ending, restored, undone_in, watched, reloaded) in rows {
+        let enumerate_calls = Rc::new(Cell::new(0));
+        let source = CountingFileSource {
+            enumerate_calls: enumerate_calls.clone(),
+        };
+        let browser = if watched {
+            Browser::new(Rc::new(Watched(source)))
+        } else {
+            Browser::new(Rc::new(source))
+        };
+        browser.navigate(Location::uri("smb://host/share"));
+        browser.descend(0, folder.clone());
+        let request_id = browser.begin_operation();
+        browser.restoration_operation.set(true);
+        let emit = browser.operation_callback(request_id, false, undone_in.into_iter().collect());
+
+        emit(ending(request_id, restored));
+
+        assert_eq!(enumerate_calls.get(), 2 + reloaded, "{row}");
+    }
 }
 
 #[test]
@@ -522,6 +775,7 @@ fn cancelling_extraction_keeps_progress_until_the_worker_reports_cancellation() 
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_uri: None,
     };
     browser.extract(entry, Location::local("/fixture"), false, None);
@@ -592,6 +846,14 @@ fn successful_transfers_reveal_actual_destination_names_only_without_navigation(
                 browser.navigate(Location::local("/elsewhere"));
                 browser.navigate(root);
             }
+            if moving {
+                emit(OperationEvent::ItemMoved {
+                    request_id,
+                    from: Location::local("/fixture/report.txt"),
+                    to: Location::local("/fixture/archive/report (1).txt"),
+                    merged: false,
+                });
+            }
             emit(OperationEvent::Pasted {
                 request_id,
                 locations: vec![Location::local("/fixture/report.txt")],
@@ -611,7 +873,7 @@ fn successful_transfers_reveal_actual_destination_names_only_without_navigation(
                 assert!(reveals.is_empty());
             } else {
                 let name = if moving {
-                    "report.txt"
+                    "report (1).txt"
                 } else {
                     "report (copy).txt"
                 };
@@ -682,59 +944,110 @@ fn failed_transfers_do_not_request_a_reveal() {
 }
 
 #[test]
-fn create_and_rename_refresh_remote_columns_but_not_local_monitors() {
-    for (location, remote) in [
-        (Location::uri("smb://host/share"), true),
-        (Location::local("/fixture"), false),
+fn completed_operations_refresh_only_columns_without_a_monitor() {
+    struct Watched(CountingFileSource);
+
+    impl FileSource for Watched {
+        fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
+            self.0.validate_location(location)
+        }
+
+        fn enumerate(
+            &self,
+            request: DirectoryRequest,
+            emit: Rc<dyn Fn(DirectoryEvent)>,
+        ) -> LoadHandle {
+            self.0.enumerate(request, emit)
+        }
+
+        fn watch(&self, _: Location, _: bool, _: WatchCallback) -> Option<LoadHandle> {
+            Some(LoadHandle::new(|| {}))
+        }
+    }
+
+    for (location, elsewhere, watched) in [
+        (
+            Location::uri("smb://host/share"),
+            Location::uri("smb://host/elsewhere"),
+            false,
+        ),
+        (
+            Location::local("/fixture"),
+            Location::local("/elsewhere"),
+            false,
+        ),
+        (
+            Location::local("/fixture"),
+            Location::local("/elsewhere"),
+            true,
+        ),
     ] {
-        for create in [true, false] {
+        for operation in ["create", "rename", "move away", "compress"] {
             let enumerate_calls = Rc::new(Cell::new(0));
-            let browser = Browser::new(Rc::new(CountingFileSource {
+            let source = CountingFileSource {
                 enumerate_calls: enumerate_calls.clone(),
-            }));
+            };
+            let browser = if watched {
+                Browser::new(Rc::new(Watched(source)))
+            } else {
+                Browser::new(Rc::new(source))
+            };
             browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
             browser.navigate(location.clone());
             assert_eq!(enumerate_calls.get(), 1);
+            let item = FileEntry {
+                location: location
+                    .child(OsStr::new("old-name.txt"))
+                    .expect("operation target"),
+                native_name: "old-name.txt".into(),
+                thumbnail_path: None,
+                display_name: "old-name.txt".into(),
+                kind: EntryKind::File,
+                size: MetadataValue::Known(1),
+                modified_unix_seconds: MetadataValue::Unknown,
+                recent_unix_seconds: MetadataValue::Unknown,
+                is_hidden: false,
+                mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
+                recent_uri: None,
+            };
 
-            if create {
-                browser.create_directory_with_naming(
+            match operation {
+                "create" => browser.create_directory_with_naming(
                     location.clone(),
                     "New Folder".to_owned(),
                     false,
-                );
-            } else {
-                browser.rename(
-                    FileEntry {
-                        location: location
-                            .child(OsStr::new("old-name.txt"))
-                            .expect("rename target"),
-                        native_name: "old-name.txt".into(),
-                        thumbnail_path: None,
-                        display_name: "old-name.txt".into(),
-                        kind: EntryKind::File,
-                        size: MetadataValue::Known(1),
-                        modified_unix_seconds: MetadataValue::Unknown,
-                        recent_unix_seconds: MetadataValue::Unknown,
-                        is_hidden: false,
-                        mode: MetadataValue::Unknown,
-                        image_dimensions: MetadataValue::Unknown,
-                        child_count: MetadataValue::Unknown,
-                        duration_seconds: MetadataValue::Unknown,
-                        recent_uri: None,
-                    },
-                    "new-name.txt".to_owned(),
-                );
+                ),
+                "rename" => {
+                    browser.rename(item, "new-name.txt".to_owned());
+                }
+                "move away" => browser.transfer(
+                    elsewhere.clone(),
+                    vec![PasteItem {
+                        source: item.location,
+                        conflict: TransferConflict::FailIfExists,
+                        target_name: None,
+                    }],
+                    true,
+                    false,
+                ),
+                _ => browser.compress(
+                    vec![item],
+                    location.clone(),
+                    "archive".to_owned(),
+                    TransferConflict::FailIfExists,
+                    crate::services::ArchiveFormat::Zip,
+                    None,
+                ),
             }
 
             assert_eq!(
                 enumerate_calls.get(),
-                if remote { 2 } else { 1 },
-                "{}",
-                if remote {
-                    "a remote column has no live monitor, so it should be refreshed explicitly"
-                } else {
-                    "a local column already has a live file monitor; no extra refresh is needed"
-                }
+                if watched { 1 } else { 2 },
+                "{operation} in {location:?}, watched: {watched}"
             );
         }
     }
@@ -774,7 +1087,7 @@ fn completed_deletions_remove_entries_without_reloading_the_column() {
     let observed = events.clone();
     browser.observe(move |event| observed.borrow_mut().push(event.clone()));
 
-    browser.remove_deleted_locations(&[Location::local("/fixture/child")]);
+    browser.remove_deleted_locations(&[Location::local("/fixture/child")], &[]);
 
     assert!(browser.entry_at(0, 0).is_none());
     assert!(events.borrow().iter().any(|event| matches!(

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 use super::thumbnail::ThumbnailSlot;
+use crate::assets::icons;
 use crate::services::file_providers::{
-    self as protocol, Client, Decoration, Feedback, MenuAction, OutcomeStatus, Registration,
-    Request, Update,
+    self as protocol, Client, Decoration, Feedback, MenuAction, OutcomeStatus, Placement,
+    Registration, Request, Update,
 };
+use crate::services::integration_catalog::Category;
 use gtk::{gdk, gio, glib, prelude::*};
 use std::{
     cell::RefCell,
@@ -35,6 +37,7 @@ struct Provider {
     id: String,
     name: String,
     heading_icon: Option<gdk::Texture>,
+    category: Option<Category>,
     cache: HashMap<String, Answer<Decoration>>,
     menus: HashMap<MenuKey, Answer<Vec<MenuAction>>>,
     freshness: Freshness,
@@ -50,30 +53,46 @@ struct Slot {
     widget: glib::WeakRef<ThumbnailSlot>,
     path: String,
 }
+/// A provider a reload dropped while it still owed the answer to an activation.
+/// The transport's per-request deadline guarantees each waiting action settles.
+struct Retiring {
+    client: Client,
+    id: String,
+    name: String,
+    waiting: HashMap<u64, glib::WeakRef<gtk::Widget>>,
+}
 struct Hub {
     discovery: mpsc::Receiver<Vec<Registration>>,
     discovered: bool,
     providers: Vec<Provider>,
+    retiring: Vec<Retiring>,
     slots: HashMap<usize, Slot>,
     pending: HashMap<u64, Pending>,
     serial: u64,
+    /// Whether the tick timer is running; it stops once discovery finds nothing.
+    ticking: bool,
 }
 thread_local! { static HUB: RefCell<Option<Hub>> = const { RefCell::new(None) }; }
+fn spawn_discovery() -> mpsc::Receiver<Vec<Registration>> {
+    let (tx, discovery) = mpsc::channel();
+    let root = protocol::config_root();
+    std::thread::spawn(move || {
+        let _ = tx.send(root.map_or_else(Vec::new, |p| protocol::discover(&p)));
+    });
+    discovery
+}
 fn with_hub<T>(f: impl FnOnce(&mut Hub) -> T) -> T {
     HUB.with(|cell| {
         if cell.borrow().is_none() {
-            let (tx, discovery) = mpsc::channel();
-            let root = protocol::config_root();
-            std::thread::spawn(move || {
-                let _ = tx.send(root.map_or_else(Vec::new, |p| protocol::discover(&p)));
-            });
             cell.replace(Some(Hub {
-                discovery,
+                discovery: spawn_discovery(),
                 discovered: false,
                 providers: Vec::new(),
+                retiring: Vec::new(),
                 slots: HashMap::new(),
                 pending: HashMap::new(),
                 serial: 0,
+                ticking: true,
             }));
             glib::timeout_add_local(Duration::from_millis(100), tick_hub);
         }
@@ -86,12 +105,42 @@ fn with_hub<T>(f: impl FnOnce(&mut Hub) -> T) -> T {
 fn tick_hub() -> glib::ControlFlow {
     let idle = with_hub(|hub| {
         hub.tick();
-        hub.has_no_providers()
+        if hub.has_no_providers() && hub.retiring.is_empty() {
+            hub.ticking = false;
+        }
+        !hub.ticking
     });
     if idle {
         glib::ControlFlow::Break
     } else {
         glib::ControlFlow::Continue
+    }
+}
+
+/// The themed icon standing for an integration without artwork of its own.
+pub(crate) fn category_icon(category: Option<Category>) -> &'static str {
+    match category {
+        Some(Category::Cloud) => icons::CLOUD,
+        Some(Category::Devices) => icons::SMARTPHONE,
+        Some(Category::VersionControl) => icons::GIT_BRANCH,
+        Some(Category::Other) | None => icons::BLOCKS,
+    }
+}
+
+/// Stops every provider and discovers the registrations again, so edits
+/// under the providers directory take effect without a restart. A provider
+/// still owing an activation outcome runs until it answers.
+pub(crate) fn reload() {
+    reload_with(spawn_discovery());
+}
+
+fn reload_with(discovery: mpsc::Receiver<Vec<Registration>>) {
+    let start_timer = with_hub(|hub| {
+        hub.reload(discovery);
+        !std::mem::replace(&mut hub.ticking, true)
+    });
+    if start_timer {
+        glib::timeout_add_local(Duration::from_millis(100), tick_hub);
     }
 }
 
@@ -183,6 +232,39 @@ impl Hub {
         self.discovered && self.providers.is_empty()
     }
 
+    /// Drops the running providers, which ends their processes, and waits
+    /// for a new discovery result. Tracked rows lose their badges until the
+    /// new providers answer. A provider with an unanswered activation retires
+    /// instead, so the outcome is still shown.
+    fn reload(&mut self, discovery: mpsc::Receiver<Vec<Registration>>) {
+        self.discovery = discovery;
+        self.discovered = false;
+        for (index, provider) in std::mem::take(&mut self.providers).into_iter().enumerate() {
+            let waiting: HashMap<_, _> = self
+                .pending
+                .iter()
+                .filter_map(|(id, pending)| match pending {
+                    Pending::Activate(i, owner) if *i == index => Some((*id, owner.clone())),
+                    _ => None,
+                })
+                .collect();
+            if !waiting.is_empty() {
+                self.retiring.push(Retiring {
+                    client: provider.client,
+                    id: provider.id,
+                    name: provider.name,
+                    waiting,
+                });
+            }
+        }
+        self.pending.clear();
+        for slot in self.slots.values() {
+            if let Some(widget) = slot.widget.upgrade() {
+                widget.set_decoration(None, None);
+            }
+        }
+    }
+
     fn send(&mut self, provider: usize, mut r: Request, pending: Pending) {
         self.serial += 1;
         r.id = self.serial;
@@ -211,7 +293,44 @@ impl Hub {
             }
         }
     }
+    fn settle_retiring(&mut self) {
+        let mut answered = Vec::new();
+        for retiring in &mut self.retiring {
+            let (updates, closed) = retiring.client.updates.drain();
+            for update in updates {
+                match update {
+                    Update::Reply(reply) => {
+                        if let Some(owner) = reply.id.and_then(|id| retiring.waiting.remove(&id)) {
+                            present_activation(&owner, &retiring.id, &retiring.name, *reply);
+                            answered.push(retiring.id.clone());
+                        }
+                    }
+                    Update::Offline { unsent, in_flight } => {
+                        for id in unsent.iter().copied().chain(in_flight) {
+                            if let Some(owner) = retiring.waiting.remove(&id) {
+                                notify_disconnected(&owner, &retiring.id, unsent.contains(&id));
+                            }
+                        }
+                    }
+                }
+            }
+            if closed {
+                for (_, owner) in retiring.waiting.drain() {
+                    notify_disconnected(&owner, &retiring.id, false);
+                }
+            }
+        }
+        self.retiring
+            .retain(|retiring| !retiring.waiting.is_empty());
+        for index in 0..self.providers.len() {
+            if answered.contains(&self.providers[index].id) {
+                self.invalidate(index);
+            }
+        }
+    }
+
     fn tick(&mut self) {
+        self.settle_retiring();
         if let Ok(registrations) = self.discovery.try_recv() {
             self.discovered = true;
             if registrations.is_empty() {
@@ -235,11 +354,13 @@ impl Hub {
                     .as_ref()
                     .and_then(|icon| icons.get(icon))
                     .cloned();
+                let category = r.manifest.category.as_deref().and_then(Category::from_id);
                 self.providers.push(Provider {
                     client: protocol::start(r),
                     id,
                     name,
                     heading_icon,
+                    category,
                     icons,
                     cache: HashMap::new(),
                     menus: HashMap::new(),
@@ -355,15 +476,7 @@ impl Hub {
                                 );
                             }
                             Pending::Activate(i, owner) if i == index => {
-                                match reply.feedback() {
-                                    Feedback::None => (),
-                                    Feedback::Notice => {
-                                        notice(&owner, &provider.name, &reply.message);
-                                    }
-                                    Feedback::Dialog | Feedback::Unrecognized => {
-                                        notify(&owner, &activation_summary(&provider.id, *reply));
-                                    }
-                                }
+                                present_activation(&owner, &provider.id, &provider.name, *reply);
                                 self.invalidate(index);
                             }
                             _ => (),
@@ -477,12 +590,7 @@ impl Hub {
             .collect();
         for id in ids {
             if let Some(Pending::Activate(_, owner)) = self.pending.remove(&id) {
-                let message = if unsent.contains(&id) {
-                    "The provider disconnected before this action was sent."
-                } else {
-                    "The provider disconnected. The action may already have been accepted; check its state before retrying."
-                };
-                notify(&owner, &format!("{}: {message}", self.providers[index].id));
+                notify_disconnected(&owner, &self.providers[index].id, unsent.contains(&id));
             }
         }
     }
@@ -565,6 +673,30 @@ fn activation_summary(provider: &str, reply: protocol::Reply) -> String {
     )
 }
 
+fn present_activation(
+    owner: &glib::WeakRef<gtk::Widget>,
+    provider_id: &str,
+    provider_name: &str,
+    reply: protocol::Reply,
+) {
+    match reply.feedback() {
+        Feedback::None => (),
+        Feedback::Notice => notice(owner, provider_name, &reply.message),
+        Feedback::Dialog | Feedback::Unrecognized => {
+            notify(owner, &activation_summary(provider_id, reply));
+        }
+    }
+}
+
+fn notify_disconnected(owner: &glib::WeakRef<gtk::Widget>, provider_id: &str, unsent: bool) {
+    let message = if unsent {
+        "The provider disconnected before this action was sent."
+    } else {
+        "The provider disconnected. The action may already have been accepted; check its state before retrying."
+    };
+    notify(owner, &format!("{provider_id}: {message}"));
+}
+
 const NOTICE_DURATION: Duration = Duration::from_secs(4);
 
 /// Falls back to the dialog when the menu owner has no overlay to host a notice.
@@ -594,7 +726,7 @@ fn notify(owner: &glib::WeakRef<gtk::Widget>, message: &str) {
 }
 /// The caller owns the epoch: rebuilding/closing a menu cancels its old watcher.
 pub(super) fn watch_menu(
-    model: gio::Menu,
+    models: (gio::Menu, Option<gio::Menu>),
     group: gio::SimpleActionGroup,
     owner: (&gtk::Widget, &gtk::PopoverMenu),
     paths: Vec<PathBuf>,
@@ -621,7 +753,7 @@ pub(super) fn watch_menu(
     let owner = owner.downgrade();
     let popover = popover.downgrade();
     let mut renderer = menus::Renderer::new(
-        model,
+        models,
         group,
         owner.clone(),
         popover.clone(),

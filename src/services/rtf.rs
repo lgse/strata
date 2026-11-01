@@ -43,6 +43,7 @@ struct Writer {
     html: String,
     paragraph: bool,
     applied: Style,
+    pending_surrogate: Option<(u16, Style)>,
 }
 
 impl Writer {
@@ -50,6 +51,42 @@ impl Writer {
         if text.is_empty() {
             return;
         }
+        self.flush_surrogate();
+        self.write_text(text, style);
+    }
+
+    fn unicode(&mut self, value: i32, style: Style) {
+        let unit = match value {
+            -32768..=-1 => (value + 0x1_0000) as u16,
+            0..=65535 => value as u16,
+            _ => 0xfffd,
+        };
+        if let Some((high, high_style)) = self.pending_surrogate.take() {
+            if (0xdc00..=0xdfff).contains(&unit) {
+                let character = char::decode_utf16([high, unit])
+                    .next()
+                    .expect("two UTF-16 units")
+                    .expect("matched surrogate pair");
+                self.write_text(character.encode_utf8(&mut [0; 4]), high_style);
+                return;
+            }
+            self.write_text("�", high_style);
+        }
+        if (0xd800..=0xdbff).contains(&unit) {
+            self.pending_surrogate = Some((unit, style));
+        } else {
+            let character = char::from_u32(u32::from(unit)).unwrap_or(char::REPLACEMENT_CHARACTER);
+            self.write_text(character.encode_utf8(&mut [0; 4]), style);
+        }
+    }
+
+    fn flush_surrogate(&mut self) {
+        if let Some((_, style)) = self.pending_surrogate.take() {
+            self.write_text("�", style);
+        }
+    }
+
+    fn write_text(&mut self, text: &str, style: Style) {
         if !self.paragraph {
             self.html.push_str("<p>");
             self.paragraph = true;
@@ -94,12 +131,14 @@ impl Writer {
     }
 
     fn line_break(&mut self) {
+        self.flush_surrogate();
         if self.paragraph {
             self.html.push_str("<br>");
         }
     }
 
     fn end_paragraph(&mut self) {
+        self.flush_surrogate();
         if !self.paragraph {
             return;
         }
@@ -214,7 +253,7 @@ fn control(
                         *skipped += 1;
                     }
                 }
-                b'\r' | b'\n' => writer.end_paragraph(),
+                b'\r' | b'\n' if *skipped == 0 => writer.end_paragraph(),
                 b'\\' | b'{' | b'}' | b'~' | b'_' if *skipped == 0 => {
                     let literal = match byte {
                         b'~' => '\u{a0}',
@@ -278,17 +317,8 @@ fn apply(
         "u" => {
             let skip = group.unicode_skip;
             if let Some(value) = parameter {
-                // \uN is a signed 16-bit code unit; negative values wrap.
-                let scalar = if value < 0 {
-                    (i64::from(value) + 0x1_0000) as u32
-                } else {
-                    value as u32
-                };
-                if *skipped == 0
-                    && let Some(character) = char::from_u32(scalar)
-                {
-                    let style = style(groups);
-                    writer.text(character.encode_utf8(&mut [0; 4]), style);
+                if *skipped == 0 {
+                    writer.unicode(value, style(groups));
                 }
                 return skip_fallback(bytes, next, skip);
             }

@@ -15,7 +15,7 @@ use crate::{
     model::{Location, SortDirection, SortKey},
     ui::{
         browser::{ConflictFocus, Yank},
-        keys::{KeyPress, bindings::*},
+        keys::{Binding, Command, KeyPress, bindings::*},
         tenxer_mode::{Chord, Prompt},
         window::visible_modal_layer,
     },
@@ -41,21 +41,33 @@ pub(super) struct ArmedActions {
     ids: Vec<String>,
 }
 
+/// Shift with a step reverses it, on whatever key the step is bound to. A key
+/// bound to a step itself wins over another step's reversed key.
 fn sort_choice(press: &KeyPress) -> Option<(SortKey, SortDirection)> {
-    use SortDirection::{Ascending, Descending};
-    [
-        (SORT_BY_NAME, (SortKey::Name, Ascending)),
-        (SORT_BY_NAME_REVERSED, (SortKey::Name, Descending)),
-        (SORT_BY_MODIFIED, (SortKey::Modified, Ascending)),
-        (SORT_BY_MODIFIED_REVERSED, (SortKey::Modified, Descending)),
-        (SORT_BY_SIZE, (SortKey::Size, Ascending)),
-        (SORT_BY_SIZE_REVERSED, (SortKey::Size, Descending)),
-        (SORT_BY_TYPE, (SortKey::Type, Ascending)),
-        (SORT_BY_TYPE_REVERSED, (SortKey::Type, Descending)),
-    ]
-    .into_iter()
-    .find(|(binding, _)| press.is(*binding))
-    .map(|(_, choice)| choice)
+    const STEPS: [(Command, SortKey); 4] = [
+        (SORT_BY_NAME, SortKey::Name),
+        (SORT_BY_MODIFIED, SortKey::Modified),
+        (SORT_BY_SIZE, SortKey::Size),
+        (SORT_BY_TYPE, SortKey::Type),
+    ];
+    let reversed = |step: Command| {
+        step.bindings().into_iter().any(|binding| {
+            press.is(Binding::new(
+                binding.key(),
+                binding.modifiers() | gtk::gdk::ModifierType::SHIFT_MASK,
+            ))
+        })
+    };
+    STEPS
+        .into_iter()
+        .find(|(step, _)| press.is(*step))
+        .map(|(_, sort_key)| (sort_key, SortDirection::Ascending))
+        .or_else(|| {
+            STEPS
+                .into_iter()
+                .find(|(step, _)| reversed(*step))
+                .map(|(_, sort_key)| (sort_key, SortDirection::Descending))
+        })
 }
 
 /// 0 is slot 10.
@@ -76,25 +88,25 @@ impl Dispatcher {
             return None;
         }
         // Result navigation also consumes Ctrl+H; toggling must win.
-        if press.is_any(&[HIDDEN_FILES, HIDDEN_FILES_PERIOD, TENXER_HIDDEN_FILES]) {
+        if press.is(HIDDEN_FILES) {
             self.view.toggle_hidden_from_keys();
         } else if press.is(SORT_BY) {
             self.shortcuts.arm_chord(Chord::Sort);
         } else if press.is(ACTIONS) {
             self.arm_actions();
-        } else if press.is_any(&[TENXER_RENAME, RENAME]) {
+        } else if press.is(RENAME) {
             self.open_rename_prompt();
         } else if press.is(OPEN_WITH) {
             self.open_with_targets();
-        } else if press.is_any(&[DELETE, TENXER_DELETE]) {
+        } else if press.is(MOVE_TO_TRASH) {
             self.delete_targets(false);
-        } else if press.is_any(&[DELETE_PERMANENTLY, TENXER_DELETE_PERMANENTLY]) {
+        } else if press.is(DELETE_PERMANENTLY) {
             self.delete_targets(true);
         } else if press.is(YANK) {
             self.yank(false);
         } else if press.is(YANK_CUT) {
             self.yank(true);
-        } else if press.is_any(&[UNYANK, UNYANK_X]) {
+        } else if press.is(UNYANK) {
             self.view.unyank();
         } else if press.is(PASTE_KEEP_BOTH) {
             self.paste(ConflictFocus::KeepBoth);
@@ -176,7 +188,7 @@ impl Dispatcher {
         self.rename_target.replace(Some(entry));
     }
 
-    fn open_transfer_prompt(&self, kind: Prompt) {
+    pub(super) fn open_transfer_prompt(&self, kind: Prompt) {
         match self.view.transfer_targets(kind == Prompt::MoveTo) {
             Ok(targets) => self.open_destination_prompt(kind, targets),
             Err(reason) => self.shortcuts.show_feedback(&crate::i18n::tr(reason)),
@@ -189,7 +201,7 @@ impl Dispatcher {
         }
     }
 
-    fn restore_targets(&self) {
+    pub(super) fn restore_targets(&self) {
         use crate::ui::browser::TargetCommand;
         match self.view.restore_targets() {
             TargetCommand::Nothing => self
@@ -265,7 +277,12 @@ impl Dispatcher {
                 (ACTIONS_EXTRACT, "Extract here"),
                 (ACTIONS_EXTRACT_TO, "Extract to\u{2026}"),
             ]
-            .map(|(step, action)| (keys::label(&Keys::One(step)), crate::i18n::tr(action))),
+            .map(|(step, action)| {
+                (
+                    keys::label(&Keys::One(step.shown())),
+                    crate::i18n::tr(action),
+                )
+            }),
         );
         self.armed_actions.replace(Some(ArmedActions {
             ids: numbered
@@ -309,7 +326,28 @@ impl Dispatcher {
         true
     }
 
-    fn complete_folder_action(&self, press: &KeyPress) -> bool {
+    /// Runs the action at `index` in Settings → Actions' order, as a default-map
+    /// slot key does. Nothing else runs in its place.
+    pub(super) fn run_listed_action(&self, index: usize) {
+        if crate::ui::actions::shared()
+            .catalog()
+            .actions()
+            .get(index)
+            .is_none()
+        {
+            self.shortcuts
+                .show_feedback(&rust_i18n::t!("No action %{digit}", digit = index + 1));
+            return;
+        }
+        match self.view.listed_action(index) {
+            Some((targets, action)) => self.view.run_numbered_action(targets, action),
+            None => self
+                .shortcuts
+                .show_feedback(&crate::i18n::tr("No matching actions")),
+        }
+    }
+
+    pub(super) fn complete_folder_action(&self, press: &KeyPress) -> bool {
         use crate::ui::browser::TargetCommand;
         if press.is(ACTIONS_TERMINAL) {
             if !self.view.open_focused_folder_terminal() {
@@ -342,7 +380,7 @@ impl Dispatcher {
         true
     }
 
-    fn open_with_targets(&self) {
+    pub(super) fn open_with_targets(&self) {
         self.open_with.invalidate();
         let generation = self.open_with.generation.clone();
         let expected = generation.get();

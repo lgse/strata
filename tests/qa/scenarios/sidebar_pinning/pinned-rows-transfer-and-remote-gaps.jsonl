@@ -1,0 +1,39 @@
+{"scenario":"pinned-rows-transfer-and-remote-gaps","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":3.2},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":3,"score":34,"note":"Pins a folder after a remote row, transfers a file onto a pinned row, reorders pins through remote-row gaps; pin-into-gap overlaps spring-loaded-rows-keep-pin-intent, reorder overlaps folder-pins-order-and-bookmarks"}}
+{"fs":{"path":"pin-destination","mkdir":true}}
+{"fs":{"path":"$config/gtk-3.0","mkdir":true,"parents":true}}
+{"fs":{"path":"$config/gtk-3.0/bookmarks","write":"sftp://host/unavailable Remote\nfile://$fixture_quoted/pin-destination Destination\n"}}
+{"restart":true}
+{"fs":{"path":"pin-source","mkdir":true}}
+{"wait":{"entry":"pin-source"},"message":"the entry 'pin-source' to appear"}
+{"select":{"entry":"pin-source","dir":"$root"}}
+{"wait":{"selected":{"set":["pin-source"]},"dir":"$root"},"message":"the drag selection in its source pane"}
+{"wait":{"present":{"role":"grouping","name":"PINNED"}},"message":"the Pinned insertion targets"}
+{"drag":{"from":{"entry":"pin-source","dir":"$root"},"to":{"role":"grouping","name":"PINNED","nth":1}},"release":false}
+{"button_up":1}
+{"fs":{"path":"$config/gtk-3.0/bookmarks","lines_equal":["sftp://host/unavailable Remote","file://$fixture_quoted/pin-source pin-source","file://$fixture_quoted/pin-destination Destination"]},"message":"a folder to pin after a remote row"}
+{"fs":{"path":"transfer.txt","write":"row transfer"}}
+{"wait":{"entry":"transfer.txt","dir":"$root"},"message":"the entry 'transfer.txt' in '$root' to appear"}
+{"drag":{"from":{"entry":"transfer.txt","dir":"$root"},"to":{"sidebar":"Destination"}}}
+{"fs":{"path":"pin-destination/transfer.txt","exists":true},"message":"the row transfer"}
+{"fs":{"path":"transfer.txt","exists":false},"timeout_ms":0}
+{"fs":{"path":"pin-destination/transfer.txt","text":"row transfer"},"timeout_ms":0}
+{"fs":{"path":"pin-source","is":"dir"},"timeout_ms":0}
+{"drag":{"from":{"sidebar":"Remote"},"from_at":["50%","50%"],"to":{"sidebar":"Destination"},"to_at":["50%","end-1/5"]}}
+{"fs":{"path":"$config/gtk-3.0/bookmarks","last_line":"sftp://host/unavailable Remote"},"message":"existing pinned-row reordering to remain available"}
+{"wait":{"present":{"role":"grouping","name":"PINNED"}},"message":"the Pinned insertion targets"}
+{"drag":{"from":{"sidebar":"Remote"},"to":{"role":"grouping","name":"PINNED","nth":0}}}
+{"fs":{"path":"$config/gtk-3.0/bookmarks","lines_equal":["sftp://host/unavailable Remote","file://$fixture_quoted/pin-source pin-source","file://$fixture_quoted/pin-destination Destination"]},"message":"the pin to reorder through its insertion gap"}
+{"wait":{"present":{"role":"grouping","name":"PINNED"}},"message":"the Pinned insertion targets"}
+{"drag":{"from":{"sidebar":"Remote"},"to":{"role":"grouping","name":"PINNED","nth":-1}}}
+{"fs":{"path":"$config/gtk-3.0/bookmarks","lines_equal":["file://$fixture_quoted/pin-source pin-source","file://$fixture_quoted/pin-destination Destination","sftp://host/unavailable Remote"]},"message":"the pin to reorder through its insertion gap"}
+{"wait":{"present":{"role":"grouping","name":"PINNED"}},"message":"the Pinned insertion targets"}
+{"drag":{"from":{"sidebar":"Remote"},"to":{"role":"grouping","name":"PINNED","nth":1}}}
+{"fs":{"path":"$config/gtk-3.0/bookmarks","lines_equal":["file://$fixture_quoted/pin-source pin-source","sftp://host/unavailable Remote","file://$fixture_quoted/pin-destination Destination"]},"message":"the pin to reorder through its insertion gap"}
+{"wait":{"present":{"role":"grouping","name":"PINNED"}},"message":"the Pinned insertion targets"}
+{"drag":{"from":{"sidebar":"Destination"},"to":{"role":"grouping","name":"PINNED","nth":0}}}
+{"fs":{"path":"$config/gtk-3.0/bookmarks","lines_equal":["file://$fixture_quoted/pin-destination Destination","file://$fixture_quoted/pin-source pin-source","sftp://host/unavailable Remote"]},"message":"the local pin to reorder without transferring its contents"}
+{"restart":true}
+{"fs":{"path":"$config/gtk-3.0/bookmarks","lines_equal":["file://$fixture_quoted/pin-destination Destination","file://$fixture_quoted/pin-source pin-source","sftp://host/unavailable Remote"]},"timeout_ms":0}
+{"fs":{"path":"pin-source","is":"dir"},"timeout_ms":0}
+{"fs":{"path":"pin-destination","is":"dir"},"timeout_ms":0}
+{"fs":{"path":"pin-destination/transfer.txt","text":"row transfer"},"timeout_ms":0}

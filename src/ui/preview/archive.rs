@@ -387,7 +387,10 @@ impl ArchiveBrowser {
             let back = gtk::Button::new();
             let back_icon = primary_icon(icons::ARROW_LEFT, 14);
             back.set_child(Some(&back_icon));
-            back.set_tooltip_text(Some(&crate::i18n::tr("Go up one level")));
+            crate::ui::accessibility::set_tooltip_and_label(
+                &back,
+                &crate::i18n::tr("Go up one level"),
+            );
             back.add_css_class("preview-archive-crumb");
             let navigate = self.navigate.clone();
             back.connect_clicked(move |_| navigate(depth - 1));

@@ -2,8 +2,8 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
+    collections::HashMap,
+    path::PathBuf,
     rc::{Rc, Weak},
 };
 
@@ -30,7 +30,11 @@ pub(super) struct ActionMenuSection {
     provider_group: gio::SimpleActionGroup,
     provider_epoch: Rc<std::cell::Cell<u64>>,
     pub(super) transfer_sections: Option<[gio::Menu; 2]>,
-    send_to_row_indices: RefCell<[Option<i32>; 2]>,
+    send_to_model: gio::Menu,
+    send_to_provider_model: gio::Menu,
+    send_to_offset: Rc<Cell<i32>>,
+    send_to_transfer_index: Cell<Option<usize>>,
+    send_to_row: Cell<Option<(usize, i32)>>,
     root_model: gio::Menu,
     header: Option<gtk::Widget>,
     owner: gtk::glib::WeakRef<gtk::Widget>,
@@ -38,8 +42,7 @@ pub(super) struct ActionMenuSection {
     dispatch: super::commands::MenuDispatch,
     _commands: super::commands::CommandMenus,
     navigation: Rc<super::keyboard::NativeMenuNavigation>,
-    monitor: gio::VolumeMonitor,
-    monitor_handlers: RefCell<Vec<gtk::glib::SignalHandlerId>>,
+    removable_watch: RefCell<Option<crate::ui::RemovableWatch>>,
     refresh_pending: Cell<bool>,
     selection: RefCell<Option<SelectionMenuContext>>,
     pressed_inside: Rc<Cell<bool>>,
@@ -52,26 +55,42 @@ struct SelectionMenuContext {
     parent: Option<PathBuf>,
 }
 
-fn refresh_on_change<T>(
-    menu: &Rc<ActionMenuSection>,
-) -> impl Fn(&gio::VolumeMonitor, &T) + 'static {
-    let menu = Rc::downgrade(menu);
-    move |_, _| {
-        if let Some(menu) = menu.upgrade() {
-            menu.schedule_removable_refresh();
-        }
+impl Drop for ActionMenuSection {
+    fn drop(&mut self) {
+        release_popover(&self.popover);
     }
 }
 
-impl Drop for ActionMenuSection {
-    fn drop(&mut self) {
-        for handler in self.monitor_handlers.get_mut().drain(..) {
-            self.monitor.disconnect(handler);
-        }
-        if self.popover.parent().is_some() {
-            self.popover.unparent();
-        }
+// GTK before 4.22 can keep a window's pointer focus on a hidden popover and crash
+// on its missing surface after unparenting. A sensitivity change repicks the target.
+fn release_popover(popover: &gtk::PopoverMenu) {
+    if popover.parent().is_none() {
+        return;
     }
+    popover.set_sensitive(false);
+    popover.set_sensitive(true);
+    popover.unparent();
+}
+
+// GTK before 4.22 leaves each replaced model's position handler on its freed
+// section box, so the popover must start without a model.
+#[expect(
+    unsafe_code,
+    reason = "gtk4-rs requires a model to construct a nested PopoverMenu"
+)]
+fn nested_popover_menu() -> gtk::PopoverMenu {
+    use gtk::glib::translate::{IntoGlib, from_glib_none};
+
+    // SAFETY: GTK accepts a null model and returns a new floating widget.
+    let widget = unsafe {
+        gtk::ffi::gtk_popover_menu_new_from_model_full(
+            std::ptr::null_mut(),
+            gtk::PopoverMenuFlags::NESTED.into_glib(),
+        )
+    };
+    // SAFETY: `widget` is the non-null widget GTK just returned; this sinks its floating reference.
+    let widget: gtk::Widget = unsafe { from_glib_none(widget) };
+    widget.downcast().expect("GTK constructs a PopoverMenu")
 }
 
 impl ActionMenuSection {
@@ -84,9 +103,7 @@ impl ActionMenuSection {
     ) -> Rc<Self> {
         let model = gio::Menu::new();
         let root = gio::Menu::new();
-        let popover =
-            gtk::PopoverMenu::from_model_full(&gio::Menu::new(), gtk::PopoverMenuFlags::NESTED);
-        popover.set_menu_model(gio::MenuModel::NONE);
+        let popover = nested_popover_menu();
         popover.set_has_arrow(false);
         popover.add_css_class("folder-context-popover");
         popover.add_css_class("actions-context-popover");
@@ -134,6 +151,23 @@ impl ActionMenuSection {
             }
         });
         popover.insert_action_group("provider", Some(&provider_group));
+        // Send to… holds the removable-drive section first, then mirrored
+        // provider sections that arrive and withdraw while the menu is open.
+        let send_to_model = gio::Menu::new();
+        let send_to_provider_model = gio::Menu::new();
+        let send_to_offset = Rc::new(Cell::new(0));
+        let (send_to_root, offset) = (send_to_model.clone(), send_to_offset.clone());
+        send_to_provider_model.connect_items_changed(move |model, position, removed, added| {
+            for _ in 0..removed {
+                send_to_root.remove(offset.get() + position);
+            }
+            for index in position..position + added {
+                send_to_root.insert_item(
+                    offset.get() + index,
+                    &gio::MenuItem::from_model(model, index),
+                );
+            }
+        });
         let closed_epoch = provider_epoch.clone();
         popover.connect_closed(move |popover| {
             // GTK closes the popover before dispatching the chosen leaf action.
@@ -167,9 +201,8 @@ impl ActionMenuSection {
                 gtk::glib::idle_add_local_once(move || {
                     if let Some(popover) = weak.upgrade()
                         && !popover.is_visible()
-                        && popover.parent().is_some()
                     {
-                        popover.unparent();
+                        release_popover(&popover);
                     }
                 });
             });
@@ -203,7 +236,11 @@ impl ActionMenuSection {
             provider_group,
             provider_epoch,
             transfer_sections,
-            send_to_row_indices: RefCell::new([None, None]),
+            send_to_model,
+            send_to_provider_model,
+            send_to_offset,
+            send_to_transfer_index: Cell::new(None),
+            send_to_row: Cell::new(None),
             root_model: root,
             header: header.cloned(),
             owner: anchor.downgrade(),
@@ -211,25 +248,25 @@ impl ActionMenuSection {
             dispatch,
             _commands: commands,
             navigation,
-            monitor: gio::VolumeMonitor::get(),
-            monitor_handlers: RefCell::new(Vec::new()),
+            removable_watch: RefCell::new(None),
             refresh_pending: Cell::new(false),
             selection: RefCell::new(None),
             pressed_inside,
         });
-        let monitor = &menu.monitor;
+        let weak = Rc::downgrade(&menu);
+        menu.send_to_model.connect_items_changed(move |_, _, _, _| {
+            if let Some(menu) = weak.upgrade() {
+                menu.sync_send_to_row();
+            }
+        });
         if menu.transfer_sections.is_some() {
-            menu.monitor_handlers.replace(vec![
-                monitor.connect_mount_added(refresh_on_change(&menu)),
-                monitor.connect_mount_removed(refresh_on_change(&menu)),
-                monitor.connect_mount_changed(refresh_on_change(&menu)),
-                monitor.connect_volume_added(refresh_on_change(&menu)),
-                monitor.connect_volume_removed(refresh_on_change(&menu)),
-                monitor.connect_volume_changed(refresh_on_change(&menu)),
-                monitor.connect_drive_connected(refresh_on_change(&menu)),
-                monitor.connect_drive_disconnected(refresh_on_change(&menu)),
-                monitor.connect_drive_changed(refresh_on_change(&menu)),
-            ]);
+            let weak = Rc::downgrade(&menu);
+            menu.removable_watch
+                .replace(Some(crate::ui::watch_removable_destinations(move || {
+                    if let Some(menu) = weak.upgrade() {
+                        menu.schedule_removable_refresh();
+                    }
+                })));
         }
         menu
     }
@@ -340,13 +377,12 @@ impl ActionMenuSection {
             choose_folder,
         };
         let destinations = crate::ui::removable_destinations();
-        let preferences = crate::ui::preferences::PreferenceManager::shared();
         let recent_destinations = destinations
             .iter()
             .map(|destination| {
                 (
                     destination.id.clone(),
-                    preferences.send_to_recent_destinations(&destination.id),
+                    crate::ui::send_to_recent_folders(destination),
                 )
             })
             .collect();
@@ -375,11 +411,11 @@ impl ActionMenuSection {
             0 => None,
             1 => Some(0),
             _ => Some(1),
-        } && let Some(transfer_sections) = &self.transfer_sections
+        } && self.transfer_sections.is_some()
         {
-            let send_to = gio::Menu::new();
-            append_send_to_menu(
-                &send_to,
+            let devices = gio::Menu::new();
+            append_send_to_devices(
+                &devices,
                 &self.actions,
                 &self.dispatch,
                 &destinations,
@@ -387,15 +423,9 @@ impl ActionMenuSection {
                 &sources,
                 handlers,
             );
-            if send_to.n_items() > 0 {
-                let section = &transfer_sections[transfer_index];
-                let row_index = section.n_items();
-                let devices = send_to.item_link(0, "submenu").expect("Send to submenu");
-                let item = gio::MenuItem::new_submenu(Some(&crate::i18n::tr("Send to…")), &devices);
-                item.set_icon(&gio::ThemedIcon::new(crate::assets::icons::SEND_HORIZONTAL));
-                section.append_item(&item);
-                self.send_to_row_indices.borrow_mut()[transfer_index] = Some(row_index);
-            }
+            self.send_to_transfer_index.set(Some(transfer_index));
+            self.set_removable_devices((devices.n_items() > 0).then_some(devices));
+            self.sync_send_to_row();
         }
 
         let (Some(inputs), Some(paths), Some(parent)) =
@@ -436,8 +466,12 @@ impl ActionMenuSection {
     fn watch_providers(&self, paths: Vec<PathBuf>, background: bool) {
         let popover = self.popover.downgrade();
         let navigation = self.navigation.clone();
+        let send_to = self
+            .send_to_transfer_index
+            .get()
+            .map(|_| self.send_to_provider_model.clone());
         crate::ui::file_providers::watch_menu(
-            self.provider_model.clone(),
+            (self.provider_model.clone(), send_to),
             self.provider_group.clone(),
             (
                 self.owner
@@ -464,19 +498,51 @@ impl ActionMenuSection {
     fn clear(&self) {
         self.provider_epoch.set(self.provider_epoch.get() + 1);
         self.provider_model.remove_all();
+        self.send_to_provider_model.remove_all();
         for name in self.provider_group.list_actions() {
             self.provider_group.remove_action(&name);
         }
-        if let Some(transfer_sections) = &self.transfer_sections {
-            for (index, row_index) in self.send_to_row_indices.borrow_mut().iter_mut().enumerate() {
-                if let Some(row_index) = row_index.take() {
-                    transfer_sections[index].remove(row_index);
-                }
-            }
-        }
+        self.send_to_transfer_index.set(None);
+        self.set_removable_devices(None);
+        self.sync_send_to_row();
         self.model.remove_all();
         for name in self.actions.list_actions() {
             self.actions.remove_action(&name);
+        }
+    }
+
+    fn set_removable_devices(&self, devices: Option<gio::Menu>) {
+        if self.send_to_offset.replace(0) == 1 {
+            self.send_to_model.remove(0);
+        }
+        if let Some(devices) = devices {
+            self.send_to_model.insert_section(0, None, &devices);
+            self.send_to_offset.set(1);
+        }
+    }
+
+    /// Shows Send to… while it has any destination, removable or provider-supplied.
+    fn sync_send_to_row(&self) {
+        let Some(transfer_sections) = &self.transfer_sections else {
+            return;
+        };
+        let wanted = self
+            .send_to_transfer_index
+            .get()
+            .filter(|_| self.send_to_model.n_items() > 0);
+        if self.send_to_row.get().map(|(index, _)| index) == wanted {
+            return;
+        }
+        if let Some((index, row)) = self.send_to_row.take() {
+            transfer_sections[index].remove(row);
+        }
+        if let Some(index) = wanted {
+            let section = &transfer_sections[index];
+            let item =
+                gio::MenuItem::new_submenu(Some(&crate::i18n::tr("Send to…")), &self.send_to_model);
+            item.set_icon(&gio::ThemedIcon::new(crate::assets::icons::SEND_HORIZONTAL));
+            self.send_to_row.set(Some((index, section.n_items())));
+            section.append_item(&item);
         }
     }
 
@@ -539,8 +605,8 @@ impl ActionMenuSection {
     }
 }
 
-pub(super) fn append_send_to_menu(
-    model: &gio::Menu,
+fn append_send_to_devices(
+    devices: &gio::Menu,
     actions: &gio::SimpleActionGroup,
     dispatch: &super::commands::MenuDispatch,
     destinations: &[crate::ui::RemovableDestination],
@@ -548,10 +614,9 @@ pub(super) fn append_send_to_menu(
     sources: &[Location],
     handlers: SendToMenuHandlers,
 ) {
-    if destinations.is_empty() || sources.is_empty() {
+    if sources.is_empty() {
         return;
     }
-    let devices = gio::Menu::new();
     for (index, destination) in destinations.iter().enumerate() {
         let name = format!("send-to-{index}");
         let id = destination.id.clone();
@@ -571,9 +636,9 @@ pub(super) fn append_send_to_menu(
         root.append(Some("Drive root"), Some(&format!("custom.{name}")));
         let recent_paths = recent_destinations
             .get(&destination.id)
-            .map(|paths| valid_recent_destinations(&destination.root, paths))
-            .unwrap_or_default();
-        for (recent_index, relative) in recent_paths.into_iter().enumerate() {
+            .into_iter()
+            .flatten();
+        for (recent_index, relative) in recent_paths.enumerate() {
             let recent_name = format!("send-to-recent-{index}-{recent_index}");
             let id = destination.id.clone();
             let selected = sources.to_vec();
@@ -624,38 +689,6 @@ pub(super) fn append_send_to_menu(
         item.set_attribute_value("x-strata-description", Some(&destination.name.to_variant()));
         devices.append_item(&item);
     }
-    model.append_submenu(Some(&crate::i18n::tr("Send to…")), &devices);
-}
-
-fn valid_recent_destinations(root: &Path, persisted: &[PathBuf]) -> Vec<PathBuf> {
-    let Some(canonical_root) = crate::ui::browser::destination::canonical_existing_directory(root)
-    else {
-        return Vec::new();
-    };
-    let mut seen_relative = HashSet::new();
-    let mut seen_destinations = HashSet::new();
-    let mut valid = Vec::new();
-    for relative in persisted {
-        if !crate::ui::preferences::is_valid_send_to_relative_path(relative)
-            || !seen_relative.insert(relative)
-        {
-            continue;
-        }
-        let Some(destination) = crate::ui::browser::destination::canonical_directory_within(
-            &canonical_root,
-            &canonical_root.join(relative),
-        ) else {
-            continue;
-        };
-        if destination == canonical_root || !seen_destinations.insert(destination) {
-            continue;
-        }
-        valid.push(relative.clone());
-        if valid.len() == crate::ui::preferences::SEND_TO_RECENT_DESTINATIONS_LIMIT {
-            break;
-        }
-    }
-    valid
 }
 
 pub(super) fn refresh_presentation(
@@ -871,11 +904,9 @@ fn present_native_items(
 
 fn label_menu_item(widget: &gtk::Widget, item: &ItemPresentation) {
     // GTK 4.14's unnamed labelled-by relation otherwise masks the accessible name.
-    widget.reset_relation(gtk::AccessibleRelation::LabelledBy);
-    widget.update_property(&[
-        gtk::accessible::Property::Label(&item.label),
-        gtk::accessible::Property::Description(&item.description),
-    ]);
+    crate::ui::accessibility::clear_labelled_by(widget);
+    crate::ui::accessibility::set_label(widget, &item.label);
+    crate::ui::accessibility::set_description(widget, Some(&item.description));
     // GTK renders the `accel` attribute itself; the row shows Strata's label.
     let mut child = widget.first_child();
     while let Some(current) = child {

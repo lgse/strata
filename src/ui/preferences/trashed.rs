@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::services::TrashedOriginal;
+use crate::services::ItemIdentity;
 
 /// Keys kept for Put back or undo; the oldest items go first.
 const TRASHED_KEYS_LIMIT: usize = 10_000;
@@ -18,7 +18,7 @@ pub(super) struct TrashedValues<T> {
 
 struct TrashedItem<T> {
     root: PathBuf,
-    identity: TrashedOriginal,
+    identity: ItemIdentity,
     values: T,
     keys: usize,
 }
@@ -33,28 +33,24 @@ impl<T> Default for TrashedValues<T> {
 }
 
 impl<T> TrashedValues<T> {
-    /// Two live items never share an identity, so an older entry with this
-    /// identity belongs to an item that has left Trash and whose inode was reused.
-    pub(super) fn forget_identity(&mut self, identity: TrashedOriginal) {
+    /// An older entry proven to be the same item belongs to one that left Trash
+    /// and came back; a reused inode number alone keeps both.
+    pub(super) fn forget_identity(&mut self, identity: ItemIdentity) {
         let keys = &mut self.keys;
         self.items.retain(|item| {
-            let keep = item.identity != identity;
-            if !keep {
+            let (kept, now) = (item.identity.evidence, identity.evidence);
+            let reused = (kept.device, kept.inode) == (now.device, now.inode)
+                && item.identity.unchanged(&identity);
+            if reused {
                 *keys -= item.keys;
             }
-            keep
+            !reused
         });
     }
 
     /// `keys` counts the values towards the limit. Callers forget `identity`
     /// first, whether or not they keep anything for it.
-    pub(super) fn keep(
-        &mut self,
-        root: PathBuf,
-        identity: TrashedOriginal,
-        values: T,
-        keys: usize,
-    ) {
+    pub(super) fn keep(&mut self, root: PathBuf, identity: ItemIdentity, values: T, keys: usize) {
         self.keys += keys;
         self.items.push_back(TrashedItem {
             root,
@@ -71,15 +67,11 @@ impl<T> TrashedValues<T> {
 
     /// What was kept for the very item now back at `root`; another item
     /// restored there gets nothing.
-    pub(super) fn take_restored(&mut self, root: &Path) -> Option<T> {
-        if !self.items.iter().any(|item| item.root == root) {
-            return None;
-        }
-        let identity = TrashedOriginal::at_path(root)?;
+    pub(super) fn take_restored(&mut self, root: &Path, identity: ItemIdentity) -> Option<T> {
         let index = self
             .items
             .iter()
-            .position(|item| item.root == root && item.identity == identity)?;
+            .position(|item| item.root == root && item.identity.unchanged(&identity))?;
         let item = self.items.remove(index)?;
         self.keys -= item.keys;
         Some(item.values)

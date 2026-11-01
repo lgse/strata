@@ -1,0 +1,14 @@
+{"scenario":"delete-file-symlink-sizes-link","modes":["list"],"tree":{},"setup":[{"fs":{"path":"payload.bin","truncate":100000}},{"fs":{"path":"link","symlink":"payload.bin"}}],"variants":[{"id":"name-sort","prefs":{"sort_key":"name"}},{"id":"size-sort","prefs":{"sort_key":"size"}}]}
+{"wait":{"entries":["link","payload.bin"]},"message":"the file and its symlink to be listed"}
+{"select":{"entry":"link"}}
+{"wait":{"selected":["link"]},"message":"the file symlink to be selected"}
+{"wait":{"present":{"role":"label","name":"100 kB","within":{"entry":"link"}}},"message":"the browser row to retain the followed target size"}
+{"key":"shift+Delete"}
+{"wait":{"dialog":"Permanently delete 1 item?"},"message":"the file symlink delete confirmation to open"}
+{"wait":{"present":{"role":"label","name":"11 B","within":{"dialog":true}}},"message":"the delete row to show the symlink's own size"}
+{"wait":{"present":{"role":"label","name":"1 item · 11 B will be permanently deleted","within":{"dialog":true}}},"message":"the total to count the symlink rather than its target"}
+{"expect":{"absent":{"role":"label","name":"100 kB","within":{"dialog":true}}},"message":"the confirmation must not reuse the followed target size"}
+{"click":{"dialog_button":"Permanently delete 1 item"}}
+{"wait":{"dialog":null},"message":"the delete confirmation to close"}
+{"fs":{"path":"link","exists":false},"message":"only the symlink to be deleted"}
+{"fs":{"path":"payload.bin","size":100000},"timeout_ms":0,"message":"the target file to remain unchanged"}

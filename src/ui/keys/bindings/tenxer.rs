@@ -2,103 +2,78 @@
 
 use gtk::gdk::Key;
 
-use crate::ui::keys::{Binding, Digits};
+use crate::ui::keys::{Binding, Command, Digits};
 
 catalog! {
     tenxer_only {
-        CLOSE_WINDOW: Binding = Binding::shift(Key::q);
-        TENXER_REFERENCE: Binding = Binding::plain(Key::asciitilde);
-        TENXER_SIDEBAR: Binding = Binding::ctrl(Key::n);
+        CLOSE_WINDOW: Command "close_window" = Binding::shift(Key::q);
 
-        OPEN: Binding = Binding::plain(Key::o);
-        PEEK: Binding = Binding::plain(Key::i);
-        TENXER_LAST_ITEM: Binding = Binding::shift(Key::g);
-        TENXER_HISTORY_BACK: Binding = Binding::shift(Key::h);
-        TENXER_HISTORY_FORWARD: Binding = Binding::shift(Key::l);
-        HALF_PAGE_UP: Binding = Binding::ctrl(Key::u);
-        HALF_PAGE_DOWN: Binding = Binding::ctrl(Key::d);
-        TENXER_PAGE_UP: Binding = Binding::ctrl(Key::b);
-        TENXER_PAGE_DOWN: Binding = Binding::ctrl(Key::f);
+        OPEN: Command "open" = Binding::plain(Key::o);
+        HALF_PAGE_UP: Command "half_page_up" = Binding::ctrl(Key::u);
+        HALF_PAGE_DOWN: Command "half_page_down" = Binding::ctrl(Key::d);
 
-        YANK: Binding = Binding::plain(Key::y);
-        YANK_CUT: Binding = Binding::plain(Key::x);
-        UNYANK: Binding = Binding::shift(Key::y);
-        UNYANK_X: Binding = Binding::shift(Key::x);
-        PASTE_KEEP_BOTH: Binding = Binding::plain(Key::p);
-        PASTE_REPLACE: Binding = Binding::shift(Key::p);
-        TENXER_DELETE: Binding = Binding::plain(Key::d);
-        TENXER_DELETE_PERMANENTLY: Binding = Binding::shift(Key::d);
-        CREATE: Binding = Binding::plain(Key::a);
-        TENXER_RENAME: Binding = Binding::plain(Key::r);
-        OPEN_WITH: Binding = Binding::shift(Key::o);
-        MOVE_TO: Binding = Binding::shift(Key::m);
-        COPY_TO: Binding = Binding::shift(Key::c);
-        RESTORE: Binding = Binding::shift(Key::r);
-        TENXER_HIDDEN_FILES: Binding = Binding::plain(Key::period);
+        YANK: Command "yank" = Binding::plain(Key::y);
+        YANK_CUT: Command "yank_cut" = Binding::plain(Key::x);
+        UNYANK: Command "unyank" => [Binding::shift(Key::y), Binding::shift(Key::x)];
+        PASTE_KEEP_BOTH: Command "paste_keep_both" = Binding::plain(Key::p);
+        PASTE_REPLACE: Command "paste_replace" = Binding::shift(Key::p);
+        CREATE: Command "create" = Binding::plain(Key::a);
+        OPEN_WITH: Command "open_with" = Binding::shift(Key::o);
+        MOVE_TO: Command "move_to" = Binding::shift(Key::m);
+        COPY_TO: Command "copy_to" = Binding::shift(Key::c);
+        RESTORE: Command "restore" = Binding::shift(Key::r);
 
-        VISUAL_SELECT: Binding = Binding::plain(Key::v);
-        VISUAL_UNSET: Binding = Binding::shift(Key::v);
-        INVERT_SELECTION: Binding = Binding::ctrl(Key::r);
+        VISUAL_SELECT: Command "visual_select" = Binding::plain(Key::v);
+        VISUAL_UNSET: Command "visual_unset" = Binding::shift(Key::v);
+        INVERT_SELECTION: Command "invert_selection" = Binding::ctrl(Key::r);
 
-        FIND: Binding = Binding::plain(Key::slash);
-        FIND_BACKWARD: Binding = Binding::plain(Key::question);
-        REPEAT_FIND: Binding = Binding::plain(Key::n);
-        REPEAT_FIND_REVERSED: Binding = Binding::shift(Key::n);
-        FILTER_LISTING: Binding = Binding::plain(Key::f);
-        SEARCH_SUBFOLDERS: Binding = Binding::plain(Key::s);
-        JUMP_VISITED: Binding = Binding::plain(Key::z);
-        JUMP_RECENT: Binding = Binding::shift(Key::z);
+        FIND: Command "find" = Binding::plain(Key::slash);
+        FIND_BACKWARD: Command "find_backward" = Binding::plain(Key::question);
+        REPEAT_FIND: Command "repeat_find" = Binding::plain(Key::n);
+        REPEAT_FIND_REVERSED: Command "repeat_find_reversed" = Binding::shift(Key::n);
+        SEARCH_SUBFOLDERS: Command "search_subfolders" = Binding::plain(Key::s);
+        JUMP_VISITED: Command "jump_visited" = Binding::plain(Key::z);
+        JUMP_RECENT: Command "jump_recent" = Binding::shift(Key::z);
 
-        GO: Binding = Binding::plain(Key::g);
-        GO_FIRST: Binding = Binding::plain(Key::g), after GO;
-        GO_FOLLOW: Binding = Binding::plain(Key::f), after GO;
-        GO_PROMPT: Binding = Binding::plain(Key::space), after GO;
-        GO_HOME: Binding = Binding::plain(Key::h), after GO;
-        GO_CONFIG: Binding = Binding::plain(Key::c), after GO;
-        GO_DOWNLOADS: Binding = Binding::plain(Key::d), after GO;
-        GO_DOCUMENTS: Binding = Binding::plain(Key::k), after GO;
-        GO_MUSIC: Binding = Binding::plain(Key::m), after GO;
-        GO_PICTURES: Binding = Binding::plain(Key::p), after GO;
-        GO_VIDEOS: Binding = Binding::plain(Key::v), after GO;
-        GO_TRASH: Binding = Binding::plain(Key::t), after GO;
-        GO_NETWORK: Binding = Binding::plain(Key::n), after GO;
-        GO_RECENT: Binding = Binding::plain(Key::r), after GO;
-        GO_PIN: Binding = Binding::plain(Key::plus), after GO;
-        GO_UNPIN: Binding = Binding::plain(Key::minus), after GO;
-        PIN_NUMBERS: Digits = Digits::after(GO, 9, false);
+        GO: Command "go" trigger(Go) = Binding::plain(Key::g);
+        GO_FIRST: Command "go.first" step(Go) = Binding::plain(Key::g);
+        GO_FOLLOW: Command "go.follow" step(Go) = Binding::plain(Key::f);
+        GO_PROMPT: Command "go.prompt" step(Go) = Binding::plain(Key::space);
+        GO_HOME: Command "go.home" step(Go) = Binding::plain(Key::h);
+        GO_CONFIG: Command "go.config" step(Go) = Binding::plain(Key::c);
+        GO_DOWNLOADS: Command "go.downloads" step(Go) = Binding::plain(Key::d);
+        GO_DOCUMENTS: Command "go.documents" step(Go) = Binding::plain(Key::k);
+        GO_MUSIC: Command "go.music" step(Go) = Binding::plain(Key::m);
+        GO_PICTURES: Command "go.pictures" step(Go) = Binding::plain(Key::p);
+        GO_VIDEOS: Command "go.videos" step(Go) = Binding::plain(Key::v);
+        GO_TRASH: Command "go.trash" step(Go) = Binding::plain(Key::t);
+        GO_NETWORK: Command "go.network" step(Go) = Binding::plain(Key::n);
+        GO_RECENT: Command "go.recent" step(Go) = Binding::plain(Key::r);
+        GO_PIN: Command "go.pin" step(Go) = Binding::plain(Key::plus);
+        GO_UNPIN: Command "go.unpin" step(Go) = Binding::plain(Key::minus);
+        PIN_NUMBERS: Digits = Digits::after(GO.shown(), 9, false);
 
-        SORT_BY: Binding = Binding::plain(Key::comma);
-        SORT_BY_NAME: Binding = Binding::plain(Key::a), after SORT_BY;
-        SORT_BY_MODIFIED: Binding = Binding::plain(Key::m), after SORT_BY;
-        SORT_BY_SIZE: Binding = Binding::plain(Key::s), after SORT_BY;
-        SORT_BY_TYPE: Binding = Binding::plain(Key::e), after SORT_BY;
+        SORT_BY: Command "sort" trigger(Sort) = Binding::plain(Key::comma);
+        SORT_BY_NAME: Command "sort.name" step(Sort) = Binding::plain(Key::a);
+        SORT_BY_MODIFIED: Command "sort.modified" step(Sort) = Binding::plain(Key::m);
+        SORT_BY_SIZE: Command "sort.size" step(Sort) = Binding::plain(Key::s);
+        SORT_BY_TYPE: Command "sort.type" step(Sort) = Binding::plain(Key::e);
 
-        COPY_AS: Binding = Binding::plain(Key::c);
-        COPY_AS_PATH: Binding = Binding::plain(Key::c), after COPY_AS;
-        COPY_AS_NAME: Binding = Binding::plain(Key::n), after COPY_AS;
+        COPY_AS: Command "copy_as" trigger(CopyAs) = Binding::plain(Key::c);
+        COPY_AS_PATH: Command "copy_as.path" step(CopyAs) = Binding::plain(Key::c);
+        COPY_AS_NAME: Command "copy_as.name" step(CopyAs) = Binding::plain(Key::n);
 
-        ACTIONS: Binding = Binding::plain(Key::semicolon);
-        ACTIONS_TERMINAL: Binding = Binding::plain(Key::t), after ACTIONS;
-        ACTIONS_COMPRESS: Binding = Binding::plain(Key::c), after ACTIONS;
-        ACTIONS_EXTRACT: Binding = Binding::plain(Key::e), after ACTIONS;
-        ACTIONS_EXTRACT_TO: Binding = Binding::shift(Key::e), after ACTIONS;
-        ACTIONS_NUMBERS: Digits = Digits::after(ACTIONS, 9, true);
+        ACTIONS: Command "actions" trigger(Actions) = Binding::plain(Key::semicolon);
+        ACTIONS_TERMINAL: Command "actions.terminal" step(Actions) = Binding::plain(Key::t);
+        ACTIONS_COMPRESS: Command "actions.compress" step(Actions) = Binding::plain(Key::c);
+        ACTIONS_EXTRACT: Command "actions.extract" step(Actions) = Binding::plain(Key::e);
+        ACTIONS_EXTRACT_TO: Command "actions.extract_to" step(Actions) = Binding::shift(Key::e);
+        ACTIONS_NUMBERS: Digits = Digits::after(ACTIONS.shown(), 9, true);
 
-        TAB_CHORD: Binding = Binding::plain(Key::t);
-        TAB_CHORD_NEW: Binding = Binding::plain(Key::n), after TAB_CHORD;
-        TAB_CHORD_CLOSE: Binding = Binding::plain(Key::x), after TAB_CHORD;
-        TAB_CHORD_PREVIOUS: Binding = Binding::plain(Key::t), after TAB_CHORD;
-        TAB_CHORD_NUMBERS: Digits = Digits::after(TAB_CHORD, 9, true);
-    }
-    unlisted {
-        // Where no tab strip takes them first, as in file choosers, these page too.
-        TENXER_PAGE_UP_PAGE_UP: Binding = Binding::ctrl(Key::Page_Up);
-        TENXER_PAGE_DOWN_PAGE_DOWN: Binding = Binding::ctrl(Key::Page_Down);
-
-        // The reference shows these as "Shift reverses" beside the sort chord.
-        SORT_BY_NAME_REVERSED: Binding = Binding::shift(Key::a);
-        SORT_BY_MODIFIED_REVERSED: Binding = Binding::shift(Key::m);
-        SORT_BY_SIZE_REVERSED: Binding = Binding::shift(Key::s);
-        SORT_BY_TYPE_REVERSED: Binding = Binding::shift(Key::e);
+        TAB_CHORD: Command "tabs" trigger(Tabs) = Binding::plain(Key::t);
+        TAB_CHORD_NEW: Command "tabs.new" step(Tabs) = Binding::plain(Key::n);
+        TAB_CHORD_CLOSE: Command "tabs.close" step(Tabs) = Binding::plain(Key::x);
+        TAB_CHORD_PREVIOUS: Command "tabs.previous" step(Tabs) = Binding::plain(Key::t);
+        TAB_CHORD_NUMBERS: Digits = Digits::after(TAB_CHORD.shown(), 9, true);
     }
 }

@@ -7,12 +7,18 @@ use std::{
     future::Future,
     pin::Pin,
     rc::Rc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
 use gio::prelude::*;
 
+use super::gio_close::{self, Closing};
 use super::local_files::{info_is_hidden, info_is_symlink};
+use crate::services::file_activity::{self, Hold};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct MeasurementIssues {
@@ -63,9 +69,24 @@ struct MeasurementBudget {
     total: Cell<DirectorySummary>,
     reported: Cell<DirectorySummary>,
     on_progress: Box<dyn Fn(DirectorySummary)>,
+    stopped: Arc<AtomicBool>,
 }
 
 impl MeasurementBudget {
+    fn hold(&self, directory: &gio::File) -> Result<Option<Hold>, ()> {
+        let Some(path) = directory.path() else {
+            return Ok(None);
+        };
+        let stopped = self.stopped.clone();
+        file_activity::hold([path], move || stopped.store(true, Ordering::Release))
+            .map(Some)
+            .map_err(|_| self.stopped.store(true, Ordering::Release))
+    }
+
+    fn stopped(&self) -> bool {
+        self.stopped.load(Ordering::Acquire)
+    }
+
     fn report_progress(&self) {
         let total = self.total.get();
         if self.reported.replace(total) != total {
@@ -78,11 +99,12 @@ impl MeasurementBudget {
     }
 }
 
-async fn enumerate_children(file: &gio::File) -> Result<gio::FileEnumerator, glib::Error> {
-    file.enumerate_children_future(
+async fn enumerate_children(file: &gio::File) -> Result<Closing<gio::FileEnumerator>, glib::Error> {
+    gio_close::enumerate_children(
+        file,
         DIRECTORY_ATTRIBUTES,
         gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
-        glib::Priority::DEFAULT,
+        None,
     )
     .await
 }
@@ -105,20 +127,30 @@ async fn summarize_directory_with_budget(
     on_progress: impl Fn(DirectorySummary) + 'static,
 ) -> Result<DirectorySummary, glib::Error> {
     on_progress(DirectorySummary::default());
-    let enumerator = enumerate_children(root).await?;
     let budget = Rc::new(MeasurementBudget {
         deadline: Instant::now() + time_budget,
         max_depth,
         total: Cell::default(),
         reported: Cell::default(),
         on_progress: Box::new(on_progress),
+        stopped: Arc::default(),
     });
+    let Ok(_hold) = budget.hold(root) else {
+        return Ok(DirectorySummary {
+            issues: MeasurementIssues {
+                unreadable: true,
+                ..MeasurementIssues::default()
+            },
+            ..DirectorySummary::default()
+        });
+    };
+    let enumerator = enumerate_children(root).await?;
     measure_children(root, enumerator, 0, false, budget).await
 }
 
 async fn measure_children(
     directory: &gio::File,
-    enumerator: gio::FileEnumerator,
+    enumerator: Closing<gio::FileEnumerator>,
     child_depth: usize,
     hidden_ancestor: bool,
     budget: Rc<MeasurementBudget>,
@@ -141,6 +173,10 @@ async fn measure_children(
             break;
         }
         for (index, info) in children.into_iter().enumerate() {
+            if budget.stopped() {
+                summary.issues.unreadable = true;
+                break 'directory;
+            }
             if budget.exhausted() {
                 summary.issues.timed_out = true;
                 break 'directory;
@@ -174,6 +210,9 @@ async fn measure_children(
         }
     }
     budget.report_progress();
+    if budget.stopped() {
+        let _ = enumerator.close_future(glib::Priority::DEFAULT).await;
+    }
     Ok(summary)
 }
 
@@ -210,7 +249,7 @@ fn measure_entry(
                 summary.issues.depth_limited = true;
             } else if budget.exhausted() {
                 summary.issues.timed_out = true;
-            } else {
+            } else if let Ok(_hold) = budget.hold(&file) {
                 let children = async {
                     let enumerator = enumerate_children(&file).await?;
                     measure_children(&file, enumerator, depth + 1, is_hidden, budget).await
@@ -221,6 +260,8 @@ fn measure_entry(
                     // Disappearing or unreadable children do not invalidate unrelated branches.
                     Err(_) => summary.issues.unreadable = true,
                 }
+            } else {
+                summary.issues.unreadable = true;
             }
         }
         Ok(summary)

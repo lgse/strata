@@ -39,6 +39,7 @@ fn entry(index: usize) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_uri: None,
     }
 }
@@ -280,6 +281,8 @@ fn capped_drains_defer_failure_until_the_queue_is_empty() {
     browser.handle_directory_event(DirectoryEvent::Failed {
         request_id: request,
         message: "deferred failure".into(),
+        refused: false,
+        denied: false,
     });
     assert_loading_progress(&browser, &events, 512);
     browser.flush_coalesced_capped(Some(0));
@@ -288,7 +291,7 @@ fn capped_drains_defer_failure_until_the_queue_is_empty() {
     assert_eq!(row_count(&browser, 0), 1026);
     assert!(!browser.column_snapshot(0).expect("failed column").loading);
     assert!(
-        matches!(events.borrow().last(), Some(BrowserEvent::LoadFailed { depth: 0, message }) if message == "deferred failure")
+        matches!(events.borrow().last(), Some(BrowserEvent::LoadFailed { depth: 0, message, .. }) if message == "deferred failure")
     );
     assert_eq!(terminal_count(&events.borrow()), 1);
     assert_idle(&browser);

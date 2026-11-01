@@ -22,7 +22,7 @@ mod slot;
 mod tests;
 mod viewport;
 pub(crate) use slot::ThumbnailSlot;
-pub(super) use viewport::{near_viewport, request_metadata};
+pub(super) use viewport::{near_viewport, request_metadata, schedule_refresh as refresh_metadata};
 
 static NEXT_REQUEST: AtomicU64 = AtomicU64::new(1);
 const MAX_CACHE_ENTRIES: usize = 256;
@@ -33,6 +33,7 @@ thread_local! {
     static RENDER_QUEUE: RefCell<VecDeque<ThumbnailJob>> = const { RefCell::new(VecDeque::new()) };
     static RENDER_RUNNING: Cell<usize> = const { Cell::new(0) };
     static HEAVY_RUNNING: Cell<usize> = const { Cell::new(0) };
+    static MODEL_RUNNING: Cell<bool> = const { Cell::new(false) };
 }
 const MAX_QUEUED_THUMBNAILS: usize = 64;
 const FAILED_THUMBNAIL_TTL: Duration = Duration::from_secs(30);
@@ -52,6 +53,9 @@ thread_local! {
         RefCell::new(HashMap::new());
     static TRACKED_THUMBNAILS: RefCell<HashMap<usize, TrackedThumbnail>> = RefCell::new(HashMap::new());
     static REFRESHING_CUSTOMIZED_ICONS: Cell<bool> = const { Cell::new(false) };
+    static RELEASED_THUMBNAILS: RefCell<Vec<SettledPark>> = const { RefCell::new(Vec::new()) };
+    static RELEASES: RefCell<Option<crate::services::file_activity::Subscription>> =
+        const { RefCell::new(None) };
 }
 
 struct TrackedThumbnail {
@@ -391,6 +395,7 @@ enum ThumbnailKind {
     Video,
     AppImage,
     EmbeddedModel(crate::services::ModelFormat),
+    RenderedModel,
     Cover(crate::sandbox::CoverFormat),
 }
 
@@ -402,10 +407,16 @@ pub(super) fn set_thumbnail_or_icon(
     thumbnail_size: i32,
 ) {
     super::file_providers::bind(image, entry.location.native_path());
+    // A thumbnail of a root-only file would persist in the user's cache.
+    if entry.location.is_administrator() {
+        show_fallback_icon(image, fallback_icon, icon_size);
+        return;
+    }
     let Some(path) = entry.local_thumbnail_path() else {
         if entry.location.backend_name() == "gphoto2"
             && !entry.is_directory()
-            && thumbnail_kind(Path::new(&entry.native_name)).is_some()
+            && thumbnail_kind(Path::new(&entry.native_name))
+                .is_some_and(|kind| kind != ThumbnailKind::RenderedModel)
         {
             set_thumbnail_for_path(ThumbnailRequest {
                 image,
@@ -455,6 +466,9 @@ fn remote_mirror_thumbnail(entry: &FileEntry) -> Option<(PathBuf, ThumbnailKind)
         return None;
     }
     let kind = thumbnail_kind(Path::new(&entry.display_name))?;
+    if kind == ThumbnailKind::RenderedModel {
+        return None;
+    }
     let uri = entry.location.uri_value()?;
     let path = gio::File::for_uri(uri).path()?;
     Some((path, kind))
@@ -542,7 +556,11 @@ fn display_thumbnail_for_path(request: ThumbnailRequest<'_>) {
             .custom_icon(path)
             .is_some()
     });
-    if has_custom_icon || !super::preferences::PreferenceManager::shared().show_thumbnails() {
+    let preferences = super::preferences::PreferenceManager::shared();
+    if has_custom_icon
+        || !preferences.show_thumbnails()
+        || (request.kind == Some(ThumbnailKind::RenderedModel) && !preferences.stl_thumbnails())
+    {
         set_fallback_icon(
             request.image,
             customization_path,
@@ -960,6 +978,7 @@ fn heavy(kind: ThumbnailKind) -> bool {
             | ThumbnailKind::Pdf
             | ThumbnailKind::Video
             | ThumbnailKind::EmbeddedModel(_)
+            | ThumbnailKind::RenderedModel
             | ThumbnailKind::Cover(_)
     )
 }
@@ -972,17 +991,7 @@ pub(in crate::ui) fn set_worker_limit(workers: usize) {
 fn start_render_jobs() {
     let limit = crate::sandbox::browser::worker_limit();
     while RENDER_RUNNING.with(Cell::get) < limit {
-        let job = RENDER_QUEUE.with(|queue| {
-            let mut queue = queue.borrow_mut();
-            queue.retain(|job| !job.cancellation.is_cancelled());
-            queue
-                .make_contiguous()
-                .sort_by_cached_key(|job| viewport::key_priority(&job.key));
-            let index = queue.iter().position(|job| {
-                !heavy(job.kind) || HEAVY_RUNNING.with(Cell::get) < limit.saturating_sub(1).max(1)
-            })?;
-            queue.remove(index)
-        });
+        let job = next_render_job(limit);
         let Some(job) = job else {
             break;
         };
@@ -998,8 +1007,27 @@ fn start_render_jobs() {
         if heavy(job.kind) {
             HEAVY_RUNNING.with(|running| running.set(running.get() + 1));
         }
+        if job.kind == ThumbnailKind::RenderedModel {
+            MODEL_RUNNING.with(|running| running.set(true));
+        }
         glib::MainContext::default().spawn_local(run_render_job(job));
     }
+}
+
+fn next_render_job(limit: usize) -> Option<ThumbnailJob> {
+    RENDER_QUEUE.with(|queue| {
+        let mut queue = queue.borrow_mut();
+        queue.retain(|job| !job.cancellation.is_cancelled());
+        queue
+            .make_contiguous()
+            .sort_by_cached_key(|job| viewport::key_priority(&job.key));
+        let index = queue.iter().position(|job| {
+            (job.kind != ThumbnailKind::RenderedModel || !MODEL_RUNNING.with(Cell::get))
+                && (!heavy(job.kind)
+                    || HEAVY_RUNNING.with(Cell::get) < limit.saturating_sub(1).max(1))
+        })?;
+        queue.remove(index)
+    })
 }
 
 async fn run_render_job(job: ThumbnailJob) {
@@ -1028,10 +1056,14 @@ async fn run_render_job(job: ThumbnailJob) {
             .map(|png| (png, true))
     };
     let was_heavy = heavy(job.kind);
+    let was_model = job.kind == ThumbnailKind::RenderedModel;
     finish_thumbnail_job(job, result).await;
     RENDER_RUNNING.with(|running| running.set(running.get().saturating_sub(1)));
     if was_heavy {
         HEAVY_RUNNING.with(|running| running.set(running.get().saturating_sub(1)));
+    }
+    if was_model {
+        MODEL_RUNNING.with(|running| running.set(false));
     }
     drop(preview_turn);
     start_render_jobs();
@@ -1044,6 +1076,7 @@ async fn finish_thumbnail_job(
     result: Result<(crate::sandbox::browser::Thumbnail, bool), String>,
 ) {
     let targets = take_pending_targets(&job.key, job.id);
+    let requested = (job.key, job.kind);
     let key = job.resolved;
     let path = key.path.clone();
     if let Some(targets) = targets {
@@ -1074,6 +1107,10 @@ async fn finish_thumbnail_job(
                     enqueue_persist(key.path.clone(), mtime, png);
                 }
             }
+            Err(message) if message == crate::services::file_activity::HELD_FOR_OPERATION => {
+                crate::metrics::mark_thumbnail_cancelled();
+                admit_after_release(requested, targets);
+            }
             Err(_) => {
                 crate::metrics::mark_thumbnail_cancelled();
                 THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().insert_failure(key));
@@ -1083,6 +1120,31 @@ async fn finish_thumbnail_job(
     }
     let counts = crate::metrics::thumbnail_counts();
     tracing::debug!(?counts, "thumbnail pipeline settled");
+}
+
+fn admit_after_release((key, kind): (ThumbnailKey, ThumbnailKind), targets: Vec<PendingTarget>) {
+    let parks = targets.into_iter().map(|target| SettledPark {
+        key: key.clone(),
+        kind,
+        target,
+    });
+    if !crate::services::file_activity::is_releasing() {
+        fire_parks(parks.collect());
+        return;
+    }
+    RELEASED_THUMBNAILS.with_borrow_mut(|released| {
+        released.retain(|park| request_is_live(&park.target));
+        released.extend(parks);
+    });
+    RELEASES.with_borrow_mut(|releases| {
+        releases.get_or_insert_with(|| {
+            crate::services::file_activity::observe(|notice| {
+                if let crate::services::file_activity::Notice::Lifted(_) = notice {
+                    fire_parks(RELEASED_THUMBNAILS.take());
+                }
+            })
+        });
+    });
 }
 
 fn retry_deferred_thumbnails() {
@@ -1241,6 +1303,36 @@ pub(super) fn show_fallback_icon(image: &ThumbnailSlot, icon: &str, size: i32) {
     viewport::cancel_metadata(image.as_ptr() as usize);
     image.set_thumbnail_source(None);
     set_fallback_icon(image, None, icon, size);
+}
+
+/// A metadata fill can find that a bound folder needs administrator access; a
+/// folder the user customized keeps its icon, as a fresh bind would.
+pub(super) fn show_locked_folder(image: &ThumbnailSlot) {
+    use crate::assets::icons::{FOLDER, FOLDER_LOCK};
+    if image.fallback_icon().as_deref() != Some(FOLDER) {
+        return;
+    }
+    let customized = TRACKED_CUSTOMIZED_ICONS.with_borrow_mut(|icons| {
+        match icons.get_mut(&(image.as_ptr() as usize)) {
+            Some(tracked) if tracked.customized => true,
+            Some(tracked) => {
+                tracked.icon = FOLDER_LOCK.to_owned();
+                false
+            }
+            None => false,
+        }
+    });
+    if customized {
+        return;
+    }
+    let (texture, _) = path_icon_texture(
+        None,
+        FOLDER_LOCK,
+        image.icon_pixel_size(),
+        image.scale_factor(),
+        image.icon_context(),
+    );
+    image.set_fallback(FOLDER_LOCK, texture.as_ref());
 }
 
 pub(super) fn show_customized_icon(
@@ -1639,11 +1731,15 @@ fn thumbnail_kind(path: &Path) -> Option<ThumbnailKind> {
         "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "tif" | "tiff" | "svg" | "heic"
         | "heif" | "avif" | "jxl" => Some(ThumbnailKind::Image),
         "pdf" => Some(ThumbnailKind::Pdf),
+        "stl" => Some(ThumbnailKind::RenderedModel),
         "3mf" => Some(ThumbnailKind::EmbeddedModel(
             crate::services::ModelFormat::ThreeMf,
         )),
         "fcstd" => Some(ThumbnailKind::EmbeddedModel(
             crate::services::ModelFormat::FreeCad,
+        )),
+        "gcode" | "gco" | "bgcode" => Some(ThumbnailKind::EmbeddedModel(
+            crate::services::ModelFormat::Gcode,
         )),
         "appimage" => Some(ThumbnailKind::AppImage),
         "mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v" | "mpeg" | "mpg" | "ogv" => {
@@ -1663,6 +1759,29 @@ fn render_thumbnail(
     cancellation: &Cancellation,
 ) -> Result<crate::sandbox::browser::Thumbnail, String> {
     let operation = match kind {
+        ThumbnailKind::RenderedModel => {
+            let rendered = crate::sandbox::parse(
+                path,
+                ParseOperation::PreviewModel(crate::services::ModelRender {
+                    purpose: crate::services::ModelRenderPurpose::Thumbnail,
+                    format: crate::services::ModelFormat::Stl,
+                    size: crate::services::MediaPreviewSize::new(256, 256),
+                    // Shared thumbnail-cache artwork must not depend on the active theme.
+                    palette: crate::services::ModelPalette {
+                        accent: 0xcccccc,
+                        surface: 0,
+                    },
+                    view: crate::services::ModelView::default(),
+                }),
+                256,
+                crate::sandbox::MediaPreviewBackend::Software,
+                cancellation,
+            )?;
+            return Ok(crate::sandbox::browser::Thumbnail {
+                png: rendered.data,
+                metadata: None,
+            });
+        }
         ThumbnailKind::Camera => return Err("Camera thumbnails require their preview icon".into()),
         ThumbnailKind::Image => ParseOperation::ThumbnailImage,
         ThumbnailKind::RawImage => ParseOperation::ThumbnailRaw,

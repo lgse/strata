@@ -15,6 +15,13 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::rc::{Rc, Weak};
 
+#[cfg(test)]
+mod tests;
+
+/// GVfs grants an `admin://` mount only to the process that asked for it, so another
+/// application would have to authorize again, or could not read the file at all.
+pub(in crate::ui) const ADMINISTRATOR_OPEN_REFUSAL: &str = "Other applications can't open files in a folder opened as administrator. Preview the file here, or copy it to another folder first.";
+
 pub(in crate::ui) fn open_location(
     location: &Location,
     parent: &impl IsA<gtk::Widget>,
@@ -37,14 +44,34 @@ pub(in crate::ui) fn open_location_at(
         );
         return;
     }
+    if location.is_administrator() {
+        show_error_dialog(
+            parent,
+            &crate::i18n::tr("Unable to open item"),
+            &crate::i18n::tr(ADMINISTRATOR_OPEN_REFUSAL),
+        );
+        return;
+    }
     let file = gio_file_for_location(location);
-    let context = parent.as_ref().display().app_launch_context();
+    let context = crate::child_environment::launch_context(&parent.as_ref().display());
     let parent = parent.as_ref().downgrade();
     let location = location.clone();
     let browser = Rc::downgrade(browser);
     glib::MainContext::default().spawn_local(async move {
+        if let Some(link) = read_web_link(&file).await {
+            let result =
+                gio::AppInfo::launch_default_for_uri_future(link.address(), Some(&context)).await;
+            if let Some(parent) = parent.upgrade() {
+                report_open_result(&location, &parent, result);
+            }
+            return;
+        }
         match resolve_default_application(&file).await {
-            Ok((content_type, Some(app))) => {
+            Ok(DefaultApplication {
+                content_type,
+                app: Some(app),
+                ..
+            }) => {
                 let result = crate::ui::open_with::launch_at(
                     &app,
                     &file,
@@ -56,14 +83,18 @@ pub(in crate::ui) fn open_location_at(
                     report_open_result(&location, &parent, result);
                 }
             }
-            Ok((content_type, None)) => {
+            Ok(DefaultApplication {
+                content_type,
+                app: None,
+                executable,
+            }) => {
                 let Some(parent) = parent.upgrade() else {
                     return;
                 };
-                if file.is_native() && location.native_path().is_some_and(is_regular_executable) {
+                if executable && file.is_native() && location.native_path().is_some() {
                     confirm_run_program(&location, &parent);
                 } else {
-                    show_open_with_fallback(&parent, file, &content_type, browser);
+                    show_open_with_fallback(&parent, file, &content_type, browser).await;
                 }
             }
             Err(error) => {
@@ -75,12 +106,41 @@ pub(in crate::ui) fn open_location_at(
     });
 }
 
-async fn resolve_default_application(
-    file: &gio::File,
-) -> Result<(String, Option<gio::AppInfo>), glib::Error> {
+/// Web links saved from drops open their address; any other desktop entry,
+/// including an application launcher, keeps the usual opening path.
+async fn read_web_link(file: &gio::File) -> Option<crate::services::WebLink> {
+    const MAX_LINK_BYTES: i64 = 64 * 1024;
+    if !file
+        .basename()
+        .is_some_and(|name| crate::services::has_link_extension(&name))
+    {
+        return None;
+    }
     let info = file
         .query_info_future(
-            "standard::type,standard::content-type",
+            "standard::type,standard::size",
+            gio::FileQueryInfoFlags::NONE,
+            glib::Priority::DEFAULT,
+        )
+        .await
+        .ok()?;
+    if info.file_type() != gio::FileType::Regular || info.size() > MAX_LINK_BYTES {
+        return None;
+    }
+    let (contents, _) = file.load_contents_future().await.ok()?;
+    crate::services::WebLink::from_desktop_entry(std::str::from_utf8(&contents).ok()?)
+}
+
+struct DefaultApplication {
+    content_type: String,
+    app: Option<gio::AppInfo>,
+    executable: bool,
+}
+
+async fn resolve_default_application(file: &gio::File) -> Result<DefaultApplication, glib::Error> {
+    let info = file
+        .query_info_future(
+            "standard::type,standard::content-type,unix::mode",
             gio::FileQueryInfoFlags::NONE,
             glib::Priority::DEFAULT,
         )
@@ -100,29 +160,44 @@ async fn resolve_default_application(
                 &crate::i18n::tr("Unable to determine the selected file type"),
             )
         })?;
-    if crate::ui::open_with::uses_portal() {
-        return Ok((content_type, None));
-    }
-    let requires_uris = crate::ui::open_with::requires_uri_handlers(std::slice::from_ref(file));
-    let default = gio::AppInfo::default_for_type(&content_type, requires_uris);
-    Ok((content_type, default))
+    let executable = info.file_type() == gio::FileType::Regular
+        && info.attribute_uint32(gio::FILE_ATTRIBUTE_UNIX_MODE) & 0o111 != 0;
+    let app = if crate::ui::open_with::uses_portal() {
+        None
+    } else {
+        let requires_uris = crate::ui::open_with::requires_uri_handlers(std::slice::from_ref(file));
+        gio::AppInfo::default_for_type(&content_type, requires_uris)
+    };
+    Ok(DefaultApplication {
+        content_type,
+        app,
+        executable,
+    })
 }
 
-fn show_open_with_fallback(
+async fn show_open_with_fallback(
     parent: &impl IsA<gtk::Widget>,
     file: gio::File,
     content_type: &str,
     browser: Weak<Browser>,
 ) {
+    let history = crate::ui::recent_apps::read().await.unwrap_or_default();
+    let unobstructed = parent
+        .as_ref()
+        .root()
+        .and_downcast::<gtk::Window>()
+        .is_some_and(|window| {
+            window.is_visible() && !crate::ui::window::foreign_modal_visible(&window, None)
+        });
+    if !unobstructed {
+        return;
+    }
     let requires_uris = crate::ui::open_with::requires_uri_handlers(std::slice::from_ref(&file));
-    let (recommended_apps, other_apps) =
-        crate::ui::open_with::categorized_apps(content_type, requires_uris);
     crate::ui::open_with::show(
         parent,
         vec![file],
         vec![content_type.to_string()],
-        recommended_apps,
-        other_apps,
+        crate::ui::open_with::choices_for_type(&history, content_type, requires_uris),
         crate::ui::open_with::OpenWithContext::ActivationFallback,
         Rc::new(move || {
             if let Some(browser) = browser.upgrade() {
@@ -157,13 +232,6 @@ fn report_open_result(
         };
         show_error_dialog(parent, &crate::i18n::tr("Unable to open file"), &detail);
     }
-}
-
-pub(super) fn is_regular_executable(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(path)
-        .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
 }
 
 pub(super) fn entry_is_regular_executable(entry: &FileEntry) -> bool {
@@ -220,25 +288,28 @@ pub(super) fn confirm_run_program(location: &Location, parent: &impl IsA<gtk::Wi
     let error_parent = parent.as_ref().clone();
     run.connect_clicked(move |_| {
         dismiss_modal_layer(&run_layer, &run_overlay, run_root.as_ref());
-        if let Err(error) = launch_program(&run_location) {
-            tracing::warn!(%error, "unable to run program");
-            show_error_dialog(
-                &error_parent,
-                &crate::i18n::tr("Unable to run program"),
-                &error.to_string(),
-            );
-        }
+        run_program(&run_location, &error_parent);
     });
 }
 
-fn launch_program(location: &Location) -> std::io::Result<()> {
-    let path = location.native_path().ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "program is not a local file",
-        )
-    })?;
-    terminal::spawn_reaped(program_command(path, terminal::Terminal::resolve)?)
+fn run_program(location: &Location, parent: &impl IsA<gtk::Widget>) {
+    let Some(path) = location.native_path().map(Path::to_path_buf) else {
+        return;
+    };
+    let parent = parent.as_ref().downgrade();
+    let launched = terminal::spawn_reaped(move || {
+        program_command(&path, terminal::Terminal::resolve)
+            .and_then(|mut command| command.spawn())
+            .map_err(|error| {
+                tracing::warn!(%error, "unable to run program");
+                error.to_string()
+            })
+    });
+    glib::MainContext::default().spawn_local(async move {
+        if let (Err(detail), Some(parent)) = (launched.await, parent.upgrade()) {
+            show_error_dialog(&parent, &crate::i18n::tr("Unable to run program"), &detail);
+        }
+    });
 }
 
 fn program_command(
@@ -273,6 +344,7 @@ fn program_command(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    crate::child_environment::restore_command(&mut command);
     Ok(command)
 }
 
@@ -319,22 +391,25 @@ pub(in crate::ui) fn launch_terminal(location: &Location, parent: &impl IsA<gtk:
         location = %location.diagnostic_path(),
         "opening terminal"
     );
-    let Some(terminal) = terminal::Terminal::resolve() else {
-        tracing::warn!("no terminal emulator found on PATH");
-        show_error_dialog(
-            parent,
-            &crate::i18n::tr("Unable to open terminal"),
-            &terminal::no_terminal_message(),
-        );
-        return;
-    };
-    let program = terminal.program().to_string_lossy().into_owned();
-    if let Err(error) = terminal::spawn_reaped(terminal.directory_command(&path)) {
-        tracing::warn!(%error, %program, "unable to launch terminal");
-        show_error_dialog(
-            parent,
-            &crate::i18n::tr("Unable to open terminal"),
-            &terminal.launch_failure(&error),
-        );
-    }
+    let parent = parent.as_ref().downgrade();
+    let launched = terminal::spawn_reaped(move || {
+        let Some(terminal) = terminal::Terminal::resolve() else {
+            tracing::warn!("no terminal emulator found on PATH");
+            return Err(terminal::no_terminal_message());
+        };
+        terminal.directory_command(&path).spawn().map_err(|error| {
+            let program = terminal.program().to_string_lossy();
+            tracing::warn!(%error, %program, "unable to launch terminal");
+            terminal.launch_failure(&error)
+        })
+    });
+    glib::MainContext::default().spawn_local(async move {
+        if let (Err(detail), Some(parent)) = (launched.await, parent.upgrade()) {
+            show_error_dialog(
+                &parent,
+                &crate::i18n::tr("Unable to open terminal"),
+                &detail,
+            );
+        }
+    });
 }

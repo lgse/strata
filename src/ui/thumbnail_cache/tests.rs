@@ -144,7 +144,7 @@ fn tag_reader_reads_a_minimal_tagged_png() {
     png.extend_from_slice(b"IEND");
     png.extend_from_slice(&[0, 0, 0, 0]);
     assert_eq!(
-        read_thumb_tags(&png),
+        read_thumb_tags(&png).map(|tags| (tags.uri, tags.mtime)),
         Some(("file:///x/y.png".to_owned(), "12345678".to_owned()))
     );
 }
@@ -185,6 +185,16 @@ fn stale_entries_are_misses() {
     std::fs::create_dir_all(&dir).expect("the cache dir should exist");
     std::fs::write(dir.join(name), ours).expect("the foreign copy should be written");
     assert_eq!(lookup(&other, 111), None);
+
+    let raw = source.join("portrait.DNG");
+    std::fs::write(&raw, b"source").expect("the fixture should be written");
+    let (uri, name) = cache_key(&raw).expect("the RAW path should key");
+    let untagged = normalize_to_canonical(&solid_png(64, 64), &uri, 111, false)
+        .expect("the untagged entry should encode");
+    std::fs::write(dir.join(name), untagged).expect("the untagged entry should be written");
+    assert_eq!(lookup(&raw, 111), None);
+    store(&raw, 111, &solid_png(64, 64));
+    assert!(lookup(&raw, 111).is_some());
 }
 
 #[test]
@@ -322,7 +332,7 @@ fn uri_keys_cover_tricky_names() {
 
 #[test]
 fn normalizer_rejects_degenerate_renders() {
-    assert!(normalize_to_canonical(b"", "file:///x.jpg", 1).is_err());
-    assert!(normalize_to_canonical(b"not a png", "file:///x.jpg", 1).is_err());
+    assert!(normalize_to_canonical(b"", "file:///x.jpg", 1, false).is_err());
+    assert!(normalize_to_canonical(b"not a png", "file:///x.jpg", 1, false).is_err());
     assert!(ensure_cache_dir(&PathBuf::from("/proc/strata-nope/thumbnails")).is_err());
 }

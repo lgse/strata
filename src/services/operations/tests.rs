@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-use super::{ArchiveFormat, validate_basename};
+use super::{
+    ArchiveFormat, RenameCause, RenamedItem, TransferReport, TypedPath, validate_basename,
+};
 use crate::{
     model::{EntryKind, Location},
     test_support::operations::entry,
@@ -43,6 +45,89 @@ fn basenames_accept_single_native_and_unicode_components() {
             "{name:?} should be accepted"
         );
     }
+}
+
+#[test]
+fn typed_paths_split_folders_and_a_trailing_slash() {
+    for (text, is_directory, up, folders, name, folder) in [
+        ("note.txt", false, 0, &[][..], "note.txt", false),
+        ("docs/", false, 0, &[], "docs", true),
+        ("docs/", true, 0, &[], "docs", true),
+        ("docs/note.txt", false, 0, &["docs"], "note.txt", false),
+        ("a/b/c/", false, 0, &["a", "b"], "c", true),
+        ("a/b", true, 0, &["a"], "b", true),
+        (" a /.b", false, 0, &[" a "], ".b", false),
+        ("../note.txt", false, 1, &[], "note.txt", false),
+        ("../../a/b/", false, 2, &["a"], "b", true),
+        ("./a/./b", false, 0, &["a"], "b", false),
+        ("a/../../b", false, 1, &[], "b", false),
+        ("a/b/../c", false, 0, &["a"], "c", false),
+    ] {
+        let path = TypedPath::parse(text, is_directory, true).expect(text);
+        assert_eq!(path.up, up, "{text:?}");
+        assert_eq!(path.folders, folders, "{text:?}");
+        assert_eq!(path.name, name, "{text:?}");
+        assert_eq!(path.folder, folder, "{text:?}");
+    }
+}
+
+#[test]
+fn typed_paths_refuse_every_invalid_component() {
+    for (text, message) in [
+        ("", "Enter a name"),
+        ("/", "Enter a name"),
+        ("/absolute", "Enter a name"),
+        ("a//b", "Enter a name"),
+        ("docs//", "Enter a name"),
+        ("a/ /b", "Enter a name"),
+        ("..", "That name is reserved"),
+        ("../", "That name is reserved"),
+        ("a/..", "That name is reserved"),
+        ("./", "That name is reserved"),
+        ("a/nul\0/b", "Names cannot contain NUL characters"),
+    ] {
+        assert_eq!(
+            TypedPath::parse(text, false, true),
+            Err(message),
+            "{text:?}"
+        );
+    }
+}
+
+#[test]
+fn typed_paths_start_above_the_item_within_the_filesystem_unless_they_come_back() {
+    let folder = Location::local("/home/user");
+    for (text, start, folders) in [
+        ("x", Some("/home/user"), &[][..]),
+        ("../x", Some("/home"), &[]),
+        ("../../x", Some("/"), &[]),
+        ("../../../x", None, &[]),
+        ("../user/x", Some("/home/user"), &[]),
+        ("../../home/user/x", Some("/home/user"), &[]),
+        ("../user/sub/x", Some("/home/user"), &["sub"]),
+        ("../users/x", Some("/home"), &["users"]),
+        ("../../home/other/x", Some("/home"), &["other"]),
+    ] {
+        let path = TypedPath::parse(text, false, false)
+            .expect(text)
+            .within(&folder);
+        assert_eq!(path.start(&folder), start.map(Location::local), "{text:?}");
+        assert_eq!(path.folders, folders, "{text:?}");
+        assert_eq!(
+            path.is_rename_of(false),
+            start == Some("/home/user") && folders.is_empty(),
+            "{text:?}"
+        );
+    }
+}
+
+#[test]
+fn only_a_new_file_may_be_named_as_a_folder() {
+    let refused = Err("An existing file can’t become a folder");
+    assert_eq!(TypedPath::parse("docs/", false, false), refused);
+    assert_eq!(TypedPath::parse("a/docs/", false, false), refused);
+    assert!(TypedPath::parse("docs/", true, false).is_ok_and(|path| path.is_rename_of(true)));
+    assert!(TypedPath::parse("docs/note.txt", false, false).is_ok());
 }
 
 #[test]
@@ -102,6 +187,56 @@ fn extractable_entries_require_a_local_regular_file() {
             ArchiveFormat::for_entry(&candidate),
             expected,
             "{location:?} {kind:?}"
+        );
+    }
+}
+
+#[test]
+fn an_item_saved_under_several_names_in_turn_is_reported_once_from_its_first_name() {
+    let item = |requested: &str, saved_as: &str, cause| RenamedItem {
+        requested: Location::local(format!("/copy/{requested}")),
+        saved_as: Location::local(format!("/copy/{saved_as}")),
+        cause,
+    };
+    // A fixed name, which the destination took for another's, numbered as an
+    // alias whose number a merge then found taken, reported in any order
+    // beside entries of other items.
+    let links = [
+        item("a:b", "a_b", RenameCause::Invalid),
+        item("a_b", "a_b (1)", RenameCause::Alias),
+        item("a_b (1)", "a_b (2)", RenameCause::Taken),
+    ];
+    let others = [
+        item("makefile", "makefile (1)", RenameCause::Alias),
+        item("c?d", "c_d", RenameCause::Invalid),
+    ];
+    for order in [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ] {
+        let mut report = TransferReport {
+            renamed: vec![others[0].clone()],
+            ..TransferReport::default()
+        };
+        report
+            .renamed
+            .extend(order.map(|index| links[index].clone()));
+        report.renamed.push(others[1].clone());
+
+        report.follow_renames();
+
+        assert_eq!(
+            report.renamed,
+            [
+                others[0].clone(),
+                item("a:b", "a_b (2)", RenameCause::Invalid),
+                others[1].clone(),
+            ],
+            "{order:?}"
         );
     }
 }

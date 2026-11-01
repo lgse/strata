@@ -1,0 +1,5 @@
+{"scenario":"columns-view-baseline","modes":["columns"],"prefs":{"browser_mode":"columns"},"layout":"us","mutation":null,"known_bug":null,"fixture_root":"/tmp/strata-e2e-baseline","tree":{"documents":{"notes.txt":"notes\n","projects":{"release":{"summary.md":"# Release\n"}},"report.md":"# Report\n"},"pictures":{},"readme.md":"# Fixture\n","todo.txt":"todo\n"},"cost":{"columns":0.5},"quality":{"impact":2,"coverage":2,"criticality":3,"diagnostic":1,"score":7,"note":"Columns view at fixture root baseline; same steps as list-view-baseline but a different widget, so neither is a subset; cosmetic cap"}}
+{"move":{"point":[{"extent":{"window":true},"plus":-4},{"extent":{"window":true},"plus":-4}]}}
+{"wait":{"entries":["documents","pictures","readme.md","todo.txt"]},"message":"the fixture listing to be complete"}
+{"settle":{"pane":null}}
+{"baseline":"columns-view"}

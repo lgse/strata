@@ -18,6 +18,7 @@ fn test_entry(name: &str, kind: EntryKind) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         recent_uri: None,
@@ -68,6 +69,11 @@ fn mime_description_for_name_uses_shared_database() {
 
     let unknown_desc = mime_description_for_name("archive.xyzunknown");
     assert_eq!(unknown_desc, "Other");
+
+    assert_eq!(
+        mime_description_for_name("GOPR0001.GPR"),
+        gio::content_type_get_description("image/x-dcraw").as_str()
+    );
 }
 
 #[test]

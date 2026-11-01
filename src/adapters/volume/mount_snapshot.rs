@@ -4,7 +4,7 @@ use std::{cell::RefCell, path::PathBuf};
 
 use gtk::{gio, prelude::*};
 
-use super::{MountTable, mount_is_removable};
+use super::{MountTable, mount_is_removable, mount_watch};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RemovableRoot {
@@ -12,27 +12,28 @@ pub(crate) struct RemovableRoot {
     pub(crate) path: PathBuf,
 }
 
-/// Mount facts read once and dropped whenever mounts change, so lookups on
-/// navigation never read the mount table or query GIO.
-pub(crate) struct MountSnapshot {
+pub(crate) struct MountSnapshot<'a> {
     pub(crate) table: MountTable,
-    pub(crate) removable: Vec<RemovableRoot>,
+    pub(crate) removable: &'a [RemovableRoot],
 }
 
 struct MountCache {
-    snapshot: Option<MountSnapshot>,
-    _monitors: (gio_unix::MountMonitor, gio::VolumeMonitor),
+    removable: Option<Vec<RemovableRoot>>,
+    _volumes: gio::VolumeMonitor,
 }
 
 thread_local! {
     static MOUNTS: RefCell<Option<MountCache>> = const { RefCell::new(None) };
 }
 
-pub(crate) fn with_mount_snapshot<T>(read: impl FnOnce(&MountSnapshot) -> T) -> T {
+pub(crate) fn with_mount_snapshot<T>(read: impl FnOnce(&MountSnapshot<'_>) -> T) -> T {
     MOUNTS.with(|cache| {
         let mut cache = cache.borrow_mut();
-        let cache = cache.get_or_insert_with(watch_mounts);
-        read(cache.snapshot.get_or_insert_with(read_mounts))
+        let cache = cache.get_or_insert_with(watch_volumes);
+        read(&MountSnapshot {
+            table: mount_watch::latest(),
+            removable: cache.removable.get_or_insert_with(removable_roots),
+        })
     })
 }
 
@@ -43,26 +44,24 @@ pub(crate) fn invalidate_mount_snapshot() {
         if let Ok(mut cache) = cache.try_borrow_mut()
             && let Some(cache) = cache.as_mut()
         {
-            cache.snapshot = None;
+            cache.removable = None;
         }
     });
 }
 
-fn watch_mounts() -> MountCache {
-    let unix = gio_unix::MountMonitor::get();
-    unix.connect_mounts_changed(|_| invalidate_mount_snapshot());
+fn watch_volumes() -> MountCache {
     let volumes = gio::VolumeMonitor::get();
     volumes.connect_mount_added(|_, _| invalidate_mount_snapshot());
     volumes.connect_mount_removed(|_, _| invalidate_mount_snapshot());
     volumes.connect_mount_changed(|_, _| invalidate_mount_snapshot());
     MountCache {
-        snapshot: None,
-        _monitors: (unix, volumes),
+        removable: None,
+        _volumes: volumes,
     }
 }
 
-fn read_mounts() -> MountSnapshot {
-    let removable = gio::VolumeMonitor::get()
+fn removable_roots() -> Vec<RemovableRoot> {
+    gio::VolumeMonitor::get()
         .mounts()
         .iter()
         .filter(|mount| !mount.is_shadowed())
@@ -73,9 +72,5 @@ fn read_mounts() -> MountSnapshot {
                 path: mount.root().path()?,
             })
         })
-        .collect();
-    MountSnapshot {
-        table: MountTable::current(),
-        removable,
-    }
+        .collect()
 }

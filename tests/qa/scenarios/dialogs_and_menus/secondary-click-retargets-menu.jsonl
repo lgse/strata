@@ -1,0 +1,12 @@
+{"scenario":"secondary-click-retargets-menu","modes":["list"],"prefs":{"browser_mode":"list","single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"list":0.9},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":4,"score":38,"note":"Right-click on an unselected entry retargets selection and menu; grouped menu lacks Rename. Selection parts overlap right-click-selects-entry and right-click-keeps-multi-selection"}}
+{"select":{"entry":"todo.txt","dir":"$root"}}
+{"click":{"entry":"readme.md","dir":"$root"},"mods":["ctrl"]}
+{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the selection to become ['readme.md', 'todo.txt']"}
+{"click":{"entry":"todo.txt","dir":"$root"},"button":3}
+{"wait":{"menu_items":{}},"message":"the grouped context menu"}
+{"expect":{"menu_items":{"excludes":["Rename"]}}}
+{"click":{"entry":"archive","dir":"$root"},"button":3}
+{"wait":{"selected":["archive"],"dir":"$root"},"message":"the selection to become ['archive']"}
+{"wait":{"menu_items":{"contains":["Rename"]}},"message":"the retargeted item menu"}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"the menu to close"}

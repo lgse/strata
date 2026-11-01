@@ -4,9 +4,15 @@ Strata can serve the XDG Desktop Portal FileChooser interface for portal-aware a
 
 The chooser is deliberately limited to local files and folders. It uses the main app's sidebar, Columns/Icons/List views, List type grouping, filters, metadata, previews, and themed controls. Recent appears when enabled in sidebar preferences and supported by the desktop's recent-files backend; only local targets are listed. Overwrite confirmation uses the same in-window modal as the app.
 
+The picker and browser share the sidebar's compact rows, insertion gaps, drag
+feedback, and place/pin reordering. Local folders dragged into a Pinned gap are
+bookmarked, not moved. The picker still hides non-local pins and rejects remote
+pin offers before probing them. Its sidebar visibility/compact choice remains
+local to the dialog; pin and place-order changes use the shared saved state.
+
 File-open requests include a **Name** field. Type an existing filename in the current folder, or paste a direct `http://` or `https://` file URL, then click **Open** or press Enter. A URL downloads to a temporary local file returned to the requesting application. A compact circular progress indicator and cancel button appear at the bottom-left of the action bar; downloads without a known size show a spinner and bytes downloaded. Escape cancels the download before the chooser itself. Chooser validation errors, including Name-field file lookup and URL download failures, appear as plain error text in the action bar rather than adding a row above it. The address bar remains navigation-only, and downloads are unavailable in folder and Save requests.
 
-Downloads are named from `Content-Disposition` or the URL path and persist under a `strata-download-*` folder in the temp directory after the chooser closes, so the requesting app can still open them. Folders older than a day are swept when the portal starts or a new download begins. URLs with credentials and automatic redirects are rejected; use the direct file URL.
+Downloads are named from `Content-Disposition` or the URL path and persist under a `strata-download-*` folder in the temp directory, readable only by the user, after the chooser closes, so the requesting app can still open them. Folders older than a day are swept when the portal starts or a new download begins. URLs with credentials and automatic redirects are rejected; use the direct file URL.
 
 If a downloaded JPEG, BMP, single-frame GIF or static WebP has no canonical filename matching the **selected filter**, but PNG would match, Strata validates the image in its sandbox and offers **Convert to PNG** / **Cancel**. Detection uses file contents, not the URL extension or HTTP content type. BMP detection requires `BM`, zero reserved bytes in its file header and a known DIB header size (12, 40, 52, 56, 108 or 124 bytes); `BM` alone is not enough.
 
@@ -69,17 +75,18 @@ asks once whether to replace your Open and Save dialogs. **Nothing changes witho
 consent.** “Not now”, Escape, closing the offer, or clicking outside it keeps your
 current chooser. Portal requests themselves never show the offer.
 
-You can always enable Strata later through **Settings → General → System file
-chooser → Configure…**. The same control restores your previous chooser when
-Strata is configured. File chooser replacement is separate from making Strata the
-default file manager, folder handler, or “Open file location” handler.
+You can always enable Strata later through **Settings → General → Desktop
+integration → System file manager → Complete setup**. **Restore default** in the
+same row restores your previous chooser when Strata is configured. File chooser
+replacement is separate from making Strata the default file manager, folder
+handler, or “Open file location” handler.
 
-The installer asks separately, defaulting to **No**, after placing the binary at
-its permanent path. A declined installer offer is remembered so the app does not
-ask again. For unattended installation, `--with-file-chooser` opts in;
-`--without-file-chooser` keeps your current chooser and suppresses the in-app offer.
-A plain `--non-interactive` install does neither: the app can still ask on its first
-normal launch. These options require a release containing portal support.
+The installer enables the file chooser by default, in the recommended setup and
+in unattended installs, after placing the binary at its permanent path. Deselect
+it under **Customize installation** or pass `--without-file-chooser` to keep your
+current chooser; a declined installer offer is remembered so the app does not ask
+again. `--with-file-chooser` requires it and fails on a release without portal
+support, where the default is skipped with a warning.
 
 The offer is remembered in `${XDG_CONFIG_HOME:-~/.config}/strata/portal-opt-in-v1`,
 shared by the installer, CLI, and all app windows. Administrators can suppress only
@@ -101,7 +108,7 @@ This installs the portal metadata and D-Bus activation service below `$XDG_DATA_
 
 The chooser backend is activated on demand and exits after about two minutes without an active request (checked every 10 seconds). An open dialog (including a pending request) keeps it running; closing the last dialog starts the idle countdown again. In-app updates stop old Strata windows and chooser backends, then automatically relaunch the updating window with the replacement binary. External package-manager updates and manual binary replacements do not invoke the in-app retirement step; restart remaining Strata processes or log out after those updates.
 
-The generated D-Bus service contains the absolute path of the command being run. Move Strata to its permanent location before installing the portal. For safe activation, every component of the canonical executable path must be owned by the current user or root and must not be writable by other users. D-Bus service-file argument parsing is not shell quoting, so the installer also rejects executable paths containing whitespace, quotes, or backslashes.
+The generated D-Bus service contains the absolute path of the command being run. Move Strata to its permanent location before installing the portal. For safe activation, every component of the canonical executable path must be owned by the current user or root and must not be writable by other users. Group write access is accepted only on a group nobody but the current user belongs to, such as the private group most distributions give each user. D-Bus service-file argument parsing is not shell quoting, so the installer also rejects executable paths containing whitespace, quotes, or backslashes.
 
 ### Manual installation
 

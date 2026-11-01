@@ -39,7 +39,12 @@ fn recognizes_image_paths_for_metadata_probes() {
     assert!(!is_image_path(std::path::Path::new("notes.txt")));
     assert!(is_media_path(std::path::Path::new("movie.mp4")));
     assert!(is_media_path(std::path::Path::new("song.flac")));
-    assert!(!is_media_path(std::path::Path::new("photo.png")));
+    for name in ["stream.h264", "STREAM.H264"] {
+        assert!(is_media_path(std::path::Path::new(name)), "{name}");
+    }
+    for name in ["photo.png", "stream.h264.txt", "stream.h264.backup"] {
+        assert!(!is_media_path(std::path::Path::new(name)), "{name}");
+    }
 }
 
 #[test]
@@ -630,6 +635,7 @@ fn password_request(password: Option<&str>) -> super::PreviewRequest {
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
+            listable: MetadataValue::Unknown,
             is_hidden: false,
             recent_uri: None,
         },
@@ -638,6 +644,7 @@ fn password_request(password: Option<&str>) -> super::PreviewRequest {
         pdf_page: 0,
         media_size: MediaPreviewSize::new(640, 800),
         model_palette: crate::services::ModelPalette::default(),
+        model_view: Default::default(),
         archive_password: password.map(|password| super::SecretString::new(password.to_owned())),
     }
 }
@@ -708,10 +715,7 @@ fn text_detection_follows_bytes_not_names() {
 }
 
 fn named_family(name: &str) -> (String, PreviewContent) {
-    let content_type =
-        gtk::gio::content_type_guess(Some(std::path::Path::new(name)), None::<&[u8]>)
-            .0
-            .to_string();
+    let content_type = super::guess_content_type(std::path::Path::new(name)).0;
     let mut content = content_family(&content_type);
     if matches!(content, PreviewContent::Unsupported)
         && gtk::gio::content_type_is_a(&content_type, "text/plain")
@@ -746,6 +750,8 @@ fn preview_family_follows_bytes_when_names_disagree() {
     for (name, bytes, expected) in [
         ("notes.png", &b"just some notes\n"[..], "text"),
         ("clip.mp4", &b"not a movie\n"[..], "text"),
+        ("clip.h264", &b"not a movie\n"[..], "text"),
+        ("EMPTY.H264", &b""[..], "text"),
         ("backup.zip", &b"not an archive\n"[..], "text"),
         ("app.ts", &b"const x: number = 42;\n"[..], "text"),
         ("App.tsx", &b"export const C = () => <div />;\n"[..], "text"),
@@ -804,6 +810,7 @@ fn metadata_probes_skip_text_that_merely_shares_a_media_name() {
     for (name, bytes, supported) in [
         ("clip.mp4", &b"export const x = 1;\n"[..], false),
         ("clip.ts", &b"export const x = 1;\n"[..], false),
+        ("clip.h264", &b"export const x = 1;\n"[..], false),
         ("photo.png", &b"not pixels\n"[..], false),
         ("photo.png", &png[..], true),
         (

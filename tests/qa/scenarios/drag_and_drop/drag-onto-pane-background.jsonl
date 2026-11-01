@@ -1,0 +1,6 @@
+{"scenario":"drag-onto-pane-background","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.9},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Drop on empty pane area is a no-op; only QA route with to:pane, same-dir no-op logic unit-tested in transfer_is_noop"}}
+{"fs":{"path":".","remember":"before"}}
+{"select":{"entry":"todo.txt"}}
+{"drag":{"from":{"entry":"todo.txt"},"to":{"pane":null},"to_at":["50%",-20]}}
+{"wait":{"entry":"todo.txt"},"message":"the entry 'todo.txt' to appear"}
+{"fs":{"path":".","unchanged":"before"},"timeout_ms":0,"message":"dropping into the same directory must not duplicate or move anything"}

@@ -24,9 +24,7 @@ fn completed_gio_result_wins_a_cancellation_race() {
 #[test]
 fn local_task_batches_wait_for_every_started_task_after_an_operation_error()
 -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
+    let _serial = serial()?;
     let context = glib::MainContext::default();
     let finished = Rc::new(Cell::new(false));
     let finished_by_task = finished.clone();
@@ -51,9 +49,7 @@ fn local_task_batches_wait_for_every_started_task_after_an_operation_error()
 #[test]
 fn transfer_progress_aggregates_file_bytes_without_emitting_per_file() -> Result<(), Box<dyn Error>>
 {
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
+    let _serial = serial()?;
     let events = Rc::new(RefCell::new(Vec::new()));
     let emitted = events.clone();
     let tracker = TransferProgressTracker::new(
@@ -67,7 +63,7 @@ fn transfer_progress_aggregates_file_bytes_without_emitting_per_file() -> Result
     let first = tracker.begin_file("first.iso".to_owned(), false);
     first.finish(Some(100));
     assert_eq!(events.borrow().len(), 1);
-    tracker.finish_item(0, Some(100), 0, Some(1), None);
+    tracker.finish_item(tracker.reported(), Some(100), Some(1), None);
 
     let second = tracker.begin_file("second.iso".to_owned(), false);
     second.finish(Some(50));
@@ -89,9 +85,7 @@ fn transfer_progress_aggregates_file_bytes_without_emitting_per_file() -> Result
 
 #[test]
 fn copy_byte_progress_crosses_worker_threads() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
+    let _serial = serial()?;
     let events = Rc::new(RefCell::new(Vec::new()));
     let emitted = events.clone();
     let tracker = TransferProgressTracker::new(
@@ -144,9 +138,7 @@ fn fat32_copy_errors_without_english_size_text_skip_an_uncancellable_flush() {
 
 #[test]
 fn fat32_size_check_rejects_oversized_nested_file_before_copy() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
+    let _serial = serial()?;
     let root = tempfile::tempdir()?;
     let nested = root.path().join("sources").join("folder");
     fs::create_dir_all(&nested)?;
@@ -158,32 +150,24 @@ fn fat32_size_check_rejects_oversized_nested_file_before_copy() -> Result<(), Bo
         .block_on(transfer_sizes(
             std::slice::from_ref(&source),
             &cancellable,
-            fat32_file_size_limit(Some("vfat")),
+            Some(FAT32_MAX_FILE_SIZE),
         ))
         .expect_err("FAT32 cannot store an individual file larger than 4 GiB");
     assert!(error.message().contains(" is too large for a FAT32 drive "));
     assert!(error.to_string().contains("ubuntu.iso"));
     assert!(error.to_string().contains("exFAT"));
-    assert!(fat32_file_size_limit(Some("msdos")).is_some());
-    assert!(fat32_file_size_limit(Some("exfat")).is_none());
 
-    let (_, bytes, counts, total_files, _) =
-        glib::MainContext::default().block_on(transfer_sizes(
-            &[source],
-            &cancellable,
-            fat32_file_size_limit(Some("exfat")),
-        ))?;
-    assert_eq!(bytes, Some(FAT32_MAX_FILE_SIZE + 1));
-    assert_eq!(counts, vec![Some(1)]);
-    assert_eq!(total_files, Some(1));
+    let sizes =
+        glib::MainContext::default().block_on(transfer_sizes(&[source], &cancellable, None))?;
+    assert_eq!(sizes.total, Some(FAT32_MAX_FILE_SIZE + 1));
+    assert_eq!(sizes.files, vec![Some(1)]);
+    assert_eq!(sizes.total_files, Some(1));
     Ok(())
 }
 
 #[test]
 fn copying_a_file_emits_bytes_before_item_completion() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
+    let _serial = serial()?;
     let root = tempfile::tempdir()?;
     let source = root.path().join("source.bin");
     let destination = root.path().join("destination");
@@ -200,6 +184,7 @@ fn copying_a_file_emits_bytes_before_item_completion() -> Result<(), Box<dyn Err
             items: vec![PasteItem {
                 source: Location::local(&source),
                 conflict: TransferConflict::FailIfExists,
+                target_name: None,
             }],
             move_sources: false,
         },
@@ -238,9 +223,7 @@ fn copying_a_file_emits_bytes_before_item_completion() -> Result<(), Box<dyn Err
 
 #[test]
 fn nested_copy_reports_files_before_the_selected_folder_finishes() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
+    let _serial = serial()?;
     let root = tempfile::tempdir()?;
     let source = root.path().join("source");
     let destination = root.path().join("destination");
@@ -261,6 +244,7 @@ fn nested_copy_reports_files_before_the_selected_folder_finishes() -> Result<(),
             items: vec![PasteItem {
                 source: Location::local(&source),
                 conflict: TransferConflict::FailIfExists,
+                target_name: None,
             }],
             move_sources: false,
         },
@@ -298,9 +282,7 @@ fn nested_copy_reports_files_before_the_selected_folder_finishes() -> Result<(),
 
 #[test]
 fn copying_many_selected_files_completes_the_bounded_bulk_path() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
+    let _serial = serial()?;
     let root = tempfile::tempdir()?;
     let source = root.path().join("source");
     let destination = root.path().join("destination");
@@ -315,6 +297,7 @@ fn copying_many_selected_files_completes_the_bounded_bulk_path() -> Result<(), B
         items.push(PasteItem {
             source: Location::local(path),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         });
     }
 
@@ -366,10 +349,337 @@ fn copying_many_selected_files_completes_the_bounded_bulk_path() -> Result<(), B
 }
 
 #[test]
+fn bulk_copy_reports_bytes_before_each_file_completes() -> Result<(), Box<dyn Error>> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use super::fs_quirks::{Op, Racer};
+
+    let _serial = serial()?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let destination = root.path().join("destination");
+    fs::create_dir(&source)?;
+    fs::create_dir(&destination)?;
+    let large = 2 * 1024 * 1024;
+    let mut items = Vec::new();
+    for index in 0..9 {
+        let path = source.join(format!("file-{index}"));
+        fs::write(&path, vec![7; if index == 0 { large } else { 0 }])?;
+        items.push(PasteItem {
+            source: Location::local(path),
+            conflict: TransferConflict::FailIfExists,
+            target_name: None,
+        });
+    }
+    let streamed = Arc::new(AtomicBool::new(false));
+    let waiting = streamed.clone();
+    // Holds the large file's second write until bytes were reported mid-item.
+    let racer: Racer = Box::new(move || {
+        let start = Instant::now();
+        while !waiting.load(Ordering::Acquire) && start.elapsed() < Duration::from_secs(5) {
+            thread::sleep(Duration::from_millis(5));
+        }
+    });
+    let _source = FsQuirks::install(&source, Quirks::default());
+    let _destination = FsQuirks::install(
+        &destination,
+        Quirks {
+            before: vec![(Op::Write, "*", 1, racer)],
+            ..Quirks::default()
+        },
+    );
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(30),
+            destination: Location::local(&destination),
+            items,
+            move_sources: false,
+        },
+        Rc::new(move |event| {
+            if matches!(
+                event,
+                OperationEvent::TransferProgress {
+                    completed_items: 0,
+                    transferred_bytes: 1..,
+                    ..
+                }
+            ) {
+                streamed.store(true, Ordering::Release);
+            }
+            emitted.borrow_mut().push(event);
+        }),
+    );
+    drive_until_transfer_settles(&events);
+
+    let events = events.borrow();
+    assert!(matches!(events.last(), Some(OperationEvent::Pasted { .. })));
+    let progress = events
+        .iter()
+        .filter_map(|event| match event {
+            OperationEvent::TransferProgress {
+                completed_items,
+                completed_files,
+                total_files,
+                transferred_bytes,
+                total_bytes,
+                ..
+            } => Some((
+                *completed_items,
+                *completed_files,
+                *total_files,
+                *transferred_bytes,
+                *total_bytes,
+            )),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        progress
+            .iter()
+            .any(|(items, _, _, bytes, _)| *items == 0 && *bytes > 0),
+        "{progress:?}"
+    );
+    assert!(
+        progress
+            .iter()
+            .all(|(_, files, total_files, bytes, total_bytes)| {
+                Some(*files) <= *total_files && Some(*bytes) <= *total_bytes
+            }),
+        "{progress:?}"
+    );
+    assert_eq!(
+        progress.last(),
+        Some(&(9, 9, Some(9), large as u64, Some(large as u64)))
+    );
+    Ok(())
+}
+
+#[test]
+fn linked_names_count_as_copied_before_their_folder_is_published() -> Result<(), Box<dyn Error>> {
+    use std::{
+        os::unix::fs::MetadataExt,
+        sync::atomic::{AtomicBool, Ordering},
+    };
+
+    use super::fs_quirks::{Op, Racer};
+
+    let _serial = serial()?;
+    let root = tempfile::tempdir()?;
+    let tree = root.path().join("source/tree");
+    let destination = root.path().join("destination");
+    fs::create_dir_all(tree.join("sub"))?;
+    fs::create_dir(&destination)?;
+    let size = 1024 * 1024;
+    fs::write(tree.join("a"), vec![7; size])?;
+    fs::hard_link(tree.join("a"), tree.join("sub/b"))?;
+    let counted = Arc::new(AtomicBool::new(false));
+    let waiting = counted.clone();
+    // Holds the publish until both names were reported as copied.
+    let racer: Racer = Box::new(move || {
+        let start = Instant::now();
+        while !waiting.load(Ordering::Acquire) && start.elapsed() < Duration::from_secs(5) {
+            thread::sleep(Duration::from_millis(5));
+        }
+    });
+    let _destination = FsQuirks::install(
+        &destination,
+        Quirks {
+            before: vec![(Op::Rename, ".strata-copy-*", 0, racer)],
+            ..Quirks::default()
+        },
+    );
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(31),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&tree),
+                conflict: TransferConflict::FailIfExists,
+                target_name: None,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| {
+            if let OperationEvent::TransferProgress {
+                completed_items: 0,
+                transferred_bytes,
+                ..
+            } = event
+                && transferred_bytes == 2 * size as u64
+            {
+                counted.store(true, Ordering::Release);
+            }
+            emitted.borrow_mut().push(event);
+        }),
+    );
+    drive_until_transfer_settles(&events);
+
+    let events = events.borrow();
+    assert!(
+        matches!(events.last(), Some(OperationEvent::Pasted { .. })),
+        "{events:?}"
+    );
+    let copied = destination.join("tree");
+    let (a, b) = (
+        fs::metadata(copied.join("a"))?,
+        fs::metadata(copied.join("sub/b"))?,
+    );
+    assert_eq!((a.ino(), a.nlink()), (b.ino(), 2));
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            OperationEvent::TransferProgress {
+                completed_items: 0,
+                transferred_bytes,
+                ..
+            } if *transferred_bytes == 2 * size as u64
+        )),
+        "{events:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn copied_links_count_their_bytes_as_they_are_made() -> Result<(), Box<dyn Error>> {
+    use std::sync::Mutex;
+
+    use super::fs_quirks::{Op, Racer};
+
+    let _serial = serial()?;
+    let root = tempfile::tempdir()?;
+    let tree = root.path().join("source/tree");
+    let destination = root.path().join("destination");
+    fs::create_dir_all(&tree)?;
+    fs::create_dir(&destination)?;
+    std::os::unix::fs::symlink("first target", tree.join("a-link"))?;
+    std::os::unix::fs::symlink("second", tree.join("b-link"))?;
+    fs::write(tree.join("file.bin"), vec![7; 64 * 1024])?;
+    let links = Arc::new(Mutex::new(None::<u64>));
+    let seen = links.clone();
+    // Holds the file until both links were reported, with the bytes so far.
+    let racer: Racer = Box::new(move || {
+        let start = Instant::now();
+        while seen.lock().expect("links").is_none() && start.elapsed() < Duration::from_secs(5) {
+            thread::sleep(Duration::from_millis(5));
+        }
+    });
+    let _destination = FsQuirks::install(
+        &destination,
+        Quirks {
+            before: vec![(Op::Write, "*", 0, racer)],
+            ..Quirks::default()
+        },
+    );
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let recorded = links.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(33),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&tree),
+                conflict: TransferConflict::FailIfExists,
+                target_name: None,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| {
+            if let OperationEvent::TransferProgress {
+                completed_files: 2,
+                transferred_bytes,
+                ..
+            } = event
+            {
+                recorded
+                    .lock()
+                    .expect("links")
+                    .get_or_insert(transferred_bytes);
+            }
+            emitted.borrow_mut().push(event);
+        }),
+    );
+    drive_until_transfer_settles(&events);
+
+    assert!(
+        matches!(events.borrow().last(), Some(OperationEvent::Pasted { .. })),
+        "{:?}",
+        events.borrow()
+    );
+    let lengths = ("first target".len() + "second".len()) as u64;
+    assert_eq!(*links.lock().expect("links"), Some(lengths));
+    Ok(())
+}
+
+#[test]
+fn a_folder_copied_out_of_its_stage_counts_each_file_once() -> Result<(), Box<dyn Error>> {
+    let _serial = serial()?;
+    let root = tempfile::tempdir()?;
+    let tree = root.path().join("source/tree");
+    let destination = root.path().join("destination");
+    fs::create_dir_all(tree.join("sub"))?;
+    fs::create_dir(&destination)?;
+    for index in 0..4 {
+        fs::write(tree.join(index.to_string()), b"x")?;
+        fs::write(tree.join(format!("sub/{index}")), b"y")?;
+    }
+    std::os::unix::fs::symlink("0", tree.join("link"))?;
+    // The stage cannot be placed, so it is copied to its final name.
+    let _destination = FsQuirks::install(&destination, Quirks::without_placement());
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(32),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&tree),
+                conflict: TransferConflict::FailIfExists,
+                target_name: None,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    drive_until_transfer_settles(&events);
+
+    let events = events.borrow();
+    assert!(
+        matches!(events.last(), Some(OperationEvent::Pasted { .. })),
+        "{events:?}"
+    );
+    assert_eq!(fs::read(destination.join("tree/sub/3"))?, b"y");
+    let files = events
+        .iter()
+        .filter_map(|event| match event {
+            OperationEvent::TransferProgress {
+                completed_files,
+                total_files,
+                ..
+            } => Some((*completed_files, *total_files)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        files
+            .iter()
+            .all(|files| *files == (files.0, Some(9)) && files.0 <= 9),
+        "{files:?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn bulk_copy_preserves_symlinks_and_one_file_directories() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
+    let _serial = serial()?;
     let root = tempfile::tempdir()?;
     let source = root.path().join("source");
     let destination = root.path().join("destination");
@@ -385,6 +695,7 @@ fn bulk_copy_preserves_symlinks_and_one_file_directories() -> Result<(), Box<dyn
         items.push(PasteItem {
             source: Location::local(path),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         });
     }
     let folder = source.join("folder");
@@ -394,6 +705,7 @@ fn bulk_copy_preserves_symlinks_and_one_file_directories() -> Result<(), Box<dyn
     items.push(PasteItem {
         source: Location::local(&folder),
         conflict: TransferConflict::FailIfExists,
+        target_name: None,
     });
     let link = source.join("link");
     std::os::unix::fs::symlink("file-00.txt", &link)?;
@@ -401,6 +713,7 @@ fn bulk_copy_preserves_symlinks_and_one_file_directories() -> Result<(), Box<dyn
     items.push(PasteItem {
         source: Location::local(&link),
         conflict: TransferConflict::FailIfExists,
+        target_name: None,
     });
 
     let events = Rc::new(RefCell::new(Vec::new()));
@@ -438,9 +751,7 @@ fn bulk_copy_preserves_symlinks_and_one_file_directories() -> Result<(), Box<dyn
 #[test]
 fn cancelling_between_moves_reports_completed_and_unattempted_sources() -> Result<(), Box<dyn Error>>
 {
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
+    let _serial = serial()?;
     let unique = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_nanos();
@@ -466,10 +777,12 @@ fn cancelling_between_moves_reports_completed_and_unattempted_sources() -> Resul
                 PasteItem {
                     source: Location::local(&first),
                     conflict: TransferConflict::FailIfExists,
+                    target_name: None,
                 },
                 PasteItem {
                     source: Location::local(&second),
                     conflict: TransferConflict::FailIfExists,
+                    target_name: None,
                 },
             ],
             move_sources: true,

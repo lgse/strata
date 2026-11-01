@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    LocationIdentity, LocationValidationError, UriCredentials, backend_unavailable_message,
-    error_detail_in, io_error_message, sanitize_uri_credentials, validate_uri_credentials,
+    LocationValidationError, UriCredentials, backend_unavailable_message, error_detail_in,
+    io_error_message, sanitize_uri_credentials, validate_uri_credentials,
 };
 
 #[test]
@@ -10,6 +10,7 @@ fn error_details_continue_in_lower_case_only_where_the_language_does() {
     for (locale, reason, expected) in [
         ("fr", "Délai dépassé", "délai dépassé"),
         ("ru", "Доступ запрещён", "доступ запрещён"),
+        ("hu", "Hozzáférés megtagadva", "hozzáférés megtagadva"),
         (
             "vi",
             "Quyền truy cập bị từ chối",
@@ -37,6 +38,49 @@ fn io_errors_without_a_stable_kind_or_known_reason_get_catalog_text() {
     }
     let custom = std::io::Error::new(std::io::ErrorKind::InvalidData, "broken stream");
     assert_eq!(io_error_message(&custom), "broken stream");
+}
+
+#[test]
+fn untyped_gio_failures_use_localized_catalog_text_instead_of_backend_details() {
+    crate::test_support::gtk_test(
+        "services::file_source::tests::untyped_gio_failures_use_localized_catalog_text_instead_of_backend_details",
+        || {
+            rust_i18n::set_locale("fr");
+            let raw = "Failed to open sftp://alice:secret@host/private?token=hidden";
+            for kind in [
+                gtk::gio::IOErrorEnum::Failed,
+                gtk::gio::IOErrorEnum::InvalidArgument,
+            ] {
+                let error = gtk::glib::Error::new(kind, raw);
+                assert_eq!(
+                    super::gio_backend_error_message(&error),
+                    crate::i18n::tr(super::UNEXPECTED_SYSTEM_ERROR)
+                );
+                assert_eq!(
+                    super::gio_error_message(&error),
+                    raw,
+                    "application-owned operation errors must retain their detail"
+                );
+            }
+            let denied = gtk::glib::Error::new(gtk::gio::IOErrorEnum::PermissionDenied, raw);
+            assert_eq!(super::gio_error_message(&denied), "Permission refusée");
+            assert_eq!(
+                super::gio_backend_error_message(&denied),
+                "Permission refusée"
+            );
+            let refused = "Failed to mount Windows share: Permission denied";
+            let refused = gtk::glib::Error::new(gtk::gio::IOErrorEnum::Failed, refused);
+            assert_eq!(
+                super::gio_backend_error_message(&refused),
+                "Permission refusée",
+                "untyped SMB credential rejections keep their reason"
+            );
+            assert_eq!(
+                super::gio_error_message(&refused),
+                "Failed to mount Windows share: Permission denied"
+            );
+        },
+    );
 }
 
 #[test]
@@ -212,27 +256,4 @@ fn default_fill_reports_unsupported_synchronously() {
             outcome: MetadataOutcome::Unsupported,
         }]
     ));
-}
-
-#[test]
-fn folder_identities_match_only_while_known_birth_times_agree() {
-    let born = |seconds| Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(seconds));
-    let identity = |inode, created| LocationIdentity {
-        device: 1,
-        inode,
-        created,
-    };
-    let mut failures = Vec::new();
-    for (candidate, expected) in [
-        (identity(7, born(10)), true),
-        // The inode of a deleted folder, reused by a new one.
-        (identity(7, born(20)), false),
-        (identity(7, None), true),
-        (identity(8, born(10)), false),
-    ] {
-        if identity(7, born(10)).matches(&candidate) != expected {
-            failures.push(format!("{candidate:?} should match: {expected}"));
-        }
-    }
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

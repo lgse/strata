@@ -1,0 +1,6 @@
+{"scenario":"reversing-sort-direction","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.5},"quality":{"impact":3,"coverage":2,"criticality":2,"diagnostic":4,"score":12,"note":"Columns header click reverses sort and back with folders kept first; reverse route shared with switching-keeps-directory-and-sort, sort order unit-tested in navigation/tests.rs"}}
+{"expect":{"entries":["archive","documents","pictures","readme.md","todo.txt"],"dir":"$root"}}
+{"click":{"header":"Ascending — click to reverse"}}
+{"wait":{"entries":["pictures","documents","archive","todo.txt","readme.md"],"dir":"$root"},"message":"the pane to sort descending with folders still grouped first"}
+{"click":{"header":"Descending — click to reverse"}}
+{"wait":{"entries":["archive","documents","pictures","readme.md","todo.txt"],"dir":"$root"},"message":"the pane to sort ascending again"}

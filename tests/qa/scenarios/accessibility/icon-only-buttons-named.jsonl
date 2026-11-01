@@ -1,0 +1,13 @@
+{"scenario":"icon-only-buttons-named","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null}
+{"expect":{"present":{"named":"Copy path","within":{"window":true}}},"message":"the path bar's copy button is unnamed"}
+{"expect":{"present":{"named":"Back (Alt+←)","within":{"window":true}}},"message":"'Back (Alt+←)' is unnamed","modes":["icons","list"]}
+{"expect":{"present":{"named":"Forward (Alt+→)","within":{"window":true}}},"message":"'Forward (Alt+→)' is unnamed","modes":["icons","list"]}
+{"expect":{"present":{"named":"Parent folder (Alt+↑)","within":{"window":true}}},"message":"'Parent folder (Alt+↑)' is unnamed","modes":["icons","list"]}
+{"expect":{"present":{"named":"Columns","within":{"window":true}}},"message":"the List view's 'Columns' menu button is unnamed","modes":["list"]}
+{"click":{"entry":"archive"},"button":3,"modes":["columns"]}
+{"wait":{"menu_items":{"contains":["Customize…"]}},"message":"the context menu","modes":["columns"]}
+{"settle":{"menu_item":"Customize…"},"modes":["columns"]}
+{"click":{"menu_item":"Customize…"},"modes":["columns"]}
+{"wait":{"dialog":"Customize Folder"},"message":"the Customize Folder dialog","modes":["columns"]}
+{"expect":{"present":{"named":"Default (Theme color)","within":{"dialog":true}}},"message":"the default color swatch is unnamed","modes":["columns"]}
+{"expect":{"present":{"named":"Custom color…","within":{"dialog":true}}},"message":"the custom color swatch is unnamed","modes":["columns"]}

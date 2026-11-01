@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: MIT
 
-use crate::adapters::gio_file_for_location;
+use crate::adapters::probes::{self, Presence};
+use crate::adapters::{gio_file_for_location, transfer_targets};
 use crate::app::Browser;
 use crate::model::{FileEntry, Location};
 use crate::services::{
-    DropCommit, MoveRecord, PasteItem, TransferConflict, UndoMoveItem, VolumeRelation,
+    DropCommit, MoveRecord, PasteItem, ShownName, TransferConflict, UndoMoveItem, VolumeRelation,
     transferable_drop_sources,
 };
 use crate::ui::browser::ViewState;
 use crate::ui::browser::entry::item_count_label;
 use crate::ui::browser::paths::{can_remove_location, compact_display_path, is_trash_location};
+use crate::ui::browser::progress::FileProgressState;
+use crate::ui::browser::transfer_report::shown_name;
 use crate::ui::controls::{
     ModalTone, focus_button, form_check_button, message_dialog_description, message_dialog_layout,
     stack_actions_when_constrained, wrap_button_label,
@@ -18,11 +21,14 @@ use crate::ui::keys::{
     self,
     bindings::{ENTER_ANY, ESCAPE_ANY},
 };
-use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
+use crate::ui::modal::{
+    ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus_for_listing,
+    show_error_dialog,
+};
+use futures_lite::future::BoxedLocal;
 use gtk::prelude::*;
 use gtk::{gio, glib};
-use std::collections::HashSet;
-use std::ffi::{OsStr, OsString};
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
@@ -45,13 +51,67 @@ enum ConflictChoice {
 #[derive(Clone)]
 struct TransferCollision {
     source: Location,
+    /// The name the paste will use, already held by the colliding item.
+    target_name: Option<ShownName>,
     /// Both colliding items are directories, so their contents can be merged.
     mergeable: bool,
+    fixes_inside: bool,
 }
 
 #[derive(Clone)]
 pub(super) struct SendToTransferContext {
     pub(super) device_name: String,
+}
+
+struct SendToRoot {
+    device_id: String,
+    root: PathBuf,
+    relative: Option<PathBuf>,
+}
+
+impl SendToRoot {
+    fn unavailable(&self) -> String {
+        crate::i18n::tr(if self.relative.is_some() {
+            "The removable device or folder is no longer available."
+        } else {
+            "The removable device is no longer available."
+        })
+    }
+
+    async fn destination(self) -> Result<Location, String> {
+        let unavailable = self.unavailable();
+        let Ok(Some(current_root)) = crate::adapters::probes::writable_folder(&self.root).await
+        else {
+            return Err(unavailable);
+        };
+        let Some(relative) = self.relative else {
+            return Ok(Location::local(current_root));
+        };
+        let inside = gio::spawn_blocking(move || {
+            let destination = crate::ui::browser::destination::canonical_directory_within(
+                &current_root,
+                &current_root.join(&relative),
+            )?;
+            let inside = destination.strip_prefix(&current_root).ok()?.to_owned();
+            crate::ui::preferences::is_valid_send_to_relative_path(&inside).then_some((
+                destination,
+                inside,
+                relative,
+            ))
+        })
+        .await
+        .ok()
+        .flatten();
+        let Some((destination, inside, relative)) = inside else {
+            return Err(unavailable);
+        };
+        crate::ui::preferences::PreferenceManager::shared().remember_send_to_destination(
+            &self.device_id,
+            &inside,
+            Some(&relative),
+        );
+        Ok(Location::local(destination))
+    }
 }
 
 #[derive(Clone)]
@@ -92,6 +152,12 @@ struct ConflictActions {
     focus: ConflictFocus,
 }
 
+#[derive(PartialEq)]
+pub(super) enum Preparing {
+    Transfer(Location, Vec<Location>, bool),
+    Replay { redo: bool, generation: u64 },
+}
+
 #[derive(Clone, Copy)]
 struct GroupReplay {
     had_missing: bool,
@@ -117,8 +183,22 @@ enum TransferDialogCompletion {
     },
 }
 
-fn location_exists(location: &Location) -> bool {
-    gio_file_for_location(location).query_exists(None::<&gio::Cancellable>)
+fn found(locations: Vec<Location>, presence: Vec<Presence>) -> Vec<Location> {
+    locations
+        .into_iter()
+        .zip(presence)
+        .filter(|(_, presence)| !matches!(presence, Presence::Absent))
+        .map(|(location, _)| location)
+        .collect()
+}
+
+fn preparing_row(item: &Location, destination: (String, String)) -> (String, (String, String)) {
+    (item.display_name(), destination)
+}
+
+fn folder_row(item: &Location, destination: &Location) -> (String, (String, String)) {
+    let folder = destination.parent().unwrap_or_else(|| destination.clone());
+    preparing_row(item, crate::app::folder_destination_texts(&folder))
 }
 
 fn transfer_is_noop(source: &Location, destination: &Location, move_sources: bool) -> bool {
@@ -132,54 +212,55 @@ fn transfer_is_noop(source: &Location, destination: &Location, move_sources: boo
                 .is_some_and(|parent| parent.equal(&destination)))
 }
 
-#[derive(Eq, Hash, PartialEq)]
-enum DestinationNameKey {
-    Folded(String),
-    Native(OsString),
-}
-
-fn destination_name_key(name: &OsStr) -> DestinationNameKey {
-    name.to_str().map_or_else(
-        || DestinationNameKey::Native(name.to_owned()),
-        |name| DestinationNameKey::Folded(glib::casefold(name).into()),
-    )
-}
-
-fn destination_name_candidates(path: &Path) -> Option<HashSet<DestinationNameKey>> {
-    Some(
-        std::fs::read_dir(path)
-            .ok()?
-            .filter_map(|entry| {
-                entry
-                    .ok()
-                    .map(|entry| destination_name_key(&entry.file_name()))
-            })
-            .collect(),
-    )
-}
-
-fn transfer_collision(source: &Location, destination: &Location) -> Option<TransferCollision> {
-    let source_file = gio_file_for_location(source);
-    let destination_file = gio_file_for_location(destination);
-    let name = source.file_name()?;
-    let target = destination_file.child(&name);
-    if source_file.equal(&target)
-        || source_file.equal(&destination_file)
-        || destination_file.has_prefix(&source_file)
-        || !target.query_exists(None::<&gio::Cancellable>)
-    {
-        return None;
-    }
-    let is_directory = |file: &gio::File| {
-        file.query_file_type(
-            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
-            None::<&gio::Cancellable>,
-        ) == gio::FileType::Directory
+fn conflict_explanation(
+    collision: &TransferCollision,
+    destination: &Location,
+    merge: bool,
+) -> String {
+    let own_name = collision.source.file_name();
+    let target_name = collision
+        .target_name
+        .as_ref()
+        .map(|shown| shown.name.clone())
+        .or_else(|| own_name.clone())
+        .unwrap_or_default();
+    let name = shown_name(&target_name);
+    let folder = compact_display_path(destination);
+    let choice = if merge {
+        let merging = rust_i18n::t!(
+            "A folder named “%{name}” already exists in %{folder}. Merging combines the contents of both folders; incoming items overwrite items with the same name.",
+            name = name,
+            folder = folder
+        );
+        if collision.fixes_inside {
+            crate::i18n::join_sentences(
+                &merging,
+                &crate::i18n::tr(
+                    "Items whose names change to suit this location overwrite items with the new name.",
+                ),
+            )
+        } else {
+            merging.into_owned()
+        }
+    } else {
+        rust_i18n::t!(
+            "An item named “%{name}” already exists in %{folder}. Replacing it will overwrite its contents.",
+            name = name,
+            folder = folder
+        )
+        .into_owned()
     };
-    Some(TransferCollision {
-        source: source.clone(),
-        mergeable: is_directory(&source_file) && is_directory(&target),
-    })
+    match own_name.filter(|own_name| *own_name != target_name) {
+        Some(own_name) => crate::i18n::join_sentences(
+            &rust_i18n::t!(
+                "“%{name}” will be saved as “%{new_name}” in this location.",
+                name = shown_name(&own_name),
+                new_name = name
+            ),
+            &choice,
+        ),
+        None => choice,
+    }
 }
 
 fn cross_volume_drop_description(volume: VolumeRelation) -> &'static str {
@@ -278,6 +359,7 @@ impl ViewState {
         let copy = layout.confirm;
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+        remember_modal_focus_for_listing(&layer, &window_overlay);
         window_overlay.add_overlay(&layer);
 
         let dismiss_layer = layer.clone();
@@ -357,7 +439,7 @@ impl ViewState {
         self.send_to_removable_device_with_resolver(
             &id,
             sources,
-            crate::ui::resolve_removable_destination,
+            crate::ui::removable_destination_root,
         );
     }
 
@@ -367,7 +449,7 @@ impl ViewState {
         sources: Vec<Location>,
         resolve: impl FnOnce(&str) -> Option<PathBuf>,
     ) {
-        let Some(destination) = resolve(id) else {
+        let Some(root) = resolve(id) else {
             show_error_dialog(
                 &self.overlay,
                 &crate::i18n::tr("Destination unavailable"),
@@ -375,11 +457,13 @@ impl ViewState {
             );
             return;
         };
-        let device_name = send_to_display_name(id, &destination);
-        self.send_to(
-            Location::local(destination),
+        self.send_to_device(
+            SendToRoot {
+                device_id: id.to_owned(),
+                root,
+                relative: None,
+            },
             sources,
-            SendToTransferContext { device_name },
         );
     }
 
@@ -393,7 +477,7 @@ impl ViewState {
             &id,
             &relative,
             sources,
-            crate::ui::resolve_removable_destination,
+            crate::ui::removable_destination_root,
         );
     }
 
@@ -404,17 +488,9 @@ impl ViewState {
         sources: Vec<Location>,
         resolve: impl FnOnce(&str) -> Option<PathBuf>,
     ) {
-        if !crate::ui::preferences::is_valid_send_to_relative_path(relative) {
-            show_error_dialog(
-                &self.overlay,
-                &crate::i18n::tr("Destination unavailable"),
-                &crate::i18n::tr("The removable device or folder is no longer available."),
-            );
-            return;
-        }
-        let Some(current_root) = resolve(id)
-            .and_then(|root| crate::ui::browser::destination::canonical_existing_directory(&root))
-        else {
+        let root = resolve(id)
+            .filter(|_| crate::ui::preferences::is_valid_send_to_relative_path(relative));
+        let Some(root) = root else {
             show_error_dialog(
                 &self.overlay,
                 &crate::i18n::tr("Destination unavailable"),
@@ -422,43 +498,30 @@ impl ViewState {
             );
             return;
         };
-        let Some(destination) = crate::ui::browser::destination::canonical_directory_within(
-            &current_root,
-            &current_root.join(relative),
-        ) else {
-            show_error_dialog(
-                &self.overlay,
-                &crate::i18n::tr("Destination unavailable"),
-                &crate::i18n::tr("The removable device or folder is no longer available."),
-            );
-            return;
-        };
-        let Ok(relative_destination) = destination.strip_prefix(&current_root) else {
-            show_error_dialog(
-                &self.overlay,
-                &crate::i18n::tr("Destination unavailable"),
-                &crate::i18n::tr("The removable device or folder is no longer available."),
-            );
-            return;
-        };
-        if !crate::ui::preferences::is_valid_send_to_relative_path(relative_destination) {
-            show_error_dialog(
-                &self.overlay,
-                &crate::i18n::tr("Destination unavailable"),
-                &crate::i18n::tr("The removable device or folder is no longer available."),
-            );
-            return;
-        }
-        crate::ui::preferences::PreferenceManager::shared().remember_send_to_destination(
-            id,
-            relative_destination,
-            Some(relative),
-        );
-        let device_name = send_to_display_name(id, &current_root);
-        self.send_to(
-            Location::local(destination),
+        self.send_to_device(
+            SendToRoot {
+                device_id: id.to_owned(),
+                root,
+                relative: Some(relative.to_owned()),
+            },
             sources,
-            SendToTransferContext { device_name },
+        );
+    }
+
+    fn send_to_device(self: &Rc<Self>, device: SendToRoot, sources: Vec<Location>) {
+        let destination = Location::local(match &device.relative {
+            Some(relative) => device.root.join(relative),
+            None => device.root.clone(),
+        });
+        let device_name = send_to_display_name(&device.device_id, &device.root);
+        self.transfer_replaces_cursor.set(false);
+        self.begin_transfer(
+            destination,
+            sources,
+            false,
+            false,
+            (Some(SendToTransferContext { device_name }), Some(device)),
+            ConflictFocus::Replace,
         );
     }
 
@@ -531,7 +594,7 @@ impl ViewState {
             sources,
             move_sources,
             false,
-            None,
+            (None, None),
             ConflictFocus::KeepBoth,
         );
     }
@@ -548,7 +611,14 @@ impl ViewState {
         focus: ConflictFocus,
     ) {
         self.transfer_replaces_cursor.set(false);
-        self.begin_transfer(destination, sources, move_sources, reveal, send_to, focus);
+        self.begin_transfer(
+            destination,
+            sources,
+            move_sources,
+            reveal,
+            (send_to, None),
+            focus,
+        );
     }
 
     fn begin_transfer(
@@ -557,7 +627,7 @@ impl ViewState {
         sources: Vec<Location>,
         move_sources: bool,
         reveal: bool,
-        send_to: Option<SendToTransferContext>,
+        (send_to, device): (Option<SendToTransferContext>, Option<SendToRoot>),
         focus: ConflictFocus,
     ) {
         if is_trash_location(&destination)
@@ -573,34 +643,126 @@ impl ViewState {
         if sources.is_empty() {
             return;
         }
-        let mut accepted = Vec::new();
-        let mut collisions = Vec::new();
-        let destination_names = destination
-            .native_path()
-            .and_then(destination_name_candidates);
-        for source in sources {
-            let may_collide = match (&destination_names, source.file_name()) {
-                (Some(existing), Some(name)) => existing.contains(&destination_name_key(&name)),
-                _ => true,
-            };
-            if may_collide && let Some(collision) = transfer_collision(&source, &destination) {
-                collisions.push(collision);
-            } else {
-                accepted.push(PasteItem {
-                    source,
-                    conflict: TransferConflict::FailIfExists,
-                });
-            }
+        let request = Preparing::Transfer(destination.clone(), sources.clone(), move_sources);
+        if self
+            .preparing_transfers
+            .borrow()
+            .iter()
+            .any(|(preparing, cancellable, _)| *preparing == request && !cancellable.is_cancelled())
+        {
+            return;
         }
-        self.resolve_transfer_collisions(
-            destination,
-            collisions,
-            accepted,
-            move_sources,
-            reveal,
-            send_to,
-            focus,
+        let cancellable = gio::Cancellable::new();
+        let row = (
+            sources
+                .first()
+                .map(Location::display_name)
+                .unwrap_or_default(),
+            crate::app::folder_destination_texts(&destination),
         );
+        let preparation = self.show_transfer_preparation(move_sources, row, &cancellable);
+        self.preparing_transfers.borrow_mut().push((
+            request,
+            cancellable.clone(),
+            Rc::downgrade(&preparation),
+        ));
+        let weak = Rc::downgrade(self);
+        glib::MainContext::default().spawn_local(async move {
+            let prepared = match device {
+                Some(device) => device.destination().await,
+                None => Ok(destination),
+            };
+            let prepared = match prepared {
+                Ok(destination) => {
+                    transfer_targets(&destination, &sources, move_sources, &cancellable)
+                        .await
+                        .map(|targets| (destination, targets))
+                        .map_err(|error| {
+                            (
+                                crate::i18n::tr("Unable to transfer"),
+                                error.message().to_owned(),
+                            )
+                        })
+                }
+                Err(unavailable) => Err((crate::i18n::tr("Destination unavailable"), unavailable)),
+            };
+            let Some(state) = weak.upgrade() else {
+                preparation.dismiss_file_operation_progress();
+                return;
+            };
+            state
+                .preparing_transfers
+                .borrow_mut()
+                .retain(|(_, preparing, _)| *preparing != cancellable);
+            if cancellable.is_cancelled() {
+                preparation.dismiss_file_operation_progress();
+                return;
+            }
+            let (destination, targets) = match prepared {
+                Ok(prepared) => prepared,
+                Err((title, message)) => {
+                    preparation.dismiss_file_operation_progress();
+                    show_error_dialog(&state.overlay, &title, &message);
+                    return;
+                }
+            };
+            let mut accepted = Vec::new();
+            let mut collisions = Vec::new();
+            for (source, target) in sources.into_iter().zip(targets) {
+                match target.collision {
+                    Some(collision) => collisions.push(TransferCollision {
+                        source,
+                        target_name: target.name,
+                        mergeable: collision.mergeable,
+                        fixes_inside: target.fixes_inside,
+                    }),
+                    None => accepted.push(PasteItem {
+                        source,
+                        conflict: TransferConflict::FailIfExists,
+                        target_name: target.name,
+                    }),
+                }
+            }
+            if collisions.is_empty() {
+                state.transfer_preparation.replace(Some(preparation));
+            } else {
+                preparation.dismiss_file_operation_progress();
+            }
+            state.resolve_transfer_collisions(
+                destination,
+                collisions,
+                accepted,
+                move_sources,
+                reveal,
+                send_to,
+                focus,
+            );
+            if let Some(preparation) = state.transfer_preparation.take() {
+                preparation.dismiss_file_operation_progress();
+            }
+        });
+    }
+
+    fn show_transfer_preparation(
+        &self,
+        moving: bool,
+        row: (String, (String, String)),
+        cancellable: &gio::Cancellable,
+    ) -> Rc<FileProgressState> {
+        let progress = Rc::new(FileProgressState::new(&self.overlay));
+        let shown = Rc::downgrade(&progress);
+        let cancellable = cancellable.clone();
+        progress.show_transfer_preparation(
+            moving,
+            row,
+            Rc::new(move || {
+                cancellable.cancel();
+                if let Some(progress) = shown.upgrade() {
+                    progress.dismiss_file_operation_progress();
+                }
+            }),
+        );
+        progress
     }
 
     #[expect(
@@ -655,27 +817,28 @@ impl ViewState {
         }
         let collision = collisions.remove(0);
         let source = collision.source.clone();
+        let target_name = collision.target_name.clone();
         let name = source.display_name();
         // Merge stays copy-only: undoing a merged move cannot tell which
-        // destination contents the source actually owned.
-        let allow_merge = collision.mergeable && !move_sources;
-        let folder = compact_display_path(&destination);
-        let explanation = if allow_merge {
-            rust_i18n::t!(
-                "A folder named “%{name}” already exists in %{folder}. Merging combines the contents of both folders; incoming items overwrite items with the same name.",
-                name = name,
-                folder = folder
+        // destination contents the source actually owned. It stages what it
+        // overwrites in Trash, which `admin://` lacks.
+        let allow_merge = collision.mergeable && !move_sources && !destination.is_administrator();
+        let explanation = conflict_explanation(&collision, &destination, allow_merge);
+        let without_trash = destination.is_administrator()
+            || destination
+                .native_path()
+                .and_then(crate::adapters::trash_support::unsupported_reason_for)
+                .is_some();
+        let explanation = if without_trash {
+            format!(
+                "{explanation}\n\n{}",
+                crate::i18n::tr("Replaced items can't be moved to Trash here and will be deleted.")
             )
         } else {
-            rust_i18n::t!(
-                "An item named “%{name}” already exists in %{folder}. Replacing it will overwrite its contents.",
-                name = name,
-                folder = folder
-            )
+            explanation
         };
         let state = self.clone();
         let send_to_conflict = send_to.clone();
-        // Move undo/reveal assumes an unrenamed `transfer_target`.
         let apply_to_all_visible = !collisions.is_empty();
         let skip_visible = !accepted.is_empty() || !collisions.is_empty();
         self.confirm_replace_conflict(
@@ -684,7 +847,7 @@ impl ViewState {
             apply_to_all_visible,
             skip_visible,
             ConflictActions {
-                keep_both: !move_sources,
+                keep_both: true,
                 merge: allow_merge,
                 focus,
             },
@@ -696,11 +859,13 @@ impl ViewState {
                         accepted.push(PasteItem {
                             source: source.clone(),
                             conflict: TransferConflict::ReplaceExisting,
+                            target_name: target_name.clone(),
                         });
                         if apply_to_all {
                             accepted.extend(remaining.drain(..).map(|collision| PasteItem {
                                 source: collision.source,
                                 conflict: TransferConflict::ReplaceExisting,
+                                target_name: collision.target_name,
                             }));
                         }
                     }
@@ -708,6 +873,7 @@ impl ViewState {
                         accepted.push(PasteItem {
                             source: source.clone(),
                             conflict: TransferConflict::Merge,
+                            target_name: target_name.clone(),
                         });
                         if apply_to_all {
                             // File collisions still need their own prompt.
@@ -717,6 +883,7 @@ impl ViewState {
                             accepted.extend(mergeable.into_iter().map(|collision| PasteItem {
                                 source: collision.source,
                                 conflict: TransferConflict::Merge,
+                                target_name: collision.target_name,
                             }));
                             remaining = rest;
                         }
@@ -725,11 +892,13 @@ impl ViewState {
                         accepted.push(PasteItem {
                             source: source.clone(),
                             conflict: TransferConflict::KeepBoth,
+                            target_name: target_name.clone(),
                         });
                         if apply_to_all {
                             accepted.extend(remaining.drain(..).map(|collision| PasteItem {
                                 source: collision.source,
                                 conflict: TransferConflict::KeepBoth,
+                                target_name: collision.target_name,
                             }));
                         }
                     }
@@ -767,6 +936,53 @@ impl ViewState {
         self.replay_move(true, generation, records, false)
     }
 
+    fn check_replay(
+        self: &Rc<Self>,
+        (redo, generation): (bool, u64),
+        row: (String, (String, String)),
+        locations: Vec<Location>,
+        resume: impl FnOnce(&Rc<Self>, Vec<Presence>) + 'static,
+    ) -> bool {
+        let replay = Preparing::Replay { redo, generation };
+        if self
+            .preparing_transfers
+            .borrow()
+            .iter()
+            .any(|(preparing, cancellable, _)| *preparing == replay && !cancellable.is_cancelled())
+        {
+            return true;
+        }
+        let cancellable = gio::Cancellable::new();
+        let preparation = self.show_transfer_preparation(true, row, &cancellable);
+        self.preparing_transfers.borrow_mut().push((
+            replay,
+            cancellable.clone(),
+            Rc::downgrade(&preparation),
+        ));
+        let weak = Rc::downgrade(self);
+        glib::MainContext::default().spawn_local(async move {
+            let presence = probes::presence(&locations, &cancellable).await;
+            let Some(state) = weak.upgrade() else {
+                preparation.dismiss_file_operation_progress();
+                return;
+            };
+            state
+                .preparing_transfers
+                .borrow_mut()
+                .retain(|(_, preparing, _)| *preparing != cancellable);
+            if cancellable.is_cancelled() {
+                preparation.dismiss_file_operation_progress();
+                return;
+            }
+            state.transfer_preparation.replace(Some(preparation));
+            resume(&state, presence);
+            if let Some(preparation) = state.transfer_preparation.take() {
+                preparation.dismiss_file_operation_progress();
+            }
+        });
+        true
+    }
+
     fn replay_existing_locations(
         self: &Rc<Self>,
         redo: bool,
@@ -774,15 +990,24 @@ impl ViewState {
         locations: Vec<Location>,
         dispatch: fn(&Rc<Browser>, u64, Vec<Location>) -> bool,
     ) -> bool {
-        let existing = locations
-            .into_iter()
-            .filter(location_exists)
-            .collect::<Vec<_>>();
-        if existing.is_empty() {
+        let Some(first) = locations.first() else {
             self.browser.discard_pending_replay(redo, generation);
             return false;
-        }
-        dispatch(&self.browser, generation, existing)
+        };
+        let row = preparing_row(first, crate::app::trash_destination_texts());
+        self.check_replay(
+            (redo, generation),
+            row,
+            locations.clone(),
+            move |state, presence| {
+                let existing = found(locations, presence);
+                if existing.is_empty() {
+                    state.browser.discard_pending_replay(redo, generation);
+                } else {
+                    dispatch(&state.browser, generation, existing);
+                }
+            },
+        )
     }
 
     fn replay_move(
@@ -792,47 +1017,64 @@ impl ViewState {
         records: Vec<MoveRecord>,
         grouped: bool,
     ) -> bool {
-        let mut accepted = Vec::new();
-        let mut collisions = Vec::new();
-        let mut missing = 0;
-        for record in records {
-            let (item_at, destination) = if redo {
-                (&record.original, &record.current)
+        let ends = |record: &MoveRecord| {
+            if redo {
+                (record.original.clone(), record.current.clone())
             } else {
-                (&record.current, &record.original)
-            };
-            if !location_exists(item_at) {
-                missing += 1;
-                continue;
+                (record.current.clone(), record.original.clone())
             }
-            if location_exists(destination) {
-                collisions.push(record);
-            } else {
-                accepted.push(UndoMoveItem {
-                    record,
-                    conflict: TransferConflict::FailIfExists,
-                });
-            }
-        }
-        if accepted.is_empty() && collisions.is_empty() {
-            if grouped && !redo && missing > 0 {
-                self.browser.discard_group_keep_folder(redo, generation);
-            } else {
-                self.browser.discard_pending_replay(redo, generation);
-            }
+        };
+        let Some((item, destination)) = records.first().map(ends) else {
+            self.browser.discard_pending_replay(redo, generation);
             return false;
-        }
-        self.resolve_replay_collisions(
-            redo,
-            generation,
-            collisions,
-            accepted,
-            grouped.then_some(GroupReplay {
-                had_missing: missing > 0,
-                skipped: false,
-            }),
-        );
-        true
+        };
+        let locations = records
+            .iter()
+            .flat_map(|record| <[Location; 2]>::from(ends(record)))
+            .collect();
+        self.check_replay(
+            (redo, generation),
+            folder_row(&item, &destination),
+            locations,
+            move |state, presence| {
+                let mut accepted = Vec::new();
+                let mut collisions = Vec::new();
+                let mut missing = 0;
+                for (record, ends) in records.into_iter().zip(presence.as_chunks::<2>().0) {
+                    match ends {
+                        [Presence::Absent, _] => missing += 1,
+                        [_, Presence::Present] => collisions.push(record),
+                        _ => accepted.push(UndoMoveItem {
+                            record,
+                            conflict: TransferConflict::FailIfExists,
+                        }),
+                    }
+                }
+                if accepted.is_empty() && collisions.is_empty() {
+                    if grouped && !redo && missing > 0 {
+                        state.browser.discard_group_keep_folder(redo, generation);
+                    } else {
+                        state.browser.discard_pending_replay(redo, generation);
+                    }
+                    return;
+                }
+                if !collisions.is_empty()
+                    && let Some(preparation) = state.transfer_preparation.take()
+                {
+                    preparation.dismiss_file_operation_progress();
+                }
+                state.resolve_replay_collisions(
+                    redo,
+                    generation,
+                    collisions,
+                    accepted,
+                    grouped.then_some(GroupReplay {
+                        had_missing: missing > 0,
+                        skipped: false,
+                    }),
+                );
+            },
+        )
     }
 
     pub(super) fn undo_copy(self: &Rc<Self>, generation: u64, locations: Vec<Location>) -> bool {
@@ -845,17 +1087,29 @@ impl ViewState {
         created: Vec<Location>,
         overwritten: Vec<Location>,
     ) -> bool {
-        let created = created
-            .into_iter()
-            .filter(location_exists)
-            .collect::<Vec<_>>();
-        // Overwritten entries stay even when the incoming copy is gone: the
-        // staged original may still be sitting in Trash waiting to restore.
-        if created.is_empty() && overwritten.is_empty() {
-            self.browser.discard_pending_replay(false, generation);
-            return false;
-        }
-        self.browser.undo_merge(generation, created, overwritten)
+        let Some(first) = created.first() else {
+            if overwritten.is_empty() {
+                self.browser.discard_pending_replay(false, generation);
+                return false;
+            }
+            return self.browser.undo_merge(generation, created, overwritten);
+        };
+        let row = folder_row(first, first);
+        self.check_replay(
+            (false, generation),
+            row,
+            created.clone(),
+            move |state, presence| {
+                let created = found(created, presence);
+                // Overwritten entries stay even when the incoming copy is gone: the
+                // staged original may still be sitting in Trash waiting to restore.
+                if created.is_empty() && overwritten.is_empty() {
+                    state.browser.discard_pending_replay(false, generation);
+                } else {
+                    state.browser.undo_merge(generation, created, overwritten);
+                }
+            },
+        )
     }
 
     fn resolve_replay_collisions(
@@ -1111,7 +1365,7 @@ impl ViewState {
         self.show_send_to_folder_dialog_with_resolver(
             id,
             sources,
-            Rc::new(crate::ui::resolve_removable_destination),
+            Rc::new(crate::ui::removable_destination_root),
         );
     }
 
@@ -1124,29 +1378,41 @@ impl ViewState {
         if sources.is_empty() {
             return;
         }
-        let Some(root) = resolve(&id)
-            .and_then(|root| crate::ui::browser::destination::canonical_existing_directory(&root))
-        else {
-            show_error_dialog(
-                &self.overlay,
-                &crate::i18n::tr("Destination unavailable"),
-                &crate::i18n::tr("The removable device is no longer available."),
-            );
-            return;
-        };
-        self.show_destination_dialog(
-            sources,
-            TransferDialogOptions {
-                base: root.clone(),
-                root_limit: Some(root.clone()),
-                allow_create: false,
-                completion: TransferDialogCompletion::SendTo {
-                    device_id: id,
-                    opened_root: root,
-                    resolve,
+        let root = resolve(&id);
+        let weak = Rc::downgrade(self);
+        glib::MainContext::default().spawn_local(async move {
+            let root = match root {
+                Some(root) => crate::adapters::probes::writable_folder(&root)
+                    .await
+                    .ok()
+                    .flatten(),
+                None => None,
+            };
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let Some(root) = root else {
+                show_error_dialog(
+                    &state.overlay,
+                    &crate::i18n::tr("Destination unavailable"),
+                    &crate::i18n::tr("The removable device is no longer available."),
+                );
+                return;
+            };
+            state.show_destination_dialog(
+                sources,
+                TransferDialogOptions {
+                    base: root.clone(),
+                    root_limit: Some(root.clone()),
+                    allow_create: false,
+                    completion: TransferDialogCompletion::SendTo {
+                        device_id: id,
+                        opened_root: root,
+                        resolve,
+                    },
                 },
-            },
-        );
+            );
+        });
     }
 
     fn show_destination_dialog(
@@ -1174,33 +1440,41 @@ impl ViewState {
             _ => crate::i18n::tr("Copy to"),
         };
         let validation_completion = completion.clone();
-        let validate = Rc::new(move |path: &Path| {
-            if let TransferDialogCompletion::SendTo {
+        let validated_root = Rc::new(RefCell::new(None));
+        let validated = validated_root.clone();
+        let validate = Rc::new(move |path: &Path| -> BoxedLocal<Result<PathBuf, String>> {
+            let TransferDialogCompletion::SendTo {
                 device_id,
                 opened_root,
                 resolve,
             } = &validation_completion
-            {
-                let current_root = resolve(device_id)
-                    .and_then(|root| {
-                        crate::ui::browser::destination::canonical_existing_directory(&root)
-                    })
-                    .ok_or_else(|| {
-                        crate::i18n::tr("The removable device is no longer available.")
-                    })?;
-                crate::ui::browser::destination::rebind_directory_within_root(
-                    opened_root,
-                    path,
-                    &current_root,
-                )
-                .ok_or_else(|| {
-                    crate::i18n::tr("Choose an existing folder inside this removable device.")
-                })
-            } else if path.is_dir() {
-                Ok(path.to_path_buf())
-            } else {
-                Err(crate::i18n::tr("Choose an existing folder."))
-            }
+            else {
+                return crate::ui::browser::destination::existing_folder(path);
+            };
+            let root = resolve(device_id);
+            let relative = path.strip_prefix(opened_root).map(Path::to_path_buf);
+            let validated = validated.clone();
+            Box::pin(async move {
+                let unavailable =
+                    || crate::i18n::tr("The removable device is no longer available.");
+                let root = root.ok_or_else(unavailable)?;
+                let current_root = crate::adapters::probes::writable_folder(&root)
+                    .await
+                    .ok()
+                    .flatten()
+                    .ok_or_else(unavailable)?;
+                let outside =
+                    || crate::i18n::tr("Choose an existing folder inside this removable device.");
+                let relative = relative.map_err(|_| outside())?;
+                let destination =
+                    crate::adapters::probes::destination_folder(&current_root.join(relative))
+                        .await
+                        .ok()
+                        .filter(|destination| destination.starts_with(&current_root))
+                        .ok_or_else(outside)?;
+                validated.replace(Some(current_root));
+                Ok(destination)
+            })
         });
         let state = self.clone();
         crate::ui::chooser::present_destination_chooser(
@@ -1221,13 +1495,10 @@ impl ViewState {
                 if let TransferDialogCompletion::SendTo {
                     device_id,
                     opened_root,
-                    resolve,
+                    ..
                 } = &completion
                 {
-                    // Revalidate at dispatch as well: the chooser may outlive a remount.
-                    let Some(current_root) = resolve(device_id).and_then(|root| {
-                        crate::ui::browser::destination::canonical_existing_directory(&root)
-                    }) else {
+                    let Some(current_root) = validated_root.take() else {
                         show_error_dialog(
                             &state.overlay,
                             &crate::i18n::tr("Destination unavailable"),
@@ -1235,27 +1506,12 @@ impl ViewState {
                         );
                         return;
                     };
-                    let Some(destination) =
-                        crate::ui::browser::destination::canonical_directory_within(
-                            &current_root,
-                            &path,
-                        )
-                    else {
-                        show_error_dialog(
-                            &state.overlay,
-                            &crate::i18n::tr("Destination unavailable"),
-                            &crate::i18n::tr(
-                                "Choose an existing folder inside this removable device.",
-                            ),
-                        );
-                        return;
-                    };
-                    if let Ok(relative) = destination.strip_prefix(&current_root) {
+                    if let Ok(relative) = path.strip_prefix(&current_root) {
                         crate::ui::preferences::PreferenceManager::shared()
                             .remember_send_to_destination(device_id, relative, None);
                     }
                     state.send_to(
-                        Location::local(destination),
+                        Location::local(path),
                         sources,
                         SendToTransferContext {
                             device_name: send_to_display_name(device_id, opened_root),

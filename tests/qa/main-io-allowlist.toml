@@ -1,0 +1,29 @@
+[[exception]]
+reason = "Strata reads its settings and state while it builds the first window (preferences: startup reads)"
+category = "settings"
+access = "read"
+phase = "startup"
+calls = [
+    "openat", "read", "pread64", "fstat", "newfstatat", "statx", "lseek", "getdents64", "close",
+    "access", "faccessat2", "readlink", "readlinkat",
+]
+
+[[exception]]
+reason = "Strata writes the bundled font before the first window"
+category = "settings"
+access = "write"
+phase = "startup"
+paths = ["{cache}/strata", "{cache}/strata/fonts", "{cache}/strata/fonts/*"]
+
+[[exception]]
+reason = "Fontconfig reads the bundled font whenever it lays out text"
+category = "settings"
+access = "read"
+paths = ["{cache}/strata/fonts", "{cache}/strata/fonts/*"]
+
+[[exception]]
+reason = "GIO checks an application's program while it lists or launches applications (GDesktopAppInfo, toolkit exception)"
+category = "unclassified"
+phase = "running"
+calls = ["access", "faccessat", "faccessat2", "newfstatat", "statx"]
+paths = ["{environment}/record-files", "{environment}/record-filtered-launch"]

@@ -1,0 +1,21 @@
+{"scenario":"empty-column-clears-other-columns","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.2},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Click on an empty column clears all selection and keeps panes open; beside-last-column-clears covers blank space outside panes; navigation unit test covers paging, not click"}}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"toggle button","name":"Preview panel"}},"message":"the preview panel toggle"}
+{"key":"Escape","when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":false}}}
+{"click":{"role":"toggle button","name":"Preview panel"},"when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":true}}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location editor to take focus"}
+{"key":"Escape"}
+{"wait":{"focused_pane":true},"message":"focus to return to the file listing"}
+{"select":{"entry":"archive"}}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
+{"settle":{"pane":"archive"}}
+{"select":{"entry":"readme.md","dir":"$root"}}
+{"click":{"entry":"todo.txt","dir":"$root"},"mods":["ctrl"]}
+{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the selection to become ['readme.md', 'todo.txt']"}
+{"note":"panes","as":"panes"}
+{"click":{"pane":"archive"},"at":["50%",-60]}
+{"wait":{"all_selected":[]},"message":"empty column to clear all selections"}
+{"expect":{"panes":"$panes"}}
+{"expect":{"directory":"archive"}}

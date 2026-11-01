@@ -9,6 +9,10 @@ use crate::services::search::{
 use std::sync::Arc;
 
 fn ranked_fixture(count: usize) -> Vec<SearchItem> {
+    ranked_fixture_in(Path::new("/fixture"), count)
+}
+
+fn ranked_fixture_in(root: &Path, count: usize) -> Vec<SearchItem> {
     (0..count)
         .map(|position| {
             let name = match position % 5 {
@@ -18,11 +22,7 @@ fn ranked_fixture(count: usize) -> Vec<SearchItem> {
                 3 => format!("配置/İstanbul-Σ-{position:06}.txt"),
                 _ => format!("ordinary-{position:06}"),
             };
-            SearchItem::new(
-                Path::new("/fixture").join(name),
-                Path::new("/fixture"),
-                false,
-            )
+            SearchItem::new(root.join(name), root, false)
         })
         .collect()
 }
@@ -43,6 +43,8 @@ fn heap_and_parallel_scoring_match_a_full_stable_sort() {
         ("needle", &fuzzy),
         ("nested/objects", &fuzzy),
         ("ndobj", &fuzzy),
+        ("archive needle", &fuzzy),
+        ("needle txt", &fuzzy),
         ("配置", &fuzzy),
         ("missing", &fuzzy),
         ("", &fuzzy),
@@ -292,7 +294,12 @@ fn completed_events_include_the_final_batch_and_coverage() {
         entry_limit: true,
         ..Default::default()
     };
-    let mut batch = ranked_fixture(100);
+    let fixture = tempfile::tempdir().expect("fixture");
+    let mut batch = ranked_fixture_in(fixture.path(), 100);
+    for item in &batch {
+        fs::create_dir_all(item.path.parent().expect("parent")).expect("fixture folder");
+        fs::write(&item.path, b"").expect("fixture file");
+    }
     let expected = score_index(&batch, "needle", SearchScorer::Name(fuzzy_score_normalized));
     append_index_items(&index, &mut batch, false, coverage);
     index.broadcast_change();

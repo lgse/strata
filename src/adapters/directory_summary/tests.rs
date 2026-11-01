@@ -147,6 +147,7 @@ fn directory_summary_treats_a_directory_removed_before_measurement_as_truncated_
             max_depth: MAX_DEPTH,
             total: Cell::default(),
             reported: Cell::default(),
+            stopped: Default::default(),
             on_progress: Box::new(|_| {}),
         }),
     ));
@@ -192,6 +193,7 @@ fn aborting_a_directory_measurement_stops_it_mid_flight() {
                 max_depth: MAX_DEPTH,
                 total: Cell::default(),
                 reported: Cell::default(),
+                stopped: Default::default(),
                 on_progress: Box::new(|_| {}),
             });
             let task = context.spawn_local(measure_entry(
@@ -325,6 +327,7 @@ fn measure_entry_reads_no_unset_optional_attributes() {
                     max_depth: MAX_DEPTH,
                     total: Cell::default(),
                     reported: Cell::default(),
+                    stopped: Default::default(),
                     on_progress: Box::new(|_| {}),
                 }),
             ))
@@ -345,4 +348,60 @@ fn measure_entry_reads_no_unset_optional_attributes() {
     assert_eq!((file.visible_file_count, file.total_size), (1, 0));
     assert_eq!(folder.visible_folder_count, 1);
     assert!(!folder.truncated());
+}
+
+#[test]
+fn a_file_operation_ends_the_measurement_of_a_folder_it_changes_as_incomplete() {
+    for row in [
+        "changing when the walk reaches it",
+        "changed while it is walked",
+    ] {
+        let root = unique_fixture_root("released");
+        std::fs::create_dir_all(root.join("sub")).expect("the directory fixture should be created");
+        for index in 0..100 {
+            std::fs::write(root.join(format!("file-{index}.txt")), b"content")
+                .expect("the directory fixture file should be written");
+        }
+        std::fs::write(root.join("sub/inner.txt"), b"content")
+            .expect("the directory fixture file should be written");
+        let operation = crate::services::file_activity::begin(Default::default());
+        let fences = Rc::new(std::cell::RefCell::new(Vec::new()));
+        let changing = fences.clone();
+        let fenced = root.clone();
+        let on_progress: Box<dyn Fn(DirectorySummary)> = match row {
+            "changing when the walk reaches it" => {
+                fences
+                    .borrow_mut()
+                    .push(operation.fence([root.join("sub")]));
+                Box::new(|_| {})
+            }
+            _ => Box::new(move |partial: DirectorySummary| {
+                if partial.item_count > 0 && changing.borrow().is_empty() {
+                    let fence = operation.fence([fenced.clone()]);
+                    fence.stop_reads();
+                    changing.borrow_mut().push(fence);
+                }
+            }),
+        };
+
+        let summary = glib::MainContext::new()
+            .block_on(super::summarize_directory_with_budget(
+                &gio::File::for_path(&root),
+                MAX_DEPTH,
+                TIME_BUDGET,
+                on_progress,
+            ))
+            .expect("a plain directory tree should measure without error");
+        fences.borrow_mut().clear();
+        std::fs::remove_dir_all(&root).expect("the directory fixture should be removed");
+
+        assert!(summary.issues.unreadable, "{row}: {summary:?}");
+        match row {
+            "changing when the walk reaches it" => assert!(
+                summary.item_count < 102,
+                "a refusal ends the walk before the folder's content: {summary:?}"
+            ),
+            _ => assert!(summary.item_count < 100, "the walk ends: {summary:?}"),
+        }
+    }
 }

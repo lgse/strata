@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::model::{FolderColor, FolderColorValue, Location};
-use crate::services::TrashedOriginal;
+use crate::services::ItemIdentity;
 use crate::ui::controls::{focus_button, modal_layout};
 use crate::ui::keys::{self, bindings::ESCAPE_ANY};
 use crate::ui::modal::{
@@ -24,16 +24,16 @@ pub(super) fn relocate_item_customizations(from: &Location, to: &Location, merge
 
 pub(super) fn forget_item_customizations(
     location: &Location,
-    trash_identity: Option<TrashedOriginal>,
+    trash_identity: Option<ItemIdentity>,
 ) {
     if let Some(path) = location.native_path() {
         PreferenceManager::shared().forget_item_customizations(path, trash_identity);
     }
 }
 
-pub(super) fn restore_item_customizations(location: &Location) {
-    if let Some(path) = location.native_path() {
-        PreferenceManager::shared().restore_item_customizations(path);
+pub(super) fn restore_item_customizations(location: &Location, identity: Option<ItemIdentity>) {
+    if let (Some(path), Some(identity)) = (location.native_path(), identity) {
+        PreferenceManager::shared().restore_item_customizations(path, identity);
     }
 }
 
@@ -103,6 +103,7 @@ fn show_custom_color_modal(
 
     let chooser = gtk::ColorChooserWidget::new();
     chooser.set_use_alpha(false);
+    crate::assets::use_bundled_spin_icons(&chooser);
     if let Ok(rgba) = gdk::RGBA::parse(&initial_hex) {
         chooser.set_rgba(&rgba);
     }
@@ -123,7 +124,7 @@ fn show_custom_color_modal(
     back.add_css_class("action-dialog-cancel");
     let back_icon = crate::assets::primary_icon(crate::assets::icons::ARROW_LEFT, 14);
     back.set_child(Some(&back_icon));
-    back.set_tooltip_text(Some(&crate::i18n::tr("Back to palette")));
+    crate::ui::accessibility::set_tooltip_and_label(&back, &crate::i18n::tr("Back to palette"));
     back.set_visible(false);
     layout.actions.prepend(&back);
 
@@ -323,7 +324,7 @@ pub(in crate::ui) fn show_customize_modal(
                 button.add_css_class("customize-icon-button");
                 let label = crate::i18n::tr(label);
                 button.set_tooltip_text(Some(&label));
-                button.update_property(&[gtk::accessible::Property::Label(&label)]);
+                crate::ui::accessibility::set_label(&button, &label);
                 button.set_child(Some(&crate::assets::primary_icon(icon_name, 20)));
                 if initial_icon.as_deref() == Some(icon_name) {
                     button.add_css_class("active");
@@ -486,7 +487,10 @@ fn build_folder_color_bar(
     theme_btn.set_has_frame(false);
     theme_btn.add_css_class("folder-color-dot");
     theme_btn.add_css_class("folder-color-theme");
-    theme_btn.set_tooltip_text(Some(&crate::i18n::tr("Default (Theme color)")));
+    crate::ui::accessibility::set_tooltip_and_label(
+        &theme_btn,
+        &crate::i18n::tr("Default (Theme color)"),
+    );
     let theme_icon = crate::assets::primary_icon(crate::assets::icons::PALETTE, 12);
     theme_btn.set_child(Some(&theme_icon));
     container.append(&theme_btn);
@@ -498,6 +502,7 @@ fn build_folder_color_bar(
         dot.add_css_class("folder-color-dot");
         dot.add_css_class(color.css_class());
         dot.set_tooltip_text(Some(&crate::i18n::tr(color.name())));
+        crate::ui::accessibility::set_own_label(&dot, &crate::i18n::tr(color.name()));
         let check = gtk::Image::from_icon_name(crate::assets::icons::CHECK_ON_PRIMARY);
         check.set_pixel_size(10);
         check.set_visible(false);
@@ -582,7 +587,7 @@ fn build_folder_color_bar(
                     custom_stack.set_visible_child_name("plus");
                     let label = crate::i18n::tr("Custom color…");
                     custom_btn.set_tooltip_text(Some(&label));
-                    custom_btn.update_property(&[gtk::accessible::Property::Label(&label)]);
+                    crate::ui::accessibility::set_label(&custom_btn, &label);
                     hex_for_draw.replace(None);
                 }
                 Some(FolderColorValue::Custom(hex)) => {
@@ -591,7 +596,7 @@ fn build_folder_color_bar(
                     custom_stack.set_visible_child_name("dot");
                     let label = rust_i18n::t!("Custom (%{hex})", hex = hex);
                     custom_btn.set_tooltip_text(Some(&label));
-                    custom_btn.update_property(&[gtk::accessible::Property::Label(&label)]);
+                    crate::ui::accessibility::set_label(&custom_btn, &label);
                     hex_for_draw.replace(Some(hex.clone()));
                     custom_dot.queue_draw();
                 }

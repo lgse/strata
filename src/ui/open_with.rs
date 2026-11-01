@@ -25,7 +25,11 @@ use super::{
 /// files are handed to the host through the OpenURI portal instead.
 pub(in crate::ui) fn uses_portal() -> bool {
     static FLATPAK: OnceLock<bool> = OnceLock::new();
-    *FLATPAK.get_or_init(|| std::path::Path::new("/.flatpak-info").exists())
+    *FLATPAK.get_or_init(|| {
+        #[cfg(not(test))]
+        crate::util::ui_thread::assert_off();
+        std::path::Path::new("/.flatpak-info").exists()
+    })
 }
 
 /// Opens each file with the host's default handler, or lets the desktop's
@@ -65,7 +69,7 @@ pub(in crate::ui) fn launch_with_portal(
     });
 }
 
-pub(super) fn categorized_apps(
+fn categorized_apps(
     content_type: &str,
     requires_uris: bool,
 ) -> (Vec<gio::AppInfo>, Vec<gio::AppInfo>) {
@@ -146,11 +150,12 @@ fn app_ids(apps: &[gio::AppInfo]) -> HashSet<String> {
 // For mixed types, only promote handlers shared by every type. Single-type
 // history may also promote applications explicitly chosen from Other.
 fn split_recent(
+    history: &recent_apps::State,
     content_types: &[String],
     recommended: &mut Vec<gio::AppInfo>,
     other: &mut Vec<gio::AppInfo>,
 ) -> Vec<gio::AppInfo> {
-    let ordered = recent_apps::load().recent_ids(content_types);
+    let ordered = history.recent_ids(content_types);
     if ordered.is_empty() {
         return Vec::new();
     }
@@ -180,16 +185,51 @@ fn split_recent(
     recent
 }
 
+#[derive(Clone, Default)]
+pub(super) struct Choices {
+    recent: Vec<gio::AppInfo>,
+    recommended: Vec<gio::AppInfo>,
+    other: Vec<gio::AppInfo>,
+}
+
+impl Choices {
+    fn new(
+        history: &recent_apps::State,
+        content_types: &[String],
+        mut recommended: Vec<gio::AppInfo>,
+        mut other: Vec<gio::AppInfo>,
+    ) -> Self {
+        let recent = split_recent(history, content_types, &mut recommended, &mut other);
+        Self {
+            recent,
+            recommended,
+            other,
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.recent.is_empty() && self.recommended.is_empty() && self.other.is_empty()
+    }
+}
+
+pub(super) fn choices_for_type(
+    history: &recent_apps::State,
+    content_type: &str,
+    requires_uris: bool,
+) -> Choices {
+    let (recommended, other) = categorized_apps(content_type, requires_uris);
+    Choices::new(history, &[content_type.to_owned()], recommended, other)
+}
+
 pub(super) struct Applications {
-    pub(super) recommended: Vec<gio::AppInfo>,
-    pub(super) other: Vec<gio::AppInfo>,
+    pub(super) choices: Choices,
     pub(super) default: Option<gio::AppInfo>,
     pub(super) content_types: Vec<String>,
 }
 
 impl Applications {
     pub(super) fn unavailable_reason(&self) -> Option<&'static str> {
-        if uses_portal() || !self.recommended.is_empty() || !self.other.is_empty() {
+        if uses_portal() || !self.choices.is_empty() {
             None
         } else if self.content_types.len() > 1 {
             Some("No application can open all selected file types")
@@ -242,11 +282,14 @@ pub(super) async fn resolve(
     if !current() {
         return None;
     }
+    let history = recent_apps::read().await.unwrap_or_default();
+    if !current() {
+        return None;
+    }
     let requires_uris = requires_uri_handlers(files);
     let (recommended, other, default) = common_applications(&content_types, requires_uris);
     Some(Ok(Applications {
-        recommended,
-        other,
+        choices: Choices::new(&history, &content_types, recommended, other),
         default,
         content_types,
     }))
@@ -441,7 +484,7 @@ fn launch_with_recent_registration(
             .into_iter()
             .filter_map(|candidate| candidate.id().map(|id| id.to_string()))
             .collect::<HashSet<_>>();
-        recent_apps::record(content_types, app_id.as_str(), &known_ids);
+        recent_apps::record(content_types, app_id.as_str(), known_ids);
     }
     let candidates: Vec<gio::File> = files
         .iter()
@@ -479,7 +522,7 @@ fn register_recent_file(file: &gio::File) -> bool {
     let uri = file.uri();
     let added = manager.add_item(uri.as_str());
     if !added {
-        tracing::debug!(uri = %uri, "unable to record file in Recent history");
+        tracing::debug!(uri = %crate::model::diagnostic_uri(uri.as_str()), "unable to record file in Recent history");
     }
     added
 }
@@ -632,9 +675,9 @@ fn create_section_header(title: &str) -> gtk::ListBoxRow {
 fn create_app_row(app: &gio::AppInfo, display: &gtk::gdk::Display) -> gtk::ListBoxRow {
     let row = gtk::ListBoxRow::new();
     row.add_css_class("open-with-row");
-    row.update_property(&[gtk::accessible::Property::Label(&app.display_name())]);
+    super::accessibility::set_label(&row, &app.display_name());
     if let Some(description) = app.description() {
-        row.update_property(&[gtk::accessible::Property::Description(&description)]);
+        super::accessibility::set_description(&row, Some(&description));
     }
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let icon = application_icon(app, display);
@@ -668,8 +711,7 @@ pub(super) fn show(
     parent: &impl IsA<gtk::Widget>,
     files: Vec<gio::File>,
     content_types: Vec<String>,
-    mut recommended_apps: Vec<gio::AppInfo>,
-    mut other_apps: Vec<gio::AppInfo>,
+    choices: Choices,
     context: OpenWithContext,
     on_close: Rc<dyn Fn()>,
 ) {
@@ -709,15 +751,14 @@ pub(super) fn show(
     let search_entry = gtk::SearchEntry::new();
     search_entry.add_css_class("open-with-search");
     search_entry.set_placeholder_text(Some(&crate::i18n::tr("Search applications…")));
+    super::accessibility::set_label(&search_entry, &crate::i18n::tr("Search applications…"));
     layout.body.append(&search_entry);
 
     let list = gtk::ListBox::new();
     list.add_css_class("open-with-list");
     list.set_selection_mode(gtk::SelectionMode::Single);
     list.set_activate_on_single_click(false);
-    list.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
-        "Applications",
-    ))]);
+    super::accessibility::set_label(&list, &crate::i18n::tr("Applications"));
 
     let always_use =
         super::controls::form_check_button(&crate::i18n::tr(if content_types.len() > 1 {
@@ -739,8 +780,12 @@ pub(super) fn show(
 
     let mut entries = Vec::new();
 
+    let Choices {
+        recent,
+        recommended: recommended_apps,
+        other: other_apps,
+    } = choices;
     let mut recent_heading_row = None;
-    let recent = split_recent(&content_types, &mut recommended_apps, &mut other_apps);
     if !recent.is_empty() {
         let heading = create_section_header("Recently Used");
         list.append(&heading);
@@ -917,6 +962,7 @@ pub(super) fn show(
         let (Some(list), Some(search)) = (list_weak.upgrade(), search_for_list.upgrade()) else {
             return glib::Propagation::Proceed;
         };
+        let press = &press.untyped();
 
         if press.is(UP.ignoring(SHORTCUT_MODIFIERS))
             && let Some(selected) = list.selected_row()
@@ -1091,7 +1137,7 @@ pub(super) fn show(
                 }
             }
         }
-        let context = list.display().app_launch_context();
+        let context = crate::child_environment::launch_context(&list.display());
         if let Err(error) = launch(&entry.app, &open_files, &open_content_types, Some(&context)) {
             let detail = error.to_string();
             open_dismiss();

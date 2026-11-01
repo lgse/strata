@@ -14,7 +14,6 @@ enum Owner {
 enum Trigger {
     F5,
     RefreshButton,
-    AutoRefresh,
 }
 
 fn settles(condition: impl Fn() -> bool) -> bool {
@@ -123,12 +122,10 @@ const REFRESH_CASES: &[RefreshCase] = &[
     RefreshCase {
         owner: Owner::FilterEntry,
         cursor_kept: true,
-        trigger: Trigger::AutoRefresh,
+        trigger: Trigger::RefreshButton,
         bulk: 0,
         during: During::Nothing,
     },
-    // The timer ticks after the monitor has already reported a deletion as a live
-    // change, so only an immediate reload lists the folder without the cursor's entry.
     RefreshCase {
         owner: Owner::FilterEntry,
         cursor_kept: false,
@@ -189,7 +186,6 @@ fn reload(
             fixture.press(Key::F5, ModifierType::empty());
         }
         Trigger::RefreshButton => fixture.view.refresh(),
-        Trigger::AutoRefresh => fixture.view.set_auto_refresh_interval(1),
     }
     if during == During::Escape
         && (loads.get() != before || !fixture.press(Key::Escape, ModifierType::empty()))
@@ -197,9 +193,6 @@ fn reload(
         return Err("setup: Escape did not dismiss the filter while the folder loaded".to_owned());
     }
     let reloaded = settles(|| loads.get() > before);
-    if trigger == Trigger::AutoRefresh {
-        fixture.view.set_auto_refresh_interval(0);
-    }
     if !reloaded {
         return Err(format!("{trigger:?} did not reload the folder"));
     }
@@ -351,7 +344,7 @@ fn a_refresh_keeps_the_cursor_and_focus_in_list_and_icons() {
 enum DuringSettle {
     /// The header's Forward button leaves again, and Back returns once more.
     ForwardAndBack,
-    /// A reload, as an Auto-refresh tick or a monitor rescan starts one.
+    /// A reload, as a monitor rescan starts one.
     Reload,
 }
 
@@ -713,7 +706,7 @@ fn a_reload_keeps_the_columns_list_focused() {
         || {
             let mut failures = Vec::new();
             for owner in [Owner::Items, Owner::FilterEntry] {
-                for trigger in [Trigger::F5, Trigger::AutoRefresh] {
+                for trigger in [Trigger::F5, Trigger::RefreshButton] {
                     if let Err(error) = columns_reload_case(owner, trigger) {
                         failures.push(format!("{owner:?} {trigger:?}: {error}"));
                     }
@@ -760,6 +753,7 @@ impl crate::services::FileSource for ShrinkingShare {
                 image_dimensions: crate::model::MetadataValue::Unknown,
                 child_count: crate::model::MetadataValue::Unknown,
                 duration_seconds: crate::model::MetadataValue::Unknown,
+                listable: crate::model::MetadataValue::Unknown,
                 is_hidden: false,
             })
             .collect();

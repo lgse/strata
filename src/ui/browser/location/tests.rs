@@ -6,6 +6,63 @@ use gtk::{gio, glib};
 use std::time::{Duration, Instant};
 
 #[test]
+fn window_presence_dismisses_completion_without_discarding_the_path() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::window_presence_dismisses_completion_without_discarding_the_path",
+        || {
+            let fixture = tempfile::tempdir().expect("fixture");
+            std::fs::create_dir(fixture.path().join("documents")).expect("completion folder");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            content.append(&view.location_widget());
+            content.append(&view.widget());
+            let window = gtk::Window::builder().child(&content).build();
+            window.present();
+            view.browser().navigate(Location::local(fixture.path()));
+            wait_until(
+                || {
+                    view.browser()
+                        .column_snapshot(0)
+                        .is_some_and(|snapshot| !snapshot.loading)
+                },
+                "the folder loads",
+            );
+            view.state.begin_location_edit();
+            let popover = descendants(view.state.location_entry.upcast_ref())
+                .into_iter()
+                .find_map(|widget| widget.downcast::<gtk::Popover>().ok())
+                .expect("completion popover");
+
+            let path = format!("{}/doc", fixture.path().display());
+            view.state.location_entry.set_text(&path);
+            wait_until(|| popover.is_visible(), "suggestions visible");
+
+            view.set_presence(crate::app::Presence::Visible, false);
+
+            assert!(!popover.is_visible(), "losing focus dismisses suggestions");
+            assert_eq!(view.state.location_entry.text().as_str(), path);
+            assert!(view.location_edit_is_active());
+            view.state.location_entry.set_text("~");
+            assert!(
+                !popover.is_visible(),
+                "inactive edits cannot reopen suggestions"
+            );
+
+            view.set_presence(crate::app::Presence::Focused, false);
+            view.state.location_entry.set_text(&path);
+            wait_until(
+                || popover.is_visible(),
+                "suggestions return once the window is focused again",
+            );
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn password_storage_selection_maps_to_gio_values() {
     assert_eq!(password_save_for_selection(0), gio::PasswordSave::Never);
     assert_eq!(
@@ -87,6 +144,20 @@ fn remote_permission_denials_are_treated_as_authentication_failures() {
 }
 
 #[test]
+fn a_refused_polkit_prompt_neither_asks_for_credentials_nor_reports_an_error() {
+    let administrator = Location::uri("admin:///run/media/user/drive/backups");
+    let denied = glib::Error::new(gio::IOErrorEnum::PermissionDenied, "Permission denied");
+    assert!(!mount_error_is_authentication_failure(
+        &administrator,
+        &denied
+    ));
+    assert_eq!(mount_failure_message(&administrator, &denied), None);
+
+    let failed = glib::Error::new(gio::IOErrorEnum::Failed, "helper crashed");
+    assert!(mount_failure_message(&administrator, &failed).is_some());
+}
+
+#[test]
 fn cancelling_the_credential_prompt_produces_no_error_message() {
     let location = Location::uri("smb://host/share");
     for kind in [gio::IOErrorEnum::Cancelled, gio::IOErrorEnum::FailedHandled] {
@@ -164,7 +235,10 @@ fn backend_failures_do_not_echo_uri_secrets() {
         "Unable to mount sftp://alice:hunter2@host.example/home/alice?token=hidden#secret",
     );
     let message = mount_failure_message(&location, &error).expect("reportable error");
-    assert!(message.contains("sftp://host.example/home/alice"));
+    assert_eq!(
+        message,
+        crate::i18n::tr(crate::services::UNEXPECTED_SYSTEM_ERROR)
+    );
     assert!(!message.contains("hunter2"));
     assert!(!message.contains("alice:"));
     assert!(!message.contains("hidden"));
@@ -876,12 +950,16 @@ fn breadcrumb_adjustment_does_not_retain_widgets() {
                 Rc::new(crate::adapters::LocalFileSource),
                 crate::ui::browser::PeekBehavior::default(),
             );
-            let adjustment = view.state.breadcrumb_scroller.hadjustment();
             let container = view
                 .state
                 .location_stack
                 .child_by_name("breadcrumbs")
                 .expect("breadcrumb container");
+            let adjustment = descendants(&container)
+                .into_iter()
+                .find_map(|widget| widget.downcast::<gtk::ScrolledWindow>().ok())
+                .expect("breadcrumb scroller")
+                .hadjustment();
             let scrollbar = descendants(&container)
                 .into_iter()
                 .filter(|widget| widget.has_css_class("breadcrumb-scrollbar"))
@@ -899,6 +977,168 @@ fn breadcrumb_adjustment_does_not_retain_widgets() {
     );
 }
 
+/// Validates remote locations from an idle callback, as GIO answers network queries.
+struct DeferredValidation {
+    unavailable: &'static str,
+}
+
+impl crate::services::FileSource for DeferredValidation {
+    fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
+        if location
+            .uri_value()
+            .is_some_and(|uri| uri.trim_end_matches('/') == self.unavailable)
+        {
+            Err(LocationValidationError::Unavailable(
+                "no route to host".into(),
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn validate_location_async(
+        &self,
+        location: Location,
+        emit: Rc<dyn Fn(Result<(), LocationValidationError>)>,
+    ) -> crate::services::LoadHandle {
+        let result = self.validate_location(&location);
+        let source = Rc::new(RefCell::new(Some(glib::idle_add_local_once(move || {
+            emit(result)
+        }))));
+        crate::services::LoadHandle::new(move || {
+            if let Some(source) = source.borrow_mut().take() {
+                source.remove();
+            }
+        })
+    }
+
+    fn enumerate(
+        &self,
+        _: crate::services::DirectoryRequest,
+        _: Rc<dyn Fn(crate::services::DirectoryEvent)>,
+    ) -> crate::services::LoadHandle {
+        crate::services::LoadHandle::new(|| {})
+    }
+}
+
+const UNAVAILABLE_SHARE: &str = "sftp://down.example/share";
+
+fn connect_browser() -> (BrowserView, gtk::Window, gtk::Overlay) {
+    hosted_browser_with(Rc::new(DeferredValidation {
+        unavailable: UNAVAILABLE_SHARE,
+    }))
+}
+
+fn record_outcomes() -> (
+    Rc<RefCell<Vec<ConnectOutcome>>>,
+    impl Fn(ConnectOutcome) + 'static,
+) {
+    let outcomes = Rc::new(RefCell::new(Vec::new()));
+    let recorded = outcomes.clone();
+    (outcomes, move |outcome| recorded.borrow_mut().push(outcome))
+}
+
+#[test]
+fn connect_waits_for_remote_validation_before_opening() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::connect_waits_for_remote_validation_before_opening",
+        || {
+            let (view, window, _overlay) = connect_browser();
+            let start = Location::local("/");
+            view.browser().navigate(start.clone());
+            let (outcomes, finished) = record_outcomes();
+
+            view.connect_typed_location("sftp://up.example/share", finished)
+                .expect("valid address");
+            assert!(outcomes.borrow().is_empty(), "validation is still pending");
+            assert_eq!(view.browser().active_location(), Some(start));
+
+            wait_until(|| !outcomes.borrow().is_empty(), "connect outcome");
+            let opened = match outcomes.borrow().as_slice() {
+                [ConnectOutcome::Opened(location)] => location.clone(),
+                _ => panic!("expected one Opened outcome"),
+            };
+            assert_eq!(
+                opened.uri_value().map(|uri| uri.trim_end_matches('/')),
+                Some("sftp://up.example/share")
+            );
+            assert_eq!(view.browser().active_location(), Some(opened));
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+#[test]
+fn connect_reports_failures_to_the_waiting_dialog_instead_of_a_new_one() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::connect_reports_failures_to_the_waiting_dialog_instead_of_a_new_one",
+        || {
+            let (view, window, overlay) = connect_browser();
+            let start = Location::local("/");
+            view.browser().navigate(start.clone());
+            let (outcomes, finished) = record_outcomes();
+
+            assert!(matches!(
+                view.connect_typed_location("user@host:path", finished),
+                Err(LocationValidationError::UnsupportedShorthand(_))
+            ));
+            let (outcomes_after_rejection, finished) = record_outcomes();
+            view.connect_typed_location(UNAVAILABLE_SHARE, finished)
+                .expect("valid address");
+            wait_until(
+                || !outcomes_after_rejection.borrow().is_empty(),
+                "connect outcome",
+            );
+
+            assert!(outcomes.borrow().is_empty(), "rejected input never reports");
+            assert!(matches!(
+                outcomes_after_rejection.borrow().as_slice(),
+                [ConnectOutcome::Failed(Some(message))] if message.contains("no route to host")
+            ));
+            assert!(
+                modal_layer_on(&overlay).is_none(),
+                "no separate error dialog"
+            );
+            assert_eq!(view.browser().active_location(), Some(start));
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+#[test]
+fn cancelled_connect_neither_opens_nor_reports() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::cancelled_connect_neither_opens_nor_reports",
+        || {
+            let (view, window, overlay) = connect_browser();
+            let start = Location::local("/");
+            view.browser().navigate(start.clone());
+            for address in ["sftp://up.example/share", UNAVAILABLE_SHARE] {
+                let (outcomes, finished) = record_outcomes();
+
+                view.connect_typed_location(address, finished)
+                    .expect("valid address");
+                view.cancel_connect();
+                for _ in 0..20 {
+                    glib::MainContext::default().iteration(false);
+                }
+
+                assert!(outcomes.borrow().is_empty(), "{address}");
+                assert_eq!(
+                    view.browser().active_location(),
+                    Some(start.clone()),
+                    "{address}"
+                );
+                assert!(modal_layer_on(&overlay).is_none(), "{address}");
+            }
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
 fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
     let mut widgets = vec![widget.clone()];
     let mut child = widget.first_child();
@@ -910,10 +1150,13 @@ fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
 }
 
 fn hosted_browser() -> (BrowserView, gtk::Window, gtk::Overlay) {
-    let view = BrowserView::new(
-        Rc::new(crate::adapters::LocalFileSource),
-        crate::ui::browser::PeekBehavior::default(),
-    );
+    hosted_browser_with(Rc::new(crate::adapters::LocalFileSource))
+}
+
+fn hosted_browser_with(
+    source: Rc<dyn crate::services::FileSource>,
+) -> (BrowserView, gtk::Window, gtk::Overlay) {
+    let view = BrowserView::new(source, crate::ui::browser::PeekBehavior::default());
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&view.widget()));
     let window = gtk::Window::builder().child(&overlay).build();
@@ -939,4 +1182,67 @@ fn wait_until(condition: impl Fn() -> bool, message: &str) {
         glib::MainContext::default().iteration(false);
         std::thread::sleep(Duration::from_millis(2));
     }
+}
+
+/// A new tab's first load now answers after Ctrl+L can open the entry; the
+/// arriving column must not close the entry or replace what was typed.
+#[test]
+fn a_folder_arriving_while_a_location_is_typed_keeps_the_entry_open() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::a_folder_arriving_while_a_location_is_typed_keeps_the_entry_open",
+        || {
+            let root = tempfile::tempdir().expect("fixture");
+            let later = root.path().join("later");
+            std::fs::create_dir(&later).expect("folder");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            content.append(&view.location_widget());
+            content.append(&view.widget());
+            let window = gtk::Window::builder()
+                .child(&content)
+                .default_width(900)
+                .default_height(600)
+                .build();
+            window.present();
+            let loaded = |depth: usize| {
+                view.browser()
+                    .column_snapshot(depth)
+                    .is_some_and(|snapshot| !snapshot.loading)
+            };
+            view.browser().navigate(Location::local(root.path()));
+            wait_until(|| loaded(0), "the first folder loads");
+            view.browser().focus_active();
+            wait_until(|| view.item_view_has_focus(), "the rows take focus");
+
+            view.browser()
+                .navigate_input_located(&later.to_string_lossy(), None)
+                .expect("a typed folder");
+            view.begin_location_edit();
+            assert!(
+                view.location_has_focus(),
+                "the entry opens before the folder answers"
+            );
+            view.state.location_entry.set_text("/typed/so/far");
+            wait_until(
+                || view.browser().active_location() == Some(Location::local(&later)),
+                "the later folder arrives",
+            );
+            wait_until(|| loaded(0), "the later folder loads");
+
+            assert!(view.location_edit_is_active(), "the entry stays open");
+            assert_eq!(view.state.location_entry.text(), "/typed/so/far");
+
+            view.state.cancel_location_edit();
+            assert!(!view.location_edit_is_active());
+            assert_eq!(
+                view.state.location_entry.text(),
+                Location::local(&later).display_path(),
+                "closing the entry shows the folder that arrived"
+            );
+            window.destroy();
+        },
+    );
 }

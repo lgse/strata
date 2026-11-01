@@ -161,6 +161,7 @@ impl Browser {
                 .is_some()
         {
             self.finish_sorted_load(task);
+            self.note_listing_finished(task.depth);
             self.emit(BrowserEvent::LoadFinished {
                 depth: task.depth,
                 truncated: task.plan.completion.truncated,
@@ -241,13 +242,18 @@ impl Browser {
         }
         let mut state = self.state.borrow_mut();
         if state
-            .fail(task.request_id, "Sorting the directory failed.".to_owned())
+            .fail(
+                task.request_id,
+                "Sorting the directory failed.".to_owned(),
+                None,
+            )
             .is_some()
         {
             drop(state);
             self.emit(BrowserEvent::LoadFailed {
                 depth: task.depth,
                 message: "Sorting the directory failed.".to_owned(),
+                administrator: None,
             });
         }
     }

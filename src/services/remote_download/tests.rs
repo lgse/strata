@@ -113,19 +113,38 @@ fn truncate_name_preserves_extension_on_long_names() {
     assert_eq!(no_ext.len(), MAX_NAME_BYTES);
 }
 
-#[test]
-fn download_writes_body_and_names_file_from_disposition() {
-    let base = crate::test_support::serve_http_once(
-        b"HTTP/1.1 200 OK\r\ncontent-length: 6\r\ncontent-disposition: attachment; filename=\"report.pdf\"\r\n\r\nbinary".to_vec(),
-    );
-    let receiver = download_remote(format!("{base}/ignored"), Arc::new(AtomicBool::new(false)));
-    let path = loop {
+fn finished_download(url: String) -> PathBuf {
+    let receiver = download_remote(url, Arc::new(AtomicBool::new(false)));
+    loop {
         match receiver.recv().expect("download event") {
             RemoteDownload::Finished(path) => break path,
             RemoteDownload::Progress { .. } | RemoteDownload::Named(_) => continue,
             RemoteDownload::Failed(message) => panic!("download failed: {message}"),
         }
-    };
+    }
+}
+
+#[test]
+fn download_is_private_to_the_user() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let base = crate::test_support::serve_http_once(
+        b"HTTP/1.1 200 OK\r\ncontent-length: 6\r\n\r\nbinary".to_vec(),
+    );
+    let path = finished_download(format!("{base}/file.bin"));
+    let directory = path.parent().expect("temp directory");
+    let mode = |path: &Path| fs::metadata(path).expect("metadata").permissions().mode() & 0o777;
+    assert_eq!(mode(directory), 0o700, "the folder lists for other users");
+    assert_eq!(mode(&path), 0o600, "the file reads for other users");
+    let _cleanup = fs::remove_dir_all(directory);
+}
+
+#[test]
+fn download_writes_body_and_names_file_from_disposition() {
+    let base = crate::test_support::serve_http_once(
+        b"HTTP/1.1 200 OK\r\ncontent-length: 6\r\ncontent-disposition: attachment; filename=\"report.pdf\"\r\n\r\nbinary".to_vec(),
+    );
+    let path = finished_download(format!("{base}/ignored"));
     let directory = path.parent().expect("temp directory");
     assert!(
         directory

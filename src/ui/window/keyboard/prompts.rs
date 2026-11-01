@@ -39,33 +39,38 @@ impl Dispatcher {
             self.shortcuts.open_prompt(Prompt::Find);
         } else if press.is(FIND_BACKWARD) {
             self.shortcuts.open_prompt(Prompt::FindBackward);
-        } else if press.is_any(&[JUMP_VISITED, JUMP_RECENT]) {
-            let kind = if press.is(JUMP_VISITED) {
-                Prompt::Jump
-            } else {
-                Prompt::Recent
-            };
-            self.shortcuts.open_prompt(kind);
-            let browser = self.view.browser();
-            show_history_candidates(&self.shortcuts, &self.history, &browser, kind);
+        } else if press.is(JUMP_VISITED) {
+            self.open_history_prompt(Prompt::Jump);
+        } else if press.is(JUMP_RECENT) {
+            self.open_history_prompt(Prompt::Recent);
         } else if press.is_any(&[REPEAT_FIND, REPEAT_FIND_REVERSED]) {
             self.repeat_find(press.is(REPEAT_FIND_REVERSED));
-        } else if press.is(FILTER_LISTING) {
+        } else if press.is(FILTER) {
             let query = self.view.listing_filter().unwrap_or_default();
             self.shortcuts.open_prompt_with(Prompt::Filter, &query);
         } else if press.is(SEARCH_SUBFOLDERS) {
-            match self.view.begin_listing_search() {
-                Some(query) => {
-                    self.shortcuts.open_prompt_with(Prompt::Search, &query);
-                }
-                None => self
-                    .shortcuts
-                    .show_feedback(&crate::i18n::tr("Nothing to search")),
-            }
+            self.open_search_prompt();
         } else {
             return None;
         }
         Some(Propagation::Stop)
+    }
+
+    pub(super) fn open_history_prompt(&self, kind: Prompt) {
+        self.shortcuts.open_prompt(kind);
+        let browser = self.view.browser();
+        show_history_candidates(&self.shortcuts, &self.history, &browser, kind);
+    }
+
+    pub(super) fn open_search_prompt(&self) {
+        match self.view.begin_listing_search() {
+            Some(query) => {
+                self.shortcuts.open_prompt_with(Prompt::Search, &query);
+            }
+            None => self
+                .shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to search")),
+        }
     }
 
     fn repeat_find(&self, reverse: bool) {
@@ -233,49 +238,170 @@ impl Dispatcher {
     }
 
     fn submit_create(&self, browser: &Browser, text: &str) {
-        let hint = match self.view.create_typed_entry(text) {
-            Ok(()) => return self.return_to_listing(browser),
-            Err(CreateRefusal::Invalid(message)) => crate::i18n::tr(message),
-            Err(CreateRefusal::Exists(name)) => {
-                rust_i18n::t!("“%{name}” already exists", name = name).into_owned()
-            }
-            Err(CreateRefusal::Unsupported) => {
-                self.return_to_listing(browser);
-                self.shortcuts
-                    .show_feedback(&crate::i18n::tr("Can’t create items here"));
-                return;
+        let entry = match self.view.prepare_typed_entry(text) {
+            Ok(entry) => entry,
+            Err(refusal) => {
+                return refuse_typed_name(
+                    &self.shortcuts,
+                    &self.view,
+                    browser,
+                    Prompt::Create,
+                    refusal,
+                );
             }
         };
-        self.shortcuts
-            .prompt_sink(Prompt::Create)
-            .show(None, Some(&hint));
+        let submitted = self.next_typed_name();
+        let revision = self.typed_name_revision.clone();
+        let shortcuts = self.shortcuts.clone();
+        let view = self.view.clone();
+        let text = text.to_owned();
+        glib::MainContext::default().spawn_local(async move {
+            let refusal = entry.refusal().await;
+            let still_open = revision.get() == submitted
+                && shortcuts.open_prompt_kind() == Some(Prompt::Create)
+                && shortcuts.prompt_text() == text;
+            if !still_open {
+                return;
+            }
+            let browser = view.browser();
+            match refusal {
+                Some(refusal) => {
+                    refuse_typed_name(&shortcuts, &view, &browser, Prompt::Create, refusal);
+                }
+                None => {
+                    view.create_typed_entry(entry);
+                    return_to_listing(&shortcuts, &view, &browser);
+                }
+            }
+        });
     }
 
     fn submit_rename(&self, browser: &Browser, text: &str) {
         let Some(entry) = self.rename_target.borrow().clone() else {
             return self.return_to_listing(browser);
         };
-        let hint = match self.view.rename_typed_entry(entry, text) {
-            Ok(()) => return self.return_to_listing(browser),
-            Err(CreateRefusal::Invalid(message)) => crate::i18n::tr(message),
-            Err(CreateRefusal::Exists(name)) => {
-                rust_i18n::t!("“%{name}” already exists", name = name).into_owned()
-            }
-            Err(CreateRefusal::Unsupported) => {
-                self.return_to_listing(browser);
-                self.shortcuts
-                    .show_feedback(&crate::i18n::tr("Can’t rename items here"));
-                return;
+        let rename = match self.view.prepare_typed_rename(entry, text) {
+            Ok(None) => return self.return_to_listing(browser),
+            Ok(Some(rename)) => rename,
+            Err(refusal) => {
+                return refuse_typed_name(
+                    &self.shortcuts,
+                    &self.view,
+                    browser,
+                    Prompt::Rename,
+                    refusal,
+                );
             }
         };
-        self.shortcuts
-            .prompt_sink(Prompt::Rename)
-            .show(None, Some(&hint));
+        let folder = rename
+            .start_folder()
+            .map(|folder| crate::adapters::gio_file_for_location(&folder));
+        let paths = rename.native_paths();
+        let folders = rename.folders();
+        let start = rename
+            .start_folder()
+            .and_then(|start| start.native_path().map(std::path::Path::to_path_buf));
+        let submitted = self.next_typed_name();
+        let revision = self.typed_name_revision.clone();
+        let target = self.rename_target.clone();
+        let shortcuts = self.shortcuts.clone();
+        let view = self.view.clone();
+        let text = text.to_owned();
+        // The rename itself refuses to replace or to take a name the location
+        // would store as another; this only keeps the prompt open to fix it.
+        glib::MainContext::default().spawn_local(async move {
+            let mut unstorable = None;
+            if let Some(folder) = &folder {
+                for (name, new_folder) in rename.components() {
+                    unstorable =
+                        crate::adapters::typed_name_refusal(folder, name, new_folder).await;
+                    if unstorable.is_some() {
+                        break;
+                    }
+                }
+            }
+            let (blocked, taken) = match paths.zip(start) {
+                Some(((current, wanted), start)) if unstorable.is_none() => {
+                    gtk::gio::spawn_blocking(move || {
+                        match crate::adapters::typed_folder_blocked(&start, &folders) {
+                            Some(blocked) => (Some(blocked), false),
+                            None => (
+                                None,
+                                crate::adapters::typed_rename_is_taken(&current, &wanted),
+                            ),
+                        }
+                    })
+                    .await
+                    .unwrap_or_default()
+                }
+                _ => (None, false),
+            };
+            let still_open = revision.get() == submitted
+                && shortcuts.open_prompt_kind() == Some(Prompt::Rename)
+                && shortcuts.prompt_text() == text
+                && target
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|entry| entry.location == rename.entry.location);
+            if !still_open {
+                return;
+            }
+            let browser = view.browser();
+            let refusal = match (unstorable, blocked) {
+                (Some(message), _) => Some(CreateRefusal::Unstorable(message)),
+                (None, Some(folder)) => Some(CreateRefusal::NotAFolder(folder)),
+                (None, None) => taken.then_some(CreateRefusal::Exists(text)),
+            };
+            match refusal {
+                Some(refusal) => {
+                    refuse_typed_name(&shortcuts, &view, &browser, Prompt::Rename, refusal);
+                }
+                None => {
+                    view.start_typed_rename(rename);
+                    return_to_listing(&shortcuts, &view, &browser);
+                }
+            }
+        });
+    }
+
+    fn next_typed_name(&self) -> u64 {
+        let submitted = self.typed_name_revision.get().wrapping_add(1);
+        self.typed_name_revision.set(submitted);
+        submitted
     }
 
     fn return_to_listing(&self, browser: &Browser) {
         return_to_listing(&self.shortcuts, &self.view, browser);
     }
+}
+
+fn refuse_typed_name(
+    shortcuts: &ShortcutFooter,
+    view: &BrowserView,
+    browser: &Browser,
+    prompt: Prompt,
+    refusal: CreateRefusal,
+) {
+    let hint = match refusal {
+        CreateRefusal::Invalid(message) => crate::i18n::tr(message),
+        CreateRefusal::Exists(name) => {
+            rust_i18n::t!("“%{name}” already exists", name = name).into_owned()
+        }
+        CreateRefusal::Unstorable(message) => message,
+        CreateRefusal::NotAFolder(name) => {
+            rust_i18n::t!("“%{name}” is not a folder", name = name).into_owned()
+        }
+        CreateRefusal::Unsupported => {
+            return_to_listing(shortcuts, view, browser);
+            shortcuts.show_feedback(&crate::i18n::tr(if prompt == Prompt::Create {
+                "Can’t create items here"
+            } else {
+                "Can’t rename items here"
+            }));
+            return;
+        }
+    };
+    shortcuts.prompt_sink(prompt).show(None, Some(&hint));
 }
 
 pub(super) fn return_to_listing(shortcuts: &ShortcutFooter, view: &BrowserView, browser: &Browser) {

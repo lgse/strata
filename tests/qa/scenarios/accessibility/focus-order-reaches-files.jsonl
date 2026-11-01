@@ -1,0 +1,11 @@
+{"scenario":"focus-order-reaches-files","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.6,"icons":0.8,"list":0.8},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":4,"score":38,"note":"Tab from header reaches the non-empty file listing as one named stop; empty-directory-focus-and-tab-order covers only the empty pane"}}
+{"key":"Tab"}
+{"keys_until":{"focused":true},"keys":["Tab"],"times":40,"check_first":true,"exhausted":"Tab never reached a file entry"}
+{"expect":{"focused":{"one_of":["archive","documents","pictures","readme.md","todo.txt"]}}}
+{"expect":{"present":{"container":"$root"}}}
+{"expect":{"name":{"target":{"container":"$root"},"text":"$root"}}}
+{"expect":{"description":{"target":{"container":"$root"},"text":"Files"}}}
+{"expect":{"focus_within":{"container":"$root"}}}
+{"key":"Tab"}
+{"wait":{"not":{"focus_within":{"container":"$root"}}},"message":"one Tab to leave the listing","timeout_ms":5000}
+{"expect":{"focused_widget":{"longer_than":0}},"message":"Tab left for an unnamed stop"}

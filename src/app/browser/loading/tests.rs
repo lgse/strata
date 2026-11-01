@@ -75,6 +75,7 @@ impl Fixture {
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
+            listable: MetadataValue::Unknown,
             recent_uri: None,
         }
     }
@@ -175,6 +176,8 @@ fn stale_loading_events_cannot_mutate_a_replacement_request() {
             DirectoryEvent::Failed {
                 request_id: old,
                 message: "late failure".into(),
+                refused: false,
+                denied: false,
             },
         ] {
             fixture.browser.handle_directory_event(event);
@@ -224,6 +227,8 @@ fn native_failure_discards_staged_entries_without_publishing_them() {
         .handle_directory_event(DirectoryEvent::Failed {
             request_id: fixture.request(),
             message: "load failed".into(),
+            refused: false,
+            denied: false,
         });
     assert!(fixture.browser.staging.borrow().is_empty());
     assert!(fixture.browser.sorting.borrow().is_empty());
@@ -262,6 +267,8 @@ fn completed_requests_reject_batches_but_retain_the_existing_failure_transition(
             .handle_directory_event(DirectoryEvent::Failed {
                 request_id: fixture.request(),
                 message: "provider failure".into(),
+                refused: false,
+                denied: false,
             });
         assert!(matches!(
             fixture.events.borrow().as_slice(),

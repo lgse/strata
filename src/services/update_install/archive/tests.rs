@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     fs,
@@ -138,8 +138,7 @@ fn release_tar_format_extracts_long_prerelease_portal_paths() {
         fs::write(root.join(portal), b"portal service").expect("portal service");
         for format in ["gnu", "ustar"] {
             let archive = directory.path().join(format!("{format}.tar.gz"));
-            let status = crate::trusted_command::command("tar")
-                .expect("release tar")
+            let status = std::process::Command::new("tar")
                 .arg(format!("--format={format}"))
                 .arg("-C")
                 .arg(directory.path())

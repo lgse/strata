@@ -305,6 +305,7 @@ impl FileSource for RemoteShare {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
                 is_hidden: false,
             })
             .collect();
@@ -323,18 +324,8 @@ impl FileSource for RemoteShare {
 }
 
 fn in_place_escape_case(mode: BrowserMode) -> Result<(), String> {
-    let fixture = KeyboardFixture::with_parts(Rc::new(TextPreview), || {
-        BrowserView::new(
-            Rc::new(RemoteShare),
-            crate::ui::browser::PeekBehavior::default(),
-        )
-    });
-    fixture.view.set_view_mode(mode);
+    let fixture = remote_share_fixture(mode);
     let browser = fixture.view.browser();
-    let share = Location::uri(SHARE);
-    browser.navigate(share.clone());
-    wait_until(|| browser.active_location().as_ref() == Some(&share));
-    wait_loaded(&browser, 0);
     browser.select(0, 0);
     focus_files(&fixture);
     if !fixture.press(Key::f, ModifierType::CONTROL_MASK) || !fixture.view.filter_has_focus() {
@@ -440,6 +431,75 @@ fn escape_from_a_focused_result_dismisses_the_filter_before_the_preview() {
                         .map(|error| format!("{mode:?}: {error}"))
                 })
                 .collect();
+            report(failures);
+        },
+    );
+}
+
+#[derive(Clone, Copy, Debug)]
+enum SpaceFocus {
+    Location,
+    Sidebar,
+    Toolbar,
+}
+
+fn space_case(mode: BrowserMode, target: SpaceFocus) -> Result<(), String> {
+    let fixture = filtered_fixture(mode, false);
+    let field = show_filter_with_results(&fixture, "alpha", &["alpha-report.txt"])?;
+    focus_first_result(&fixture, &field)?;
+    let focused = match target {
+        SpaceFocus::Location => {
+            fixture.press(Key::l, ModifierType::CONTROL_MASK)
+                && settles(|| fixture.view.location_has_focus())
+        }
+        SpaceFocus::Sidebar => {
+            fixture.sidebar.state.focus_active_place();
+            settles(|| {
+                focus(&fixture).is_some_and(|focused| focused.is_ancestor(&fixture.sidebar.widget))
+            })
+        }
+        SpaceFocus::Toolbar => fixture.sidebar_toggle.grab_focus(),
+    };
+    if !focused {
+        return Err(format!(
+            "{target:?} did not take focus; focus is on {}",
+            describe_focus(&fixture)
+        ));
+    }
+    if !fixture
+        .view
+        .selected_search_results()
+        .is_some_and(|hits| !hits.is_empty())
+    {
+        return Err(format!("focusing {target:?} dropped the selected hit"));
+    }
+    if fixture.press(Key::space, ModifierType::empty()) {
+        return Err(format!("Space on {target:?} acted on the selected hit"));
+    }
+    pump(100);
+    if fixture.preview.is_enabled() {
+        return Err(format!("Space on {target:?} opened the preview"));
+    }
+    Ok(())
+}
+
+#[test]
+fn space_acts_on_a_selected_hit_only_from_the_filter() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::filter_focus::space_acts_on_a_selected_hit_only_from_the_filter",
+        || {
+            let mut failures = Vec::new();
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                for target in [
+                    SpaceFocus::Location,
+                    SpaceFocus::Sidebar,
+                    SpaceFocus::Toolbar,
+                ] {
+                    if let Err(error) = space_case(mode, target) {
+                        failures.push(format!("{mode:?}: {error}"));
+                    }
+                }
+            }
             report(failures);
         },
     );
@@ -561,6 +621,13 @@ fn switch_case(
             fixture.view.listing_filter(),
             result_names(&fixture)
         ));
+    }
+    match start {
+        Start::Entry => marks_only_top(&fixture)?,
+        Start::Result if !marked_rows(fixture.window.upcast_ref()).is_empty() => {
+            return Err("a focused result left the Enter mark showing".to_owned());
+        }
+        _ => {}
     }
     Ok(())
 }
@@ -1044,6 +1111,329 @@ fn deleting_only_result_moves_focus_to_filter_entry() {
                 for route in [DeleteRoute::Trash, DeleteRoute::Permanent] {
                     if let Err(error) = delete_only_result_case(mode, route) {
                         failures.push(format!("{mode:?}, {route:?}: {error}"));
+                    }
+                }
+            }
+            report(failures);
+        },
+    );
+}
+
+fn marked_names(fixture: &KeyboardFixture) -> Vec<String> {
+    let names = fixture.view.filter_result_names();
+    marked_rows(fixture.window.upcast_ref())
+        .iter()
+        .map(|row| {
+            names
+                .iter()
+                .find(|name| shows_text(row, name))
+                .cloned()
+                .unwrap_or_else(|| format!("{:?}", row.css_classes()))
+        })
+        .collect()
+}
+
+/// Only the top result carries the Enter mark, and the mark selected nothing.
+fn marks_only_top(fixture: &KeyboardFixture) -> Result<(), String> {
+    let top = || fixture.view.filter_result_names().first().cloned();
+    if !settles(|| {
+        top().is_some_and(|top| {
+            let marked = marked_rows(fixture.window.upcast_ref());
+            marked.len() == 1 && shows_text(&marked[0], &top)
+        })
+    }) {
+        return Err(format!(
+            "expected only the top result {:?} marked; marked {:?}",
+            top(),
+            marked_names(fixture)
+        ));
+    }
+    match fixture.view.selected_search_results() {
+        Some(selected) if !selected.is_empty() => Err(format!(
+            "the Enter mark selected {:?}",
+            selected
+                .iter()
+                .map(|entry| entry.display_name.clone())
+                .collect::<Vec<_>>()
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// Presses `key` through the field's own key handlers, as a real press reaches them,
+/// falling back to the field's `activate` for Enter.
+fn press_in_field(field: &gtk::Entry, key: Key) {
+    let controllers = field.observe_controllers();
+    let handled = (0..controllers.n_items())
+        .filter_map(|index| {
+            controllers
+                .item(index)
+                .and_downcast::<gtk::EventControllerKey>()
+        })
+        .any(|keys| {
+            keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &ModifierType::empty()])
+        });
+    if !handled && key == Key::Return {
+        field.emit_activate();
+    }
+}
+
+/// The name of what Enter in `field` opened: a launched file, or the folder it entered.
+fn enter_in_field(fixture: &KeyboardFixture, field: &gtk::Entry) -> Result<String, String> {
+    let browser = fixture.view.browser();
+    let opened = Rc::new(RefCell::new(None));
+    let record = opened.clone();
+    browser.observe(move |event| {
+        if let BrowserEvent::OpenRequested { location } = event {
+            record.replace(Some(location.clone()));
+        }
+    });
+    let before = browser.active_location();
+    press_in_field(field, Key::Return);
+    settles(|| opened.borrow().is_some() || browser.active_location() != before);
+    let location = opened
+        .borrow()
+        .clone()
+        .or_else(|| {
+            browser
+                .active_location()
+                .filter(|now| Some(now) != before.as_ref())
+        })
+        .ok_or_else(|| "Enter in the field opened nothing".to_owned())?;
+    Ok(location
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default())
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Pick {
+    /// Nothing picked: Enter opens the marked top result.
+    None,
+    /// Another result picked and focus back in the field: Enter opens the pick.
+    Kept,
+    /// Another result picked, then the query edited: Enter opens the new top.
+    Retyped,
+    /// Another result picked, then only the query's letter case changed: the filter
+    /// matches the same rows, but Enter still opens the top again.
+    Recased,
+}
+
+/// Moves off the focused top result, then returns to the field; returns the pick.
+fn pick_another(fixture: &KeyboardFixture, top: &str) -> Result<String, String> {
+    fixture.view.step_filter_results(1, 1, true);
+    let landed = || hit_cursor(fixture).filter(|name| name != top);
+    if !settles(|| landed().is_some()) {
+        return Err(format!(
+            "moving from the top result stayed on {:?}",
+            hit_cursor(fixture)
+        ));
+    }
+    let picked = landed().unwrap_or_default();
+    if !fixture.press(Key::f, ModifierType::CONTROL_MASK)
+        || !settles(|| fixture.view.filter_has_focus())
+    {
+        return Err(format!(
+            "Ctrl+F did not return to the field; focus is on {}",
+            describe_focus(fixture)
+        ));
+    }
+    Ok(picked)
+}
+
+fn enter_target_case(mode: BrowserMode, recursive: bool, pick: Pick) -> Result<(), String> {
+    let fixture = filtered_fixture(mode, recursive);
+    let expected: &[&str] = if recursive {
+        &ALL_REPORTS
+    } else {
+        &IMMEDIATE_REPORTS
+    };
+    let field = show_filter_with_results(&fixture, "report", expected)?;
+    marks_only_top(&fixture)?;
+    let top = fixture.view.filter_result_names()[0].clone();
+    if let Pick::None = pick {
+        let opened = enter_in_field(&fixture, &field)?;
+        return (opened == top)
+            .then_some(())
+            .ok_or_else(|| format!("Enter opened {opened}, not the marked top {top}"));
+    }
+
+    focus_first_result(&fixture, &field)?;
+    if hit_cursor(&fixture).as_deref() != Some(top.as_str()) {
+        return Err(format!(
+            "Down from the field landed on {:?}, not the marked top {top}",
+            hit_cursor(&fixture)
+        ));
+    }
+    if !settles(|| marked_rows(fixture.window.upcast_ref()).is_empty()) {
+        return Err(format!(
+            "a focused result left {:?} marked",
+            marked_names(&fixture)
+        ));
+    }
+    let picked = pick_another(&fixture, &top)?;
+    pump(100);
+    if !marked_rows(fixture.window.upcast_ref()).is_empty() {
+        return Err(format!(
+            "the pick {picked} left {:?} marked",
+            marked_names(&fixture)
+        ));
+    }
+    let wanted = match pick {
+        Pick::Kept => picked,
+        _ => {
+            field.set_text("repo");
+            if !settles(|| {
+                fixture
+                    .view
+                    .selected_search_results()
+                    .is_some_and(|selected| selected.is_empty())
+            }) {
+                return Err("editing the query kept the pick selected".to_owned());
+            }
+            marks_only_top(&fixture)?;
+            fixture.view.filter_result_names()[0].clone()
+        }
+    };
+    let opened = enter_in_field(&fixture, &field)?;
+    (opened == wanted)
+        .then_some(())
+        .ok_or_else(|| format!("Enter opened {opened}, not {wanted}"))
+}
+
+fn remote_share_fixture(mode: BrowserMode) -> KeyboardFixture {
+    let fixture = KeyboardFixture::with_parts(Rc::new(TextPreview), || {
+        BrowserView::new(
+            Rc::new(RemoteShare),
+            crate::ui::browser::PeekBehavior::default(),
+        )
+    });
+    fixture.view.set_view_mode(mode);
+    let browser = fixture.view.browser();
+    let share = Location::uri(SHARE);
+    browser.navigate(share.clone());
+    wait_until(|| browser.active_location().as_ref() == Some(&share));
+    wait_loaded(&browser, 0);
+    focus_files(&fixture);
+    fixture
+}
+
+/// The visible list or grid narrowed in place, found from the window since the field
+/// keeps focus.
+fn narrowed_rows(widget: &gtk::Widget) -> Option<gtk::SelectionModel> {
+    let is_view = widget.is::<gtk::ListView>() || widget.is::<gtk::GridView>();
+    if is_view && widget.is_mapped() {
+        return widget.property::<Option<gtk::SelectionModel>>("model");
+    }
+    std::iter::successors(widget.first_child(), gtk::Widget::next_sibling)
+        .find_map(|child| narrowed_rows(&child))
+}
+
+/// Without a native folder the filter narrows the listing in place; its selection is the
+/// listing's own, so a query keeps it but stops it counting as the pick.
+fn in_place_enter_target_case(mode: BrowserMode, pick: Pick) -> Result<(), String> {
+    let fixture = remote_share_fixture(mode);
+    let browser = fixture.view.browser();
+    browser.select(0, 2);
+    focus_files(&fixture);
+    if !fixture.press(Key::f, ModifierType::CONTROL_MASK) || !fixture.view.filter_has_focus() {
+        return Err("Ctrl+F did not focus the field".to_owned());
+    }
+    let field = focused_entry(&fixture.window);
+    field.set_text("t");
+    if !settles(|| {
+        let marked = marked_rows(fixture.window.upcast_ref());
+        marked.len() == 1 && shows_text(&marked[0], "alpha-report.txt")
+    }) {
+        return Err(format!(
+            "expected only the top row alpha-report.txt marked; {} rows marked",
+            marked_rows(fixture.window.upcast_ref()).len()
+        ));
+    }
+    if fixture.selected() != [2] {
+        return Err(format!(
+            "the query changed the listing's selection to {:?}",
+            fixture.selected()
+        ));
+    }
+    let wanted = match pick {
+        Pick::None => "alpha-report.txt",
+        Pick::Kept | Pick::Retyped | Pick::Recased => {
+            let rows = narrowed_rows(fixture.window.upcast_ref())
+                .ok_or_else(|| "no narrowed listing is shown".to_owned())?;
+            if let Pick::Kept = pick {
+                fixture.view.record_pointer_hover((12.0, 24.0), Some(0));
+                if fixture.view.widget().has_css_class("keyboard-navigation") {
+                    return Err("pointer motion did not take over the pane".to_owned());
+                }
+                press_in_field(&field, Key::Down);
+                if !settles(|| result_has_focus(&fixture) && fixture.selected() == [0]) {
+                    return Err(format!(
+                        "Down from the field did not land on the marked top row: selection {:?}, \
+                         focus on {}",
+                        fixture.selected(),
+                        describe_focus(&fixture)
+                    ));
+                }
+                if !fixture.view.widget().has_css_class("keyboard-navigation") {
+                    return Err("Down from the field left the pane in pointer mode".to_owned());
+                }
+            }
+            rows.select_item(1, true);
+            if !settles(|| marked_rows(fixture.window.upcast_ref()).is_empty()) {
+                return Err("picking notes.txt left the top row marked".to_owned());
+            }
+            if let Pick::Kept = pick
+                && (!fixture.press(Key::f, ModifierType::CONTROL_MASK)
+                    || !settles(|| fixture.view.filter_has_focus()))
+            {
+                return Err("Ctrl+F did not return to the field".to_owned());
+            }
+            let edit = match pick {
+                Pick::Retyped => Some("txt"),
+                Pick::Recased => Some("T"),
+                _ => None,
+            };
+            if let Some(edit) = edit {
+                field.set_text(edit);
+                if !settles(|| marked_rows(fixture.window.upcast_ref()).len() == 1) {
+                    return Err(format!(
+                        "editing the query to {edit:?} did not mark the top row again"
+                    ));
+                }
+                "alpha-report.txt"
+            } else {
+                "notes.txt"
+            }
+        }
+    };
+    let opened = enter_in_field(&fixture, &field)?;
+    (opened == wanted)
+        .then_some(())
+        .ok_or_else(|| format!("Enter opened {opened}, not {wanted}"))
+}
+
+#[test]
+fn enter_in_the_filter_opens_the_marked_top_result_until_a_pick() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::filter_focus::enter_in_the_filter_opens_the_marked_top_result_until_a_pick",
+        || {
+            let mut failures = Vec::new();
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                for pick in [Pick::None, Pick::Kept, Pick::Retyped] {
+                    for recursive in [false, true] {
+                        if let Err(error) = enter_target_case(mode, recursive, pick) {
+                            failures.push(format!(
+                                "{mode:?}, subfolders {recursive}, {pick:?}: {error}"
+                            ));
+                        }
+                    }
+                }
+                // Only the in-place filter skips a case-only edit, which leaves its
+                // folded query unchanged.
+                for pick in [Pick::None, Pick::Kept, Pick::Retyped, Pick::Recased] {
+                    if let Err(error) = in_place_enter_target_case(mode, pick) {
+                        failures.push(format!("{mode:?}, remote share, {pick:?}: {error}"));
                     }
                 }
             }

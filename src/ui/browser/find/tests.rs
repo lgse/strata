@@ -100,7 +100,8 @@ fn listing_filters_use_and_highlight_fuzzy_terms_only_in_tenxer_mode() {
 
             preferences.set_tenxer_mode(false);
             assert!(matches("*.md"));
-            assert!(!matches("rep md"));
+            assert!(matches("rep md"));
+            assert!(!matches("^gamma .md$"));
             assert!(!highlighted("report"), "ordinary filters do not highlight");
 
             preferences.set_tenxer_mode(true);

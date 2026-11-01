@@ -7,7 +7,10 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::Location;
+use crate::{
+    model::Location,
+    storage::writer::{self, Policy},
+};
 
 const SESSION_VERSION: u32 = 1;
 const SESSION_FILE_NAME: &str = "tabs.toml";
@@ -47,25 +50,31 @@ pub(crate) fn session_path() -> PathBuf {
 }
 
 pub(crate) fn save(tabs: &[Location], active: usize) {
-    if let Err(error) = save_to(&session_path(), tabs, active) {
-        tracing::warn!(%error, "unable to save open tabs");
+    match session_contents(tabs, active) {
+        Ok(contents) => drop(writer::save(
+            session_path(),
+            Some(contents.into_bytes()),
+            Policy::State,
+            Some("unable to save open tabs"),
+        )),
+        Err(error) => tracing::warn!(%error, "unable to save open tabs"),
     }
 }
 
 pub(crate) fn remove() {
-    let path = session_path();
-    if path.is_file()
-        && let Err(error) = fs::remove_file(&path)
-    {
-        tracing::warn!(%error, "unable to clear saved tabs");
-    }
+    drop(writer::save(
+        session_path(),
+        None,
+        Policy::State,
+        Some("unable to clear saved tabs"),
+    ));
 }
 
 pub(crate) fn load_restorable() -> Option<RestoredSession> {
     load_from(&session_path())
 }
 
-pub(crate) fn save_to(path: &Path, tabs: &[Location], active: usize) -> io::Result<()> {
+fn session_contents(tabs: &[Location], active: usize) -> io::Result<String> {
     let mut stored = Vec::new();
     let mut stored_active = 0;
     for (index, location) in tabs.iter().enumerate() {
@@ -90,15 +99,7 @@ pub(crate) fn save_to(path: &Path, tabs: &[Location], active: usize) -> io::Resu
         active: stored_active,
         tabs: stored,
     };
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    crate::storage::atomic_write(
-        path,
-        toml::to_string(&session)
-            .map_err(io::Error::other)?
-            .as_bytes(),
-    )
+    toml::to_string(&session).map_err(io::Error::other)
 }
 
 pub(crate) fn load_from(path: &Path) -> Option<RestoredSession> {
@@ -139,10 +140,7 @@ fn restorable_location(kind: &str, value: &str) -> Option<Location> {
     match kind {
         KIND_PATH => {
             let path = PathBuf::from(value);
-            if !path.is_absolute() || !path.is_dir() {
-                return None;
-            }
-            Some(Location::local(path))
+            path.is_absolute().then(|| Location::local(path))
         }
         KIND_URI => restorable_uri(value),
         _ => None,

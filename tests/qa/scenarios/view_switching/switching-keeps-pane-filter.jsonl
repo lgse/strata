@@ -1,0 +1,42 @@
+{"scenario":"switching-keeps-pane-filter","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"input","vars":{"start":"input"}},{"id":"result","vars":{"start":"result"}}],"cost":{"columns-input":0.9,"columns-result":0.7},"quality":{"impact":2,"coverage":4,"criticality":3,"diagnostic":3,"score":30,"note":"Pane filter query and narrowed listing survive Columns, Icons and List switches, with focus into results; no other scenario types a pane filter across a view switch, and a lost filter is retyped"}}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"type":"todo"}
+{"wait":{"field":{"of":"field","text":"todo"}},"message":"the filter query to be typed"}
+{"wait":{"matches":["todo.txt"]},"message":"the filter to narrow the listing"}
+{"key":"Down","variants":["result"]}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'","variants":["result"]}
+{"key":"ctrl+2"}
+{"wait":{"view_mode":"Icons"},"message":"the browser to switch to the Icons view"}
+{"wait":{"editable_text":"todo"},"message":"the filter query to survive the switch"}
+{"wait":{"matches":["todo.txt"]},"message":"the narrowed listing to survive the switch"}
+{"wait":{"field":{}},"message":"an editable field to take focus","variants":["input"]}
+{"expect":{"field":{"text":"todo"}},"variants":["input"]}
+{"key":"Down","variants":["input"]}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'","variants":["input"]}
+{"key":"Up","variants":["input"]}
+{"wait":{"field":{}},"message":"an editable field to take focus","variants":["input"]}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'","variants":["result"]}
+{"key":"ctrl+3"}
+{"wait":{"view_mode":"List"},"message":"the browser to switch to the List view"}
+{"wait":{"editable_text":"todo"},"message":"the filter query to survive the switch"}
+{"wait":{"matches":["todo.txt"]},"message":"the narrowed listing to survive the switch"}
+{"wait":{"field":{}},"message":"an editable field to take focus","variants":["input"]}
+{"expect":{"field":{"text":"todo"}},"variants":["input"]}
+{"key":"Down","variants":["input"]}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'","variants":["input"]}
+{"key":"Up","variants":["input"]}
+{"wait":{"field":{}},"message":"an editable field to take focus","variants":["input"]}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'","variants":["result"]}
+{"key":"ctrl+1"}
+{"wait":{"view_mode":"Columns"},"message":"the browser to switch to the Columns view"}
+{"wait":{"editable_text":"todo"},"message":"the filter query to survive the switch"}
+{"wait":{"matches":["todo.txt"]},"message":"the narrowed listing to survive the switch"}
+{"wait":{"field":{}},"message":"an editable field to take focus","variants":["input"]}
+{"expect":{"field":{"text":"todo"}},"variants":["input"]}
+{"key":"Down","variants":["input"]}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'","variants":["input"]}
+{"key":"Up","variants":["input"]}
+{"wait":{"field":{}},"message":"an editable field to take focus","variants":["input"]}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'","variants":["result"]}

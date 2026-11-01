@@ -110,11 +110,14 @@ impl Candidates {
             Keys,
             bindings::{COMPLETE, DOWN, ENTER, ESCAPE, UP},
         };
-        let mut hints = vec![(Keys::Any(&[UP, DOWN]), "Choose")];
-        hints.extend(keys.tab.map(|tab| (Keys::One(COMPLETE), tab)));
+        let mut hints = vec![(
+            Keys::Any(crate::ui::keys::shown![UP.alternate(0), DOWN.alternate(0)]),
+            "Choose",
+        )];
+        hints.extend(keys.tab.map(|tab| (Keys::One(COMPLETE.shown()), tab)));
         hints.extend([
-            (Keys::One(ENTER), keys.enter),
-            (Keys::One(ESCAPE), "Cancel"),
+            (Keys::One(ENTER.shown()), keys.enter),
+            (Keys::One(ESCAPE.shown()), "Cancel"),
         ]);
         self.keys
             .set_markup(&crate::ui::shortcut_reference::legend_markup(&hints));

@@ -141,28 +141,18 @@ impl Browser {
             return;
         }
         let changes = self.deferred_file_operation_changes.take();
-        self.flush_deferred_file_operation_changes(changes, false);
+        self.flush_deferred_file_operation_changes(changes);
     }
 
     pub(super) fn flush_deferred_file_operation_changes(
         self: &Rc<Self>,
         changes: DeferredDirectoryChanges,
-        prefer_refresh: bool,
-    ) -> bool {
-        if changes.is_empty() {
-            return false;
-        }
-        if prefer_refresh {
-            // Monitor batches may omit some of the operation's source directories.
-            self.refresh_all();
-            return true;
-        }
+    ) {
         let mut batches: Vec<_> = changes.into_iter().collect();
         batches.sort_by_key(|(depth, _)| *depth);
         for (depth, changes) in batches {
             self.flush_operation_batch(OperationBatch { depth, changes });
         }
-        false
     }
 
     fn flush_operation_batch(self: &Rc<Self>, mut batch: OperationBatch) {

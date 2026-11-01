@@ -1,0 +1,11 @@
+{"scenario":"pdf-preview-copies-text","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"cost":{"columns":0.8},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"PDF text drag-select then Ctrl+C reaches clipboard; only GUI guard of pointer selection on PDF text layer (chords unit-tested in preview/tests/pdf.rs)"}}
+{"fs":{"path":"page.pdf","from_repository":"tests/fixtures/documents/text.pdf"}}
+{"select_with_keyboard":"page.pdf"}
+{"key":"space"}
+{"wait":{"present":{"role":"image","name":"PDF page text","within":{"preview":true}}},"message":"the PDF page to appear in the preview"}
+{"remember":{"role":"image","name":"PDF page text","within":{"preview":true}},"as":"page"}
+{"wait":{"compare":{"left":{"of":{"remembered":"page"},"get":"height"},"op":"!=","right":560}},"message":"the rendered PDF page to replace the placeholder"}
+{"remember":{"remembered":"page"},"as":"bounds"}
+{"drag":{"from":{"kept":"bounds"},"from_at":["13%","11%"],"to":{"kept":"bounds"},"to_at":["48%","11%"]}}
+{"key":"ctrl+c"}
+{"clipboard":{"contains":"Hello PDF text"}}

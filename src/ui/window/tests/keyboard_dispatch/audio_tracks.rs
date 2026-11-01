@@ -119,7 +119,7 @@ fn audio_steps_follow_search_results_including_subfolders() {
                 settle("nested track", || shows_track(&fixture, "c-song.wav"));
                 assert!(preview_has_focus(&fixture));
                 settle("results caption", || {
-                    widget_with_class(&fixture.preview.widget(), "preview-audio-eyebrow")
+                    widget_with_class(&fixture.preview.widget(), "preview-details-eyebrow")
                         .and_downcast::<gtk::Label>()
                         .is_some_and(|label| label.text() == "2 of 2 in results")
                 });

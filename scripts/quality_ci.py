@@ -4,6 +4,7 @@
 
 import argparse
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import json
 import os
@@ -11,18 +12,30 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import time
 
-from e2e_bundle import image_key, source_key
+from image_inputs import image_key, source_key
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = ROOT / "target/quality-bundle"
 REPORTS = ROOT / "target/quality-reports"
-SHARDS = 2
+LOCAL = ROOT / "target/quality-local"
+SHARDS = 4
+# Tests outside GTK children share libtest's threads, four on CI runners, instead of queueing
+# for the display, so they cost a shard about a quarter of their serial time.
+PARALLEL_DISCOUNT = 4
+# GTK tests serialize per display, not per machine, so each lane of a shard owns an Xvfb server.
+FIRST_DISPLAY = 99
+XVFB_SERVER = "-screen 0 1280x1024x24 -nolisten tcp -noreset"
+PRIVATE_GTK_ENV = ("GDK_BACKEND=x11", "GTK_A11Y=none", "NO_AT_BRIDGE=1", "STRATA_REQUIRE_GTK_TESTS=1")
 ISOLATED_TEST = (
     "ui::search::tests::"
     "deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset"
 )
+# Parent libtest lines start a test; a GTK child repeats its name and prints no time of its own.
+TIMED = re.compile(r"^test (\S+) \.\.\. |\bok <(\d+(?:\.\d+)?)s>$", re.MULTILINE)
+TIMING_ARGS = ("-Z", "unstable-options", "--report-time", "--test-threads=1")
 SUMMARY = re.compile(
     r"^test result: ok\. (\d+) passed; 0 failed; (\d+) ignored; 0 measured; \d+ filtered out;.*$",
     re.MULTILINE,
@@ -50,11 +63,12 @@ def inventory(binary, filters=(), ignored=False):
     return sorted(names)
 
 
-def partition(tests, durations):
-    loads = [0.0] * SHARDS
+def partition(tests, durations, count=None):
+    count = SHARDS if count is None else count
+    loads = [0.0] * count
     assignments = [[] for _ in loads]
     for test in sorted(tests, key=lambda name: (-durations.get(name, 1.0), name)):
-        shard = min(range(SHARDS), key=lambda index: (loads[index], index))
+        shard = min(range(count), key=lambda index: (loads[index], index))
         assignments[shard].append(test)
         loads[shard] += durations.get(test, 1.0)
     return [sorted(names) for names in assignments]
@@ -85,7 +99,7 @@ def build():
     result.check_returncode()
     if not artifacts:
         raise ValueError("Cargo produced no test executables")
-    durations = json.loads((ROOT / "scripts/quality-durations.json").read_text())
+    durations = balancing_hints()
     binaries = []
     for index, (executable, target) in enumerate(sorted(artifacts.items())):
         destination = BUNDLE / f"test-{index}"
@@ -126,9 +140,81 @@ def validate_plan(plan):
         raise ValueError("Duplicate binary or empty runnable shard")
 
 
-def run(shard):
+def test_times(output):
+    """Each test's serial wall time, and whether it ran in an isolated GTK child."""
+    times, starts, current = {}, Counter(), None
+    for match in TIMED.finditer(output):
+        if match[1]:
+            current = match[1]
+            starts[current] += 1
+        elif current is not None:
+            times[current] = float(match[2])
+            current = None
+    return {name: dict(seconds=seconds, gtk=starts[name] > 1) for name, seconds in times.items()}
+
+
+def balancing_weights(measured):
+    """Seconds each test occupies its shard; zero weights would all land on one shard."""
+    return {name: max(0.01, round(time["seconds"] / (1 if time["gtk"] else PARALLEL_DISCOUNT), 2))
+            for name, time in sorted(measured.items())}
+
+
+def balancing_hints():
+    return json.loads((ROOT / "scripts/quality-durations.json").read_text())
+
+
+def default_lanes():
+    return max(1, len(os.sched_getaffinity(0)) // 2)
+
+
+def private_display(display, command):
+    return ["xvfb-run", "-n", str(display), "-s", XVFB_SERVER, "dbus-run-session", "--",
+            "env", "-u", "WAYLAND_DISPLAY", *PRIVATE_GTK_ENV, *command]
+
+
+def run_lane(lane, lanes, work, timings, log_path):
+    """Run one lane's tests on displays no other lane uses; libtest must account for each batch."""
+    started = time.monotonic()
+    displays = iter(range(FIRST_DISPLAY + lane, sys.maxsize, lanes))
+    measured = {}
+    with log_path.open("wb") as log:
+        for binary, executable, tests in work:
+            batches = [[test for test in tests if test == ISOLATED_TEST],
+                       [test for test in tests if test != ISOLATED_TEST]]
+            for batch in filter(None, batches):
+                command = [str(executable), "--exact", *batch, "--nocapture"]
+                environment = None
+                if timings:
+                    # Stable libtest reports times only behind -Z; one thread keeps GTK lock waits out.
+                    command.extend(TIMING_ARGS)
+                    environment = {**os.environ, "RUSTC_BOOTSTRAP": "1"}
+                log.flush()
+                offset = log.tell()
+                code = subprocess.run(private_display(next(displays), command), cwd=ROOT,
+                                      stdout=log, stderr=subprocess.STDOUT, env=environment).returncode
+                log.seek(0, os.SEEK_END)
+                with log_path.open("rb") as written:
+                    written.seek(offset)
+                    output = written.read().decode(errors="replace")
+                summaries = SUMMARY.findall(output)
+                ignored_count = len(set(batch) & set(binary["ignored"]))
+                expected = (str(len(batch) - ignored_count), str(ignored_count))
+                if code or not summaries or summaries[-1] != expected:
+                    log.write(f"\n{binary['file']} failed or did not execute its complete selection\n".encode())
+                    return lane, False, time.monotonic() - started, measured
+                measured.update(test_times(output))
+    return lane, True, time.monotonic() - started, measured
+
+
+def check_lanes(lanes):
+    if type(lanes) is not int or lanes < 1:
+        raise ValueError("Lane count must be a positive integer")
+
+
+def run(shard, lanes=1, timings=False):
     if shard not in range(SHARDS):
         raise ValueError("Invalid shard")
+    check_lanes(lanes)
     REPORTS.mkdir(parents=True, exist_ok=True)
     report_path = REPORTS / f"shard-{shard}.json"
     report_path.unlink(missing_ok=True)
@@ -140,6 +226,8 @@ def run(shard):
         raise ValueError("Bundle checkout or environment mismatch")
     started = time.monotonic()
     report = dict(plan_sha256=digest(plan_path), shard=shard, binaries=[])
+    hints = balancing_hints()
+    work = [[] for _ in range(lanes)]
     for binary in plan["binaries"]:
         executable = BUNDLE / binary["file"]
         if digest(executable) != binary["sha256"]:
@@ -152,25 +240,35 @@ def run(shard):
             continue
         if inventory(executable, selected) != selected:
             raise ValueError("Libtest selection mismatch")
-        batches = [[test for test in selected if test == ISOLATED_TEST],
-                   [test for test in selected if test != ISOLATED_TEST]]
-        log = ""
-        for batch in filter(None, batches):
-            command = [str(executable), "--exact", *batch, "--nocapture"]
-            result = subprocess.run(command, cwd=ROOT, text=True, stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT)
-            print(result.stdout, end="", flush=True)
-            log += result.stdout
-            (REPORTS / f"shard-{shard}-{binary['file']}.log").write_text(log)
-            summaries = SUMMARY.findall(result.stdout)
-            ignored_count = len(set(batch) & set(binary["ignored"]))
-            expected = (str(len(batch) - ignored_count), str(ignored_count))
-            if result.returncode or not summaries or summaries[-1] != expected:
-                raise ValueError(f"{binary['file']} failed or did not execute its complete selection")
+        for lane, tests in enumerate(partition(selected, hints, lanes)):
+            if tests:
+                work[lane].append((binary, executable, tests))
         ignored = sorted(set(selected) & set(binary["ignored"]))
         report["binaries"].append(dict(file=binary["file"], passed=sorted(set(selected) - set(ignored)),
                                        ignored=ignored))
+    # Lane output goes only to the logs, so a hung lane is diagnosed from them, not this console.
+    logs = (REPORTS / f"shard-{shard}-lane-*.log").relative_to(ROOT)
+    print(f"Shard {shard}: running {lanes} lanes, each on its own display and session bus; "
+          f"output in {logs}", flush=True)
+    failed, measured = [], {}
+    with ThreadPoolExecutor(lanes) as pool:
+        futures = [pool.submit(run_lane, lane, lanes, tests, timings, REPORTS / f"shard-{shard}-lane-{lane}.log")
+                   for lane, tests in enumerate(work) if tests]
+        for future in as_completed(futures):
+            lane, passed, seconds, times = future.result()
+            print(f"Shard {shard} lane {lane} {'passed' if passed else 'FAILED'} in {seconds:.1f}s", flush=True)
+            measured.update(times)
+            if not passed:
+                failed.append(lane)
+    for lane in sorted(failed):
+        log = REPORTS / f"shard-{shard}-lane-{lane}.log"
+        print(f"\n===== shard {shard} lane {lane} failure excerpt; full log: {log} =====")
+        print(failure_excerpt(log.read_text(errors="replace")), flush=True)
+    if failed:
+        raise ValueError(f"{len(failed)} of {lanes} lanes failed in shard {shard}")
     report["seconds"] = round(time.monotonic() - started, 2)
+    if timings:
+        (REPORTS / f"timings-{shard}.json").write_text(json.dumps(measured, indent=2) + "\n")
     report_path.write_text(json.dumps(report, indent=2) + "\n")
     print(f"Shard {shard} completed in {report['seconds']}s", flush=True)
 
@@ -204,17 +302,64 @@ def verify(plan_path, reports):
     print(f"Verified {total} passed tests exactly once; {ignored} explicitly ignored by libtest")
 
 
+def failure_excerpt(output):
+    """Panics from the failed tests, skipping the expected panics passing tests print."""
+    lines = output.splitlines()
+    failed = set(re.findall(r"^test (\S+) \.\.\. FAILED$", output, re.MULTILINE))
+    excerpt = []
+    for index, line in enumerate(lines):
+        thread = re.match(r"thread '([^']+)'.* panicked at ", line)
+        if thread and (not failed or thread[1] in failed) and len(excerpt) < 60:
+            excerpt.extend(lines[index:index + 3])
+    return "\n".join([*excerpt, "...", *lines[-30:]])
+
+
+def use_local_bundle():
+    global BUNDLE, REPORTS, SHARDS
+    BUNDLE, REPORTS, SHARDS = LOCAL / "bundle", LOCAL / "reports", 1
+
+
+def local(lanes, timings=False):
+    """Run the complete suite as one shard whose lanes share this machine."""
+    check_lanes(lanes)
+    use_local_bundle()
+    started = time.monotonic()
+    build()
+    shutil.rmtree(REPORTS, ignore_errors=True)
+    run(0, lanes, timings)
+    verify(BUNDLE / "plan.json", REPORTS)
+    if timings:
+        measured = json.loads((REPORTS / "timings-0.json").read_text())
+        runnable = {test for binary in json.loads((BUNDLE / "plan.json").read_text())["binaries"]
+                    for test in set(binary["tests"]) - set(binary["ignored"])}
+        if set(measured) != runnable:
+            raise ValueError("Timings do not cover exactly the runnable tests")
+        path = ROOT / "scripts/quality-durations.json"
+        path.write_text(json.dumps(balancing_weights(measured), indent=2) + "\n")
+        print(f"Wrote balancing weights for {len(measured)} tests to {path.relative_to(ROOT)}")
+    print(f"Rust tests finished in {time.monotonic() - started:.1f}s", flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("build", "run", "verify"))
+    parser.add_argument("command", choices=("build", "run", "verify", "local"))
     parser.add_argument("--shard", type=int, default=os.environ.get("STRATA_QUALITY_SHARD"))
     parser.add_argument("--plan", type=Path, default=BUNDLE / "plan.json")
     parser.add_argument("--reports", type=Path, default=REPORTS)
+    parser.add_argument("--lanes", type=int, default=None,
+                        help="concurrent displays on this machine (default: half the available CPUs)")
+    parser.add_argument("--refresh-timings", action="store_true",
+                        help="local only: measure every test and rewrite scripts/quality-durations.json")
     args = parser.parse_args()
+    lanes = default_lanes() if args.lanes is None else args.lanes
+    if args.refresh_timings and args.command != "local":
+        parser.error("--refresh-timings is only for the local command")
     if args.command == "build":
         build()
     elif args.command == "run":
-        run(args.shard)
+        run(args.shard, lanes)
+    elif args.command == "local":
+        local(lanes, args.refresh_timings)
     else:
         verify(args.plan, args.reports)
 

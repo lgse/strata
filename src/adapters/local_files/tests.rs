@@ -7,10 +7,10 @@ use std::{
     error::Error,
     ffi::OsString,
     fs,
-    io::ErrorKind,
+    io::{ErrorKind, Write},
     os::unix::{
         ffi::{OsStrExt, OsStringExt},
-        fs::PermissionsExt,
+        fs::{OpenOptionsExt, PermissionsExt},
     },
     process::Command,
     time::{Instant, SystemTime},
@@ -19,7 +19,7 @@ use std::{
 use super::*;
 use crate::{
     model::{Location, MetadataValue},
-    test_support::{ASYNC_MAIN_CONTEXT_DEFAULT, capture_logs},
+    test_support::{ASYNC_MAIN_CONTEXT_DEFAULT, Gate, capture_logs},
 };
 
 fn capture_directory_start_logs(locations: &[(RequestId, &Location)]) -> String {
@@ -93,12 +93,28 @@ fn remote_backend_failures_hide_uri_user_info_in_views_and_diagnostic_logs() {
     };
     let diagnostic = capture_logs(|| log_monitor_metadata_error(&location, &error));
 
+    assert_eq!(validation_message, crate::services::UNEXPECTED_SYSTEM_ERROR);
+    assert_eq!(message, crate::services::UNEXPECTED_SYSTEM_ERROR);
+    assert!(diagnostic.contains("sftp://host.example/private"));
     for text in [&validation_message, &message, &diagnostic] {
-        assert!(text.contains("sftp://host.example/private"), "{text}");
         for secret in ["alice", "secret", "token", "hidden", "fragment"] {
             assert!(!text.contains(secret), "{text}");
         }
     }
+}
+
+#[test]
+fn a_refused_admin_prompt_is_not_authorized_while_other_denials_stay_errors() {
+    let denied = || glib::Error::new(gio::IOErrorEnum::PermissionDenied, "Permission denied");
+
+    assert_eq!(
+        uri_validation_result(&Location::uri("admin:///root"), Err(denied())),
+        Err(LocationValidationError::NotAuthorized)
+    );
+    assert!(matches!(
+        uri_validation_result(&Location::uri("sftp://host/root"), Err(denied())),
+        Err(LocationValidationError::Unavailable(_))
+    ));
 }
 
 #[test]
@@ -153,6 +169,7 @@ fn invalid_utf8_names_keep_their_native_bytes() -> Result<(), Box<dyn Error>> {
         include_metadata: false,
         max_entries: 100,
         time_budget: Duration::from_secs(10),
+        background: false,
     });
     let entry = batched_entries(&events)
         .into_iter()
@@ -207,6 +224,7 @@ fn symlink_targets_and_broken_links_are_distinguished() -> Result<(), Box<dyn Er
         include_metadata: true,
         max_entries: 100,
         time_budget: Duration::from_secs(10),
+        background: false,
     });
     let entries = batched_entries(&events);
     let kind = |name: &str| {
@@ -400,15 +418,46 @@ fn large_monitor_bursts_collapse_to_one_rescan() {
 
 #[test]
 fn conflicting_move_events_fall_back_to_a_rescan() {
-    let change = merge_pending_change(
-        PendingMonitorChange::Move {
-            from: Location::local("/fixture/old"),
-            to: Location::local("/fixture/new"),
-        },
-        PendingMonitorChange::Remove(Location::local("/fixture/new")),
-    );
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("main context lock");
+    for recreate_source in [false, true] {
+        let from = Location::local("/fixture/old");
+        let to = Location::local("/fixture/new");
+        let mut pending = HashMap::new();
+        queue_monitor_change(
+            &mut pending,
+            Some(to.clone()),
+            PendingMonitorChange::Move {
+                from: from.clone(),
+                to: to.clone(),
+            },
+        );
+        if recreate_source {
+            queue_monitor_change(
+                &mut pending,
+                Some(from.clone()),
+                PendingMonitorChange::Upsert(from),
+            );
+        } else {
+            queue_monitor_change(
+                &mut pending,
+                Some(to.clone()),
+                PendingMonitorChange::Remove(to),
+            );
+        }
+        let changes = Rc::new(RefCell::new(Vec::new()));
+        let observed = changes.clone();
+        let notify: Rc<dyn Fn(DirectoryChange)> =
+            Rc::new(move |change| observed.borrow_mut().push(change));
 
-    assert!(matches!(change, PendingMonitorChange::Rescan));
+        flush_monitor_changes(&RefCell::new(pending), &notify, &Rc::new(Cell::new(false)));
+
+        assert!(
+            matches!(changes.borrow().as_slice(), [DirectoryChange::Rescan]),
+            "recreate source: {recreate_source}"
+        );
+    }
 }
 
 #[test]
@@ -438,7 +487,7 @@ fn uri_monitor_changes_keep_their_uri_locations() {
 fn permission_errors_are_reported_as_inaccessible() {
     let error = std::io::Error::from(ErrorKind::PermissionDenied);
     assert_eq!(
-        map_validation_error(error),
+        LocationValidationError::from(error),
         LocationValidationError::Inaccessible
     );
 }
@@ -474,6 +523,214 @@ fn a_directory_reporting_changes_against_itself_is_not_its_own_child() {
     );
 }
 
+fn live_watch(location: Location, notify: Rc<dyn Fn(DirectoryChange)>) -> LoadHandle {
+    let reported = Rc::new(Cell::new(None));
+    let report = reported.clone();
+    let handle = LocalFileSource.start_watch(
+        location,
+        false,
+        notify,
+        Rc::new(move |watching| report.set(Some(watching))),
+    );
+    drain_until(|| reported.get().is_some());
+    assert_eq!(reported.get(), Some(Watching::Live));
+    handle
+}
+
+#[test]
+fn exchanged_files_stay_listed_unless_they_are_deleted() -> Result<(), Box<dyn Error>> {
+    use rustix::fs::{CWD, RenameFlags, renameat_with};
+
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    for deleted in [true, false] {
+        let directory = tempfile::tempdir()?;
+        let original = directory.path().join("note.txt");
+        let hidden = directory.path().join(".strata-originals-test");
+        fs::create_dir(&hidden)?;
+        let staged = hidden.join("note.txt");
+        fs::write(&original, b"old")?;
+        fs::write(&staged, b"replacement")?;
+        let changes: Rc<RefCell<Vec<DirectoryChange>>> = Rc::default();
+        let collected = changes.clone();
+        let handle = live_watch(
+            Location::local(directory.path()),
+            Rc::new(move |change| collected.borrow_mut().push(change)),
+        );
+
+        renameat_with(CWD, &staged, CWD, &original, RenameFlags::EXCHANGE)?;
+        assert_eq!(fs::read(&original)?, b"replacement");
+        if deleted {
+            fs::remove_file(&original)?;
+        }
+        drain_until(|| !changes.borrow().is_empty());
+        drop(handle);
+
+        let location = Location::local(&original);
+        let observed = changes.borrow();
+        if deleted {
+            assert!(
+                matches!(observed.as_slice(), [DirectoryChange::Remove(path)] if path == &location),
+                "a genuine deletion must remove the row: {observed:?}"
+            );
+        } else {
+            assert!(
+                matches!(observed.as_slice(), [DirectoryChange::Upsert(entry)]
+                    if entry.location == location && entry.size == MetadataValue::Known(11)),
+                "the replacement must stay listed with its new metadata: {observed:?}"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn change_events_for_unnamed_temporary_files_are_ignored() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let directory = unique_fixture_root("monitor-unnamed");
+    fs::create_dir_all(&directory)?;
+    let listed = directory.join("#1234");
+    let arrived = directory.join("#5678");
+    fs::write(&listed, b"a")?;
+    let changes: Rc<RefCell<Vec<DirectoryChange>>> = Rc::default();
+    let collected = changes.clone();
+    let handle = live_watch(
+        Location::local(&directory),
+        Rc::new(move |change| collected.borrow_mut().push(change)),
+    );
+    let write_unnamed = || -> Result<Location, Box<dyn Error>> {
+        let mut file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .mode(0o600)
+            .custom_flags(libc::O_TMPFILE)
+            .open(&directory)?;
+        file.write_all(b"never linked")?;
+        file.set_permissions(fs::Permissions::from_mode(0o644))?;
+        Ok(Location::local(
+            directory.join(format!("#{}", file.metadata()?.ino())),
+        ))
+    };
+    let upserted = |path: &Path, size: u64| {
+        let location = Location::local(path);
+        let changes = changes.clone();
+        move || {
+            changes.borrow().iter().any(|change| {
+                matches!(change, DirectoryChange::Upsert(entry)
+                    if entry.location == location && entry.size == MetadataValue::Known(size))
+            })
+        }
+    };
+
+    let mut unnamed = vec![write_unnamed()?];
+    fs::write(&listed, b"updated")?;
+    drain_until(upserted(&listed, 7));
+    unnamed.push(write_unnamed()?);
+    fs::write(&arrived, b"")?;
+    drain_until(upserted(&arrived, 0));
+    fs::write(&arrived, b"grown")?;
+    drain_until(upserted(&arrived, 5));
+    let settled = Instant::now() + Duration::from_millis(300);
+    drain_until(|| Instant::now() >= settled);
+    drop(handle);
+    fs::remove_dir_all(&directory)?;
+
+    let changes = changes.borrow();
+    assert!(
+        changes.iter().all(|change| match change {
+            DirectoryChange::Upsert(entry) => !unnamed.contains(&entry.location),
+            DirectoryChange::Remove(location) => !unnamed.contains(location),
+            DirectoryChange::Move { .. } | DirectoryChange::Rescan => false,
+        }),
+        "only the named files should be queried: {changes:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn a_file_linked_into_place_is_queried_once() -> Result<(), Box<dyn Error>> {
+    use std::os::fd::AsRawFd;
+
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let directory = unique_fixture_root("monitor-linked");
+    fs::create_dir_all(&directory)?;
+    let changes: Rc<RefCell<Vec<DirectoryChange>>> = Rc::default();
+    let collected = changes.clone();
+    let handle = live_watch(
+        Location::local(&directory),
+        Rc::new(move |change| collected.borrow_mut().push(change)),
+    );
+    let linked = Location::local(directory.join("linked.txt"));
+    let queries = || {
+        changes
+            .borrow()
+            .iter()
+            .filter(|change| matches!(change, DirectoryChange::Upsert(entry) if entry.location == linked))
+            .count()
+    };
+
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .mode(0o600)
+        .custom_flags(libc::O_TMPFILE)
+        .open(&directory)?;
+    file.write_all(b"contents")?;
+    rustix::fs::linkat(
+        rustix::fs::CWD,
+        format!("/proc/self/fd/{}", file.as_raw_fd()),
+        rustix::fs::CWD,
+        directory.join("linked.txt"),
+        rustix::fs::AtFlags::SYMLINK_FOLLOW,
+    )?;
+    drop(file);
+    drain_until(|| queries() > 0);
+    // GLib sends the linked name's changes-done hint two seconds later.
+    let settled = Instant::now() + Duration::from_millis(2_500);
+    drain_until(|| Instant::now() >= settled);
+    drop(handle);
+    fs::remove_dir_all(&directory)?;
+
+    assert_eq!(queries(), 1, "{:?}", changes.borrow());
+    Ok(())
+}
+
+#[test]
+fn a_dangling_link_arriving_in_a_watched_folder_is_reported_as_a_link() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let directory = unique_fixture_root("monitor-dangling-link");
+    fs::create_dir_all(&directory)?;
+    let changes: Rc<RefCell<Vec<DirectoryChange>>> = Rc::default();
+    let collected = changes.clone();
+    let handle = live_watch(
+        Location::local(&directory),
+        Rc::new(move |change| collected.borrow_mut().push(change)),
+    );
+    let link = Location::local(directory.join("broken-link.txt"));
+
+    std::os::unix::fs::symlink(
+        directory.join("missing.txt"),
+        directory.join("broken-link.txt"),
+    )?;
+    drain_until(|| {
+        changes.borrow().iter().any(|change| {
+            matches!(change, DirectoryChange::Upsert(entry)
+                if entry.location == link && entry.kind == EntryKind::SymbolicLink)
+        })
+    });
+    drop(handle);
+    fs::remove_dir_all(&directory)?;
+    Ok(())
+}
+
 #[test]
 fn sustained_native_monitor_bursts_flush_without_rescanning() {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
@@ -483,13 +740,10 @@ fn sustained_native_monitor_bursts_flush_without_rescanning() {
     fs::create_dir_all(&directory).expect("the fixture directory should be created");
     let changes: Rc<RefCell<Vec<DirectoryChange>>> = Rc::new(RefCell::new(Vec::new()));
     let collected = changes.clone();
-    let handle = LocalFileSource
-        .watch(
-            Location::local(&directory),
-            false,
-            Rc::new(move |change| collected.borrow_mut().push(change)),
-        )
-        .expect("the native location should be monitored");
+    let handle = live_watch(
+        Location::local(&directory),
+        Rc::new(move |change| collected.borrow_mut().push(change)),
+    );
 
     for index in 0..1_000 {
         fs::write(
@@ -540,13 +794,10 @@ fn watching_a_uri_location_reports_created_entries() {
 
     let changes: Rc<RefCell<Vec<DirectoryChange>>> = Rc::new(RefCell::new(Vec::new()));
     let collected = changes.clone();
-    let handle = LocalFileSource
-        .watch(
-            Location::uri(uri.as_str()),
-            false,
-            Rc::new(move |change| collected.borrow_mut().push(change)),
-        )
-        .expect("a URI location should be monitored");
+    let handle = live_watch(
+        Location::uri(uri.as_str()),
+        Rc::new(move |change| collected.borrow_mut().push(change)),
+    );
 
     fs::write(directory.join("arrival.txt"), b"arrived")
         .expect("the fixture file should be written");
@@ -767,6 +1018,7 @@ fn recent_enumeration_publishes_valid_targets_and_skips_stale_entries() {
             include_metadata: true,
             max_entries: 10,
             time_budget: Duration::from_secs(10),
+            background: false,
         },
         Box::new(source),
     );
@@ -795,6 +1047,7 @@ fn recent_enumeration_finishes_normally_when_empty() {
             include_metadata: false,
             max_entries: 10,
             time_budget: Duration::from_secs(10),
+            background: false,
         },
         Box::new(source),
     );
@@ -821,6 +1074,7 @@ fn recent_enumeration_respects_the_request_batch_size() {
             include_metadata: false,
             max_entries: 10,
             time_budget: Duration::from_secs(10),
+            background: false,
         },
         Box::new(source),
     );
@@ -852,6 +1106,7 @@ fn recent_enumeration_respects_max_entries_and_reports_truncation() {
             include_metadata: false,
             max_entries: 3,
             time_budget: Duration::from_secs(10),
+            background: false,
         },
         Box::new(source),
     );
@@ -961,6 +1216,7 @@ fn recent_request() -> DirectoryRequest {
         include_metadata: false,
         max_entries: 10,
         time_budget: Duration::from_secs(5),
+        background: false,
     }
 }
 
@@ -973,6 +1229,7 @@ fn recent_enumeration_honors_a_zero_time_budget() {
         include_metadata: false,
         max_entries: 10,
         time_budget: Duration::ZERO,
+        background: false,
     });
 
     assert!(batched_entries(&events).is_empty());
@@ -997,6 +1254,7 @@ fn cancelling_recent_enumeration_stops_further_publication() {
             include_metadata: false,
             max_entries: 10,
             time_budget: Duration::from_secs(10),
+            background: false,
         },
         Rc::new(move |event| collected.borrow_mut().push(event)),
         Instant::now(),
@@ -1044,6 +1302,7 @@ fn enumerate_reports_truncated_once_the_entry_budget_is_exceeded() {
         include_metadata: false,
         max_entries: 3,
         time_budget: Duration::from_secs(10),
+        background: false,
     });
     fs::remove_dir_all(&root).expect("the fixture directory should be removed");
 
@@ -1057,6 +1316,1047 @@ fn enumerate_reports_truncated_once_the_entry_budget_is_exceeded() {
         3,
         "loading should retain exactly the configured maximum"
     );
+}
+
+#[test]
+fn native_loads_list_through_the_filesystem_seam() -> Result<(), Box<dyn Error>> {
+    use crate::adapters::{FsOp, FsQuirks, Quirks};
+    use rustix::io::Errno;
+
+    for (quirks, listed, chunks, failure) in [
+        (
+            Quirks {
+                listing_chunk: Some(1),
+                ..Quirks::default()
+            },
+            3,
+            4,
+            None,
+        ),
+        (
+            Quirks {
+                fail: vec![(FsOp::ListChunks, "*", 1, Errno::IO)],
+                listing_chunk: Some(1),
+                ..Quirks::default()
+            },
+            0,
+            2,
+            Some("A device input/output error occurred"),
+        ),
+        (
+            Quirks {
+                fail: vec![(FsOp::FolderStamp, "*", 0, Errno::ACCESS)],
+                ..Quirks::default()
+            },
+            0,
+            0,
+            Some("Permission denied"),
+        ),
+    ] {
+        let root = tempfile::tempdir()?;
+        for name in ["a", "b", "c"] {
+            fs::write(root.path().join(name), b"content")?;
+        }
+        let scope = FsQuirks::install(root.path(), quirks);
+
+        let events = run_enumerate(DirectoryRequest {
+            id: RequestId(1),
+            location: Location::local(root.path()),
+            batch_size: 64,
+            include_metadata: false,
+            max_entries: 100,
+            time_budget: Duration::from_secs(10),
+            background: false,
+        });
+
+        let failed = events.iter().find_map(|event| match event {
+            DirectoryEvent::Failed { message, .. } => Some(message.as_str()),
+            _ => None,
+        });
+        let revalidated_stamps = scope
+            .calls()
+            .iter()
+            .filter(|call| call.op == FsOp::FolderStamp && call.forced)
+            .count();
+        assert_eq!(
+            (
+                batched_entry_count(&events),
+                revalidated_stamps,
+                scope.count(FsOp::ListChunks),
+                failed,
+            ),
+            (listed, 1, chunks, failure)
+        );
+    }
+    Ok(())
+}
+
+fn load_into(
+    events: &Rc<RefCell<Vec<DirectoryEvent>>>,
+    root: &Path,
+    id: u64,
+) -> crate::services::LoadHandle {
+    let events = events.clone();
+    LocalFileSource.enumerate(
+        DirectoryRequest {
+            id: RequestId(id),
+            location: Location::local(root),
+            batch_size: 64,
+            include_metadata: false,
+            max_entries: 100,
+            time_budget: Duration::from_secs(30),
+            background: false,
+        },
+        Rc::new(move |event| events.borrow_mut().push(event)),
+    )
+}
+
+fn outcome_of(events: &Rc<RefCell<Vec<DirectoryEvent>>>, id: u64) -> Option<Result<usize, String>> {
+    let events = events.borrow();
+    let listed = events
+        .iter()
+        .filter_map(|event| match event {
+            DirectoryEvent::Batch {
+                request_id,
+                entries,
+            } if request_id.0 == id => Some(entries.len()),
+            _ => None,
+        })
+        .sum();
+    events.iter().find_map(|event| match event {
+        DirectoryEvent::Finished { request_id, .. } if request_id.0 == id => Some(Ok(listed)),
+        DirectoryEvent::Failed {
+            request_id,
+            message,
+            ..
+        } if request_id.0 == id => Some(Err(message.clone())),
+        _ => None,
+    })
+}
+
+#[test]
+fn a_local_folder_is_validated_on_a_worker_while_the_window_keeps_running()
+-> Result<(), Box<dyn Error>> {
+    use crate::adapters::{FsOp, FsQuirks, Quirks};
+
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let folder = root.path().join("folder");
+    fs::create_dir(&folder)?;
+    let gate = Gate::default();
+    let _scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            before: vec![(FsOp::FolderStamp, "folder", 0, gate.racer())],
+            ..Quirks::default()
+        },
+    );
+    let answer = Rc::new(RefCell::new(None));
+    let slot = answer.clone();
+    let ticked = Rc::new(Cell::new(false));
+    let tick = ticked.clone();
+    glib::timeout_add_local_once(Duration::from_millis(10), move || tick.set(true));
+
+    let _validation = LocalFileSource.validate_location_async(
+        Location::local(&folder),
+        Rc::new(move |result| {
+            slot.replace(Some(result));
+        }),
+    );
+    drain_until(|| gate.reached() && ticked.get());
+    assert!(answer.borrow().is_none());
+    gate.release();
+    drain_until(|| answer.borrow().is_some());
+
+    assert_eq!(answer.take(), Some(Ok(())));
+    Ok(())
+}
+
+struct ReportsDrop(std::sync::mpsc::Sender<std::thread::ThreadId>);
+
+impl Drop for ReportsDrop {
+    fn drop(&mut self) {
+        let _ = self.0.send(std::thread::current().id());
+    }
+}
+
+type Threads = std::sync::Arc<std::sync::Mutex<Vec<std::thread::ThreadId>>>;
+
+fn thread_recorder() -> (Threads, Box<dyn FnMut() + Send>) {
+    let threads = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let recorded = threads.clone();
+    let record = Box::new(move || {
+        recorded
+            .lock()
+            .expect("thread record")
+            .push(std::thread::current().id());
+    });
+    (threads, record)
+}
+
+#[test]
+fn a_monitor_is_made_and_released_on_a_worker_while_the_window_keeps_running()
+-> Result<(), Box<dyn Error>> {
+    use crate::adapters::{FsOp, FsQuirks, Quirks};
+
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    for dropped_while_parked in [false, true] {
+        let root = tempfile::tempdir()?;
+        let folder = root.path().join("folder");
+        fs::create_dir(&folder)?;
+        let gate = Gate::default();
+        let (released_on, released) = thread_recorder();
+        let scope = FsQuirks::install(
+            root.path(),
+            Quirks {
+                before: vec![(FsOp::Watch, "folder", 0, gate.racer())],
+                after: vec![(FsOp::Unwatch, "folder", 0, released)],
+                ..Quirks::default()
+            },
+        );
+        let (dropped, drops) = std::sync::mpsc::channel();
+        let probe = ReportsDrop(dropped);
+        let changes: Rc<RefCell<Vec<DirectoryChange>>> = Rc::default();
+        let collected = changes.clone();
+        let reported = Rc::new(Cell::new(None));
+        let report = reported.clone();
+        let ticked = Rc::new(Cell::new(false));
+        let tick = ticked.clone();
+        glib::timeout_add_local_once(Duration::from_millis(10), move || tick.set(true));
+
+        let handle = LocalFileSource.start_watch(
+            Location::local(&folder),
+            false,
+            Rc::new(move |change| {
+                let _held = &probe;
+                collected.borrow_mut().push(change);
+            }),
+            Rc::new(move |watching| report.set(Some(watching))),
+        );
+        drain_until(|| gate.reached() && ticked.get());
+        assert_eq!(reported.get(), None, "parked");
+        if dropped_while_parked {
+            drop(handle);
+            gate.release();
+        } else {
+            gate.release();
+            drain_until(|| reported.get().is_some());
+            assert_eq!(reported.get(), Some(Watching::Live));
+            fs::write(folder.join("arrival"), b"arrived")?;
+            drain_until(|| !changes.borrow().is_empty());
+            drop(handle);
+            assert_eq!(
+                drops.try_recv().ok(),
+                Some(std::thread::current().id()),
+                "the handler's state goes with the handle, on this thread"
+            );
+        }
+        drain_until(|| scope.count(FsOp::Unwatch) == 1);
+
+        assert_eq!(reported.get().is_none(), dropped_while_parked);
+        assert!(
+            !released_on
+                .lock()
+                .expect("thread record")
+                .contains(&std::thread::current().id()),
+            "dropped while parked: {dropped_while_parked}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn a_folder_on_a_mount_that_stopped_answering_gets_no_monitor() -> Result<(), Box<dyn Error>> {
+    use crate::adapters::{FsOp, FsQuirks, Quirks, mount_lanes};
+
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let folder = root.path().join("folder");
+    fs::create_dir(&folder)?;
+    let gate = Gate::default();
+    let scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            before: vec![(FsOp::FolderStamp, "folder", 0, gate.racer())],
+            ..Quirks::default()
+        },
+    );
+    let watch = || {
+        let reported = Rc::new(Cell::new(None));
+        let report = reported.clone();
+        let handle = LocalFileSource.start_watch(
+            Location::local(&folder),
+            false,
+            Rc::new(|_| {}),
+            Rc::new(move |watching| report.set(Some(watching))),
+        );
+        drain_until(|| reported.get().is_some());
+        (reported.get(), handle)
+    };
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let load = load_into(&events, &folder, 1);
+    drain_until(|| mount_lanes::responsiveness(&folder) == mount_lanes::Responsiveness::Stalled);
+
+    let (stalled, _unwatched) = watch();
+    gate.release();
+    drain_until(|| outcome_of(&events, 1).is_some());
+    let (answering, _watched) = watch();
+
+    assert_eq!(
+        (stalled, answering, scope.count(FsOp::Watch)),
+        (Some(Watching::Unavailable), Some(Watching::Live), 1)
+    );
+    drop(load);
+    Ok(())
+}
+
+#[test]
+fn repeated_loads_of_a_stuck_folder_share_one_call_and_then_time_out() -> Result<(), Box<dyn Error>>
+{
+    use crate::adapters::{FsOp, FsQuirks, Quirks, mount_lanes};
+
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    fs::write(root.path().join("file"), b"content")?;
+    let gate = Gate::default();
+    let scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            before: vec![(FsOp::FolderStamp, "*", 0, gate.racer())],
+            ..Quirks::default()
+        },
+    );
+    let events = Rc::new(RefCell::new(Vec::new()));
+
+    let first = load_into(&events, root.path(), 1);
+    drain_until(|| gate.reached());
+    let second = load_into(&events, root.path(), 2);
+    drain_until(|| {
+        mount_lanes::responsiveness(root.path()) == mount_lanes::Responsiveness::Stalled
+    });
+    assert_eq!(scope.count(FsOp::FolderStamp), 1);
+    let third = load_into(&events, root.path(), 3);
+    drain_until(|| outcome_of(&events, 3).is_some());
+    assert_eq!(
+        outcome_of(&events, 3),
+        Some(Err("The operation timed out".to_owned()))
+    );
+    assert_eq!(
+        (outcome_of(&events, 1), outcome_of(&events, 2)),
+        (None, None)
+    );
+
+    gate.release();
+    drain_until(|| outcome_of(&events, 1).is_some() && outcome_of(&events, 2).is_some());
+    assert_eq!(
+        (outcome_of(&events, 1), outcome_of(&events, 2)),
+        (Some(Ok(1)), Some(Ok(1)))
+    );
+    assert_eq!(scope.count(FsOp::FolderStamp), 1);
+    assert_eq!(
+        mount_lanes::responsiveness(root.path()),
+        mount_lanes::Responsiveness::Answering
+    );
+    drop((first, second, third));
+    Ok(())
+}
+
+#[test]
+fn a_slow_listing_that_keeps_answering_never_stalls_its_mount() -> Result<(), Box<dyn Error>> {
+    use crate::adapters::{FsOp, FsQuirks, Quirks};
+
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    for name in ["a", "b", "c", "d", "e"] {
+        fs::write(root.path().join(name), b"content")?;
+    }
+    let slow_chunk = || -> Box<dyn FnMut() + Send> {
+        Box::new(|| std::thread::sleep(Duration::from_millis(700)))
+    };
+    let _scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            listing_chunk: Some(1),
+            before: (0..5)
+                .map(|_| (FsOp::ListChunks, "*", 0, slow_chunk()))
+                .collect(),
+            ..Quirks::default()
+        },
+    );
+    let events = Rc::new(RefCell::new(Vec::new()));
+
+    let started = Instant::now();
+    let first = load_into(&events, root.path(), 1);
+    drain_until(|| started.elapsed() >= Duration::from_millis(2500));
+    let second = load_into(&events, root.path(), 2);
+    drain_until(|| outcome_of(&events, 1).is_some() && outcome_of(&events, 2).is_some());
+
+    assert_eq!(
+        (outcome_of(&events, 1), outcome_of(&events, 2)),
+        (Some(Ok(5)), Some(Ok(5)))
+    );
+    drop((first, second));
+    Ok(())
+}
+
+#[test]
+fn a_load_asked_for_while_the_folder_is_being_read_lists_it_afresh() -> Result<(), Box<dyn Error>> {
+    use crate::adapters::{FsOp, FsQuirks, Quirks};
+
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    for names in [&["a", "b"][..], &[]] {
+        let root = tempfile::tempdir()?;
+        for name in names {
+            fs::write(root.path().join(name), b"content")?;
+        }
+        let gate = Gate::default();
+        let scope = FsQuirks::install(
+            root.path(),
+            Quirks {
+                listing_chunk: Some(1),
+                before: vec![(FsOp::ListChunks, "*", 0, gate.racer())],
+                ..Quirks::default()
+            },
+        );
+        let events = Rc::new(RefCell::new(Vec::new()));
+
+        let first = load_into(&events, root.path(), 1);
+        drain_until(|| gate.reached());
+        fs::write(root.path().join("c"), b"content")?;
+        let second = load_into(&events, root.path(), 2);
+        for _ in 0..50 {
+            glib::MainContext::default().iteration(false);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(scope.count(FsOp::FolderStamp), 1, "one call at a time");
+
+        gate.release();
+        drain_until(|| outcome_of(&events, 1).is_some() && outcome_of(&events, 2).is_some());
+        assert_eq!(
+            (outcome_of(&events, 1), outcome_of(&events, 2)),
+            (Some(Ok(names.len())), Some(Ok(names.len() + 1))),
+            "{names:?}"
+        );
+        assert_eq!(scope.count(FsOp::FolderStamp), 2);
+        drop((first, second));
+    }
+    Ok(())
+}
+
+#[test]
+fn a_link_whose_target_stops_answering_trips_only_that_link() -> Result<(), Box<dyn Error>> {
+    use crate::adapters::{FsOp, FsQuirks, Quirks, mount_lanes};
+
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let sibling = root.path().join("sibling");
+    fs::create_dir(root.path().join("target"))?;
+    fs::create_dir(&sibling)?;
+    fs::write(sibling.join("file"), b"content")?;
+    std::os::unix::fs::symlink(root.path().join("target"), root.path().join("nas"))?;
+    let gate = Gate::default();
+    let _scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            before: vec![(FsOp::FolderStamp, "nas", 0, gate.racer())],
+            ..Quirks::default()
+        },
+    );
+    let events = Rc::new(RefCell::new(Vec::new()));
+
+    let warm = load_into(&events, &sibling, 1);
+    drain_until(|| outcome_of(&events, 1).is_some());
+    let parked = load_into(&events, root.path(), 2);
+    drain_until(|| gate.reached());
+    let reached = Instant::now();
+    drain_until(|| reached.elapsed() > mount_lanes::STALLED_AFTER + Duration::from_millis(200));
+    let again = load_into(&events, &sibling, 3);
+    drain_until(|| outcome_of(&events, 3).is_some());
+
+    assert_eq!(
+        (
+            outcome_of(&events, 3),
+            mount_lanes::responsiveness(&sibling),
+            mount_lanes::responsiveness(&root.path().join("nas"))
+        ),
+        (
+            Some(Ok(1)),
+            mount_lanes::Responsiveness::Answering,
+            mount_lanes::Responsiveness::Stalled
+        )
+    );
+    gate.release();
+    drain_until(|| outcome_of(&events, 2).is_some());
+    assert_eq!(outcome_of(&events, 2), Some(Ok(3)));
+    drop((warm, parked, again));
+    Ok(())
+}
+
+#[test]
+fn a_load_or_folder_check_on_a_gvfs_backend_that_stopped_answering_is_refused_at_once()
+-> Result<(), Box<dyn Error>> {
+    use crate::adapters::mount_lanes;
+
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let stopped = [
+        Location::uri("sftp://strata-stopped-backend.invalid/share"),
+        Location::uri("trash://strata-stopped-trash.invalid/"),
+    ];
+    let answering = Location::uri("sftp://strata-answering-backend.invalid/share");
+    let stuck = stopped
+        .iter()
+        .map(|location| {
+            mount_lanes::admit_remote(
+                mount_lanes::authority(location.uri_value().unwrap_or_default()),
+                mount_lanes::Class::Interactive,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|refusal| format!("{refusal:?}"))?;
+    let admitted = Instant::now();
+    drain_until(|| admitted.elapsed() > mount_lanes::STALLED_AFTER + Duration::from_millis(200));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let load = |location: &Location, id| {
+        let events = events.clone();
+        LocalFileSource.enumerate(
+            DirectoryRequest {
+                id: RequestId(id),
+                location: location.clone(),
+                batch_size: 64,
+                include_metadata: false,
+                max_entries: 100,
+                time_budget: Duration::from_secs(10),
+                background: false,
+            },
+            Rc::new(move |event| events.borrow_mut().push(event)),
+        )
+    };
+
+    let checked = Rc::new(RefCell::new(HashMap::new()));
+    let check = |location: &Location| {
+        let checked = checked.clone();
+        let key = location.clone();
+        LocalFileSource.validate_location_async(
+            location.clone(),
+            Rc::new(move |result| {
+                checked.borrow_mut().insert(key.clone(), result);
+            }),
+        )
+    };
+
+    let refused = [load(&stopped[0], 1), load(&stopped[1], 3)];
+    let elsewhere = load(&answering, 2);
+    let checks = [&stopped[0], &stopped[1], &answering].map(check);
+    drain_until(|| {
+        (1..=3).all(|id| outcome_of(&events, id).is_some()) && checked.borrow().len() == 3
+    });
+
+    let timed_out = Some(Err("The operation timed out".to_owned()));
+    assert_eq!(
+        (
+            [outcome_of(&events, 1), outcome_of(&events, 3)],
+            stopped
+                .each_ref()
+                .map(|location| LocalFileSource.responsiveness(location)),
+            LocalFileSource.responsiveness(&answering),
+        ),
+        (
+            [timed_out.clone(), timed_out.clone()],
+            [Responsiveness::Stalled; 2],
+            Responsiveness::Answering
+        )
+    );
+    assert_ne!(outcome_of(&events, 2), timed_out);
+    let unavailable = Err(LocationValidationError::Unavailable(
+        crate::services::io_error_detail(&ErrorKind::TimedOut.into()),
+    ));
+    let checked = checked.take();
+    assert_eq!(
+        stopped.each_ref().map(|location| checked.get(location)),
+        [Some(&unavailable); 2]
+    );
+    assert_ne!(checked.get(&answering), Some(&unavailable));
+    drop((stuck, refused, elsewhere, checks));
+    Ok(())
+}
+
+fn listing_request(path: &Path, max_entries: usize) -> DirectoryRequest {
+    DirectoryRequest {
+        id: RequestId(1),
+        location: Location::local(path),
+        batch_size: 64,
+        include_metadata: false,
+        max_entries,
+        time_budget: Duration::from_secs(10),
+        background: false,
+    }
+}
+
+fn load_stamp(events: &[DirectoryEvent]) -> Option<DirectoryStamp> {
+    events.iter().find_map(|event| match event {
+        DirectoryEvent::Stamp { request_id, stamp } if *request_id == RequestId(1) => {
+            Some((**stamp).clone())
+        }
+        _ => None,
+    })
+}
+
+fn names_digest(events: &[DirectoryEvent]) -> Option<u64> {
+    events.iter().find_map(|event| match event {
+        DirectoryEvent::ListingDigest {
+            request_id,
+            names_digest,
+        } if *request_id == RequestId(1) => Some(*names_digest),
+        _ => None,
+    })
+}
+
+fn probed_stamp(path: &Path) -> StampAnswer {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let answer = Rc::new(RefCell::new(None));
+    let slot = answer.clone();
+    let _probe = LocalFileSource.probe_stamp(
+        Location::local(path),
+        Rc::new(move |stamp| {
+            slot.replace(Some(stamp));
+        }),
+    );
+    drain_until(|| answer.borrow().is_some());
+    answer.take().expect("answered")
+}
+
+fn stamp_of(answer: StampAnswer) -> DirectoryStamp {
+    match answer {
+        StampAnswer::Stamp(stamp) => *stamp,
+        other => panic!("no stamp: {other:?}"),
+    }
+}
+
+fn wait_past(probe: &Path, than: &DirectoryStamp) {
+    let than = than.changed.expect("a native change time");
+    loop {
+        fs::write(probe, b"probe").expect("write the probe");
+        let stamped = fs::metadata(probe).expect("stat the probe");
+        fs::remove_file(probe).expect("remove the probe");
+        if (stamped.ctime(), stamped.ctime_nsec() as u32) > than {
+            break;
+        }
+    }
+}
+
+#[test]
+fn a_load_reports_its_stamp_first_and_a_digest_of_its_names_last() -> Result<(), Box<dyn Error>> {
+    use crate::adapters::{FsOp, FsQuirks, Quirks};
+
+    let root = tempfile::tempdir()?;
+    let folder = root.path().join("folder");
+    fs::create_dir(&folder)?;
+    for name in ["a", "b"] {
+        fs::write(folder.join(name), b"content")?;
+    }
+    let gate = Gate::default();
+    let _scope = FsQuirks::install(
+        &folder,
+        Quirks {
+            before: vec![(FsOp::ListChunks, "*", 0, gate.racer())],
+            ..Quirks::ext4()
+        },
+    );
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    {
+        let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+            .lock()
+            .map_err(|error| error.to_string())?;
+        let _load = load_into(&events, &folder, 1);
+        drain_until(|| gate.reached() && load_stamp(&events.borrow()).is_some());
+        assert_eq!(outcome_of(&events, 1), None);
+        gate.release();
+        drain_until(|| outcome_of(&events, 1).is_some());
+    }
+    let first = events.take();
+    let again = run_enumerate(listing_request(&folder, 100));
+    fs::rename(folder.join("b"), folder.join("c"))?;
+    let renamed = run_enumerate(listing_request(&folder, 100));
+    let truncated = run_enumerate(listing_request(&folder, 1));
+
+    assert!(matches!(first.first(), Some(DirectoryEvent::Stamp { .. })));
+    assert!(matches!(
+        &first[first.len() - 2..],
+        [
+            DirectoryEvent::ListingDigest { .. },
+            DirectoryEvent::Finished { .. }
+        ]
+    ));
+    let stamp = load_stamp(&first).ok_or("no stamp")?;
+    assert_eq!(
+        stamp.identity.map(|identity| identity.evidence.kind),
+        Some(rustix::fs::FileType::Directory)
+    );
+    assert_eq!(names_digest(&again), names_digest(&first));
+    assert_ne!(names_digest(&renamed), names_digest(&first));
+    assert!(load_stamp(&truncated).is_some());
+    assert_eq!(names_digest(&truncated), None);
+    Ok(())
+}
+
+#[test]
+fn a_check_sees_a_change_the_attribute_cache_hides() -> Result<(), Box<dyn Error>> {
+    use crate::adapters::{FsQuirks, Quirks};
+
+    for checked_by_a_load in [false, true] {
+        let root = tempfile::tempdir()?;
+        let share = root.path().join("share");
+        fs::create_dir(&share)?;
+        let _scope = FsQuirks::install(&share, Quirks::nfs42());
+        let check = || match checked_by_a_load {
+            true => load_stamp(&run_enumerate(listing_request(&share, 100))).ok_or("no stamp"),
+            false => Ok(stamp_of(probed_stamp(&share))),
+        };
+
+        let baseline = check()?;
+        wait_past(&root.path().join("probe"), &baseline);
+        fs::write(share.join("added elsewhere"), b"content")?;
+        let cached = super::super::local_operations::folder_stamp(&share, false)
+            .map_err(|error| error.to_string())?;
+        let checked = check()?;
+
+        assert_eq!(
+            (cached.modified, Some(cached.changed)),
+            (baseline.modified, baseline.changed),
+            "a plain stat answers from the cache"
+        );
+        assert!(
+            checked.moved_since(&baseline),
+            "checked by a load: {checked_by_a_load}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn a_stamp_classifies_the_folder_by_its_mount_not_its_path() -> Result<(), Box<dyn Error>> {
+    use crate::{
+        adapters::{FsQuirks, Quirks},
+        services::InodeNumbers,
+    };
+
+    for no_mount_ids in [false, true] {
+        let root = tempfile::tempdir()?;
+        let (home, nas, ssh) = (
+            root.path().join("home"),
+            root.path().join("nas"),
+            root.path().join("ssh"),
+        );
+        fs::create_dir_all(home.join("documents"))?;
+        fs::create_dir_all(nas.join("music"))?;
+        fs::create_dir_all(&ssh)?;
+        std::os::unix::fs::symlink(nas.join("music"), home.join("music"))?;
+        let _home = FsQuirks::install(
+            &home,
+            Quirks {
+                no_mount_ids,
+                ..Quirks::ext4()
+            },
+        );
+        let _nas = FsQuirks::install(
+            &nas,
+            Quirks {
+                no_mount_ids,
+                ..Quirks::nfs42()
+            },
+        );
+        let _ssh = FsQuirks::install(
+            &ssh,
+            Quirks {
+                no_mount_ids,
+                ..Quirks::sshfs()
+            },
+        );
+
+        let stamp = |path: &Path| load_stamp(&run_enumerate(listing_request(path, 100)));
+        let (documents, linked, music) = (
+            stamp(&home.join("documents")).ok_or("no stamp")?,
+            stamp(&home.join("music")).ok_or("no stamp")?,
+            stamp(&nas.join("music")).ok_or("no stamp")?,
+        );
+
+        assert_eq!(
+            (
+                documents.outside_writers,
+                linked.outside_writers,
+                music.outside_writers,
+                linked.identity.map(|identity| identity.traits.numbers),
+            ),
+            (false, true, true, Some(InodeNumbers::Kept)),
+            "no mount ids: {no_mount_ids}"
+        );
+        assert_eq!(
+            (
+                documents.daemon_cache,
+                music.daemon_cache,
+                stamp(&ssh).ok_or("no stamp")?.daemon_cache
+            ),
+            (None, None, Some(Duration::from_secs(21))),
+            "no mount ids: {no_mount_ids}"
+        );
+        assert!(music.mount.is_some(), "no mount ids: {no_mount_ids}");
+        assert_eq!(linked.mount, music.mount, "no mount ids: {no_mount_ids}");
+        assert_ne!(
+            linked.mount, documents.mount,
+            "no mount ids: {no_mount_ids}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn a_folder_put_back_to_its_old_time_still_reads_as_changed() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let folder = root.path().join("folder");
+    fs::create_dir(&folder)?;
+
+    let baseline = stamp_of(probed_stamp(&folder));
+    wait_past(&root.path().join("probe"), &baseline);
+    fs::write(folder.join("added"), b"content")?;
+    let (seconds, nanoseconds) = baseline.modified;
+    fs::File::open(&folder)?.set_modified(
+        SystemTime::UNIX_EPOCH + Duration::new(u64::try_from(seconds)?, nanoseconds),
+    )?;
+    let after = stamp_of(probed_stamp(&folder));
+
+    assert_eq!(after.modified, baseline.modified);
+    assert!(after.moved_since(&baseline));
+    Ok(())
+}
+
+#[test]
+fn a_hung_mount_holds_one_worker_and_answers_unresponsive() -> Result<(), Box<dyn Error>> {
+    use crate::adapters::{FsOp, FsQuirks, Quirks};
+
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let (hung, healthy) = (root.path().join("hung"), root.path().join("healthy"));
+    fs::create_dir(&hung)?;
+    fs::create_dir(&healthy)?;
+    let gate = Gate::default();
+    let scope = FsQuirks::install(
+        &hung,
+        Quirks {
+            before: vec![(FsOp::FolderStamp, "*", 0, gate.racer())],
+            ..Quirks::default()
+        },
+    );
+    let answers: Rc<RefCell<Vec<(Location, StampAnswer)>>> = Rc::default();
+    let check = |folder: &Path| {
+        let answers = answers.clone();
+        LocalFileSource.check_stamps(
+            vec![Location::local(folder)],
+            Rc::new(move |location, answer| answers.borrow_mut().push((location, answer))),
+        )
+    };
+    let answered = |folder: &Path| {
+        answers
+            .borrow()
+            .iter()
+            .filter(|(location, _)| *location == Location::local(folder))
+            .map(|(_, answer)| match answer {
+                StampAnswer::Stamp(_) => "stamp",
+                StampAnswer::Unresponsive => "unresponsive",
+                _ => "other",
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let relisted = Rc::new(RefCell::new(Vec::new()));
+    let relist = || {
+        let events = relisted.clone();
+        LocalFileSource.enumerate(
+            DirectoryRequest {
+                background: true,
+                ..listing_request(&hung, 100)
+            },
+            Rc::new(move |event| events.borrow_mut().push(event)),
+        )
+    };
+
+    let first = check(&hung);
+    drain_until(|| gate.reached());
+    let repeats = [check(&hung), check(&hung)];
+    let elsewhere = check(&healthy);
+    let refused_relist = relist();
+    drain_until(|| answers.borrow().len() == 3 && outcome_of(&relisted, 1).is_some());
+    let while_hung = (
+        answered(&hung),
+        answered(&healthy),
+        outcome_of(&relisted, 1),
+    );
+    gate.release();
+    drain_until(|| answers.borrow().len() == 4);
+
+    assert_eq!(
+        while_hung,
+        (
+            vec!["unresponsive"; 2],
+            vec!["stamp"],
+            Some(Err("The operation timed out".to_owned()))
+        )
+    );
+    assert_eq!(answered(&hung), ["unresponsive", "unresponsive", "stamp"]);
+    assert_eq!(scope.count(FsOp::FolderStamp), 1);
+    drop((first, repeats, elsewhere, refused_relist));
+    Ok(())
+}
+
+#[test]
+fn a_check_answer_can_relist_while_the_check_reads_another_folder_of_its_mount()
+-> Result<(), Box<dyn Error>> {
+    use crate::adapters::{FsOp, FsQuirks, Quirks};
+
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let (changed, slow) = (root.path().join("changed"), root.path().join("slow"));
+    fs::create_dir(&changed)?;
+    fs::create_dir(&slow)?;
+    fs::write(changed.join("added elsewhere"), b"x")?;
+    let gate = Gate::default();
+    let _scope = FsQuirks::install(
+        &slow,
+        Quirks {
+            before: vec![(FsOp::FolderStamp, "*", 0, gate.racer())],
+            ..Quirks::default()
+        },
+    );
+    let relisted = Rc::new(RefCell::new(Vec::new()));
+    let relists: Rc<RefCell<Vec<LoadHandle>>> = Rc::default();
+    let (events, handles, folder) = (relisted.clone(), relists.clone(), changed.clone());
+    let _check = LocalFileSource.check_stamps(
+        vec![Location::local(&changed), Location::local(&slow)],
+        Rc::new(move |location, _| {
+            if location == Location::local(&folder) {
+                let events = events.clone();
+                handles.borrow_mut().push(LocalFileSource.enumerate(
+                    DirectoryRequest {
+                        background: true,
+                        ..listing_request(&folder, 100)
+                    },
+                    Rc::new(move |event| events.borrow_mut().push(event)),
+                ));
+            }
+        }),
+    );
+
+    drain_until(|| gate.reached());
+    let context = glib::MainContext::default();
+    let settle = Instant::now() + Duration::from_millis(200);
+    while outcome_of(&relisted, 1).is_none() && Instant::now() < settle {
+        context.iteration(false);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    gate.release();
+    drain_until(|| outcome_of(&relisted, 1).is_some());
+
+    assert_eq!(outcome_of(&relisted, 1), Some(Ok(1)));
+    Ok(())
+}
+
+#[test]
+fn a_renamed_folder_is_followed_where_its_mount_proves_it_is_the_same() -> Result<(), Box<dyn Error>>
+{
+    use crate::adapters::{Births, FsQuirks, Quirks, evict};
+
+    type Row = (&'static str, fn() -> Quirks, bool, bool);
+    let rows: [Row; 4] = [
+        ("numbers kept", Quirks::ext4, false, true),
+        (
+            "renumbered, birth kept",
+            || Quirks {
+                births: Births::MadeUp,
+                ..Quirks::vfat()
+            },
+            true,
+            true,
+        ),
+        ("renumbered, no birth", Quirks::sshfs, true, false),
+        (
+            "renumbered, folder births unreliable",
+            Quirks::exfat,
+            true,
+            false,
+        ),
+    ];
+    for (row, quirks, evicted, followed) in rows {
+        let root = tempfile::tempdir()?;
+        let parent = root.path().join("parent");
+        let (old, new) = (parent.join("old"), parent.join("new"));
+        fs::create_dir_all(&old)?;
+        let _scope = FsQuirks::install(&parent, quirks());
+        let identity = directory_stamp(
+            &old,
+            &super::super::local_operations::folder_stamp(&old, false)
+                .map_err(|error| error.to_string())?,
+            SystemTime::now(),
+        )
+        .identity
+        .ok_or("no identity")?;
+        let probe = root.path().join("probe");
+        loop {
+            fs::write(&probe, b"probe")?;
+            let stamped = fs::metadata(&probe)?;
+            fs::remove_file(&probe)?;
+            if stamped.modified()? > fs::metadata(&old)?.modified()? {
+                break;
+            }
+        }
+        fs::create_dir(parent.join("sibling"))?;
+        fs::rename(&old, &new)?;
+        if evicted {
+            assert!(evict(&new), "{row}");
+        }
+
+        let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+            .lock()
+            .map_err(|error| error.to_string())?;
+        let found = Rc::new(RefCell::new(None));
+        let slot = found.clone();
+        let _find = LocalFileSource.find_by_identity(
+            Location::local(&parent),
+            identity,
+            Rc::new(move |location| {
+                slot.replace(Some(location));
+            }),
+        );
+        drain_until(|| found.borrow().is_some());
+
+        assert_eq!(
+            found.take().flatten(),
+            followed.then(|| Location::local(&new)),
+            "{row}"
+        );
+    }
+    Ok(())
 }
 
 #[test]
@@ -1081,6 +2381,7 @@ fn enumerate_resolves_can_trash_from_a_child_entry() {
         include_metadata: false,
         max_entries: 10,
         time_budget: Duration::from_secs(10),
+        background: false,
     });
     fs::remove_dir_all(&root).expect("the fixture directory should be removed");
 
@@ -1109,6 +2410,7 @@ fn enumerate_resolves_can_delete_from_a_child_entry() {
         include_metadata: false,
         max_entries: 10,
         time_budget: Duration::from_secs(10),
+        background: false,
     });
     fs::remove_dir_all(&root).expect("the fixture directory should be removed");
 
@@ -1131,6 +2433,7 @@ fn entry_limited_metadata_load_fills_every_retained_entry() {
         include_metadata: true,
         max_entries: 3,
         time_budget: Duration::from_secs(10),
+        background: false,
     });
     fs::remove_dir_all(&root).expect("the fixture directory should be removed");
 
@@ -1165,6 +2468,7 @@ fn enumerate_completes_untruncated_at_the_exact_entry_budget() {
         include_metadata: false,
         max_entries: 4,
         time_budget: Duration::from_secs(10),
+        background: false,
     });
     fs::remove_dir_all(&root).expect("the fixture directory should be removed");
 
@@ -1190,6 +2494,7 @@ fn enumerate_reports_truncated_once_the_time_budget_is_exceeded() {
         include_metadata: false,
         max_entries: usize::MAX,
         time_budget: Duration::from_nanos(1),
+        background: false,
     });
     fs::remove_dir_all(&root).expect("the fixture directory should be removed");
 
@@ -1216,6 +2521,7 @@ fn enumerate_completes_untruncated_within_budget() {
         include_metadata: false,
         max_entries: 100,
         time_budget: Duration::from_secs(10),
+        background: false,
     });
     fs::remove_dir_all(&root).expect("the fixture directory should be removed");
 
@@ -1245,6 +2551,7 @@ fn native_enumeration_marks_hidden_files() {
         include_metadata: false,
         max_entries: 100,
         time_budget: Duration::from_secs(10),
+        background: false,
     }));
     assert_eq!(entries.len(), 4);
     assert!(
@@ -1276,6 +2583,7 @@ fn native_enumeration_reports_an_unreadable_root() {
         include_metadata: false,
         max_entries: 100,
         time_budget: Duration::from_secs(10),
+        background: false,
     });
 
     assert!(matches!(events.as_slice(), [DirectoryEvent::Failed { .. }]));
@@ -1293,6 +2601,7 @@ fn cancelled_native_scan_returns_no_partial_result() {
         include_metadata: false,
         max_entries: 100,
         time_budget: Duration::from_secs(10),
+        background: false,
     };
     let cancellable = gio::Cancellable::new();
     cancellable.cancel();
@@ -1302,7 +2611,9 @@ fn cancelled_native_scan_returns_no_partial_result() {
             &root,
             &request,
             &cancellable,
-            Instant::now() + Duration::from_secs(10)
+            Instant::now() + Duration::from_secs(10),
+            &Progress::unlaned(),
+            oneshot::channel().0,
         ),
         NativeEnumeration::Cancelled
     ));
@@ -1326,6 +2637,7 @@ fn enumerate_with_metadata_fills_sizes_up_front() -> Result<(), Box<dyn Error>> 
         include_metadata: true,
         max_entries: 100,
         time_budget: Duration::from_secs(10),
+        background: false,
     });
     let streaming = run_enumerate(DirectoryRequest {
         id: RequestId(2),
@@ -1334,6 +2646,7 @@ fn enumerate_with_metadata_fills_sizes_up_front() -> Result<(), Box<dyn Error>> 
         include_metadata: false,
         max_entries: 100,
         time_budget: Duration::from_secs(10),
+        background: false,
     });
     fs::remove_dir_all(&root).expect("the fixture directory should be removed");
 
@@ -1363,6 +2676,71 @@ fn enumerate_with_metadata_fills_sizes_up_front() -> Result<(), Box<dyn Error>> 
         "a streaming load should leave sizes for the window fill"
     );
     Ok(())
+}
+
+#[test]
+fn metadata_marks_folders_the_user_cannot_open() {
+    let root = unique_fixture_root("folder-access");
+    let locked = root.join("locked");
+    let open = root.join("open");
+    let file = root.join("file.txt");
+    fs::create_dir_all(&locked).expect("the locked folder should be created");
+    fs::create_dir_all(&open).expect("the open folder should be created");
+    fs::write(&file, b"content").expect("the fixture file should be written");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000))
+        .expect("the locked folder's permissions should be set");
+
+    let scanned = run_enumerate(DirectoryRequest {
+        id: RequestId(1),
+        location: Location::local(&root),
+        batch_size: 64,
+        include_metadata: true,
+        max_entries: 100,
+        time_budget: Duration::from_secs(10),
+        background: false,
+    });
+    let filled = run_fill(MetadataRequest {
+        id: RequestId(2),
+        entries: [&locked, &open, &file].map(Location::local).to_vec(),
+        full: false,
+        include_icon_details: false,
+        time_budget: Duration::from_secs(10),
+    });
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755))
+        .expect("the locked folder's permissions should be restored");
+    fs::remove_dir_all(&root).expect("the fixture directory should be removed");
+
+    let scanned: HashMap<_, _> = scanned
+        .iter()
+        .filter_map(|event| match event {
+            DirectoryEvent::Batch { entries, .. } => Some(entries.iter()),
+            _ => None,
+        })
+        .flatten()
+        .map(|entry| (entry.location.clone(), entry.listable.clone()))
+        .collect();
+    let filled: HashMap<_, _> = filled
+        .iter()
+        .filter_map(|event| match event {
+            DirectoryEvent::MetadataFilled { updates, .. } => Some(updates.iter()),
+            _ => None,
+        })
+        .flatten()
+        .map(|update| (update.location.clone(), update.listable.clone()))
+        .collect();
+    // Root reads every folder, so nothing is locked for it.
+    let locked_access = MetadataValue::Known(rustix::process::geteuid().is_root());
+    for listable in [scanned, filled] {
+        assert_eq!(listable[&Location::local(&locked)], locked_access);
+        assert_eq!(
+            listable[&Location::local(&open)],
+            MetadataValue::Known(true)
+        );
+        assert_eq!(
+            listable[&Location::local(&file)],
+            MetadataValue::Unavailable
+        );
+    }
 }
 
 fn run_fill(request: MetadataRequest) -> Vec<DirectoryEvent> {
@@ -1708,6 +3086,7 @@ fn fill_media_file_caches_duration_for_revisits() -> Result<(), Box<dyn Error>> 
         include_metadata: false,
         max_entries: 100,
         time_budget: Duration::from_secs(10),
+        background: false,
     }));
     assert_eq!(revisited_entries.len(), 1);
     assert_eq!(
@@ -1777,23 +3156,128 @@ fn fill_directory_child_count_extracts_item_count() -> Result<(), Box<dyn Error>
     fs::write(root.join("file-1.txt"), b"1").expect("file 1");
     fs::write(root.join("file-2.txt"), b"2").expect("file 2");
     fs::create_dir_all(root.join("subdir")).expect("subdir");
+    let alias = root.with_extension("alias");
+    std::os::unix::fs::symlink(&root, &alias).expect("alias");
+    let fill = |id, folder: &Path| {
+        let events = run_fill(MetadataRequest {
+            id: RequestId(id),
+            entries: vec![Location::local(folder)],
+            full: false,
+            include_icon_details: true,
+            time_budget: Duration::from_secs(10),
+        });
+        assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Complete));
+        events.iter().rev().find_map(|event| match event {
+            DirectoryEvent::MetadataFilled { updates, .. } => {
+                updates.first().map(|update| update.child_count.clone())
+            }
+            _ => None,
+        })
+    };
+    let activity = crate::services::file_activity::begin(
+        crate::services::file_activity::OperationScope::default(),
+    );
 
-    let events = run_fill(MetadataRequest {
-        id: RequestId(1),
-        entries: vec![Location::local(&root)],
-        full: false,
-        include_icon_details: true,
-        time_budget: Duration::from_secs(10),
-    });
-    assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Complete));
-    let child_count = events.iter().rev().find_map(|event| match event {
-        DirectoryEvent::MetadataFilled { updates, .. } => {
-            updates.first().map(|update| update.child_count.clone())
-        }
-        _ => None,
-    });
-    assert_eq!(child_count, Some(MetadataValue::Known(3)));
+    let real = root.canonicalize()?;
+
+    for (row, folder) in [("as named", &root), ("through a symbolic link", &alias)] {
+        let fence = activity.fence([real.clone()]);
+        assert_eq!(
+            fill(1, folder),
+            Some(MetadataValue::Unknown),
+            "{row}: a folder an operation fences is not listed"
+        );
+        drop(fence);
+        assert_eq!(fill(2, folder), Some(MetadataValue::Known(3)), "{row}");
+    }
+    fs::remove_file(&alias).expect("the alias should be removed");
     fs::remove_dir_all(&root).expect("the fixture directory should be removed");
+    Ok(())
+}
+
+#[test]
+fn background_folder_listings_skip_a_folder_an_operation_fences() {
+    let root = tempfile::tempdir().expect("fixture directory");
+    let folder = root.path().join("folder");
+    fs::create_dir(&folder).expect("watched folder");
+    fs::write(folder.join("#1234"), b"").expect("numbered name");
+    let identity = directory_stamp(
+        &folder,
+        &super::super::local_operations::folder_stamp(&folder, false).expect("folder stamp"),
+        SystemTime::now(),
+    )
+    .identity
+    .expect("folder identity");
+    let listings: [(&str, &dyn Fn() -> bool); 3] = [
+        ("numbered names", &|| {
+            numbered_names_in(&folder)
+                .is_ok_and(|names| names.contains(std::ffi::OsStr::new("#1234")))
+        }),
+        ("departure probe", &|| {
+            native_entry_with_identity(root.path(), identity).as_ref() == Some(&folder)
+        }),
+        ("background re-list", &|| {
+            let events = run_enumerate(DirectoryRequest {
+                background: true,
+                ..listing_request(&folder, 100)
+            });
+            batched_entry_count(&events) == 1 && finished_truncated(&events) == Some(false)
+        }),
+    ];
+    let activity = crate::services::file_activity::begin(
+        crate::services::file_activity::OperationScope::default(),
+    );
+
+    for (listing, lists) in &listings {
+        assert!(lists(), "{listing}");
+    }
+    let _fence = activity.fence([root.path().to_owned()]);
+    for (listing, lists) in &listings {
+        assert!(!lists(), "{listing} under a fence");
+    }
+}
+
+#[test]
+fn a_background_relist_stops_for_an_operation_that_changes_its_folder() -> Result<(), Box<dyn Error>>
+{
+    use crate::adapters::{FsOp, FsQuirks, Quirks};
+
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let folder = root.path().join("folder");
+    fs::create_dir(&folder)?;
+    fs::write(folder.join("file"), b"content")?;
+    let gate = Gate::default();
+    let _scope = FsQuirks::install(
+        &folder,
+        Quirks {
+            before: vec![(FsOp::ListChunks, "*", 0, gate.racer())],
+            ..Quirks::default()
+        },
+    );
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let recorded = events.clone();
+    let _load = LocalFileSource.enumerate(
+        DirectoryRequest {
+            background: true,
+            ..listing_request(&folder, 100)
+        },
+        Rc::new(move |event| recorded.borrow_mut().push(event)),
+    );
+
+    drain_until(|| gate.reached());
+    let activity = file_activity::begin(file_activity::OperationScope::default());
+    let fence = activity.fence([folder.clone()]);
+    fence.stop_reads();
+    gate.release();
+    drain_until(|| outcome_of(&events, 1).is_some());
+
+    assert_eq!(
+        outcome_of(&events, 1),
+        Some(Err(file_activity::HELD_FOR_OPERATION.to_owned()))
+    );
     Ok(())
 }
 
@@ -1996,7 +3480,7 @@ fn cheap_metadata_is_published_while_details_are_waiting() {
 }
 
 #[test]
-fn cancelled_media_details_are_not_cached_as_unavailable() {
+fn cancelled_or_withheld_media_details_are_not_cached_as_unavailable() {
     let root = tempfile::tempdir().expect("fixture directory");
     let path = root.path().join("photo.jpg");
     fs::write(&path, b"\xff\xd8\xff\xe0\0\x10JFIF\0").expect("fixture file");
@@ -2008,22 +3492,38 @@ fn cancelled_media_details_are_not_cached_as_unavailable() {
             None::<&gio::Cancellable>,
         )
         .expect("source metadata");
-    let cancellable = gio::Cancellable::new();
-    let (mut update, _) = update_from_info(&info, &location);
-    assert!(!fill_icon_details_with_probe(
-        &mut update,
-        &info,
-        &location,
-        &cancellable,
-        Instant::now() + Duration::from_secs(10),
-        |_, _, cancellation| {
-            cancellation.cancel();
-            Err("cancelled".to_owned())
-        },
-    ));
-    assert_eq!(update.image_dimensions, MetadataValue::Unknown);
-    assert_eq!(update.duration_seconds, MetadataValue::Unknown);
-    assert!(cached_icon_details_for_revisit(&path).is_none());
+    for (row, cancels, error, filled) in [
+        ("cancelled", true, "cancelled", false),
+        (
+            "withheld by an operation",
+            false,
+            crate::services::file_activity::HELD_FOR_OPERATION,
+            true,
+        ),
+    ] {
+        let cancellable = gio::Cancellable::new();
+        let (mut update, _) = update_from_info(&info, &location);
+        assert_eq!(
+            fill_icon_details_with_probe(
+                &mut update,
+                &info,
+                &location,
+                &cancellable,
+                Instant::now() + Duration::from_secs(10),
+                |_, _, cancellation| {
+                    if cancels {
+                        cancellation.cancel();
+                    }
+                    Err(error.to_owned())
+                },
+            ),
+            filled,
+            "{row}"
+        );
+        assert_eq!(update.image_dimensions, MetadataValue::Unknown, "{row}");
+        assert_eq!(update.duration_seconds, MetadataValue::Unknown, "{row}");
+        assert!(cached_icon_details_for_revisit(&path).is_none(), "{row}");
+    }
 }
 
 #[derive(Clone, Default)]
@@ -2068,7 +3568,7 @@ fn drain_until(done: impl Fn() -> bool) {
     }
     assert!(
         done(),
-        "the removal task did not complete within the deadline"
+        "the awaited event did not arrive within the deadline"
     );
 }
 
@@ -2117,6 +3617,33 @@ fn recent_removal_failure_logs_a_warning_and_allows_retry() {
     recent_remove_entries_with_backend(&state, &backend_dyn, [uri.clone()]);
     drain_until(|| state.in_flight.borrow().is_empty());
     assert_eq!(*backend.calls.borrow(), vec![uri.clone(), uri]);
+}
+
+#[test]
+fn recent_removal_logs_keep_credentials_out_of_the_default_log() {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let state = RecentRemovalState::new();
+    let backend = Rc::new(FakeRemovalBackend::new());
+    let uri = "recent://alice:s3cret;domain=CORP@host.example/item?token=abc#frag".to_owned();
+    backend.fail(
+        &uri,
+        "cannot reach sftp://alice:s3cret@host.example/item?token=abc#frag",
+    );
+    let backend_dyn: Rc<dyn RecentRemovalBackend> = backend.clone();
+
+    let output = capture_logs(|| {
+        recent_remove_entries_with_backend(&state, &backend_dyn, [uri.clone()]);
+        drain_until(|| state.in_flight.borrow().is_empty());
+    });
+
+    let warning = crate::test_support::captured_event(&output, "failed to remove recent entry");
+    assert_eq!(warning.split_whitespace().next(), Some("WARN"));
+    assert!(warning.contains("recent://host.example/item"), "{warning}");
+    for secret in ["alice", "s3cret", "CORP", "token", "frag"] {
+        assert!(!output.contains(secret), "{secret} leaked:\n{output}");
+    }
 }
 
 #[test]

@@ -4,7 +4,6 @@ mod ambient;
 mod badges;
 mod details;
 mod frame;
-mod layout;
 pub(super) mod storyboard;
 
 use std::{
@@ -30,6 +29,8 @@ use super::{
         clock,
         details::{PeaksLoad, TrackKey, load_peaks},
     },
+    components::{self, DetailsHeader, label, navigation_button, navigation_row},
+    player_layout::{self, PlayerLayout},
     waveform::Waveform,
 };
 
@@ -52,7 +53,7 @@ pub(super) struct Clip {
 
 pub(super) struct VideoView {
     root: gtk::Box,
-    layout: layout::PlayerLayout,
+    layout: PlayerLayout,
     picture: gtk::Picture,
     frame: gtk::Overlay,
     glow: ambient::Glow,
@@ -87,32 +88,6 @@ pub(super) struct VideoView {
     ease: Rc<super::ease_in::EaseIn>,
 }
 
-fn label(class: &str) -> gtk::Label {
-    let label = gtk::Label::new(None);
-    label.add_css_class(class);
-    label.set_xalign(0.0);
-    label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    label
-}
-
-/// `tooltip` names `binding` with `%{keys}`.
-fn transport_button(
-    icon: &str,
-    name: &str,
-    tooltip: &str,
-    binding: crate::ui::keys::Binding,
-) -> gtk::Button {
-    let button = gtk::Button::new();
-    button.add_css_class("preview-media-button");
-    button.set_child(Some(&crate::assets::primary_icon(icon, 18)));
-    button.set_tooltip_text(Some(&crate::ui::shortcut_reference::with_keys(
-        tooltip,
-        crate::ui::keys::Keys::One(binding),
-    )));
-    crate::ui::accessibility::set_label(&button, &crate::i18n::tr(name));
-    button
-}
-
 impl VideoView {
     /// `decode_size` returns `None` while the pane animates open.
     pub(super) fn new(
@@ -120,13 +95,6 @@ impl VideoView {
         navigate: Rc<dyn Fn(i32)>,
         decode_size: Rc<dyn Fn() -> Option<MediaPreviewSize>>,
     ) -> Rc<Self> {
-        let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        root.add_css_class("preview-video");
-        root.set_hexpand(true);
-        root.set_vexpand(true);
-        let layout = layout::PlayerLayout::new();
-        root.set_layout_manager(Some(layout.clone()));
-
         let picture = gtk::Picture::new();
         picture.add_css_class("preview-media");
         picture.set_content_fit(gtk::ContentFit::Contain);
@@ -160,18 +128,12 @@ impl VideoView {
         bubble.append(&bubble_time);
         frame.add_overlay(&bubble);
 
-        let eyebrow = label("preview-video-eyebrow");
-        eyebrow.set_hexpand(true);
-        let eyebrow_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        eyebrow_row.append(&eyebrow);
-        eyebrow_row.append(volume);
-        let title = label("preview-video-title");
-        let badges = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        badges.add_css_class("preview-video-badges");
-        let header = gtk::Box::new(gtk::Orientation::Vertical, 2);
-        header.add_css_class("preview-video-header");
-        header.append(&eyebrow_row);
-        header.append(&title);
+        let DetailsHeader {
+            root: header,
+            eyebrow,
+            title,
+        } = DetailsHeader::new(Some(volume));
+        let badges = components::badge_row();
         header.append(&badges);
         let error = gtk::Box::new(gtk::Orientation::Vertical, 4);
         error.set_visible(false);
@@ -184,43 +146,41 @@ impl VideoView {
         let total = label("preview-media-time");
         total.add_css_class("preview-video-time");
         total.set_xalign(1.0);
-        let previous = transport_button(
+        let previous = navigation_button(
             crate::assets::icons::SKIP_BACK,
             "Previous video",
             "Previous video (%{keys})",
-            crate::ui::keys::bindings::MEDIA_PREVIOUS,
+            Some(crate::ui::keys::bindings::MEDIA_PREVIOUS),
         );
-        let next = transport_button(
+        let next = navigation_button(
             crate::assets::icons::SKIP_FORWARD,
             "Next video",
             "Next video (%{keys})",
-            crate::ui::keys::bindings::MEDIA_NEXT,
+            Some(crate::ui::keys::bindings::MEDIA_NEXT),
         );
         let play_icon = crate::assets::primary_icon(crate::assets::icons::PLAY, 22);
         let play = gtk::Button::new();
         play.add_css_class("preview-media-center");
         play.add_css_class("preview-video-play");
         play.set_child(Some(&play_icon));
-        play.set_tooltip_text(Some(&crate::ui::shortcut_reference::with_keys(
+        crate::ui::shortcut_reference::follow_tooltip(
+            &play,
             "Play/Pause (%{keys})",
-            crate::ui::keys::Keys::One(crate::ui::keys::bindings::MEDIA_PLAY_PAUSE),
-        )));
+            crate::ui::keys::Keys::One(crate::ui::keys::bindings::MEDIA_PLAY_PAUSE.shown()),
+        );
         crate::ui::accessibility::set_label(&play, &crate::i18n::tr("Play or pause"));
-        let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        buttons.set_valign(gtk::Align::Center);
-        buttons.append(&previous);
-        buttons.append(&play);
-        buttons.append(&next);
-        let transport = gtk::CenterBox::new();
-        transport.add_css_class("preview-video-transport");
+        let transport = navigation_row(&previous, &play, &next, 10);
         transport.set_start_widget(Some(&elapsed));
-        transport.set_center_widget(Some(&buttons));
         transport.set_end_widget(Some(&total));
 
-        root.append(&frame);
-        root.append(&header);
-        root.append(&timeline);
-        root.append(&transport);
+        let (root, layout) = player_layout::section(player_layout::Areas {
+            content: frame.upcast_ref(),
+            details: header.upcast_ref(),
+            badges: None,
+            timeline: Some(timeline.upcast_ref()),
+            controls: transport.upcast_ref(),
+        });
+        root.add_css_class("preview-video");
 
         let view = Rc::new(Self {
             root,
@@ -778,8 +738,8 @@ impl VideoView {
         super::clear_box(&self.badges);
         for width in SKELETON_BADGE_WIDTHS {
             let pill = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-            pill.add_css_class("preview-video-badge");
-            pill.add_css_class("preview-video-badge-skeleton");
+            pill.add_css_class("preview-details-badge");
+            pill.add_css_class("preview-details-badge-skeleton");
             pill.set_size_request(width, -1);
             self.badges.append(&pill);
         }
@@ -796,8 +756,7 @@ impl VideoView {
             .into_iter()
             .enumerate()
         {
-            let label = gtk::Label::new(Some(&badge.label));
-            label.add_css_class("preview-video-badge");
+            let label = components::badge(&badge.label);
             if badge.kind == badges::Kind::Hdr {
                 label.add_css_class("preview-video-badge-hdr");
             }

@@ -2,19 +2,28 @@
 
 use std::{
     error::Error,
+    ffi::OsStr,
     fs,
     io::{self, Read},
-    os::unix::fs::{MetadataExt, PermissionsExt},
+    os::unix::{
+        ffi::OsStrExt,
+        fs::{MetadataExt, PermissionsExt},
+    },
     path::Path,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     time::{Duration, UNIX_EPOCH},
 };
 
+use rustix::io::Errno;
+
 use super::{ArchiveError, ArchiveOutcome, ExtractionSession, MemberContent, MemberMetadata};
-use crate::adapters::local_operations::archive::destination::MetadataCalls;
 use crate::{
-    adapters::local_operations::archive::fixtures::{EXTRACTION_STAGE, expected_mode, stages},
+    adapters::local_operations::{
+        archive::fixtures::{EXTRACTION_STAGE, expected_mode, stages},
+        tests::fs_quirks::{FsQuirks, Op, Preset, Quirks, Support, skips_malformed_name_on_fuse},
+    },
     model::Location,
+    services::{RenameCause, RenamedItem, SkippedItem, SpecialKind, TransferReport},
 };
 
 const ARCHIVE: &str = "archive.zip";
@@ -35,7 +44,9 @@ fn multi_root_members_keep_their_names_beside_existing_entries() -> Result<(), B
     fs::write(root.path().join("report.txt"), b"original")?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
-    let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+    let mut report = TransferReport::default();
+    let mut session =
+        ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
 
     session.extract_member("folder", MemberContent::Directory, MemberMetadata::NONE)?;
     session.extract_member(
@@ -79,7 +90,14 @@ fn unsafe_member_paths_are_sanitized_without_stopping_extraction() -> Result<(),
     fs::create_dir(&destination)?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
-    let mut session = ExtractionSession::open(&destination, "bundle.zip", &progress, &cancelled)?;
+    let mut report = TransferReport::default();
+    let mut session = ExtractionSession::open(
+        &destination,
+        "bundle.zip",
+        &progress,
+        &cancelled,
+        &mut report,
+    )?;
 
     session.extract_member(
         "../escaped.txt",
@@ -130,7 +148,9 @@ fn cancellation_reports_actual_destinations_for_duplicate_members() -> Result<()
         fs::create_dir(root.path().join("folder"))?;
         let progress = AtomicUsize::new(0);
         let cancelled = AtomicBool::new(false);
-        let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+        let mut report = TransferReport::default();
+        let mut session =
+            ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
         session.extract_member(
             name,
             MemberContent::File(&mut &b"one"[..], Some(3)),
@@ -174,7 +194,9 @@ fn cancellation_before_enumeration_uses_only_supplied_pending_names() -> Result<
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(true);
-    let session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+    let mut report = TransferReport::default();
+    let session =
+        ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
     let result = session.check_cancelled();
     let remaining = Location::local(root.path().join("known.txt"));
 
@@ -194,7 +216,9 @@ fn cancellation_before_member_processing_never_reads_or_creates_it() -> Result<(
         let root = tempfile::tempdir()?;
         let progress = AtomicUsize::new(0);
         let cancelled = AtomicBool::new(true);
-        let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+        let mut report = TransferReport::default();
+        let mut session =
+            ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
         let mut reader = TestReader(|_: &mut [u8]| panic!("cancelled member must not be read"));
         let content = if directory {
             MemberContent::Directory
@@ -222,7 +246,9 @@ fn mid_copy_cancellation_removes_only_the_partial_file_and_preserves_results()
     fs::write(root.path().join("partial.txt"), b"original")?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
-    let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+    let mut report = TransferReport::default();
+    let mut session =
+        ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
     session.extract_member(
         "done.txt",
         MemberContent::File(&mut &b"done"[..], Some(4)),
@@ -261,7 +287,9 @@ fn cleanup_failure_marks_the_interrupted_location_failed() -> Result<(), Box<dyn
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
-    let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+    let mut report = TransferReport::default();
+    let mut session =
+        ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
     let mut reader = TestReader(|buffer: &mut [u8]| {
         let staging = stages(root.path(), EXTRACTION_STAGE)
             .map_err(|error| io::Error::other(error.to_string()))?
@@ -300,7 +328,9 @@ fn read_failure_removes_partial_output_without_reporting_cancellation() -> Resul
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
-    let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+    let mut report = TransferReport::default();
+    let mut session =
+        ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
     session.extract_member(
         "done.txt",
         MemberContent::File(&mut &b"done"[..], Some(4)),
@@ -337,7 +367,9 @@ fn completed_worker_is_not_reclassified_by_late_cancellation() -> Result<(), Box
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
-    let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+    let mut report = TransferReport::default();
+    let mut session =
+        ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
     session.extract_member(
         "empty.txt",
         MemberContent::File(&mut io::empty(), Some(0)),
@@ -359,7 +391,9 @@ fn pending_names_are_sanitized_and_kept_under_the_archive_folder() -> Result<(),
     std::os::unix::fs::symlink("missing", root.path().join("redirect"))?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
-    let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+    let mut report = TransferReport::default();
+    let mut session =
+        ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
     session.extract_member(
         "folder/first.txt",
         MemberContent::File(&mut &b"done"[..], Some(4)),
@@ -427,7 +461,9 @@ fn member_cancelled_before_creation_is_reported_inside_the_archive_folder()
     fs::create_dir(root.path().join("folder"))?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
-    let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+    let mut report = TransferReport::default();
+    let mut session =
+        ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
     session.extract_member(
         "folder/first.txt",
         MemberContent::File(&mut io::empty(), Some(0)),
@@ -455,7 +491,9 @@ fn empty_session_completes_without_a_first_name() -> Result<(), Box<dyn Error>> 
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
-    let session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+    let mut report = TransferReport::default();
+    let session =
+        ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
     assert!(matches!(
         session.finish(Ok(()), Vec::new)?,
         ArchiveOutcome::Completed(None)
@@ -483,12 +521,14 @@ fn declared_size_overflow_removes_partial_output() -> Result<(), Box<dyn Error>>
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
+    let mut report = TransferReport::default();
     let mut session = ExtractionSession::open_with_available_bytes(
         root.path(),
         ARCHIVE,
         &progress,
         &cancelled,
         Some(1024),
+        &mut report,
     )?;
 
     let result = session.extract_member(
@@ -512,7 +552,9 @@ fn declared_size_shortfall_removes_partial_output() -> Result<(), Box<dyn Error>
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
-    let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+    let mut report = TransferReport::default();
+    let mut session =
+        ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
 
     let result = session.extract_member(
         "short.txt",
@@ -535,12 +577,14 @@ fn member_preflight_refuses_when_destination_lacks_space() -> Result<(), Box<dyn
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
+    let mut report = TransferReport::default();
     let mut session = ExtractionSession::open_with_available_bytes(
         root.path(),
         ARCHIVE,
         &progress,
         &cancelled,
         Some(4),
+        &mut report,
     )?;
     let mut reader = TestReader(|_: &mut [u8]| panic!("member that cannot fit must not be read"));
 
@@ -566,12 +610,14 @@ fn copy_without_declared_size_stops_at_free_space() -> Result<(), Box<dyn Error>
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
+    let mut report = TransferReport::default();
     let mut session = ExtractionSession::open_with_available_bytes(
         root.path(),
         ARCHIVE,
         &progress,
         &cancelled,
         Some(4),
+        &mut report,
     )?;
 
     let result = session.extract_member(
@@ -595,12 +641,14 @@ fn claimed_total_preflight_refuses_before_any_member() -> Result<(), Box<dyn Err
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
+    let mut report = TransferReport::default();
     let session = ExtractionSession::open_with_available_bytes(
         root.path(),
         ARCHIVE,
         &progress,
         &cancelled,
         Some(10),
+        &mut report,
     )?;
 
     let result = session.preflight_claimed_size(100);
@@ -622,12 +670,14 @@ fn second_member_preflight_uses_remaining_space() -> Result<(), Box<dyn Error>> 
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
+    let mut report = TransferReport::default();
     let mut session = ExtractionSession::open_with_available_bytes(
         root.path(),
         ARCHIVE,
         &progress,
         &cancelled,
         Some(10),
+        &mut report,
     )?;
     session.extract_member(
         "first.txt",
@@ -667,12 +717,14 @@ fn matching_declared_size_completes_under_an_injected_quota() -> Result<(), Box<
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
+    let mut report = TransferReport::default();
     let mut session = ExtractionSession::open_with_available_bytes(
         root.path(),
         ARCHIVE,
         &progress,
         &cancelled,
         Some(16),
+        &mut report,
     )?;
     session.extract_member(
         "ok.txt",
@@ -693,12 +745,14 @@ fn unreported_free_space_skips_capacity_checks() -> Result<(), Box<dyn Error>> {
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
+    let mut report = TransferReport::default();
     let mut session = ExtractionSession::open_with_available_bytes(
         root.path(),
         ARCHIVE,
         &progress,
         &cancelled,
         None,
+        &mut report,
     )?;
 
     session.preflight_claimed_size(u128::MAX)?;
@@ -734,12 +788,14 @@ fn unreported_free_space_still_enforces_declared_size() -> Result<(), Box<dyn Er
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
+    let mut report = TransferReport::default();
     let mut session = ExtractionSession::open_with_available_bytes(
         root.path(),
         ARCHIVE,
         &progress,
         &cancelled,
         None,
+        &mut report,
     )?;
 
     let result = session.extract_member(
@@ -817,7 +873,9 @@ fn finish_publishes_every_outcome_shape() -> Result<(), Box<dyn Error>> {
         let root = tempfile::tempdir()?;
         let progress = AtomicUsize::new(0);
         let cancelled = AtomicBool::new(false);
-        let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+        let mut report = TransferReport::default();
+        let mut session =
+            ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
         for member in members {
             session.extract_member(
                 member,
@@ -876,7 +934,9 @@ fn single_root_colliding_with_a_destination_entry_is_suffixed_at_publish()
     fs::write(root.path().join("readme.txt"), b"existing")?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
-    let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+    let mut report = TransferReport::default();
+    let mut session =
+        ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
     session.extract_member(
         "readme.txt",
         MemberContent::File(&mut &b"archived"[..], Some(8)),
@@ -899,7 +959,9 @@ fn a_failure_that_left_only_directories_leaves_nothing_behind() -> Result<(), Bo
         let root = tempfile::tempdir()?;
         let progress = AtomicUsize::new(0);
         let cancelled = AtomicBool::new(false);
-        let mut session = ExtractionSession::open(root.path(), "secret.7z", &progress, &cancelled)?;
+        let mut report = TransferReport::default();
+        let mut session =
+            ExtractionSession::open(root.path(), "secret.7z", &progress, &cancelled, &mut report)?;
         session.extract_member("secret", MemberContent::Directory, MemberMetadata::NONE)?;
         let mut reader = TestReader(|buffer: &mut [u8]| {
             if cancel {
@@ -943,7 +1005,9 @@ fn a_session_dropped_before_finish_publishes_its_output() -> Result<(), Box<dyn 
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
-    let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+    let mut report = TransferReport::default();
+    let mut session =
+        ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
     session.extract_member(
         "done.txt",
         MemberContent::File(&mut &b"done"[..], Some(4)),
@@ -963,12 +1027,14 @@ fn links_consume_no_space_and_hard_links_follow_renamed_targets() -> Result<(), 
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
+    let mut report = TransferReport::default();
     let mut session = ExtractionSession::open_with_available_bytes(
         root.path(),
         ARCHIVE,
         &progress,
         &cancelled,
         Some(12),
+        &mut report,
     )?;
     session.record_hard_link_targets();
     for contents in [b"first!", b"second"] {
@@ -1025,7 +1091,9 @@ fn refused_link_members_leave_no_staging_behind() -> Result<(), Box<dyn Error>> 
         let root = tempfile::tempdir()?;
         let progress = AtomicUsize::new(0);
         let cancelled = AtomicBool::new(false);
-        let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+        let mut report = TransferReport::default();
+        let mut session =
+            ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
         session.record_hard_link_targets();
 
         let result = session.extract_member("link", content, MemberMetadata::NONE);
@@ -1049,7 +1117,9 @@ fn directory_metadata_is_restored_deepest_first_only_on_completion() -> Result<(
         let root = tempfile::tempdir()?;
         let progress = AtomicUsize::new(0);
         let cancelled = AtomicBool::new(false);
-        let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+        let mut report = TransferReport::default();
+        let mut session =
+            ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
         session.extract_member("ro", MemberContent::Directory, read_only)?;
         session.extract_member("ro/sub", MemberContent::Directory, read_only)?;
         session.extract_member(
@@ -1091,20 +1161,19 @@ fn directory_metadata_is_restored_deepest_first_only_on_completion() -> Result<(
 
 #[test]
 fn a_failed_directory_restore_leaves_restored_directories_writable() -> Result<(), Box<dyn Error>> {
-    let calls = MetadataCalls {
-        set_times: |_, _| Err(rustix::io::Errno::IO),
-        ..MetadataCalls::SYSTEM
-    };
     let root = tempfile::tempdir()?;
+    let _quirks = FsQuirks::install(
+        root.path(),
+        Quirks {
+            fail: vec![(Op::SetTimes, "*", 0, rustix::io::Errno::IO)],
+            ..Quirks::default()
+        },
+    );
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
-    let mut session = ExtractionSession::open_with_metadata_calls(
-        root.path(),
-        ARCHIVE,
-        &progress,
-        &cancelled,
-        calls,
-    )?;
+    let mut report = TransferReport::default();
+    let mut session =
+        ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
     let read_only = MemberMetadata {
         mode: Some(0o555),
         modified: Some(UNIX_EPOCH + Duration::from_secs(1_000_000_000)),
@@ -1171,7 +1240,9 @@ fn a_repeated_directory_member_merges_its_stored_metadata() -> Result<(), Box<dy
         let root = tempfile::tempdir()?;
         let progress = AtomicUsize::new(0);
         let cancelled = AtomicBool::new(false);
-        let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+        let mut report = TransferReport::default();
+        let mut session =
+            ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
         session.extract_member(directory, MemberContent::Directory, earlier)?;
         session.extract_member(
             format!("{directory}/file.txt"),
@@ -1205,7 +1276,9 @@ fn a_password_failure_that_cannot_discard_its_output_offers_no_retry() -> Result
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
-    let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+    let mut report = TransferReport::default();
+    let mut session =
+        ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled, &mut report)?;
     session.extract_member(
         "locked/file.txt",
         MemberContent::File(&mut &b"file"[..], Some(4)),
@@ -1236,5 +1309,855 @@ fn a_password_failure_that_cannot_discard_its_output_offers_no_retry() -> Result
         "{outcome:?}"
     );
     assert_eq!(fs::read(kept.join("file.txt"))?, b"file");
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum Member<'a> {
+    Folder,
+    File,
+    Link(&'a [u8]),
+    Hard(&'a str),
+}
+
+type Entry<'a> = (&'a [u8], Member<'a>);
+
+fn extract_members(
+    destination: &Path,
+    archive: &str,
+    members: &[(&[u8], Member<'_>)],
+    ending: Result<(), ArchiveError>,
+    report: &mut TransferReport,
+) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
+    let progress = AtomicUsize::new(0);
+    let cancelled = AtomicBool::new(false);
+    let mut session = ExtractionSession::open(destination, archive, &progress, &cancelled, report)?;
+    session.record_hard_link_targets();
+    let result = members.iter().try_for_each(|(name, member)| {
+        let content = match member {
+            Member::Folder => MemberContent::Directory,
+            Member::File => MemberContent::File(&mut &b"data"[..], Some(4)),
+            Member::Link(target) => MemberContent::Symlink(target),
+            Member::Hard(target) => MemberContent::HardLink(Path::new(target)),
+        };
+        session.extract_member(OsStr::from_bytes(name), content, MemberMetadata::NONE)
+    });
+    session.finish(result.and(ending), || {
+        vec![format!("10:00/later:x{}.d/next.txt", "a".repeat(300))]
+    })
+}
+
+fn entries(folder: &Path) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut entries = Vec::new();
+    let mut pending = vec![folder.to_path_buf()];
+    while let Some(next) = pending.pop() {
+        for entry in fs::read_dir(&next)? {
+            let path = entry?.path();
+            let mut name = path.strip_prefix(folder)?.to_string_lossy().into_owned();
+            if fs::symlink_metadata(&path)?.is_dir() {
+                name.push('/');
+                pending.push(path);
+            }
+            entries.push(name);
+        }
+    }
+    entries.sort();
+    Ok(entries)
+}
+
+fn renamed(root: &Path, entries: &[(&[u8], &str, RenameCause)]) -> Vec<RenamedItem> {
+    entries
+        .iter()
+        .map(|(requested, saved_as, cause)| RenamedItem {
+            requested: Location::local(root.join(OsStr::from_bytes(requested))),
+            saved_as: Location::local(root.join(saved_as)),
+            cause: *cause,
+        })
+        .collect()
+}
+
+#[test]
+fn members_take_the_names_the_destination_stores_and_distinct_folders_stay_apart()
+-> Result<(), Box<dyn Error>> {
+    use Member::{File, Folder};
+    use RenameCause::{Alias, Invalid, Taken};
+    let members: &[(&[u8], Member<'_>)] = &[
+        (b"10:00", Folder),
+        (b"10:00/c?d.txt", File),
+        (b"10_00/x.txt", File),
+        (b"CON", File),
+        (b"aux.c", File),
+        (b"aux.c", File),
+        (b"Readme.txt", File),
+        (b"README.TXT", File),
+        (b"dot.", File),
+        (b"x\xffy", File),
+        (b"x?y", File),
+        (b"\xc0\xaf", File),
+    ];
+    let windows = [
+        "CON_",
+        "README (2).TXT",
+        "Readme.txt",
+        "__",
+        "10_00 (2)/",
+        "10_00 (2)/x.txt",
+        "10_00/",
+        "10_00/c_d.txt",
+        "aux (2).c",
+        "aux.c",
+        "dot",
+        "x_y",
+        "x_y (2)",
+    ];
+    let fixed: &[(&[u8], &str, RenameCause)] = &[
+        (b"10:00", "10_00", Invalid),
+        (b"10_00/c?d.txt", "10_00/c_d.txt", Invalid),
+        (b"10_00", "10_00 (2)", Taken),
+        (b"CON", "CON_", Invalid),
+        (b"README.TXT", "README (2).TXT", Alias),
+        (b"dot.", "dot", Invalid),
+        (b"x\xffy", "x_y", Invalid),
+        (b"x?y", "x_y (2)", Invalid),
+        (b"\xc0\xaf", "__", Invalid),
+    ];
+    let posix = [
+        "CON",
+        "README.TXT",
+        "Readme.txt",
+        "10:00/",
+        "10:00/c?d.txt",
+        "10_00/",
+        "10_00/x.txt",
+        "aux (2).c",
+        "aux.c",
+        "dot.",
+        "x?y",
+        "x\u{fffd}y",
+        "\u{fffd}\u{fffd}",
+    ];
+    for (preset, listed, reported) in [
+        (Quirks::ext4 as Preset, &posix[..], &[][..]),
+        (Quirks::vfat, &windows, fixed),
+        (Quirks::exfat_fuse, &windows, fixed),
+    ] {
+        let utf8_only = !reported.is_empty();
+        let root = tempfile::tempdir()?;
+        if !utf8_only
+            && members
+                .iter()
+                .any(|(name, _)| skips_malformed_name_on_fuse(root.path(), OsStr::from_bytes(name)))
+        {
+            continue;
+        }
+        let quirks = FsQuirks::install(root.path(), preset());
+        let mut report = TransferReport::default();
+
+        let outcome = extract_members(root.path(), ARCHIVE, members, Ok(()), &mut report)?;
+
+        let mut expected = listed.to_vec();
+        expected.sort_unstable();
+        assert!(
+            matches!(&outcome, ArchiveOutcome::Completed(Some(name)) if name == "archive"),
+            "{outcome:?}"
+        );
+        assert_eq!(entries(&root.path().join("archive"))?, expected);
+        assert_eq!(
+            report.renamed,
+            renamed(&root.path().join("archive"), reported)
+        );
+        assert_eq!(
+            quirks
+                .calls()
+                .iter()
+                .all(|call| call.names.iter().all(|name| name.to_str().is_some())),
+            utf8_only,
+            "malformed names were sent only where they are stored"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn links_the_destination_cannot_hold_are_left_out_with_hard_links_to_them()
+-> Result<(), Box<dyn Error>> {
+    use Member::{File, Folder, Hard, Link};
+    let venv: &[(&[u8], Member<'_>)] = &[
+        (b"bin", Folder),
+        (b"bin/python", File),
+        (b"bin/python3", Link(b"python")),
+        (b"bin/py", Hard("bin/python3")),
+        (b"bin/p2", Hard("bin/py")),
+        (b"bin/py:3", Link(b"python")),
+    ];
+    let learned: &[(&[u8], Member<'_>)] = &[
+        (b"bin", Folder),
+        (b"bin/python", File),
+        (b"bin/python3", Link(b"python")),
+        (b"bin/pip", Link(b"python")),
+    ];
+    let per_link: &[(&[u8], Member<'_>)] = &[
+        (b"bin", Folder),
+        (b"bin/python", File),
+        (b"bin/bad", Link(b"far")),
+        (b"bin/python3", Link(b"python")),
+        (b"bin/10:00", File),
+        (b"bin/now", Hard("bin/10:00")),
+    ];
+    let malformed: &[(&[u8], Member<'_>)] = &[
+        (b"bin", Folder),
+        (b"bin/python", File),
+        (b"bin/bad", Link(b"x\xffy")),
+        (b"bin/python3", Link(b"python")),
+    ];
+    let refusing_one_target = |errno| Quirks {
+        fail: vec![(Op::Symlink, "bad", 0, errno)],
+        ..Quirks::ntfs3()
+    };
+    // A stricter name would be `dot`, which a link the mount cannot hold never tries.
+    let unheld: &[(&[u8], Member<'_>)] = &[
+        (b"bin", Folder),
+        (b"bin/python", File),
+        (b"bin/dot.", Link(b"python")),
+    ];
+    let refusing_one_link = Quirks {
+        fail: vec![(Op::Symlink, "dot.", 0, Errno::PERM)],
+        ..Quirks::ext4()
+    };
+    let per_link_listed = &["bin/", "bin/10_00", "bin/now", "bin/python", "bin/python3"][..];
+    for (quirks, members, listed, skipped, calls) in [
+        (
+            Quirks::ext4(),
+            venv,
+            &[
+                "bin/",
+                "bin/p2",
+                "bin/py",
+                "bin/py:3",
+                "bin/python",
+                "bin/python3",
+            ][..],
+            &[][..],
+            2,
+        ),
+        (
+            Quirks::vfat(),
+            venv,
+            &["bin/", "bin/python"],
+            &["python3", "py", "p2", "py:3"],
+            0,
+        ),
+        (
+            Quirks::cifs(),
+            learned,
+            &["bin/", "bin/python"],
+            &["python3", "pip"],
+            1,
+        ),
+        (
+            refusing_one_target(rustix::io::Errno::INVAL),
+            per_link,
+            per_link_listed,
+            &["bad"],
+            2,
+        ),
+        (
+            refusing_one_target(rustix::io::Errno::ILSEQ),
+            per_link,
+            per_link_listed,
+            &["bad"],
+            2,
+        ),
+        (
+            Quirks::cifs_posix(),
+            malformed,
+            &["bin/", "bin/python", "bin/python3"],
+            &["bad"],
+            1,
+        ),
+        (
+            refusing_one_link,
+            unheld,
+            &["bin/", "bin/python"],
+            &["dot."],
+            1,
+        ),
+    ] {
+        let root = tempfile::tempdir()?;
+        let quirks = FsQuirks::install(root.path(), quirks);
+        let mut report = TransferReport::default();
+
+        let outcome = extract_members(root.path(), ARCHIVE, members, Ok(()), &mut report)?;
+
+        assert!(
+            matches!(&outcome, ArchiveOutcome::Completed(Some(name)) if name == "bin"),
+            "{outcome:?}"
+        );
+        assert_eq!(entries(root.path())?, listed);
+        assert_eq!(
+            report.skipped,
+            skipped
+                .iter()
+                .map(|name| SkippedItem {
+                    location: Location::local(root.path().join("bin").join(name)),
+                    kind: SpecialKind::Symlink,
+                })
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(quirks.count(Op::Symlink), calls, "{listed:?}");
+        if listed.contains(&"bin/now") {
+            assert_eq!(
+                fs::metadata(root.path().join("bin/now"))?.ino(),
+                fs::metadata(root.path().join("bin/10_00"))?.ino()
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn a_hard_link_the_destination_cannot_hold_is_copied_and_the_rest_still_extracts()
+-> Result<(), Box<dyn Error>> {
+    use Member::{File, Folder, Hard};
+    let members: &[(&[u8], Member<'_>)] = &[
+        (b"d", Folder),
+        (b"d/a.txt", File),
+        (b"d/b.txt", Hard("d/a.txt")),
+        (b"d/c.txt", Hard("d/b.txt")),
+        (b"d/e.txt", File),
+    ];
+    let refusing = |errno| Quirks {
+        links: Support::Rejected(errno),
+        ..Quirks::ext4()
+    };
+    for (quirks, shares_inode) in [
+        (Quirks::ext4(), true),
+        (Quirks::vfat(), false),
+        (Quirks::exfat_fuse(), false),
+        (refusing(Errno::OPNOTSUPP), false),
+    ] {
+        let root = tempfile::tempdir()?;
+        let _quirks = FsQuirks::install(root.path(), quirks);
+        let mut report = TransferReport::default();
+
+        let outcome = extract_members(root.path(), ARCHIVE, members, Ok(()), &mut report)?;
+
+        assert!(
+            matches!(&outcome, ArchiveOutcome::Completed(Some(name)) if name == "d"),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            entries(root.path())?,
+            ["d/", "d/a.txt", "d/b.txt", "d/c.txt", "d/e.txt"]
+        );
+        for name in ["a.txt", "b.txt", "c.txt", "e.txt"] {
+            assert_eq!(fs::read(root.path().join("d").join(name))?, b"data");
+        }
+        assert!(report.skipped.is_empty(), "{:?}", report.skipped);
+        let inode = |name| fs::metadata(root.path().join("d").join(name)).map(|meta| meta.ino());
+        assert_eq!(inode("a.txt")? == inode("b.txt")?, shares_inode);
+        assert_eq!(inode("a.txt")? == inode("c.txt")?, shares_inode);
+    }
+    Ok(())
+}
+
+#[test]
+fn a_colon_after_the_first_component_extracts_as_a_name() -> Result<(), Box<dyn Error>> {
+    use Member::{File, Folder, Hard};
+    let root = tempfile::tempdir()?;
+    let mut report = TransferReport::default();
+    let members: &[(&[u8], Member<'_>)] = &[
+        (b"before.txt", File),
+        (b"names", Folder),
+        (b"names/c:notes", File),
+        (b"names/linked", Hard("names/c:notes")),
+        (b"after.txt", File),
+    ];
+
+    extract_members(root.path(), ARCHIVE, members, Ok(()), &mut report)?;
+
+    assert_eq!(
+        entries(root.path())?,
+        [
+            "archive/",
+            "archive/after.txt",
+            "archive/before.txt",
+            "archive/names/",
+            "archive/names/c:notes",
+            "archive/names/linked"
+        ]
+    );
+    assert_eq!(fs::read(root.path().join("archive/names/linked"))?, b"data");
+    Ok(())
+}
+
+fn refuses_colons(name: &OsStr) -> Option<Errno> {
+    name.as_bytes().contains(&b':').then_some(Errno::INVAL)
+}
+
+fn refuses_colons_as_bad_messages(name: &OsStr) -> Option<Errno> {
+    name.as_bytes().contains(&b':').then_some(Errno::BADMSG)
+}
+
+fn refuses_trailing_dots(name: &OsStr) -> Option<Errno> {
+    name.as_bytes().ends_with(b".").then_some(Errno::BADMSG)
+}
+
+#[test]
+fn a_refused_member_name_takes_the_first_stricter_rules_it_passes_and_teaches_only_a_mount_that_learns()
+-> Result<(), Box<dyn Error>> {
+    use Member::{File, Folder, Hard, Link};
+    use RenameCause::Invalid;
+    let first: &[(&[u8], Member<'_>)] = &[
+        (b"10:00", Folder),
+        (b"10:00/note:1.txt", File),
+        (b"10:00/py:3", Link(b"note:1.txt")),
+        (b"10:00/hard:1", Hard("10:00/note:1.txt")),
+        (b"day_1.txt", File),
+        (b"day:1.txt", File),
+    ];
+    let later: &[(&[u8], Member<'_>)] = &[
+        (b"dir:1", Folder),
+        (b"dir:1/t", File),
+        (b"file:1", File),
+        (b"dot.", File),
+    ];
+    let unknown_daemon = || Quirks {
+        mount_type: Some(("fuse.strictfs", "rw,user_id=0,group_id=0")),
+        invalid_name: Some(refuses_colons_as_bad_messages),
+        ..Quirks::default()
+    };
+    // Known rules never learn. This one also refuses a hard link's name,
+    // and the lookup of a name, as sshfs does.
+    let strict_ext4 = || Quirks {
+        invalid_name: Some(refuses_colons),
+        fail: vec![
+            (Op::Link, "hard:1", 0, Errno::INVAL),
+            (Op::Stat, "day:1.txt", 0, Errno::BADMSG),
+        ],
+        ..Quirks::ext4()
+    };
+    type Refused<'a> = &'a [(Op, &'a str)];
+    let rows: [(Preset, Refused<'_>, Refused<'_>); 2] = [
+        (unknown_daemon, &[(Op::Mkdir, "10:00")], &[]),
+        (
+            strict_ext4,
+            &[
+                (Op::Mkdir, "10:00"),
+                (Op::Stat, "note:1.txt"),
+                (Op::Create, "note:1.txt"),
+                (Op::Stat, "py:3"),
+                (Op::Symlink, "py:3"),
+                (Op::Stat, "hard:1"),
+                (Op::Link, "hard:1"),
+                (Op::Stat, "day:1.txt"),
+            ],
+            &[
+                (Op::Mkdir, "dir:1"),
+                (Op::Stat, "file:1"),
+                (Op::Create, "file:1"),
+            ],
+        ),
+    ];
+    for (quirks, refused_first, refused_later) in rows {
+        let root = tempfile::tempdir()?;
+        let quirks = FsQuirks::install(root.path(), quirks());
+        let refused_calls = || {
+            quirks
+                .calls()
+                .into_iter()
+                .filter_map(|call| {
+                    let name = call
+                        .names
+                        .iter()
+                        .find(|name| name.as_bytes().contains(&b':'))?;
+                    Some((call.op, name.to_string_lossy().into_owned()))
+                })
+                .collect::<Vec<_>>()
+        };
+        let owned = |calls: Refused<'_>| {
+            calls
+                .iter()
+                .map(|(op, name)| (*op, (*name).to_owned()))
+                .collect::<Vec<_>>()
+        };
+        let mut report = TransferReport::default();
+
+        let outcome = extract_members(root.path(), ARCHIVE, first, Ok(()), &mut report)?;
+
+        assert!(
+            matches!(&outcome, ArchiveOutcome::Completed(Some(name)) if name == "archive"),
+            "{outcome:?}"
+        );
+        let archive = root.path().join("archive");
+        assert_eq!(
+            entries(&archive)?,
+            [
+                "10_00/",
+                "10_00/hard_1",
+                "10_00/note_1.txt",
+                "10_00/py_3",
+                "day_1 (2).txt",
+                "day_1.txt"
+            ]
+        );
+        assert_eq!(
+            report.renamed,
+            renamed(
+                &archive,
+                &[
+                    (b"10:00", "10_00", Invalid),
+                    (b"10_00/note:1.txt", "10_00/note_1.txt", Invalid),
+                    (b"10_00/py:3", "10_00/py_3", Invalid),
+                    (b"10_00/hard:1", "10_00/hard_1", Invalid),
+                    (b"day:1.txt", "day_1 (2).txt", Invalid),
+                ]
+            )
+        );
+        assert_eq!(
+            fs::read_link(archive.join("10_00/py_3"))?,
+            Path::new("note:1.txt")
+        );
+        assert_eq!(
+            fs::metadata(archive.join("10_00/hard_1"))?.ino(),
+            fs::metadata(archive.join("10_00/note_1.txt"))?.ino()
+        );
+        assert_eq!(refused_calls(), owned(refused_first));
+        quirks.clear_calls();
+        let mut report = TransferReport::default();
+
+        let outcome = extract_members(root.path(), "later.zip", later, Ok(()), &mut report)?;
+
+        assert!(
+            matches!(&outcome, ArchiveOutcome::Completed(Some(name)) if name == "later"),
+            "{outcome:?}"
+        );
+        let archive = root.path().join("later");
+        assert_eq!(entries(&archive)?, ["dir_1/", "dir_1/t", "dot.", "file_1"]);
+        assert_eq!(
+            report.renamed,
+            renamed(
+                &archive,
+                &[(b"dir:1", "dir_1", Invalid), (b"file:1", "file_1", Invalid)]
+            )
+        );
+        assert_eq!(refused_calls(), owned(refused_later));
+    }
+    Ok(())
+}
+
+#[test]
+fn a_mount_that_learns_keeps_only_the_rules_its_refused_member_names_needed()
+-> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let quirks = FsQuirks::install(
+        root.path(),
+        Quirks {
+            mount_type: Some(("fuse.strictfs", "rw,user_id=0,group_id=0")),
+            invalid_name: Some(refuses_trailing_dots),
+            ..Quirks::default()
+        },
+    );
+    let refused_creates = || {
+        quirks
+            .calls()
+            .into_iter()
+            .filter(|call| call.op == Op::Create)
+            .flat_map(|call| call.names)
+            .filter(|name| name.as_bytes().ends_with(b"."))
+            .map(|name| name.to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+    };
+    let mut report = TransferReport::default();
+
+    extract_members(
+        root.path(),
+        ARCHIVE,
+        &[(b"note:1.", Member::File), (b"x", Member::File)],
+        Ok(()),
+        &mut report,
+    )?;
+
+    assert_eq!(entries(&root.path().join("archive"))?, ["note:1", "x"]);
+    assert_eq!(refused_creates(), ["note:1.", "note_1."]);
+    quirks.clear_calls();
+    let mut report = TransferReport::default();
+
+    extract_members(
+        root.path(),
+        "later.zip",
+        &[(b"text:1", Member::File), (b"dot.", Member::File)],
+        Ok(()),
+        &mut report,
+    )?;
+
+    let later = root.path().join("later");
+    assert_eq!(entries(&later)?, ["dot", "text:1"]);
+    assert_eq!(
+        report.renamed,
+        renamed(&later, &[(b"dot.", "dot", RenameCause::Invalid)])
+    );
+    assert!(refused_creates().is_empty());
+    Ok(())
+}
+
+#[test]
+fn members_the_destination_will_not_make_fail_the_extraction_naming_them_and_why()
+-> Result<(), Box<dyn Error>> {
+    use Member::{File, Folder, Hard, Link};
+    let invalid = "The name isn’t valid at this location";
+    let io_failed = crate::services::io_error_message(&Errno::IO.into());
+    // Only `py:3` has a stricter name; the destination refuses it too, and
+    // the first refusal is the one reported.
+    type Fails<'a> = &'a [(Op, &'a str, Errno)];
+    let rows: [(Entry<'_>, Fails<'_>, String); 10] = [
+        (
+            (b"bin/python3", Link(b"python")),
+            &[(Op::Symlink, "python3", Errno::NOSPC)],
+            "Could not create symbolic link “bin/python3”: There is not enough space on the device"
+                .to_owned(),
+        ),
+        (
+            (b"bin/python3", Link(b"python")),
+            &[(Op::Symlink, "python3", Errno::BADMSG)],
+            format!("Could not create symbolic link “bin/python3”: {invalid}"),
+        ),
+        (
+            (b"bin/py:3", Link(b"python")),
+            &[
+                (Op::Symlink, "py:3", Errno::BADMSG),
+                (Op::Symlink, "py_3", Errno::NAMETOOLONG),
+            ],
+            format!("Could not create symbolic link “bin/py:3”: {invalid}"),
+        ),
+        (
+            (b"bin/lib", Folder),
+            &[(Op::Mkdir, "lib", Errno::INVAL)],
+            format!("Could not create “bin/lib”: {invalid}"),
+        ),
+        (
+            (b"lib/x", File),
+            &[(Op::Mkdir, "lib", Errno::BADMSG)],
+            format!("Could not create “lib”: {invalid}"),
+        ),
+        (
+            (b"bin/plain", File),
+            &[(Op::Create, "plain", Errno::BADMSG)],
+            format!("Could not create “bin/plain”: {invalid}"),
+        ),
+        (
+            (b"bin/plain", File),
+            &[(Op::Stat, "plain", Errno::ILSEQ)],
+            format!("Could not create “bin/plain”: {invalid}"),
+        ),
+        (
+            (b"bin/plain", File),
+            &[(Op::Create, "plain", Errno::NAMETOOLONG)],
+            "Could not create “bin/plain”: The name is too long".to_owned(),
+        ),
+        (
+            (b"bin/hard", Hard("bin/python")),
+            &[(Op::Link, "hard", Errno::INVAL)],
+            format!("Could not link “bin/hard” to “bin/python”: {invalid}"),
+        ),
+        // The copy that stands in for a hard link the mount cannot hold
+        // reports why its target could not be read, not the refused link.
+        (
+            (b"bin/hard", Hard("bin/python")),
+            &[
+                (Op::Link, "hard", Errno::PERM),
+                (Op::OpenSource, "python", Errno::IO),
+            ],
+            format!("Could not link “bin/hard” to “bin/python”: {io_failed}"),
+        ),
+    ];
+    for (member, fails, failure) in rows {
+        let root = tempfile::tempdir()?;
+        let _quirks = FsQuirks::install(
+            root.path(),
+            Quirks {
+                fail: fails
+                    .iter()
+                    .map(|(op, name, errno)| (*op, *name, 0, *errno))
+                    .collect(),
+                ..Quirks::ext4()
+            },
+        );
+        let mut report = TransferReport::default();
+
+        let outcome = extract_members(
+            root.path(),
+            ARCHIVE,
+            &[(b"bin/python", File), member],
+            Ok(()),
+            &mut report,
+        );
+
+        let Err(ArchiveError::Failed(message)) = outcome else {
+            panic!("{fails:?} did not fail: {outcome:?}");
+        };
+        assert_eq!(
+            message,
+            format!("{failure}. Extracted entries remain in “archive”.")
+        );
+        assert!(report.skipped.is_empty());
+    }
+    Ok(())
+}
+
+#[test]
+fn the_report_names_entries_where_the_extraction_left_them() -> Result<(), Box<dyn Error>> {
+    use Member::{File, Folder, Link};
+    use RenameCause::{Invalid, TooLong};
+    type Outcome = Result<ArchiveOutcome<Option<String>>, ArchiveError>;
+    let nested: &[(&[u8], Member<'_>)] = &[(b"10:00", Folder), (b"10:00/c?d", File)];
+    let nested_fixed: &[(&[u8], &str, RenameCause)] = &[
+        (b"archive/10:00", "archive/10_00", Invalid),
+        (b"archive/10_00/c?d", "archive/10_00/c_d", Invalid),
+    ];
+    let long = format!("{}.zip", "a".repeat(256));
+    let cut = "a".repeat(255);
+    type Row<'a> = (
+        Preset,
+        &'a str,
+        Option<&'a str>,
+        &'a [Entry<'a>],
+        Result<(), ArchiveError>,
+        fn(&Outcome) -> bool,
+        &'a [(&'a [u8], &'a str, RenameCause)],
+        &'a [&'a str],
+    );
+    let rows: [Row<'_>; 9] = [
+        (
+            Quirks::vfat,
+            ARCHIVE,
+            Some("10_00"),
+            nested,
+            Ok(()),
+            |outcome| matches!(outcome, Ok(ArchiveOutcome::Completed(Some(name))) if name == "10_00 (2)"),
+            &[
+                (b"10:00".as_slice(), "10_00 (2)", Invalid),
+                (b"10_00 (2)/c?d", "10_00 (2)/c_d", Invalid),
+            ],
+            &[][..],
+        ),
+        (
+            Quirks::vfat,
+            "10:00.zip",
+            None,
+            &[(b"a.txt", File), (b"b?.txt", File)],
+            Ok(()),
+            |outcome| matches!(outcome, Ok(ArchiveOutcome::Completed(Some(name))) if name == "10_00"),
+            &[
+                (b"10:00".as_slice(), "10_00", Invalid),
+                (b"10_00/b?.txt", "10_00/b_.txt", Invalid),
+            ],
+            &[],
+        ),
+        (
+            Quirks::vfat,
+            "10:00.zip",
+            Some("10_00"),
+            &[(b"a.txt", File), (b"b?.txt", File)],
+            Ok(()),
+            |outcome| matches!(outcome, Ok(ArchiveOutcome::Completed(Some(name))) if name == "10_00 (1)"),
+            &[
+                (b"10:00".as_slice(), "10_00 (1)", Invalid),
+                (b"10_00 (1)/b?.txt", "10_00 (1)/b_.txt", Invalid),
+            ],
+            &[],
+        ),
+        (
+            Quirks::ext4,
+            &long,
+            None,
+            &[(b"a.txt", File), (b"b.txt", File)],
+            Ok(()),
+            |outcome| matches!(outcome, Ok(ArchiveOutcome::Completed(Some(name))) if name.len() == 255),
+            &[(&long.as_bytes()[..256], &cut, TooLong)],
+            &[],
+        ),
+        (
+            Quirks::vfat,
+            ARCHIVE,
+            None,
+            nested,
+            Err(ArchiveError::Failed("Damaged.".to_owned())),
+            |outcome| matches!(outcome, Err(ArchiveError::Failed(message)) if message.ends_with("remain in “archive”.")),
+            nested_fixed,
+            &[],
+        ),
+        (
+            Quirks::vfat,
+            ARCHIVE,
+            None,
+            nested,
+            Err(ArchiveError::Cancelled),
+            |outcome| matches!(outcome, Ok(ArchiveOutcome::Cancelled { .. })),
+            nested_fixed,
+            &[],
+        ),
+        (
+            Quirks::vfat,
+            ARCHIVE,
+            None,
+            nested,
+            Err(ArchiveError::PasswordRequired(String::new())),
+            |outcome| matches!(outcome, Err(ArchiveError::PasswordRequired(_))),
+            &[],
+            &[],
+        ),
+        (
+            Quirks::vfat,
+            ARCHIVE,
+            None,
+            &[(b"lnk", Link(b"target"))],
+            Ok(()),
+            |outcome| matches!(outcome, Ok(ArchiveOutcome::Completed(None))),
+            &[],
+            &["lnk"],
+        ),
+        (
+            Quirks::vfat,
+            ARCHIVE,
+            None,
+            &[(b"bin/lnk", Link(b"target"))],
+            Ok(()),
+            |outcome| matches!(outcome, Ok(ArchiveOutcome::Completed(Some(name))) if name == "bin"),
+            &[],
+            &["bin/lnk"],
+        ),
+    ];
+    for (preset, archive, existing, members, ending, finished, renamed_as, skipped) in rows {
+        let root = tempfile::tempdir()?;
+        let _quirks = FsQuirks::install(root.path(), preset());
+        if let Some(existing) = existing {
+            fs::create_dir(root.path().join(existing))?;
+        }
+        let mut report = TransferReport::default();
+
+        let outcome = extract_members(root.path(), archive, members, ending, &mut report);
+
+        assert!(finished(&outcome), "{archive}: {outcome:?}");
+        assert_eq!(
+            report.renamed,
+            renamed(root.path(), renamed_as),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            report.skipped,
+            skipped
+                .iter()
+                .map(|name| SkippedItem {
+                    location: Location::local(root.path().join(name)),
+                    kind: SpecialKind::Symlink,
+                })
+                .collect::<Vec<_>>()
+        );
+        if let Ok(ArchiveOutcome::Cancelled { not_attempted, .. }) = &outcome {
+            let pending = format!("archive/10_00/later_x{}/next.txt", "a".repeat(248));
+            assert_eq!(*not_attempted, [Location::local(root.path().join(pending))]);
+        }
+    }
     Ok(())
 }

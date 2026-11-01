@@ -3,12 +3,16 @@
 #![cfg(test)]
 
 pub(crate) mod operations;
+pub(crate) mod parked;
+mod tests;
 
 use std::{
     io::Write,
-    sync::{Arc, LockResult, Mutex, MutexGuard, Once},
+    sync::{Arc, Condvar, LockResult, Mutex, MutexGuard, Once, OnceLock, PoisonError},
+    time::{Duration, Instant},
 };
 
+use gtk::glib;
 use tracing_subscriber::fmt::MakeWriter;
 
 pub(crate) struct TestMutex(Mutex<()>);
@@ -35,7 +39,84 @@ impl TestMutex {
 /// separate locks each covering only their own module's tests do not prevent a test in one
 /// module from racing a test in another, since neither knows about the other's lock. Poisoning is
 /// cleared because the mutex protects no state and should not turn one failure into a cascade.
-pub(crate) static ASYNC_MAIN_CONTEXT_DEFAULT: TestMutex = TestMutex::new();
+pub(crate) static ASYNC_MAIN_CONTEXT_DEFAULT: MainContextLock = MainContextLock(TestMutex::new());
+
+pub(crate) struct MainContextLock(TestMutex);
+
+pub(crate) struct MainContextGuard<'a> {
+    _lock: MutexGuard<'a, ()>,
+    first_source: u32,
+}
+
+impl MainContextLock {
+    pub(crate) fn lock(&self) -> LockResult<MainContextGuard<'_>> {
+        let lock = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        Ok(MainContextGuard {
+            _lock: lock,
+            first_source: next_source_id(),
+        })
+    }
+}
+
+impl Drop for MainContextGuard<'_> {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            return;
+        }
+        let context = glib::MainContext::default();
+        for id in self.first_source..next_source_id() {
+            if let Some(task) = task_at(&context, id) {
+                task.destroy();
+            }
+        }
+        settle(&context);
+    }
+}
+
+const SETTLED_AFTER: Duration = Duration::from_millis(100);
+const SETTLE_LIMIT: Duration = Duration::from_secs(2);
+
+fn settle(context: &glib::MainContext) {
+    let limit = Instant::now() + SETTLE_LIMIT;
+    let mut quiet_since = Instant::now();
+    while quiet_since.elapsed() < SETTLED_AFTER && Instant::now() < limit {
+        if context.iteration(false) {
+            quiet_since = Instant::now();
+        } else {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+}
+
+fn next_source_id() -> u32 {
+    let probe = glib::idle_source_new(None, glib::Priority::LOW, || glib::ControlFlow::Break);
+    let id = probe.attach(Some(&glib::MainContext::default())).as_raw();
+    probe.destroy();
+    id
+}
+
+#[expect(
+    unsafe_code,
+    reason = "glib-rs neither lists a context's sources nor tells its tasks apart"
+)]
+fn task_at(context: &glib::MainContext, id: u32) -> Option<glib::Source> {
+    static TASK_FUNCS: OnceLock<usize> = OnceLock::new();
+    let funcs = |source: &glib::Source| {
+        // SAFETY: a `Source` holds a reference to its `GSource`.
+        unsafe { (*source.as_ptr()).source_funcs as usize }
+    };
+    let tasks = *TASK_FUNCS.get_or_init(|| {
+        let task = glib::MainContext::new().spawn(std::future::pending::<()>());
+        let tasks = funcs(task.source());
+        task.abort();
+        tasks
+    });
+    // SAFETY: `id` is at least the id of a source GLib attached, so it is not 0.
+    let id = unsafe { glib::translate::from_glib(id) };
+    context
+        .find_source_by_id(&id)
+        .filter(|source| funcs(source) == tasks)
+}
 
 #[derive(Clone, Default)]
 pub(crate) struct LogWriter(Arc<Mutex<Vec<u8>>>);
@@ -116,6 +197,36 @@ pub(crate) fn texture_has_visible_pixels(texture: &gtk::gdk::Texture) -> bool {
         .any(|pixel| u32::from_ne_bytes(*pixel) >> 24 != 0)
 }
 
+pub(crate) fn save_pins(pins: &[(crate::model::Location, String)]) {
+    let path = crate::adapters::bookmarks::pinned_places_path();
+    std::fs::create_dir_all(path.parent().expect("bookmarks directory"))
+        .expect("bookmarks directory");
+    std::fs::write(
+        path,
+        crate::adapters::bookmarks::serialize_pinned_places(pins),
+    )
+    .expect("pins");
+}
+
+pub(crate) fn saved_pins() -> Vec<(crate::model::Location, String)> {
+    let contents =
+        std::fs::read(crate::adapters::bookmarks::pinned_places_path()).unwrap_or_default();
+    crate::adapters::bookmarks::parse_pinned_places(&contents)
+}
+
+/// Opens the new file read-only: vfat mounted with `flush` sleeps 100 ms at
+/// every close of a file opened for writing.
+pub(crate) fn create_empty_file(path: &std::path::Path) -> std::io::Result<()> {
+    use rustix::fs::{Mode, OFlags};
+    rustix::fs::open(
+        path,
+        OFlags::CREATE | OFlags::EXCL | OFlags::RDONLY | OFlags::CLOEXEC,
+        Mode::from_raw_mode(0o644),
+    )
+    .map(drop)
+    .map_err(std::io::Error::from)
+}
+
 /// GTK initialization is thread-affine; each UI test gets a process and disposable preferences.
 pub(crate) fn gtk_test(name: &str, run: impl FnOnce()) {
     gtk_test_with_env(name, std::iter::empty::<(&str, &std::ffi::OsStr)>(), run);
@@ -138,6 +249,8 @@ pub(crate) fn gtk_test_with_env(
         }
         crate::assets::prepare().expect("bundled assets");
         crate::assets::register_icon_theme();
+        crate::adapters::mount_watch::start();
+        crate::util::ui_thread::mark();
         run();
         return;
     }
@@ -166,6 +279,39 @@ pub(crate) fn gtk_test_with_env(
     }
     let status = command.status().expect("isolated GTK test starts");
     assert!(status.success(), "{name} failed");
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct Gate(Arc<(Mutex<(bool, bool)>, Condvar)>);
+
+impl Gate {
+    pub(crate) fn racer(&self) -> Box<dyn FnMut() + Send> {
+        let gate = self.clone();
+        Box::new(move || {
+            let (state, changed) = &*gate.0;
+            let mut state = state.lock().unwrap_or_else(PoisonError::into_inner);
+            state.0 = true;
+            changed.notify_all();
+            while !state.1 {
+                state = changed.wait(state).unwrap_or_else(PoisonError::into_inner);
+            }
+        })
+    }
+
+    pub(crate) fn reached(&self) -> bool {
+        self.0.0.lock().unwrap_or_else(PoisonError::into_inner).0
+    }
+
+    pub(crate) fn release(&self) {
+        self.0.0.lock().unwrap_or_else(PoisonError::into_inner).1 = true;
+        self.0.1.notify_all();
+    }
+}
+
+impl Drop for Gate {
+    fn drop(&mut self) {
+        self.release();
+    }
 }
 
 pub(crate) fn serve_http_once(response: Vec<u8>) -> String {

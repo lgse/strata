@@ -6,12 +6,17 @@ use gtk::{gio, glib, prelude::*};
 
 use crate::{assets::icons, portal_setup};
 
-use super::desktop_integration::{SETUP_RUNNING, set_search_available};
+use super::desktop_integration::{SETUP_RUNNING, package_provided_row, set_search_available};
 
 #[cfg(test)]
 mod tests;
 
+pub(crate) const PACKAGE_NOTE: &str = "The package that installed this build provides the udiskie unlock hook. Configure udiskie in your system configuration as the package documentation describes.";
+
 pub(super) fn settings_row() -> gtk::Box {
+    if !crate::build_info::runtime_integrations_enabled() {
+        return package_provided_row("Unlock encrypted volumes", PACKAGE_NOTE);
+    }
     let row = gtk::Box::new(gtk::Orientation::Vertical, 2);
     row.add_css_class("settings-option");
     let content = gtk::Box::new(gtk::Orientation::Vertical, 2);

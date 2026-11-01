@@ -250,7 +250,7 @@ fn deleting_a_nested_camera_file_removes_only_its_original_uri_from_the_flat_vie
         state.navigate(root, RequestId(1));
         let _ = state.apply_batch(RequestId(1), vec![first.clone(), second.clone()]);
     }
-    browser.remove_deleted_locations(&[first.location]);
+    browser.remove_deleted_locations(&[first.location], &[]);
     assert_eq!(
         browser.column_snapshot(0).map(|column| column.count),
         Some(1)
@@ -274,7 +274,7 @@ fn large_camera_deletions_rescan_each_open_library_only_once() {
     let deleted: Vec<_> = (0..=MAX_INCREMENTAL_OPERATION_UPDATES)
         .map(|i| Location::uri(format!("gphoto2://camera/folder-{i}/image.jpg")))
         .collect();
-    browser.remove_deleted_locations(&deleted);
+    browser.remove_deleted_locations(&deleted, &[]);
     assert_eq!(requests.get(), 1);
     let parents: Vec<_> = deleted.iter().filter_map(Location::parent).collect();
     browser.refresh_columns_at_many(&parents);

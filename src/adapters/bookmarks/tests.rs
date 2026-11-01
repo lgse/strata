@@ -28,16 +28,24 @@ fn deleted_pins_and_descendants_are_removed_without_rewriting_other_entries() {
 fn cleanup_reads_current_bookmarks_and_leaves_missing_files_absent() {
     let directory = tempfile::tempdir().expect("fixture");
     let path = directory.path().join("bookmarks");
-    let file = gio::File::for_path(&path);
-    let deleted = [Location::local("/fixture/gone")];
-    remove_deleted_pins(&file, &deleted).expect("missing bookmarks");
+    let forget = forgetting(vec![Location::local("/fixture/gone")]);
+    let (pins, changed) = apply(&path, &forget, replace).expect("missing bookmarks");
+    assert!(pins.is_empty() && !changed);
     assert!(!path.exists());
     std::fs::write(
         &path,
         b"file:///fixture/gone Gone\nfile:///fixture/added External\xff\n",
     )
     .expect("external edit");
-    remove_deleted_pins(&file, &deleted).expect("cleanup");
+    let (pins, changed) = apply(&path, &forget, replace).expect("cleanup");
+    assert!(changed);
+    assert_eq!(
+        pins,
+        [(
+            Location::local("/fixture/added"),
+            "External\u{fffd}".to_owned()
+        )]
+    );
     assert_eq!(
         std::fs::read(&path).expect("saved bookmarks"),
         b"file:///fixture/added External\xff\n"
@@ -45,40 +53,32 @@ fn cleanup_reads_current_bookmarks_and_leaves_missing_files_absent() {
 }
 
 #[test]
-fn concurrent_edits_are_reread_after_an_etag_conflict() {
+fn an_edit_made_elsewhere_before_the_rename_is_read_again_and_kept() {
     let directory = tempfile::tempdir().expect("fixture");
     let path = directory.path().join("bookmarks");
-    let file = gio::File::for_path(&path);
     std::fs::write(&path, b"file:///fixture/gone Gone\n").expect("initial pins");
-    let mut collided = false;
-    remove_deleted_pins_with(
-        &file,
-        &[Location::local("/fixture/gone")],
-        |contents, etag| {
-            if !collided {
-                collided = true;
+    let mut attempts = Vec::new();
+    let (_, changed) = apply(
+        &path,
+        &forgetting(vec![Location::local("/fixture/gone")]),
+        |path, contents, read| {
+            attempts.push(contents.to_vec());
+            if attempts.len() == 1 {
                 std::fs::write(
-                    &path,
+                    path,
                     b"file:///fixture/gone Gone\nfile:///external New\xff\r\n",
                 )
                 .expect("concurrent edit");
-                return Err(glib::Error::new(
-                    gio::IOErrorEnum::WrongEtag,
-                    "concurrent edit",
-                ));
             }
-            assert_eq!(contents, b"file:///external New\xff\r\n");
-            file.replace_contents(
-                contents,
-                etag,
-                false,
-                gio::FileCreateFlags::NONE,
-                gio::Cancellable::NONE,
-            )
-            .map(|_| ())
+            replace(path, contents, read)
         },
     )
     .expect("retry cleanup");
+    assert!(changed);
+    assert_eq!(
+        attempts,
+        [b"".to_vec(), b"file:///external New\xff\r\n".to_vec()]
+    );
     assert_eq!(
         std::fs::read(path).expect("saved pins"),
         b"file:///external New\xff\r\n"
@@ -87,28 +87,28 @@ fn concurrent_edits_are_reread_after_an_etag_conflict() {
 
 #[test]
 fn cleanup_stops_on_repeated_conflicts_and_other_write_errors() {
-    for code in [
-        gio::IOErrorEnum::WrongEtag,
-        gio::IOErrorEnum::PermissionDenied,
-    ] {
+    for refused in [None, Some(io::ErrorKind::PermissionDenied)] {
         let directory = tempfile::tempdir().expect("fixture");
         let path = directory.path().join("bookmarks");
         let original = b"file:///fixture/gone Gone\nfile:///external Keep\n";
         std::fs::write(&path, original).expect("pins");
         let mut attempts = 0;
-        let result = remove_deleted_pins_with(
-            &gio::File::for_path(&path),
-            &[Location::local("/fixture/gone")],
-            |_, _| {
+        let result = apply(
+            &path,
+            &forgetting(vec![Location::local("/fixture/gone")]),
+            |_, _, _| {
                 attempts += 1;
                 assert!(attempts < 10, "cleanup retries must be bounded");
-                Err(glib::Error::new(code, "write failed"))
+                match refused {
+                    Some(kind) => Err(kind.into()),
+                    None => Ok(false),
+                }
             },
         );
-        assert!(result.expect_err("write failure").matches(code));
-        if code == gio::IOErrorEnum::PermissionDenied {
-            assert_eq!(attempts, 1);
-        }
+        let error = result.expect_err("write failure");
+        assert_eq!(error.kind(), refused.unwrap_or(io::ErrorKind::ResourceBusy));
+        assert_eq!(attempts, if refused.is_some() { 1 } else { RETRIES + 1 });
+        assert_eq!(std::fs::read(&path).expect("unchanged pins"), original);
     }
 }
 

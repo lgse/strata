@@ -43,6 +43,11 @@ pub(super) fn set_file_progress_delay_for_test(delay: Duration) {
     FILE_PROGRESS_DELAY_OVERRIDE.with(|cell| cell.set(Some(delay)));
 }
 
+#[cfg(test)]
+pub(super) fn reset_file_progress_delay_for_test() {
+    FILE_PROGRESS_DELAY_OVERRIDE.with(|cell| cell.set(None));
+}
+
 const INDETERMINATE_PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 const STALLED_CANCEL_DELAY: Duration = Duration::from_secs(8);
 
@@ -89,6 +94,19 @@ pub(super) struct FileProgressView {
     last_transfer_render: Cell<Option<Instant>>,
 }
 
+/// `None` while the transfer still prepares its items.
+fn transfer_count(
+    completed_items: usize,
+    total_items: usize,
+    completed_files: usize,
+    total_files: Option<usize>,
+) -> Option<(usize, usize, &'static str)> {
+    match total_files.filter(|total| *total > 0) {
+        Some(total_files) => Some((completed_files, total_files, "files")),
+        None => (total_items > 0).then_some((completed_items, total_items, "items")),
+    }
+}
+
 fn transfer_progress_status(
     completed_items: usize,
     total_items: usize,
@@ -98,22 +116,14 @@ fn transfer_progress_status(
     total_bytes: Option<u64>,
     current_file: Option<&str>,
 ) -> (String, String, String, Option<f64>) {
-    let items = if let Some(total_files) = total_files.filter(|total| *total > 0) {
-        rust_i18n::t!(
+    let items = match transfer_count(completed_items, total_items, completed_files, total_files) {
+        Some((completed, total, kind)) => rust_i18n::t!(
             "%{completed} of %{items}",
-            completed = crate::i18n::integer(completed_files as u64),
-            items = crate::i18n::count("files", total_files)
+            completed = crate::i18n::integer(completed as u64),
+            items = crate::i18n::count(kind, total)
         )
-        .into_owned()
-    } else if total_items > 0 {
-        rust_i18n::t!(
-            "%{completed} of %{items}",
-            completed = crate::i18n::integer(completed_items as u64),
-            items = crate::i18n::count("items", total_items)
-        )
-        .into_owned()
-    } else {
-        crate::i18n::tr("Preparing items…")
+        .into_owned(),
+        None => crate::i18n::tr("Preparing items…"),
     };
     let items = match current_file.filter(|name| !name.is_empty()) {
         Some(name) => format!("{items} · {name}"),
@@ -176,6 +186,16 @@ fn transfer_rate_status(rate: Option<f64>, transferred: u64, total: Option<u64>)
     .into_owned()
 }
 
+pub(super) const TRANSFER_SUBTITLE: &str = "Cancelling will not undo completed changes";
+
+pub(super) fn transfer_heading(moving: bool) -> (&'static str, &'static str) {
+    if moving {
+        (crate::assets::icons::FOLDER, "Moving items")
+    } else {
+        (crate::assets::icons::COPY, "Copying items")
+    }
+}
+
 pub(in crate::ui::browser) fn cancelled_operation_summary(
     completed: usize,
     failed: usize,
@@ -201,13 +221,63 @@ impl FileProgressState {
         subtitle_text: &str,
         on_cancel: Rc<dyn Fn()>,
     ) {
+        let at_once = should_show_progress_immediately(total);
+        self.show_operation_progress(total, at_once, icon, title_text, subtitle_text, on_cancel);
+    }
+
+    pub(super) fn show_operation_progress(
+        self: &Rc<Self>,
+        total: usize,
+        at_once: bool,
+        icon: &str,
+        title_text: &str,
+        subtitle_text: &str,
+        on_cancel: Rc<dyn Fn()>,
+    ) {
         self.dismiss_file_operation_progress();
         self.file_operation_progress.set((0, total));
-        if should_show_progress_immediately(total) {
+        if at_once {
             self.present_file_operation_progress(icon, title_text, subtitle_text, on_cancel);
             return;
         }
+        self.present_file_operation_progress_later(icon, title_text, subtitle_text, on_cancel);
+    }
 
+    pub(super) fn is_presented(&self) -> bool {
+        self.file_progress_view.borrow().is_some()
+    }
+
+    /// Appears only if the conflict check outlasts the usual progress delay, where the transfer's
+    /// own row will take over.
+    pub(super) fn show_transfer_preparation(
+        self: &Rc<Self>,
+        moving: bool,
+        (description, (destination, label)): (String, (String, String)),
+        on_cancel: Rc<dyn Fn()>,
+    ) {
+        self.dismiss_file_operation_progress();
+        self.dock_only.set(!moving);
+        self.task_description.replace(description);
+        self.destination_description.replace(destination);
+        self.destination_label.replace(label);
+        self.transfer_progress.set(Some(TransferProgressSnapshot {
+            completed_items: 0,
+            completed_files: 0,
+            total_files: None,
+            transferred_bytes: 0,
+            total_bytes: None,
+        }));
+        let (icon, title) = transfer_heading(moving);
+        self.present_file_operation_progress_later(icon, title, TRANSFER_SUBTITLE, on_cancel);
+    }
+
+    fn present_file_operation_progress_later(
+        self: &Rc<Self>,
+        icon: &str,
+        title_text: &str,
+        subtitle_text: &str,
+        on_cancel: Rc<dyn Fn()>,
+    ) {
         let weak = Rc::downgrade(self);
         let icon = icon.to_owned();
         let title_text = title_text.to_owned();
@@ -619,6 +689,26 @@ impl FileProgressState {
         view.status.set_text(&new_status);
         view.indeterminate.set(false);
         view.progress.set_fraction(new_fraction);
+        self.sync_compact(view);
+    }
+
+    /// A single item stays at 0% until it is gone, so pulse and show the entries removed
+    /// instead. With several items the item count already carries the progress.
+    pub(super) fn update_removed_entries(&self, removed: usize) {
+        let (_, total) = self.file_operation_progress.get();
+        if total > 1 || self.transfer_cancel_requested.get() {
+            return;
+        }
+        let progress_view = self.file_progress_view.borrow();
+        let Some(view) = progress_view.as_ref() else {
+            return;
+        };
+        view.status.set_text(&rust_i18n::t!(
+            "%{items} deleted",
+            items = item_count_label(removed)
+        ));
+        view.indeterminate.set(true);
+        ensure_indeterminate_pulse(view);
         self.sync_compact(view);
     }
 

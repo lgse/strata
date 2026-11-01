@@ -1,0 +1,7 @@
+{"scenario":"selected-blank-space-starts-file-drag","modes":["columns","icons","list"],"prefs":{"single_click_previews":true},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.0,"icons":0.9,"list":0.9},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"Drag a selected file from blank item space (icon or label) onto a folder; origin fix #1336 routes blank-row drags; drag-file-onto-folder covers the item-body route only"}}
+{"click":{"entry":"todo.txt"}}
+{"wait":{"selected":{"contains":["todo.txt"]}},"message":"source selection"}
+{"drag":{"from":{"entry":"todo.txt","part":"icon"},"from_at":["start-6","50%"],"to":{"entry":"archive"}},"modes":["icons"]}
+{"drag":{"from":{"entry":"todo.txt","part":"label"},"from_at":["2/3","50%"],"to":{"entry":"archive"}},"modes":["columns","list"]}
+{"fs":{"path":"archive/todo.txt","exists":true},"message":"the selected file dragged from blank item space"}
+{"fs":{"path":"todo.txt","exists":false},"timeout_ms":0}

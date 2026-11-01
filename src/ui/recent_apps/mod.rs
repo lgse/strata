@@ -37,21 +37,26 @@ pub(super) fn history_path() -> PathBuf {
 }
 
 // History failures must not prevent launching files.
-pub(super) fn record(content_types: &[String], app_id: &str, known_ids: &HashSet<String>) {
+pub(super) fn record(content_types: &[String], app_id: &str, known_ids: HashSet<String>) {
     if app_id.is_empty() || content_types.is_empty() {
         return;
     }
-    let mut state = load_from(&history_path());
-    record_in(&mut state, content_types, app_id);
-    prune_unknown(&mut state, known_ids);
-    save_to(&history_path(), &mut state);
+    let (content_types, app_id) = (content_types.to_vec(), app_id.to_owned());
+    drop(crate::storage::writer::run(move || {
+        let path = history_path();
+        let mut state = load_from(&path);
+        record_in(&mut state, &content_types, &app_id);
+        prune_unknown(&mut state, &known_ids);
+        save_to(&path, &mut state);
+    }));
 }
 
-pub(super) fn load() -> State {
-    load_from(&history_path())
+pub(super) fn read() -> futures_channel::oneshot::Receiver<State> {
+    crate::storage::writer::run(|| load_from(&history_path()))
 }
 
 fn load_from(path: &Path) -> State {
+    crate::util::ui_thread::assert_off();
     let contents = match std::fs::read_to_string(path) {
         Ok(contents) => contents,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return State::default(),

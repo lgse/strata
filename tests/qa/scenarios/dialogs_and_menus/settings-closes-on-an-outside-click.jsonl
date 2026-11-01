@@ -1,0 +1,7 @@
+{"scenario":"settings-closes-on-an-outside-click","modes":["columns"],"layout":"us","mutation":null,"known_bug":null}
+{"key":"ctrl+comma"}
+{"wait":{"present":{"role":"button","name":"Close settings"}},"message":"Ctrl+, to open Settings"}
+{"click":{"window":true},"at":[600,300]}
+{"expect":{"present":{"role":"button","name":"Close settings"}},"message":"a click inside the Settings panel must not close it"}
+{"click":{"window":true},"at":[5,5]}
+{"wait":{"absent":{"role":"button","name":"Close settings"}},"message":"a click outside the Settings panel to close it"}

@@ -1,0 +1,10 @@
+{"scenario":"chooser-filtered-file-click-previews","modes":["columns","icons","list"],"prefs":{"single_click_previews":true},"layout":"us","mutation":null,"known_bug":null,"portal":true,"session_bus":true,"cost":{"columns":0.5,"icons":0.5,"list":0.5}}
+{"portal_open":"Filtered preview test","options":{"current_folder":"$fixture"}}
+{"adopt":"Filtered preview test","timeout_ms":20000,"message":"Filtered preview test chooser"}
+{"wait":{"present":{"row":"todo.txt"}},"message":"the 'todo.txt' row"}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"type":"todo"}
+{"wait":{"present":{"search_result":"todo.txt"}},"message":"the filtered file result"}
+{"click":{"search_result":"todo.txt"}}
+{"wait":{"preview":"todo"},"message":"one click to preview the filtered file in the chooser"}

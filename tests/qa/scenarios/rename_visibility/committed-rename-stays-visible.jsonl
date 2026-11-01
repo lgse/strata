@@ -1,0 +1,39 @@
+{"scenario":"committed-rename-stays-visible","modes":["columns"],"layout":"us","tree":{"m-entry-{000..079}":"body\n"},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Committed rename keeps its cursor across Columns and List; delayed focus restoration must not undo subsequent arrow navigation"}}
+{"wait":{"focused":"m-entry-000"},"message":"keyboard focus on the first of 80 entries"}
+{"key":"End"}
+{"wait":{"selected":["m-entry-079"],"dir":"$root"},"message":"End to select the last entry 'm-entry-079'"}
+{"key":"F2"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus on 'm-entry-079'"}
+{"remember":{"field":true},"as":"columns"}
+{"wait":{"field":{"of":"columns","text":"m-entry-079"}},"message":"the original name 'm-entry-079' in the editor"}
+{"type":"a"}
+{"wait":{"field":{"of":"columns","text":"a"}},"message":"typing to replace the whole name"}
+{"key":"Return"}
+{"fs":{"path":"a","text":"body\n"},"message":"Return to rename 'm-entry-079' to 'a' in Columns"}
+{"wait":{"entry_gone":"m-entry-079","dir":"$root"},"message":"the entry 'm-entry-079' to leave the listing"}
+{"wait":{"all":[{"state":{"target":{"role":"list item","name":"a","within":{"pane":"$root"}},"selected":true}},{"inside":{"target":{"role":"panel","within":{"role":"list item","name":"a","within":{"pane":"$root"}}},"of":{"container":"$root"}}}]},"message":"'a', moved from the bottom to the top, to be selected and scrolled fully into view in Columns"}
+{"key":"Down"}
+{"wait":{"selected":["m-entry-000"],"dir":"$root"},"message":"Down from the renamed 'a' to select 'm-entry-000' in Columns"}
+{"key":"ctrl+3"}
+{"wait":{"view_mode":"List"},"message":"the browser to switch to the List view"}
+{"key":"End"}
+{"wait":{"selected":["m-entry-078"],"dir":"$root"},"message":"End to select the last entry 'm-entry-078', scrolled to the bottom"}
+{"click":{"container":"$root"},"button":3,"at":[1,"50%"]}
+{"wait":{"present":{"menu_item":"New File"}},"message":"the menu item 'New File'"}
+{"settle":{"menu_item":"New File"}}
+{"click":{"menu_item":"New File"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus on the new file"}
+{"remember":{"field":true},"as":"list"}
+{"wait":{"field":{"of":"list","text":"new file"}},"message":"the default name 'new file' in the editor"}
+{"type":"b"}
+{"wait":{"field":{"of":"list","text":"b"}},"message":"typing to replace the default name"}
+{"key":"Return"}
+{"fs":{"path":"b","text":""},"message":"Return to commit the new file, created at the bottom, as 'b' in List"}
+{"wait":{"entry_gone":"new file","dir":"$root"},"message":"the entry 'new file' to leave the listing"}
+{"wait":{"all":[{"state":{"target":{"role":"list item","name":"b","within":{"pane":"$root"}},"selected":true}},{"inside":{"target":{"role":"panel","within":{"role":"list item","name":"b","within":{"pane":"$root"}}},"of":{"container":"$root"}}}]},"message":"'b', moved from the bottom to near the top, to be selected and scrolled fully into view in List"}
+{"key":"Down"}
+{"wait":{"selected":["m-entry-000"],"dir":"$root"},"message":"Down from the renamed 'b' to select 'm-entry-000' in List"}
+{"during":{"all":[{"selected":["m-entry-000"],"dir":"$root"},{"focused":"m-entry-000"}]},"ms":500,"every_ms":25,"message":"a delayed rename focus restore must not undo the next keyboard move"}
+{"key":"Down"}
+{"wait":{"selected":["m-entry-001"],"dir":"$root"},"message":"a second Down to continue from the current cursor"}

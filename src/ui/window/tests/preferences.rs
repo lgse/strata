@@ -37,8 +37,7 @@ fn sidebar_folder_customization_loads_and_updates_across_windows() {
                 (Location::local(&home), icons::HOME),
                 (Location::local(&downloads), icons::DOWNLOADS),
             ];
-            super::super::save_pinned_places(&[(location.clone(), "Custom folder".into())])
-                .expect("save pin");
+            crate::test_support::save_pins(&[(location.clone(), "Custom folder".into())]);
             let mut settings = String::from("[folder_colors]\n");
             for (location, _) in &cases {
                 settings.push_str(&format!("\"{}\" = \"red\"\n", location.display_path()));
@@ -519,11 +518,19 @@ fn window_buttons_load_and_follow_settings_across_open_and_later_windows() {
                 assert!(settings_closed(open));
                 assert_buttons(open, [true, true, false]);
             }
+            crate::storage::writer::settle();
             let saved = std::fs::read(settings_file()).expect("saved settings");
             for open in [&first, &second] {
                 open.content.settings_button().emit_clicked();
             }
             settle();
+            for page in ["keyboard", "general"] {
+                for open in [&first, &second] {
+                    settings_page_button(open, page).emit_clicked();
+                }
+                settle();
+            }
+            crate::storage::writer::settle();
             assert_eq!(
                 std::fs::read(settings_file()).expect("settings unchanged"),
                 saved
@@ -560,6 +567,7 @@ fn window_buttons_load_and_follow_settings_across_open_and_later_windows() {
             for open in [&first, &second, &third] {
                 assert_buttons(open, [false, false, true]);
             }
+            crate::storage::writer::settle();
             let persisted: toml::Value = toml::from_str(
                 &std::fs::read_to_string(settings_file()).expect("persisted preferences"),
             )
@@ -681,6 +689,7 @@ fn browsing_control_and_shortcut_update_both_windows() {
             assert_controls(&first, true);
             assert_controls(&second, true);
             assert!(!second.content.footer().tag_visible());
+            crate::storage::writer::settle();
             let saved = std::fs::read_to_string(settings_file()).expect("saved settings");
             assert!(saved.contains("tenxer_mode = false"));
         },
@@ -738,6 +747,7 @@ fn saved_sidebar_compact_starts_railed_and_the_toggle_steps_both_windows() {
                 );
                 assert!(open.content.sidebar_visible());
             }
+            crate::storage::writer::settle();
             let saved = std::fs::read_to_string(settings_file()).expect("saved settings");
             assert!(saved.contains("sidebar_compact = true"), "{saved}");
         },
@@ -861,8 +871,157 @@ fn saved_sidebar_collapsed_restores_and_ctrl_b_updates_both_windows() {
                     || sidebar_report(&[&first, &second], &manager),
                 );
             }
+            crate::storage::writer::settle();
             let saved = std::fs::read_to_string(settings_file()).expect("saved settings");
             assert!(saved.contains("sidebar_expanded = false"), "{saved}");
+        },
+    );
+}
+
+#[test]
+fn override_change_reaches_two_windows() {
+    gtk_test(
+        "ui::window::tests::preferences::override_change_reaches_two_windows",
+        || {
+            use crate::ui::keys::{Binding, Map, bindings};
+            use gtk::gdk::{Key, ModifierType};
+            let manager = PreferenceManager::shared();
+            let first = OpenWindow::open();
+            let second = OpenWindow::open();
+            let tooltip = |open: &OpenWindow| {
+                open.content
+                    .sidebar_toggle()
+                    .tooltip_text()
+                    .unwrap_or_default()
+                    .to_string()
+            };
+            let footer_button = |open: &OpenWindow| {
+                let mut text = None;
+                walk(open.window.upcast_ref(), &mut |widget| {
+                    if let Some(label) = widget.downcast_ref::<gtk::Label>()
+                        && label.text().ends_with(" Shortcuts")
+                    {
+                        text = Some(label.text().to_string());
+                    }
+                });
+                text.expect("footer shortcuts button")
+            };
+            assert!(tooltip(&second).contains("Ctrl+B"), "{}", tooltip(&second));
+            assert_eq!(footer_button(&second), "F1 Shortcuts");
+
+            manager.set_bindings(Map::Default, bindings::SIDEBAR, vec![Binding::ctrl(Key::g)]);
+            manager.set_bindings(
+                Map::Default,
+                bindings::REFERENCE,
+                vec![Binding::plain(Key::F12)],
+            );
+            settle();
+            for open in [&first, &second] {
+                assert!(tooltip(open).contains("Ctrl+G"), "{}", tooltip(open));
+                assert_eq!(footer_button(open), "F12 Shortcuts");
+            }
+            assert!(manager.sidebar_expanded() && !manager.sidebar_compact());
+            press(&second.window, Key::b, ModifierType::CONTROL_MASK);
+            settle();
+            assert!(
+                !manager.sidebar_compact(),
+                "Ctrl+B no longer steps the sidebar"
+            );
+            press(&second.window, Key::g, ModifierType::CONTROL_MASK);
+            settle();
+            assert!(manager.sidebar_compact(), "Ctrl+G steps the sidebar");
+            for open in [&first, &second] {
+                wait_until_or(
+                    || open.content.sidebar.state.rail.get(),
+                    || sidebar_report(&[&first, &second], &manager),
+                );
+            }
+
+            manager.set_bindings(Map::Default, bindings::SIDEBAR, Vec::new());
+            settle();
+            for open in [&first, &second] {
+                assert!(
+                    ["Show sidebar", "Hide sidebar", "Compact sidebar"]
+                        .contains(&tooltip(open).as_str()),
+                    "an unbound toggle names no keys: {}",
+                    tooltip(open)
+                );
+            }
+            manager.reset_binding(Map::Default, bindings::SIDEBAR);
+            manager.reset_map(Map::Default);
+            settle();
+            for open in [&first, &second] {
+                assert!(tooltip(open).contains("Ctrl+B"), "{}", tooltip(open));
+                assert_eq!(footer_button(open), "F1 Shortcuts");
+            }
+            first.window.close();
+            second.window.close();
+        },
+    );
+}
+
+#[test]
+fn capture_commits_and_second_window_follows() {
+    gtk_test(
+        "ui::window::tests::preferences::capture_commits_and_second_window_follows",
+        || {
+            use crate::ui::keys::{Binding, Map, bindings::RENAME};
+            use gtk::gdk::{Key, ModifierType};
+            let manager = PreferenceManager::shared();
+            let first = OpenWindow::open();
+            let second = OpenWindow::open();
+            let _folder = load_folder(&second);
+            first.content.settings_button().emit_clicked();
+            settle();
+            settings_page_button(&first, "keyboard").emit_clicked();
+            settle();
+            let mut add = None;
+            walk(first.content.overlay().upcast_ref(), &mut |widget| {
+                if widget.widget_name() == "keymap-default" {
+                    walk(widget, &mut |row| {
+                        if row.widget_name() == "settings-search-keymap.rename" {
+                            walk(row, &mut |child| {
+                                if let Some(button) = child.downcast_ref::<gtk::Button>()
+                                    && button.label().as_deref() == Some("Add")
+                                {
+                                    add = Some(button.clone());
+                                }
+                            });
+                        }
+                    });
+                }
+            });
+            add.expect("Add on the Rename row").emit_clicked();
+            settle();
+            assert!(press(&first.window, Key::e, ModifierType::CONTROL_MASK));
+            settle();
+            assert_eq!(
+                manager.keymap().bindings(Map::Default, RENAME),
+                [
+                    Binding::plain(Key::F2),
+                    Binding::ctrl(Key::r),
+                    Binding::ctrl(Key::e)
+                ]
+            );
+
+            let browser = second.content.browser.browser();
+            let position = (0..2)
+                .find(|position| {
+                    browser
+                        .entry_at(0, *position)
+                        .is_some_and(|entry| entry.display_name == "a.txt")
+                })
+                .expect("file position");
+            browser.set_active_column(0);
+            browser.select(0, position);
+            browser.focus_active();
+            settle();
+            press(&second.window, Key::e, ModifierType::CONTROL_MASK);
+            wait_until(|| second.content.browser.rename_is_active());
+            assert!(second.content.browser.cancel_rename());
+            close_settings(&first);
+            first.window.close();
+            second.window.close();
         },
     );
 }
@@ -1115,6 +1274,11 @@ fn entering_tenxer_hides_an_open_filter_and_leaving_restores_it() {
             settle();
             assert!(!revealer.reveals_child());
             assert_controls(&open, false);
+            assert!(
+                focusable_outside_the_browser(&open).grab_focus(),
+                "focus leaves the column while 10xer hides the filter"
+            );
+            settle();
             manager.set_tenxer_mode(false);
             settle();
             assert!(revealer.reveals_child());
@@ -1237,6 +1401,7 @@ fn saved_folder_sorts_and_icon_sizes_apply_before_settings_and_follow_changes_ac
                 (SortKey::Name, SortDirection::Ascending)
             );
             manager.flush_folder_views();
+            crate::storage::writer::settle();
             assert!(folder_views_file().contains("sort = \"type\""));
 
             manager.set_browser_mode(BrowserMode::Icons);
@@ -1351,12 +1516,26 @@ fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() 
                 FolderSort::Default
             );
 
+            let held = crate::storage::writer::hold();
             write_folder_views(&format!(
                 "version = 1\n[[folder]]\npath = \"{}\"\nsort = \"size\"\ndirection = \"descending\"\n",
                 elsewhere.display_path()
             ));
+            manager.notice_saves_elsewhere();
+            settle_for(std::time::Duration::from_millis(100));
+            assert_eq!(
+                manager.resolve_folder_sort(&elsewhere, false),
+                FolderSort::Default,
+                "another process's save is read on the settings writer"
+            );
+            drop(held);
+            wait_until(|| {
+                manager.resolve_folder_sort(&elsewhere, false)
+                    == FolderSort::Saved(SortKey::Size, SortDirection::Descending)
+            });
             manager.set_folder_sort(&here, SortKey::Type, SortDirection::Ascending);
             manager.flush_folder_views();
+            crate::storage::writer::settle();
 
             let saved = folder_views_file();
             assert!(saved.contains(&here.display_path()), "{saved}");
@@ -1373,14 +1552,44 @@ fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() 
                     .is_some_and(|preferences| preferences.sort_key == SortKey::Size)
             });
 
+            for (sort_here, reread_first, saves) in
+                [(SortKey::Modified, true, 1), (SortKey::Size, false, 2)]
+            {
+                let outside = tempfile::tempdir().expect("folder sorted elsewhere");
+                let outside = Location::local(outside.path());
+                let held = crate::storage::writer::hold();
+                write_folder_views(&format!(
+                    "{}[[folder]]\npath = \"{}\"\nsort = \"size\"\ndirection = \"ascending\"\n",
+                    folder_views_file(),
+                    outside.display_path()
+                ));
+                if reread_first {
+                    manager.notice_saves_elsewhere();
+                }
+                manager.set_folder_sort(&here, sort_here, SortDirection::Ascending);
+                for _ in 0..saves {
+                    manager.flush_folder_views();
+                }
+                drop(held);
+                crate::storage::writer::settle();
+                assert_eq!(
+                    manager.resolve_folder_sort(&outside, false),
+                    FolderSort::Saved(SortKey::Size, SortDirection::Ascending)
+                );
+                let saved = folder_views_file();
+                assert!(saved.contains(&outside.display_path()), "{saved}");
+            }
+
             manager.forget_folder_views();
             manager.flush_folder_views();
+            crate::storage::writer::settle();
             write_folder_views(&format!(
                 "version = 1\n[[folder]]\npath = \"{}\"\nsort = \"type\"\ndirection = \"descending\"\n",
                 elsewhere.display_path()
             ));
             manager.forget_folder_views();
             manager.flush_folder_views();
+            crate::storage::writer::settle();
             assert!(
                 !folder_views_file().contains("[[folder]]"),
                 "forgetting also clears what another process saved"
@@ -1394,10 +1603,12 @@ fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() 
                 write_folder_views(unsaveable);
                 manager.set_folder_sort(&here, SortKey::Size, SortDirection::Ascending);
                 manager.flush_folder_views();
+                crate::storage::writer::settle();
                 assert_eq!(folder_views_file(), unsaveable);
             }
             write_folder_views("version = 1\n");
             manager.flush_folder_views();
+            crate::storage::writer::settle();
             assert!(
                 folder_views_file().contains(&here.display_path()),
                 "the save is retried once the file can be read again"
@@ -1429,6 +1640,7 @@ fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() 
             manager.set_folder_sort(&here, SortKey::Modified, SortDirection::Ascending);
             let started = std::time::Instant::now();
             manager.flush_folder_views();
+            crate::storage::writer::settle();
             assert!(
                 started.elapsed() < std::time::Duration::from_secs(4),
                 "the exit save stops waiting for a stuck process"
@@ -1448,8 +1660,25 @@ fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() 
                 .expect("config directory");
             std::fs::write(&staged, toml::to_string(&settings).expect("settings"))
                 .expect("settings saved elsewhere");
+            let held = crate::storage::writer::hold();
             std::fs::rename(&staged, settings_file()).expect("settings replaced");
+            manager.notice_saves_elsewhere();
+            manager.set_folder_peeking(!manager.folder_peeking());
+            settle_for(std::time::Duration::from_millis(100));
+            assert_eq!(
+                manager.default_sort(),
+                (SortKey::Name, SortDirection::Ascending),
+                "defaults saved elsewhere are read on the settings writer"
+            );
+            drop(held);
             wait_until(|| manager.default_sort() == (SortKey::Modified, SortDirection::Descending));
+            crate::storage::writer::settle();
+            assert!(
+                std::fs::read_to_string(settings_file())
+                    .expect("settings")
+                    .contains("sort_key = \"modified\""),
+                "a save that was in flight keeps the defaults saved elsewhere"
+            );
             manager.set_folder_sort(&here, SortKey::Name, SortDirection::Ascending);
             assert_eq!(
                 manager.resolve_folder_sort(&here, false),
@@ -1499,6 +1728,7 @@ fn unreadable_folder_settings_use_defaults_and_are_never_overwritten() {
                 "changes still apply until Strata closes"
             );
             PreferenceManager::shared().flush_folder_views();
+            crate::storage::writer::settle();
             assert_eq!(folder_views_file(), unreadable);
         },
     );
@@ -1644,6 +1874,7 @@ fn list_column_customization_preserves_saved_and_live_folder_sorts() {
                 FolderSort::Saved(size_descending.0, size_descending.1)
             );
             manager.flush_folder_views();
+            crate::storage::writer::settle();
             assert!(folder_views_file().contains("sort = \"size\""));
 
             manager.set_remember_folder_views(false);
@@ -1675,89 +1906,155 @@ fn list_column_customization_preserves_saved_and_live_folder_sorts() {
 }
 
 #[test]
-fn show_thumbnails_saved_and_live_preferences_apply_across_windows_and_views() {
+fn watching_network_folders_applies_before_settings_and_follows_changes_across_windows() {
     gtk_test(
-        "ui::window::tests::preferences::show_thumbnails_saved_and_live_preferences_apply_across_windows_and_views",
+        "ui::window::tests::preferences::watching_network_folders_applies_before_settings_and_follows_changes_across_windows",
         || {
-            use crate::ui::thumbnail::{
-                ThumbnailSlot, cached_thumbnail, remember_thumbnail_for_test,
-            };
-
-            write_settings("show_thumbnails = false\nbrowser_mode = 'list'\n");
-            let directory = tempfile::tempdir().expect("image folder");
-            let path = directory.path().join("photo.png");
-            let texture: gtk::gdk::Texture = gtk::gdk::MemoryTexture::new(
-                1,
-                1,
-                gtk::gdk::MemoryFormat::R8g8b8a8,
-                &gtk::glib::Bytes::from_owned(vec![120, 80, 40, 255]),
-                4,
-            )
-            .upcast();
-            texture.save_to_png(&path).expect("image fixture");
+            write_settings("watch_network_folders = false\n");
             let manager = PreferenceManager::shared();
-            let windows = [OpenWindow::open(), OpenWindow::open()];
-            for open in &windows {
-                open.content
-                    .browser
-                    .navigate_location(crate::model::Location::local(directory.path()));
-                let entry = loaded_entry(open, &path);
-                remember_thumbnail_for_test(&entry, texture.clone());
-                assert_eq!(
-                    cached_thumbnail(&entry),
-                    Some(texture.clone()),
-                    "preview cache remains usable"
-                );
-            }
-            let slots = || {
-                windows
-                    .iter()
-                    .map(|open| {
-                        let mut found = Vec::new();
-                        walk(&open.content.browser.widget(), &mut |widget| {
-                            if widget.is_mapped()
-                                && let Some(slot) = widget.downcast_ref::<ThumbnailSlot>()
-                                && slot.provider_path().as_deref() == path.to_str()
-                            {
-                                found.push(slot.clone());
-                            }
-                        });
-                        found
-                    })
-                    .collect::<Vec<_>>()
-            };
-            let shown = |enabled| {
-                slots().iter().all(|window_slots| {
-                    !window_slots.is_empty()
-                        && window_slots
-                            .iter()
-                            .all(|slot| slot.texture().is_some() == enabled)
+            let first = OpenWindow::open();
+            let second = OpenWindow::open();
+            let watching = || {
+                [&first, &second].map(|open| {
+                    open.content
+                        .browser
+                        .browser()
+                        .freshness_input()
+                        .watch_network_folders
                 })
             };
-            wait_until(|| shown(false));
-            for mode in [BrowserMode::List, BrowserMode::Columns, BrowserMode::Icons] {
-                manager.set_browser_mode(mode);
-                wait_until(|| {
-                    windows
-                        .iter()
-                        .all(|open| open.content.browser.view_mode() == mode)
-                });
-                wait_until(|| shown(false));
-                manager.set_show_thumbnails(true);
-                wait_until(|| shown(true));
-                manager.set_show_thumbnails(false);
-                wait_until(|| shown(false));
-            }
-            assert!(
-                std::fs::read_to_string(settings_file())
-                    .expect("saved settings")
-                    .contains("show_thumbnails = false")
-            );
-            for open in windows {
-                open.window.close();
-            }
+            let saved = watching();
+            let closed_at_startup = settings_closed(&first) && settings_closed(&second);
+            first.content.settings_button().emit_clicked();
+            settle();
+            let page = class_in_shown_pane(first.content.overlay().upcast_ref(), "settings-dialog")
+                .into_iter()
+                .next()
+                .expect("Settings page");
+            let switch = switch_named(&page, "Watch network folders");
+            let shown_off = !switch.is_active();
+            switch.set_active(true);
+            let switched_on = (manager.watch_network_folders(), watching());
+            close_settings(&first);
+            manager.set_watch_network_folders(false);
+
+            assert_eq!(saved, [false, false]);
+            assert!(closed_at_startup && shown_off);
+            assert_eq!(switched_on, (true, [true, true]));
+            assert_eq!(watching(), [false, false]);
         },
     );
+}
+
+#[test]
+fn show_thumbnails_saved_and_live_preferences_apply_across_windows_and_views() {
+    thumbnail_preferences_across_windows("photo.png", false);
+}
+
+#[test]
+fn stl_thumbnails_saved_and_live_preferences_apply_across_windows_and_views() {
+    thumbnail_preferences_across_windows("model.stl", true);
+}
+
+fn thumbnail_preferences_across_windows(name: &str, model: bool) {
+    let test = if model {
+        "ui::window::tests::preferences::stl_thumbnails_saved_and_live_preferences_apply_across_windows_and_views"
+    } else {
+        "ui::window::tests::preferences::show_thumbnails_saved_and_live_preferences_apply_across_windows_and_views"
+    };
+    gtk_test(test, || {
+        use crate::ui::thumbnail::{ThumbnailSlot, cached_thumbnail, remember_thumbnail_for_test};
+
+        write_settings("show_thumbnails = false\nstl_thumbnails = true\nbrowser_mode = 'list'\n");
+        let directory = tempfile::tempdir().expect("image folder");
+        let path = directory.path().join(name);
+        let texture: gtk::gdk::Texture = gtk::gdk::MemoryTexture::new(
+            1,
+            1,
+            gtk::gdk::MemoryFormat::R8g8b8a8,
+            &gtk::glib::Bytes::from_owned(vec![120, 80, 40, 255]),
+            4,
+        )
+        .upcast();
+        texture.save_to_png(&path).expect("cached artwork fixture");
+        let mtime = std::fs::metadata(&path)
+            .expect("fixture metadata")
+            .modified()
+            .expect("mtime")
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("unix time")
+            .as_secs() as i64;
+        let source = path.clone();
+        let png = std::fs::read(&path).expect("PNG");
+        std::thread::spawn(move || crate::ui::thumbnail_cache::store(&source, mtime, &png))
+            .join()
+            .expect("seed thumbnail cache off the UI thread");
+        let manager = PreferenceManager::shared();
+        let windows = [OpenWindow::open(), OpenWindow::open()];
+        for open in &windows {
+            open.content
+                .browser
+                .navigate_location(crate::model::Location::local(directory.path()));
+            let entry = loaded_entry(open, &path);
+            remember_thumbnail_for_test(&entry, texture.clone());
+            assert_eq!(
+                cached_thumbnail(&entry),
+                Some(texture.clone()),
+                "preview cache remains usable"
+            );
+        }
+        let slots = || {
+            windows
+                .iter()
+                .map(|open| {
+                    let mut found = Vec::new();
+                    walk(&open.content.browser.widget(), &mut |widget| {
+                        if widget.is_mapped()
+                            && let Some(slot) = widget.downcast_ref::<ThumbnailSlot>()
+                            && slot.provider_path().as_deref() == path.to_str()
+                        {
+                            found.push(slot.clone());
+                        }
+                    });
+                    found
+                })
+                .collect::<Vec<_>>()
+        };
+        let shown = |enabled| {
+            slots().iter().all(|window_slots| {
+                !window_slots.is_empty()
+                    && window_slots
+                        .iter()
+                        .all(|slot| slot.texture().is_some() == enabled)
+            })
+        };
+        wait_until(|| shown(false));
+        for mode in [BrowserMode::List, BrowserMode::Columns, BrowserMode::Icons] {
+            manager.set_browser_mode(mode);
+            wait_until(|| {
+                windows
+                    .iter()
+                    .all(|open| open.content.browser.view_mode() == mode)
+            });
+            wait_until(|| shown(false));
+            manager.set_show_thumbnails(true);
+            wait_until(|| shown(true));
+            manager.set_stl_thumbnails(false);
+            wait_until(|| shown(!model));
+            manager.set_stl_thumbnails(true);
+            wait_until(|| shown(true));
+            manager.set_show_thumbnails(false);
+            wait_until(|| shown(false));
+        }
+        manager.set_stl_thumbnails(false);
+        crate::storage::writer::settle();
+        let saved = std::fs::read_to_string(settings_file()).expect("saved settings");
+        assert!(saved.contains("show_thumbnails = false"));
+        assert!(saved.contains("stl_thumbnails = false"));
+        for open in windows {
+            open.window.close();
+        }
+    });
 }
 
 struct OpenWindow {
@@ -1922,6 +2219,19 @@ fn assert_controls(open: &OpenWindow, operable: bool) {
             assert!(!control.is_sensitive());
         }
     }
+}
+
+fn settings_page_button(open: &OpenWindow, page: &str) -> gtk::Button {
+    let mut found = None;
+    walk(open.content.overlay().upcast_ref(), &mut |widget| {
+        if found.is_none()
+            && widget.widget_name() == page
+            && let Some(button) = widget.downcast_ref::<gtk::Button>()
+        {
+            found = Some(button.clone());
+        }
+    });
+    found.unwrap_or_else(|| panic!("{page} navigation button"))
 }
 
 fn close_settings(open: &OpenWindow) {
@@ -2175,6 +2485,22 @@ fn label_named(root: &gtk::Widget, text: &str) -> gtk::Label {
     found.unwrap_or_else(|| panic!("label {text}"))
 }
 
+fn focusable_outside_the_browser(open: &OpenWindow) -> gtk::Widget {
+    let browser = open.content.browser.widget();
+    let mut found = None;
+    walk(open.window.upcast_ref(), &mut |widget| {
+        if found.is_none()
+            && widget.is_focusable()
+            && widget.is_mapped()
+            && *widget != browser
+            && !widget.is_ancestor(&browser)
+        {
+            found = Some(widget.clone());
+        }
+    });
+    found.expect("a focusable widget outside the browser")
+}
+
 fn walk(widget: &gtk::Widget, visit: &mut impl FnMut(&gtk::Widget)) {
     visit(widget);
     let mut child = widget.first_child();
@@ -2202,6 +2528,7 @@ fn customize_items(root: &std::path::Path, items: &[ItemCustomization]) {
 
 fn assert_item_customizations(root: &std::path::Path, expected: &[ItemCustomization], case: &str) {
     let manager = PreferenceManager::shared();
+    crate::storage::writer::settle();
     let saved = std::fs::read_to_string(settings_file()).unwrap_or_default();
     for (relative, color, icon) in expected {
         let path = root.join(relative);
@@ -2546,6 +2873,7 @@ fn folder_customizations_follow_file_operations_performed_in_strata() {
                         vec![PasteItem {
                             source: Location::local(&docs),
                             conflict,
+                            target_name: None,
                         }],
                         move_sources,
                         false,
@@ -2592,8 +2920,15 @@ fn folder_customizations_follow_file_operations_performed_in_strata() {
                                 destination: docs.clone(),
                             }]);
                         }
-                        Undo => wait_until(|| open.content.browser.undo_last_operation()),
-                        Redo => wait_until(|| open.content.browser.redo_last_operation()),
+                        Undo | Redo => {
+                            let previous = browser.last_started_operation();
+                            if matches!(operation, Undo) {
+                                wait_until(|| open.content.browser.undo_last_operation());
+                            } else {
+                                wait_until(|| open.content.browser.redo_last_operation());
+                            }
+                            wait_until(|| browser.last_started_operation() != previous);
+                        }
                     }
                     if !matches!(operation, MakeFolder(_) | MakeFile(_) | Customize(_)) {
                         wait_for_operation(&open);

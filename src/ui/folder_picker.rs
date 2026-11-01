@@ -210,6 +210,7 @@ impl FolderPicker {
             show_hidden: request.show_hidden || wants_hidden(&scope.query),
             scope: SearchScope::Folders,
             refused,
+            within: None,
         };
         let pending = self.pending.clone();
         let deferred = self.deferred.clone();

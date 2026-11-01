@@ -75,6 +75,7 @@ sidebar. In Icons, **h** / **j** / **k** / **l** and arrows move among tiles.
 | **i** | On a file: toggle the preview drawer without moving focus into it. On a directory: in Columns, open the next Miller column without moving focus into it (mirroring usually has already); in List and Icons, toggle the folder-peek popover. |
 | **J** / **K** | Scroll the open preview without taking focus |
 | **<** / **>** | While the open preview shows audio or video: move to the previous / next file of the same type and keep playing, without taking focus |
+| **+** / **=** / **−** | Icons: larger / smaller thumbnails, the same steps as **Ctrl+Alt++** / **Ctrl+Alt+−** |
 
 In Columns, the saved **Mirror columns selection** preference (on by default)
 applies to the cursor: shortly after **j** / **k** / arrows land on a directory,
@@ -373,13 +374,14 @@ clears its marks.
 **Ctrl+V** (see [keyboard navigation](keyboard-navigation.md#input-precedence)),
 and pasting never changes pointer or keyboard ownership. Focusing a conflict
 button does not choose it: nothing changes until you accept, and Cancel or
-**Esc** leaves both items untouched. Keep Both is offered only for copies.
+**Esc** leaves both items untouched.
 
 **d** / **Delete** show a **Move to Trash?** confirmation with its confirm button
 focused; pressing **d** again confirms it, so **d d** trashes. **D** / **Shift+Delete**, and **d** inside Trash, show the permanent
 deletion confirmation with its confirm button focused, so **Enter** confirms, and **d**
 there does nothing. In a folder whose listing reports no Trash support (such as
-a tmpfs), **d** / **Delete** open a permanent confirmation instead, stating
+a tmpfs, a FUSE mount that already refused Trash, or a folder opened as
+[administrator](administrator-access.md)), **d** / **Delete** open a permanent confirmation instead, stating
 that the location doesn't support Trash, with Cancel focused, so **d d** does
 not delete there. Errors appear in
 the usual operation dialogs, and **Ctrl+Z** undoes what the default map can undo.
@@ -388,8 +390,10 @@ the usual operation dialogs, and **Ctrl+Z** undoes what the default map can undo
 the typed name in the keyboard-focused folder; spaces and Unicode are kept. A
 trailing `/` makes a folder instead and is removed before the name is checked. An
 empty name, `.`, `..`, or a name containing `/` keeps the prompt open with the
-reason, and so does a name already taken (including by a broken link), so you
-can fix it. Nothing is renumbered, replaced, or followed. **Esc**, focus leaving
+reason, and so does a name already taken (including by a broken link) or one the
+location would store as another (see [Names the user
+types](filesystem-compatibility.md#names-the-user-types)), so you can
+fix it. Nothing is renumbered, replaced, or followed. **Esc**, focus leaving
 the prompt, a clicked row, another prompt, leaving the mode, or closing the
 window discard the name. **Ctrl+Shift+N** still adds a numbered **new folder**
 and renames it in place. Trash and Recent flash `Can’t create items here`.
@@ -400,9 +404,14 @@ open-path marker. The current name is filled in with a file's stem (or a
 folder's whole name) selected, as inline rename selects it. The item is fixed
 when the prompt opens; **Up** / **Down** do not move the cursor while it is open.
 **Enter** renames the item to exactly the typed name and keeps its contents; an
-unchanged name does nothing. An invalid name or one already taken keeps the
-prompt open with the reason, and nothing is replaced. Permission errors and
-filesystem limits leave the original name and show the usual rename error.
+unchanged name does nothing. In a local folder the name may be a relative path
+that moves the item, as for [inline renames](keyboard-navigation.md#creating-files-and-folders);
+a folder on the path that is already a file or link also keeps the prompt open.
+An invalid name, one already taken (including by
+another hard link to the same file; see
+[Rename](filesystem-compatibility.md#rename)), or one the location would store
+as another keeps the prompt open with the reason, and nothing is replaced.
+Permission errors leave the original name and show the usual rename error.
 **Esc**, focus leaving the prompt, a clicked row (which keeps its selection),
 another prompt, leaving the mode, or closing the window discard the typed name.
 Trash items flash `Can’t rename items here`. The context menu's **Rename** and a
@@ -718,6 +727,7 @@ These GUI conventions stay available alongside the Yazi verbs:
 | **Alt+Enter** | Properties |
 | **Menu** / **Shift+F10** | Context menu |
 | **Ctrl++** / **Ctrl+−** / **Ctrl+0** | Text size |
+| **Ctrl+Alt++** / **Ctrl+Alt+−** / **Ctrl+Alt+0** | Icons thumbnail size |
 
 Context-menu shortcut hints follow this map (**x** cut, **y** yank, **p** paste,
 **d** / **D** trash / delete, **r** rename, **M** / **C** move / copy to, **R**
@@ -726,10 +736,9 @@ shows no hint. Default-map hints that are unbound or remapped (**y** for copy pa
 **Ctrl+R** for rename) are hidden. Copy path is **c c**; Properties is
 **Alt+Enter**.
 
-## Not bound
-
 Tabs use the same shortcuts in both modes: **Ctrl+T** creates a tab,
-**Ctrl+W** closes it, **Ctrl+Tab / Ctrl+Shift+Tab** cycles tabs, and
+**Ctrl+W** closes it, **Ctrl+Shift+T** reopens the last closed tab,
+**Ctrl+Tab / Ctrl+Shift+Tab** cycles tabs, and
 **Ctrl+Page Up / Ctrl+Page Down** selects the previous / next tab, wrapping at
 either end.
 **Ctrl+Shift+Page Up / Ctrl+Shift+Page Down** moves the active tab left / right,
@@ -737,16 +746,12 @@ stopping at either end of the strip.
 **Ctrl+Shift+1–9 / 0** selects a tab directly. Hold **Ctrl+Shift** to show tab
 numbers. See [browser tabs](keyboard-navigation.md#browser-tabs).
 
-These default-map shortcuts are unbound or remapped while the mode is on:
+## Not bound
 
-| Default-map key | In 10xer mode |
-| --- | --- |
-| **Ctrl+Shift+K** | Unbound. Use **z** / **Z**. |
-| **Ctrl+Alt+T** | Unbound. Use **;** **t** or the context menu. |
-| **Ctrl+\\** | Unbound. Arrows never leave the file list. |
-| **Ctrl+D** | Half page down. Duplicate is dropped. |
-| **Ctrl+F** | Full page down. Filter is **f**. |
-| **Ctrl+B** | Full page up. Sidebar toggle is **Ctrl+N**. |
-| **Ctrl+R** | Invert selection. Rename is **r** / **F2**. |
-| **y** / **p** (default map) | Yank / paste. Path copy is **c c**; pin with **g +** and jump to a pin with **g** then a digit. |
-| **Space** | Toggle selection. In List and Columns, preview is **l** / **→**. |
+Some default-map keys do something else in 10xer mode or nothing at all: for
+example, **Ctrl+R** inverts the selection there, and rename is **r** / **F2**.
+**Settings → Keyboard** shows both tables as they are, with any changes: switch
+it to **10xer mode** to see each action's 10xer keys and **Not bound** on the
+ones 10xer leaves out. Each table lists only the actions its mode can run. A key bound in the 10xer table to jump to folder, arrow
+scope, duplicate or pin works there, and the default table can bind several
+10xer verbs; see [Keymap](keymap.md#two-tables).

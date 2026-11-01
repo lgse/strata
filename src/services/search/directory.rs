@@ -21,7 +21,7 @@ pub(super) fn build_index(
     // Depth-limited recursive walkers can still open child directories. A plain
     // directory iterator also keeps immediate ignored/generated entries eligible.
     'roots: for root in roots {
-        let entries = match std::fs::read_dir(&root) {
+        let entries = match file_activity::list(&root) {
             Ok(entries) => entries,
             Err(_) => {
                 coverage.unreadable = true;

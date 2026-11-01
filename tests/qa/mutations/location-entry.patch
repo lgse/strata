@@ -1,0 +1,14 @@
+diff --git a/src/ui/browser.rs b/src/ui/browser.rs
+index 7ef8d861..8963c61e 100644
+--- a/src/ui/browser.rs
++++ b/src/ui/browser.rs
+@@ -769,6 +769,9 @@ impl BrowserView {
+ 
+         let weak_state = Rc::downgrade(&state);
+         state.location_entry.connect_activate(move |_| {
++            if true {
++                return;
++            }
+             if let Some(state) = weak_state.upgrade() {
+                 state.submit_location();
+             }

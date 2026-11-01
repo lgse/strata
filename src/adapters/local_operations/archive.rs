@@ -26,11 +26,17 @@ pub(crate) use fixtures::write_compression_fixture;
 #[cfg(test)]
 mod tests;
 
+use super::{
+    fs_ops::{Entry, folder_stamp, fs},
+    progress::TransferProgressTracker,
+    release::ActiveOperation,
+};
 use crate::{
     model::Location,
     services::{
         ArchiveFormat, CancelledOperation, CompressRequest, ExtractRequest, LoadHandle,
-        OperationEvent, OperationRequestId, PasswordFailure, validate_basename,
+        OperationEvent, OperationRequestId, PasswordFailure, TransferConflict, TransferReport,
+        validate_basename,
     },
 };
 use compression::{
@@ -40,7 +46,11 @@ use compression::{
 use decoders::extract_rar;
 use decoders::{extract_7z_from_reader, extract_tar, extract_zip_from_archive};
 use extraction::ArchiveOutcome;
-use gtk::{gio, glib};
+use gtk::{gio, glib, prelude::*};
+use rustix::{
+    fs::{AtFlags, FileType, Mode, OFlags},
+    io::Errno,
+};
 use std::{
     collections::HashSet,
     ffi::OsStr,
@@ -60,20 +70,13 @@ use std::{
 /// every 100 ms via [`archive_progress_timer`]. Returns a [`LoadHandle`] that
 /// cancels in-flight work when dropped.
 ///
-/// Emits [`ArchiveStarted`] immediately, [`ArchiveProgress`] while running,
-/// then [`Compressed`], [`Failed`], or [`Cancelled`] depending on the outcome.
-///
 /// # Concurrency
 ///
 /// Runs on the default [`glib::MainContext`]. Archive encoding happens on a
 /// worker thread via [`gio::spawn_blocking`].
-///
-/// [`ArchiveStarted`]: OperationEvent::ArchiveStarted
-/// [`ArchiveProgress`]: OperationEvent::ArchiveProgress
-/// [`Compressed`]: OperationEvent::Compressed
-/// [`Failed`]: OperationEvent::Failed
-/// [`Cancelled`]: OperationEvent::Cancelled
 pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+    let cancellable = gio::Cancellable::new();
+    let release_cancellable = cancellable.clone();
     let cancelled = Arc::new(AtomicBool::new(false));
     let task_cancelled = cancelled.clone();
     let work_cancelled = cancelled.clone();
@@ -102,6 +105,12 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
         }
         let archive_name = format!("{}.{}", request.archive_name, request.format.extension());
         let archive_path = dest_dir.join(&archive_name);
+        let operation = ActiveOperation::begin([dest_dir.clone()]);
+        if request.conflict == TransferConflict::ReplaceExisting {
+            operation
+                .release(vec![archive_path.clone()], &release_cancellable)
+                .await;
+        }
         let entries: Vec<std::path::PathBuf> = request
             .entries
             .iter()
@@ -127,11 +136,13 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
         let password = request.password.clone();
         let work_progress = progress.clone();
         let work_total = total.clone();
+        let reports = TransferProgressTracker::new(request.id, None, None, emit.clone());
         let result = write_staged_archive(
             &dest_dir,
             &archive_path,
             request.conflict,
-            &task_cancelled,
+            task_cancelled.clone(),
+            Some(&reports),
             move |file| {
                 let sources = inspect_archive_sources(&entries, &work_cancelled)?;
                 work_total.store(sources.files, Ordering::Relaxed);
@@ -169,9 +180,10 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
         .await;
         timer_id.remove();
         match result {
-            Ok((archive_name, original)) => emit(OperationEvent::Compressed {
+            Ok((archive_name, original, placed)) => emit(OperationEvent::Compressed {
                 request_id: request.id,
                 original,
+                placed,
                 // Keep Both may publish under a renamed name, so rebuild the
                 // location from the returned name rather than `archive_path`.
                 archive: Location::local(dest_dir.join(&archive_name)),
@@ -193,6 +205,7 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
     });
     LoadHandle::new(move || {
         cancelled.store(true, Ordering::Relaxed);
+        cancellable.cancel();
     })
 }
 
@@ -211,21 +224,6 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
             });
             return;
         };
-        // Recheck stale listings before a decoder can block opening a FIFO.
-        if let Ok(metadata) = std::fs::metadata(&archive_path)
-            && !metadata.is_file()
-        {
-            emit(OperationEvent::Failed {
-                request_id: request.id,
-                message: rust_i18n::t!(
-                    "Not an archive: “%{name}”",
-                    name = request.entry.display_name
-                )
-                .into_owned(),
-                password_failure: None,
-            });
-            return;
-        }
         let Some(dest_dir) = request.destination.native_path().map(Path::to_path_buf) else {
             emit(OperationEvent::Failed {
                 request_id: request.id,
@@ -234,20 +232,8 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
             });
             return;
         };
-        let created_dest = request.created_destination || !dest_dir.exists();
-        if created_dest && let Err(e) = std::fs::create_dir_all(&dest_dir) {
-            emit(OperationEvent::Failed {
-                request_id: request.id,
-                message: rust_i18n::t!(
-                    "Could not create folder: %{error}",
-                    error = crate::services::io_error_detail(&e)
-                )
-                .into_owned(),
-                password_failure: None,
-            });
-            return;
-        }
-        let dest_dir_for_cleanup = dest_dir.clone();
+        let _operation = ActiveOperation::begin([dest_dir.clone()]);
+        let created_destination = request.created_destination;
         let format = ArchiveFormat::from_extension(&request.entry.display_name);
         let password = request.password.clone();
         let display_name = request.entry.display_name.clone();
@@ -261,80 +247,123 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
             archive_progress_timer(request.id, &progress, &total, &task_cancelled, &emit);
         let work_progress = progress.clone();
         let work_total = total.clone();
-        let result = gio::spawn_blocking(move || match format {
-            Some(ArchiveFormat::Zip) => {
-                let file = std::fs::File::open(&archive_path)
-                    .map_err(|e| crate::services::io_error_message(&e))?;
-                let mut archive = zip::ZipArchive::new(file).map_err(decoders::zip_error)?;
-                work_total.store(archive.len(), Ordering::Relaxed);
-                extract_zip_from_archive(
-                    &mut archive,
+        let result = gio::spawn_blocking(move || {
+            let mut report = TransferReport::default();
+            // Recheck stale listings before a decoder can block opening a FIFO.
+            if folder_stamp(&archive_path, false)
+                .is_ok_and(|stamp| stamp.kind != FileType::RegularFile)
+            {
+                return Err(
+                    rust_i18n::t!("Not an archive: “%{name}”", name = display_name).into_owned(),
+                );
+            }
+            let created = created_destination
+                || folder_stamp(&dest_dir, false).is_err_and(|error| error == Errno::NOENT);
+            if created && let Err(e) = std::fs::create_dir_all(&dest_dir) {
+                return Err(rust_i18n::t!(
+                    "Could not create folder: %{error}",
+                    error = crate::services::io_error_detail(&e)
+                )
+                .into_owned());
+            }
+            let mut created = CreatedFolder(created.then_some(dest_dir.as_path()));
+            let extracted = (|| match format {
+                Some(ArchiveFormat::Zip) => {
+                    let file = std::fs::File::open(&archive_path)
+                        .map_err(|e| crate::services::io_error_message(&e))?;
+                    let mut archive = zip::ZipArchive::new(file).map_err(decoders::zip_error)?;
+                    work_total.store(archive.len(), Ordering::Relaxed);
+                    extract_zip_from_archive(
+                        &mut archive,
+                        &dest_dir,
+                        &display_name,
+                        password.as_deref(),
+                        &work_progress,
+                        &work_cancelled,
+                        &mut report,
+                    )
+                }
+                Some(ArchiveFormat::SevenZ) => {
+                    let pw = password
+                        .as_deref()
+                        .map(sevenz_rust2::Password::from)
+                        .unwrap_or_default();
+                    let file = std::fs::File::open(&archive_path)
+                        .map_err(|e| crate::services::io_error_message(&e))?;
+                    extract_7z_from_reader(
+                        file,
+                        &dest_dir,
+                        &display_name,
+                        pw,
+                        &work_progress,
+                        &work_cancelled,
+                        &mut report,
+                    )
+                }
+                Some(ArchiveFormat::TarGz) => extract_tar(
+                    &archive_path,
+                    &dest_dir,
+                    &display_name,
+                    true,
+                    &work_progress,
+                    &work_cancelled,
+                    &mut report,
+                ),
+                Some(ArchiveFormat::Tar) => extract_tar(
+                    &archive_path,
+                    &dest_dir,
+                    &display_name,
+                    false,
+                    &work_progress,
+                    &work_cancelled,
+                    &mut report,
+                ),
+                #[cfg(not(feature = "rar"))]
+                Some(ArchiveFormat::Rar) => Err(archive_failed(crate::i18n::tr(
+                    "RAR support is disabled in this build.",
+                ))),
+                #[cfg(feature = "rar")]
+                Some(ArchiveFormat::Rar) => extract_rar(
+                    &archive_path,
                     &dest_dir,
                     &display_name,
                     password.as_deref(),
                     &work_progress,
                     &work_cancelled,
-                )
+                    &mut report,
+                ),
+                None => Err(archive_failed(rust_i18n::t!(
+                    "Unsupported archive format: %{name}",
+                    name = display_name
+                ))),
+            })();
+            if matches!(extracted, Ok(ArchiveOutcome::Completed(_))) {
+                created.0 = None;
             }
-            Some(ArchiveFormat::SevenZ) => {
-                let pw = password
-                    .as_deref()
-                    .map(sevenz_rust2::Password::from)
-                    .unwrap_or_default();
-                let file = std::fs::File::open(&archive_path)
-                    .map_err(|e| crate::services::io_error_message(&e))?;
-                extract_7z_from_reader(
-                    file,
-                    &dest_dir,
-                    &display_name,
-                    pw,
-                    &work_progress,
-                    &work_cancelled,
-                )
-            }
-            Some(ArchiveFormat::TarGz) => extract_tar(
-                &archive_path,
-                &dest_dir,
-                &display_name,
-                true,
-                &work_progress,
-                &work_cancelled,
-            ),
-            Some(ArchiveFormat::Tar) => extract_tar(
-                &archive_path,
-                &dest_dir,
-                &display_name,
-                false,
-                &work_progress,
-                &work_cancelled,
-            ),
-            #[cfg(not(feature = "rar"))]
-            Some(ArchiveFormat::Rar) => Err(archive_failed(crate::i18n::tr(
-                "RAR support is disabled in this build.",
-            ))),
-            #[cfg(feature = "rar")]
-            Some(ArchiveFormat::Rar) => extract_rar(
-                &archive_path,
-                &dest_dir,
-                &display_name,
-                password.as_deref(),
-                &work_progress,
-                &work_cancelled,
-            ),
-            None => Err(archive_failed(rust_i18n::t!(
-                "Unsupported archive format: %{name}",
-                name = display_name
-            ))),
+            Ok((extracted, report))
         })
         .await;
         timer_id.remove();
-        if created_dest
-            && !matches!(result, Ok(Ok(ArchiveOutcome::Completed(_))))
-            && std::fs::read_dir(&dest_dir_for_cleanup)
-                .is_ok_and(|mut entries| entries.next().is_none())
-        {
-            let _ = std::fs::remove_dir(&dest_dir_for_cleanup);
-        }
+        let result = match result {
+            Ok(Err(message)) => {
+                emit(OperationEvent::Failed {
+                    request_id: request.id,
+                    message,
+                    password_failure: None,
+                });
+                return;
+            }
+            Ok(Ok((extracted, report))) => {
+                if !report.is_empty() {
+                    emit(OperationEvent::ItemsReported {
+                        request_id: request.id,
+                        report,
+                    });
+                }
+                Ok(extracted)
+            }
+            Err(panic) => Err(panic),
+        };
         match result {
             Ok(Ok(ArchiveOutcome::Completed(first_name))) => emit(OperationEvent::Extracted {
                 request_id: request.id,
@@ -377,6 +406,26 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
     LoadHandle::new(move || {
         cancelled.store(true, Ordering::Relaxed);
     })
+}
+
+struct CreatedFolder<'a>(Option<&'a Path>);
+
+impl Drop for CreatedFolder<'_> {
+    fn drop(&mut self) {
+        let Some((parent, name)) = self
+            .0
+            .and_then(|folder| Some((folder.parent()?, folder.file_name()?)))
+        else {
+            return;
+        };
+        if let Ok(parent) = fs().open_path(
+            parent.as_os_str(),
+            OFlags::PATH | OFlags::DIRECTORY | OFlags::CLOEXEC,
+            Mode::empty(),
+        ) {
+            let _ = fs().unlink(Entry::new(&parent, name), AtFlags::REMOVEDIR);
+        }
+    }
 }
 
 pub(crate) const PASSWORD_REQUIRED: &str = "A password is required to extract this archive.";

@@ -342,6 +342,20 @@ pub fn best_update<'a>(
     (&candidate.version > installed).then_some(candidate)
 }
 
+/// Every release a user on `channel` may install, newest first.
+///
+/// Unlike [`best_update`], this ignores the installed version on purpose:
+/// choosing an older release is how a user rolls back.
+pub fn installable_releases(channel: Channel, releases: &[ReleaseSummary]) -> Vec<&ReleaseSummary> {
+    let mut eligible: Vec<_> = releases
+        .iter()
+        .filter(|release| is_eligible(channel, release))
+        .collect();
+    eligible.sort_by(|a, b| b.version.cmp(&a.version));
+    eligible.dedup_by(|a, b| a.version == b.version);
+    eligible
+}
+
 /// The newest final release available, ignoring the installed version
 /// entirely.
 ///

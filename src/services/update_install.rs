@@ -30,6 +30,9 @@ mod manifest;
 use download::{DownloadTimeouts, describe_download_error, describe_read_error, download_agent};
 
 const RELEASE_DOWNLOAD_ROOT: &str = "https://github.com/lgse/strata/releases/download";
+/// Releases published before signed update manifests cannot be verified, so cannot be installed.
+pub(super) const UPDATE_MANIFEST_ASSETS: [&str; 2] =
+    [manifest::MANIFEST_NAME, manifest::SIGNATURES_NAME];
 const REPOSITORY: &str = "lgse/strata";
 const MAX_UPDATE_ARCHIVE_BYTES: u64 = 128 * 1024 * 1024;
 const DESKTOP_ENTRY: &str = "io.github.lgse.Strata.desktop";
@@ -505,6 +508,11 @@ fn perform_install(
     cancel: &InstallCancel,
     progress: &Sender<UpdateInstall>,
 ) -> Result<(), InstallStop> {
+    if !crate::build_info::updater_enabled() {
+        return Err(InstallStop::Failed(crate::i18n::tr(
+            "In-app updates are disabled in this build.",
+        )));
+    }
     ensure_self_managed(InstallSource::detect())?;
     match update_method() {
         UpdateMethod::InPlace => {}

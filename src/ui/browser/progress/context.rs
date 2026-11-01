@@ -5,7 +5,7 @@ use std::{
     rc::Rc,
 };
 
-use gtk::glib;
+use gtk::{gio::prelude::CancellableExt, glib};
 
 use crate::{
     app::BrowserEvent,
@@ -85,6 +85,15 @@ impl Drop for FileProgressState {
 impl crate::ui::browser::BrowserView {
     pub(in crate::ui) fn dispose_file_progress(&self) {
         self.state.file_progress().dismiss_file_operation_progress();
+        for (_, cancellable, preparation) in self.state.preparing_transfers.take() {
+            cancellable.cancel();
+            if let Some(preparation) = preparation.upgrade() {
+                preparation.dismiss_file_operation_progress();
+            }
+        }
+        if let Some(preparation) = self.state.transfer_preparation.take() {
+            preparation.dismiss_file_operation_progress();
+        }
         for background in self.state.background_file_progress.take().into_values() {
             background.progress.dismiss_file_operation_progress();
         }
@@ -125,6 +134,37 @@ impl ViewState {
         subtitle: &str,
         on_cancel: Rc<dyn Fn()>,
     ) {
+        self.operation_progress()
+            .show_file_operation_progress(total, icon, title, subtitle, on_cancel);
+    }
+
+    /// Presents at once when the preparing row is already on screen, so the transfer never
+    /// flickers out.
+    pub(in crate::ui::browser) fn show_transfer_progress(
+        self: &Rc<Self>,
+        total: usize,
+        moving: bool,
+        on_cancel: Rc<dyn Fn()>,
+    ) {
+        let preparation = self.transfer_preparation.take();
+        let at_once = preparation
+            .as_ref()
+            .is_some_and(|preparation| preparation.is_presented());
+        let (icon, title) = super::transfer_heading(moving);
+        self.operation_progress().show_operation_progress(
+            total,
+            at_once || super::should_show_progress_immediately(total),
+            icon,
+            title,
+            super::TRANSFER_SUBTITLE,
+            on_cancel,
+        );
+        if let Some(preparation) = preparation {
+            preparation.dismiss_file_operation_progress();
+        }
+    }
+
+    fn operation_progress(self: &Rc<Self>) -> Rc<FileProgressState> {
         let progress = if self.browser.last_started_operation().is_some() {
             let progress = Rc::new(FileProgressState::new(&self.overlay));
             self.progress_state
@@ -149,7 +189,7 @@ impl ViewState {
         progress
             .task_description
             .replace(self.browser.operation_description());
-        progress.show_file_operation_progress(total, icon, title, subtitle, on_cancel);
+        progress
     }
 
     pub(in crate::ui::browser) fn dock_file_operation(
@@ -227,6 +267,11 @@ impl ViewState {
         request_id: OperationRequestId,
         event: &BrowserEvent,
     ) {
+        // Arrives after the finishing event removed the job, so it must not need the job.
+        if let BrowserEvent::ItemsReported { report } = event {
+            self.show_transfer_report(report);
+            return;
+        }
         let background = self
             .background_file_progress
             .borrow()
@@ -271,6 +316,10 @@ impl ViewState {
                 progress.update_item_progress(*completed, *total);
                 false
             }
+            BrowserEvent::DeletionEntriesRemoved { removed } => {
+                progress.update_removed_entries(*removed);
+                false
+            }
             BrowserEvent::DeletionFinished { succeeded } => {
                 self.prune_stale_search_results();
                 if *succeeded && let Some(animation) = background.trash_animation.take() {
@@ -285,7 +334,10 @@ impl ViewState {
                 message,
                 retryable_locations,
                 has_non_retryable_failures,
+                report,
             } => {
+                let message =
+                    &super::super::transfer_report::outcome_detail(message.clone(), report);
                 let entries = super::super::trash::retryable_delete_entries(
                     background.delete_entries.clone(),
                     retryable_locations,
@@ -300,6 +352,7 @@ impl ViewState {
                     crate::ui::modal::show_delete_error_dialog(
                         &self.overlay,
                         message,
+                        &super::super::trash::delete_retry_label(&entries),
                         Rc::new(move || {
                             if let Some(state) = weak.upgrade() {
                                 state.retry_background_deletion(entries.clone());
@@ -332,14 +385,16 @@ impl ViewState {
                 }
                 true
             }
-            BrowserEvent::OperationFailed { message, .. } => {
+            BrowserEvent::OperationFailed {
+                message, report, ..
+            } => {
                 if self.delete_dissolve_request.get() == Some(request_id) {
                     self.settle_pending_delete_dissolve();
                 }
                 show_error_dialog(
                     &self.overlay,
                     &crate::i18n::tr("Unable to complete operation"),
-                    message,
+                    &super::super::transfer_report::outcome_detail(message.clone(), report),
                 );
                 true
             }
@@ -348,6 +403,7 @@ impl ViewState {
                 failed,
                 not_attempted,
                 affected_locations,
+                report,
             } => {
                 if self.delete_dissolve_request.get() == Some(request_id) {
                     self.settle_pending_delete_dissolve();
@@ -356,7 +412,10 @@ impl ViewState {
                 show_error_dialog(
                     &self.overlay,
                     &crate::i18n::tr("Operation cancelled"),
-                    &super::cancelled_operation_summary(*completed, *failed, *not_attempted),
+                    &super::super::transfer_report::outcome_detail(
+                        super::cancelled_operation_summary(*completed, *failed, *not_attempted),
+                        report,
+                    ),
                 );
                 true
             }
@@ -417,6 +476,9 @@ impl ViewState {
     }
     pub(in crate::ui::browser) fn update_item_progress(&self, completed: usize, total: usize) {
         self.file_progress().update_item_progress(completed, total);
+    }
+    pub(in crate::ui::browser) fn update_removed_entries(&self, removed: usize) {
+        self.file_progress().update_removed_entries(removed);
     }
     pub(in crate::ui::browser) fn update_archive_progress(&self, completed: usize, total: usize) {
         self.file_progress()

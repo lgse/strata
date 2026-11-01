@@ -8,7 +8,7 @@ use std::{
     io,
     os::unix::{fs::MetadataExt, net::UnixStream},
     path::{Path, PathBuf},
-    process::{Child, Stdio},
+    process::Stdio,
     sync::{
         Arc, Condvar, Mutex, OnceLock,
         atomic::{AtomicUsize, Ordering},
@@ -164,6 +164,7 @@ pub(crate) fn thumbnail(
         ParseOperation::ThumbnailVideo => Operation::Video,
         ParseOperation::ThumbnailModel(ModelFormat::ThreeMf) => Operation::ThreeMfThumbnail,
         ParseOperation::ThumbnailModel(ModelFormat::FreeCad) => Operation::FreeCadThumbnail,
+        ParseOperation::ThumbnailModel(ModelFormat::Gcode) => Operation::GcodeThumbnail,
         _ => return Err("Not a browser thumbnail operation".into()),
     };
     let result = request(pool(), path, operation, cancellation)?;
@@ -178,18 +179,16 @@ pub(crate) fn metadata(
     image: bool,
     cancellation: &Cancellation,
 ) -> Result<MediaMetadata, String> {
-    request(
-        pool(),
-        path,
-        if image {
-            Operation::ImageMetadata
-        } else {
-            Operation::MediaMetadata
-        },
-        cancellation,
-    )?
-    .metadata
-    .ok_or_else(|| "Media details unavailable".into())
+    let operation = if super::raw_metadata::is_raw(path) {
+        Operation::RawMetadata
+    } else if image {
+        Operation::ImageMetadata
+    } else {
+        Operation::MediaMetadata
+    };
+    request(pool(), path, operation, cancellation)?
+        .metadata
+        .ok_or_else(|| "Media details unavailable".into())
 }
 
 pub(crate) fn preview(
@@ -199,6 +198,7 @@ pub(crate) fn preview(
 ) -> Option<Result<Vec<u8>, String>> {
     let operation = match operation {
         ParseOperation::PreviewImage | ParseOperation::DocumentImage => Operation::PreviewImage,
+        ParseOperation::PreviewRaw => Operation::PreviewRaw,
         ParseOperation::DocumentMermaid => Operation::DocumentMermaid,
         ParseOperation::DocumentMath { display: true } => Operation::DocumentMath,
         ParseOperation::DocumentMath { display: false } => Operation::DocumentMathInline,
@@ -216,6 +216,7 @@ pub(crate) fn preview(
 fn invalid_output_label(operation: Operation) -> &'static str {
     match operation {
         Operation::PreviewImage
+        | Operation::PreviewRaw
         | Operation::DocumentMermaid
         | Operation::DocumentMath
         | Operation::DocumentMathInline => "Invalid preview render",
@@ -231,8 +232,11 @@ fn parse_operation(operation: Operation) -> ParseOperation {
         Operation::Video => ParseOperation::ThumbnailVideo,
         Operation::ThreeMfThumbnail => ParseOperation::ThumbnailModel(ModelFormat::ThreeMf),
         Operation::FreeCadThumbnail => ParseOperation::ThumbnailModel(ModelFormat::FreeCad),
+        Operation::GcodeThumbnail => ParseOperation::ThumbnailModel(ModelFormat::Gcode),
         Operation::ImageMetadata | Operation::MediaMetadata => ParseOperation::MediaMetadata,
+        Operation::RawMetadata => ParseOperation::RawMetadata,
         Operation::PreviewImage => ParseOperation::PreviewImage,
+        Operation::PreviewRaw => ParseOperation::PreviewRaw,
         Operation::DocumentMermaid => ParseOperation::DocumentMermaid,
         Operation::DocumentMath => ParseOperation::DocumentMath { display: true },
         Operation::DocumentMathInline => ParseOperation::DocumentMath { display: false },
@@ -253,11 +257,25 @@ fn request(
     if cancellation.is_cancelled() {
         return Err("Browser request cancelled".into());
     }
+    let real = path
+        .canonicalize()
+        .map_err(|e| crate::services::io_error_message(&e))?;
+    let stop = cancellation.clone();
+    let hold = crate::services::file_activity::hold([path, &real], move || stop.cancel())?;
+    hold.settle(request_held(pool, path, operation, cancellation))
+}
+
+fn request_held(
+    pool: &Pool,
+    path: &Path,
+    operation: Operation,
+    cancellation: &Cancellation,
+) -> Result<ResultParts, String> {
     let file = open_source(path).map_err(|e| crate::services::io_error_message(&e))?;
     let key = FileKey::read(path, &file).map_err(|e| crate::services::io_error_message(&e))?;
     let metadata_only = matches!(
         operation,
-        Operation::ImageMetadata | Operation::MediaMetadata
+        Operation::ImageMetadata | Operation::MediaMetadata | Operation::RawMetadata
     );
     let input_limit = if matches!(
         operation,
@@ -267,7 +285,12 @@ fn request(
     } else {
         super::MAX_RASTER_INPUT_BYTES
     };
-    if !metadata_only && operation != Operation::Video && key.size > input_limit {
+    // The thumbnail is in a bounded header or block; the toolpath is not read.
+    if !metadata_only
+        && operation != Operation::Video
+        && operation != Operation::GcodeThumbnail
+        && key.size > input_limit
+    {
         return Err("Browser input exceeds the supported size limit".into());
     }
     let entry = cache_entry(&pool.cache, key.clone(), operation);
@@ -316,11 +339,21 @@ fn request(
             cached.failed_thumbnail = true;
         }
         if !response.metadata.is_empty() {
-            let image = matches!(
-                operation,
-                Operation::Image | Operation::Raw | Operation::ImageMetadata
-            );
-            match MediaMetadata::from_json(&response.metadata, image) {
+            let metadata = if operation == Operation::RawMetadata {
+                super::raw_metadata::RawMetadata::from_json(&response.metadata).map(|raw| {
+                    MediaMetadata {
+                        dimensions: raw.dimensions,
+                        ..MediaMetadata::default()
+                    }
+                })
+            } else {
+                let image = matches!(
+                    operation,
+                    Operation::Image | Operation::Raw | Operation::ImageMetadata
+                );
+                MediaMetadata::from_json(&response.metadata, image)
+            };
+            match metadata {
                 Ok(metadata) => cached.metadata = Some(metadata),
                 Err(error) => {
                     lease.discard();
@@ -419,7 +452,7 @@ fn preview_pool() -> &'static Pool {
     })
 }
 
-fn workers_supported() -> bool {
+pub(crate) fn workers_supported() -> bool {
     static SUPPORTED: OnceLock<bool> = OnceLock::new();
     *SUPPORTED.get_or_init(|| {
         let supported = worker::supported();
@@ -499,7 +532,7 @@ impl Pool {
     ) -> Result<Lease<'_>, String> {
         let metadata = matches!(
             operation,
-            Operation::ImageMetadata | Operation::MediaMetadata
+            Operation::ImageMetadata | Operation::MediaMetadata | Operation::RawMetadata
         );
         let slow = matches!(
             operation,
@@ -508,8 +541,10 @@ impl Pool {
                 | Operation::Video
                 | Operation::ThreeMfThumbnail
                 | Operation::FreeCadThumbnail
+                | Operation::GcodeThumbnail
                 | Operation::ImageMetadata
                 | Operation::MediaMetadata
+                | Operation::RawMetadata
         );
         let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
         if metadata {
@@ -685,24 +720,29 @@ impl Worker {
                     cancellation,
                 )
                 .map_err(io::Error::other)?;
-                Ok(if operation == ParseOperation::MediaMetadata {
-                    Response {
-                        png: Vec::new(),
-                        metadata: output.data,
-                    }
-                } else {
-                    Response {
-                        png: output.data,
-                        metadata: Vec::new(),
-                    }
-                })
+                Ok(
+                    if matches!(
+                        operation,
+                        ParseOperation::MediaMetadata | ParseOperation::RawMetadata
+                    ) {
+                        Response {
+                            png: Vec::new(),
+                            metadata: output.data,
+                        }
+                    } else {
+                        Response {
+                            png: output.data,
+                            metadata: Vec::new(),
+                        }
+                    },
+                )
             }
         }
     }
 }
 
 struct ProcessWorker {
-    child: Child,
+    child: super::Renderer,
     socket: UnixStream,
     _snapshot: super::PrivateOutput,
 }

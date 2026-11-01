@@ -4,8 +4,11 @@ use std::{cell::RefCell, rc::Rc};
 
 use gtk::glib;
 
-use super::super::load_pinned_places;
-use crate::model::Location;
+use crate::{
+    model::Location,
+    storage::writer,
+    test_support::{save_pins, saved_pins},
+};
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
@@ -20,20 +23,30 @@ fn check_trash_and_restore_do_not_resurrect_removed_pins() {
     let home = std::path::PathBuf::from(std::env::var_os("HOME").expect("isolated home"));
     let parent = home.join("fixture/gone");
     let child = parent.join("child");
+    let sibling = home.join("fixture/also-gone");
     let keep = home.join("fixture/keep");
     std::fs::create_dir_all(&child).expect("deleted folder");
+    std::fs::create_dir_all(&sibling).expect("deleted sibling");
     std::fs::create_dir_all(&keep).expect("retained folder");
     let initial = vec![
         (Location::local(&parent), "Gone".into()),
         (Location::local(&child), "Child".into()),
+        (Location::local(&sibling), "Also gone".into()),
         (Location::local(&keep), "Keep".into()),
     ];
-    super::super::save_pinned_places(&initial).expect("pins");
+    save_pins(&initial);
     let preferences = crate::ui::preferences::PreferenceManager::shared();
     let first = super::super::browser_for_window();
     let second = super::super::browser_for_window();
     let first_sidebar = super::super::build_sidebar(first.clone(), preferences.clone(), true);
     let second_sidebar = super::super::build_sidebar(second, preferences, true);
+    writer::settle();
+    let updates = Rc::new(std::cell::Cell::new(0));
+    let counted = updates.clone();
+    let _watch = crate::adapters::bookmarks::watch_changes(move |result| {
+        counted.set(counted.get() + usize::from(result.is_ok()));
+        true
+    });
     let browser = first.browser();
     browser.navigate(Location::local(parent.parent().expect("parent")));
     wait_until(|| {
@@ -41,9 +54,9 @@ fn check_trash_and_restore_do_not_resurrect_removed_pins() {
             .column_snapshot(0)
             .is_some_and(|column| !column.loading)
     });
-    browser.select_entries_by_name(&["gone".into()]);
+    browser.select_entries_by_name(&["also-gone".into(), "gone".into()]);
     let entries = browser.selected_entries();
-    assert_eq!(entries.len(), 1);
+    assert_eq!(entries.len(), 2);
     let finished = Rc::new(RefCell::new(None));
     let observed = finished.clone();
     browser.observe(move |event| {
@@ -57,8 +70,10 @@ fn check_trash_and_restore_do_not_resurrect_removed_pins() {
     wait_until(|| finished.borrow().is_some());
     assert_eq!(*finished.borrow(), Some(true));
     assert!(!parent.exists());
+    writer::settle();
     let expected = vec![(Location::local(&keep), "Keep".into())];
-    assert_eq!(load_pinned_places().expect("saved pins"), expected);
+    assert_eq!(updates.get(), 1);
+    assert_eq!(saved_pins(), expected);
     assert_eq!(*first_sidebar.state.pinned_places.borrow(), expected);
     assert_eq!(*second_sidebar.state.pinned_places.borrow(), expected);
     assert_eq!(
@@ -79,7 +94,8 @@ fn check_trash_and_restore_do_not_resurrect_removed_pins() {
     assert!(first.undo_last_operation());
     wait_until(|| restored.get());
     assert!(parent.exists());
-    assert_eq!(load_pinned_places().expect("pins after restore"), expected);
+    writer::settle();
+    assert_eq!(saved_pins(), expected);
 }
 
 #[test]
@@ -99,7 +115,7 @@ fn deletion_updates_surviving_sidebars_after_the_origin_disconnects() {
             let gone = directory.path().join("gone");
             std::fs::create_dir(&gone).expect("folder");
             let pins = vec![(Location::local(&gone), "Gone".into())];
-            super::super::save_pinned_places(&pins).expect("pins");
+            save_pins(&pins);
             let preferences = crate::ui::preferences::PreferenceManager::shared();
             let first = super::super::browser_for_window();
             let second = super::super::browser_for_window();
@@ -119,8 +135,44 @@ fn deletion_updates_surviving_sidebars_after_the_origin_disconnects() {
             origin.disconnect();
             browser.delete(entries, true);
             wait_until(|| !gone.exists() && surviving.state.pinned_places.borrow().is_empty());
-            assert!(load_pinned_places().expect("saved pins").is_empty());
+            assert!(saved_pins().is_empty());
             assert_eq!(*origin.state.pinned_places.borrow(), pins);
+        },
+    );
+}
+
+#[test]
+fn an_older_pins_answer_never_replaces_a_newer_one() {
+    crate::test_support::gtk_test(
+        "ui::window::bookmarks::tests::an_older_pins_answer_never_replaces_a_newer_one",
+        || {
+            let directory = tempfile::tempdir().expect("fixture");
+            let unpinned = Location::local(directory.path().join("unpinned"));
+            let deleted = Location::local(directory.path().join("deleted"));
+            save_pins(&[
+                (unpinned.clone(), "Unpinned".into()),
+                (deleted.clone(), "Deleted".into()),
+            ]);
+            let sidebar = super::super::build_sidebar(
+                super::super::browser_for_window(),
+                crate::ui::preferences::PreferenceManager::shared(),
+                true,
+            );
+            writer::settle();
+            let held = writer::hold();
+            sidebar.state.unpin_location(&unpinned);
+            let mut cleanup = crate::adapters::bookmarks::DeletedPins::default();
+            cleanup.push(deleted);
+            drop(cleanup);
+            for _ in 0..100 {
+                if !glib::MainContext::default().iteration(false) {
+                    break;
+                }
+            }
+            drop(held);
+            writer::settle();
+            assert!(saved_pins().is_empty());
+            assert!(sidebar.state.pinned_places.borrow().is_empty());
         },
     );
 }

@@ -50,6 +50,22 @@ Run the same workflow manually with `mode` set to `alpha`, `beta`, `rc`, or `nig
 
 RC and nightly publication are intentionally manual. To promote a validated RC line to stable, run the workflow again with `mode: stable` and the same `bump` level. The resulting stable tag supersedes the prerelease line; the guard blocks promotion when an RC commit is not reachable from the stable source.
 
+## Release notes
+
+GitHub generates release notes from the PRs merged since the previous release and groups them by label using [`.github/release.yml`](../.github/release.yml). The **Pull request policy** workflow labels each PR from its Conventional Commit title and relabels it when the title changes:
+
+| Title type | Label | Release-notes section |
+| --- | --- | --- |
+| any type with `!` | `breaking` | Breaking changes |
+| `feat` | `feature` | New features |
+| `fix` | `fix` | Fixes and improvements |
+| `perf` | `performance` | Performance |
+| `docs` | `documentation` | Documentation |
+| `refactor`, `test`, `build`, `ci`, `chore` | `refactor`, `testing`, `build`, `ci`, `chore` | Maintenance |
+| `fix(deps)`, `chore(deps)` | `deps` | Maintenance |
+
+PRs labelled `dependencies` or `skip-changelog` are left out. To move a PR to a different section, edit its title before the release is published.
+
 ## Debugging a release build
 
 Each release includes a `strata-VERSION-TARGET.debug` file matching its stripped binary. Download the debug file for the installed version and architecture, place it beside the `strata` binary, then run `coredumpctl debug strata`; GDB follows the binary's embedded debug link to load Rust function names and source lines.

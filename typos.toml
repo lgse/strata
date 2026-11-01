@@ -8,6 +8,7 @@ extend-exclude = [
   "data/locales/**/de.json",
   "data/locales/**/es.json",
   "data/locales/**/fr.json",
+  "data/locales/**/hu.json",
   "data/locales/**/it.json",
   "data/locales/**/ja.json",
   "data/locales/**/ko.json",
@@ -15,6 +16,10 @@ extend-exclude = [
   "data/locales/**/ru.json",
   "data/locales/**/vi.json",
   "data/locales/**/zh-CN.json",
+  "data/locales/**/zh-TW.json",
+  # Provider translations; the English messages are checked in provider.py.
+  "integrations/kdeconnect/messages.json",
+  "integrations/localsend/messages.json",
   # Reproducible upstream MathJax bundle and npm dependency lock.
   "data/math-renderer.js",
   "packaging/math-renderer/package-lock.json",
@@ -30,11 +35,13 @@ extend-ignore-re = [
   # German F1 row exercised by the localized shortcut reference regression.
   '"Ausgewählte Elemente kopieren / ausschneiden"',
   # Non-English values in the multilingual count and calendar catalogs.
-  '(?m)^\s*"(?:fr|de|es|ja|pt-BR|ko|vi|it|ru|zh-CN)": ".*"',
+  '(?m)^\s*"(?:fr|hu|de|es|ja|pt-BR|ko|vi|it|ru|zh-CN|zh-TW)": ".*"',
+  # Non-English installer messages generated from data/locales/installer.json.
+  '(?s)\n  (?:fr|hu|de|es|ja|pt-BR|ko|vi|it|ru|zh-CN|zh-TW)\) INSTALLER_MESSAGES=\(.*?\n  \) ;;',
   # Localized desktop-entry values.
-  '(?m)^\w+\[(?:fr|de|es|ja|pt_BR|ko|vi|it|ru|zh_CN)\]=.*$',
-  # "café" fixtures spelled as raw, replacement-character or percent-encoded bytes.
-  'caf(\\x[0-9a-fA-F]{2}|\\u\{FFFD\}|%[0-9A-Fa-f]{2})',
+  '(?m)^\w+\[(?:fr|hu|de|es|ja|pt_BR|ko|vi|it|ru|zh_CN|zh_TW)\]=.*$',
+  # "café" fixtures spelled as raw, escaped or percent-encoded bytes, and the name they fix to.
+  'caf(\\x[0-9a-fA-F]{2}|\\u\{[0-9a-fA-F]+\}|%[0-9A-Fa-f]{2}|_\.txt)',
 ]
 
 [default.extend-words]
@@ -42,6 +49,10 @@ extend-ignore-re = [
 pard = "pard"
 headerr = "headerr"
 falt = "falt"
+# OpenDocument (ODF) and its XSL-FO attribute namespace.
+ODF = "ODF"
+fo = "fo"
+FO = "FO"
 Omarchy = "Omarchy"
 Hyprland = "Hyprland"
 JetBrains = "JetBrains"
@@ -50,8 +61,11 @@ darcula = "darcula"
 Strata = "Strata"
 WRONLY = "WRONLY"
 gir = "gir"
+exportfs = "exportfs"
 # Verbatim file extensions.
 mak = "mak"
 edn = "edn"
 ags = "ags"
 tese = "tese"
+# The `--qa` reply field for captured GLib warnings and criticals.
+criticals = "criticals"

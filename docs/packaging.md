@@ -43,9 +43,11 @@ There is no `update_command`. pacman cannot update an AUR package -- no configur
 
 `channel` is the packaging channel, named after the package (`stable`, `rc`). Strata maps it onto its own persisted channel -- `rc` becomes `preview`, the in-app channel that accepts alpha, beta, and RC builds -- and then locks the **Settings -> Updates** channel selector to it. The channel is a property of the installed package, not a preference: switching channels means installing the other package.
 
-Strata reads it relative to its own install prefix (`<prefix>/share/strata/install-source.toml`). When it is present, Strata checks the AUR first and reports a release only after that package version is available. **Settings → Updates** opens the installed AUR helper in a terminal with a full-system update command, or opens the package’s AUR page when no supported helper is available. `services::install_update` still refuses to replace the package-owned binary outright. Every field is optional and unknown keys are ignored, so the parser can evolve without breaking an older binary. A marker that exists but cannot be parsed still counts as packaged, which fails safe.
+Strata reads it once at start-up, relative to its own install prefix (`<prefix>/share/strata/install-source.toml`). When it is present, Strata checks the AUR first and reports a release only after that package version is available. **Settings → Updates** opens the installed AUR helper in a terminal with a full-system update command, or opens the package’s AUR page when no supported helper is available. Strata looks for the helpers on `PATH` once per run, off the interface thread, when it first needs the update method; a helper installed while Strata runs is offered after a restart. `services::install_update` still refuses to replace the package-owned binary outright. Every field is optional and unknown keys are ignored, so the parser can evolve without breaking an older binary. A marker that exists but cannot be parsed still counts as packaged, which fails safe.
 
 This is currently an official Strata metadata format for these two AUR packages, not a public cross-distribution packaging API. Supporting Debian, RPM, Flatpak, or other providers requires an explicit design for ownership, availability checks, channels, and update actions rather than assuming AUR semantics.
+
+The [Nix package](#nix) is the one other marker. It installs `nix/install-source.toml` (`manager = "Nix"`, `package = "strata"`, nothing else) so Diagnostics reports `Installed by Nix as strata.` It is safe only because that package compiles with `STRATA_UPDATER=disabled`: `update_method()` treats every marker as an AUR install, so a Nix build with the updater enabled would query the AUR for a package named `strata`. Give the marker a provider field before enabling the updater for Nix.
 
 ## Updating the packages for a release
 
@@ -100,6 +102,55 @@ The launcher and application icon are installed from the release archive, not fr
 
 The archive also ships `io.github.lgse.Strata.FileManager1.service`, which users can install under `$XDG_DATA_HOME/dbus-1/services` to make Strata the D-Bus-activatable owner of `org.freedesktop.FileManager1`. Packages must not install it into a system service directory: multiple files providing that name in one directory are selected arbitrarily, and merely installing Strata must not change the user's preferred file manager. They may install the inactive template under `/usr/share/strata` so users can opt in without downloading the archive. Keep activation an explicit per-user choice as documented in the README. Packages must not run `--install-udiskie-unlock` in `package()` or a pacman hook.
 
+### File manager activation and desktop portals
+
+The FileManager1 service starts Strata with `--gapplication-service`. For this
+launch mode, Strata re-executes before GTK initialization with `no-portals`
+added to `GDK_DEBUG`, preserving other debug flags. Keep that service argument
+when adapting the activation command for a package.
+
+This avoids a circular wait with desktop portals that synchronously dispatch
+`OpenDirectory` to `FileManager1.ShowItems`: GTK can query the same portal's
+host registry during startup, before Strata can answer ShowItems. With GTK
+4.24.1 and xdg-desktop-portal 1.22.1, that cycle delays cold activation for
+approximately 25 seconds and stalls other portal consumers.
+
+This is a compatibility mitigation for the activated process, not a replacement
+for asynchronous dispatch in the desktop portal. GTK portal integration is
+disabled for that process's lifetime, and later launches of Strata reuse that
+process until it exits. Programs it launches, file providers, and a restart from
+Settings get the original `GDK_DEBUG` back; ordinary launches and the separate
+`--portal` FileChooser backend never acquire the override. Do not set
+`GDK_DEBUG=no-portals` globally to address this problem.
+
+## Nix
+
+`flake.nix` exposes `packages.<system>.default` for `x86_64-linux` and `aarch64-linux`, built from `package.nix` with `nix build`, `nix run`, or a flake input in a NixOS or Home Manager configuration; the README shows the user-facing steps. Unlike the AUR packages it compiles from source, with `STRATA_UPDATER=disabled`, without the unfree `rar` feature unless `rarSupport = true`, and with the [sandbox runtime paths](preview-sandbox.md#packaging-non-fhs-runtimes) and `STRATA_TRUSTED_COMMAND_PATH` embedded so bubblewrap and the preview helpers come from the package closure rather than a system profile. `nix flake check` builds the package; the Rust test suite is not run inside the Nix build because it needs the private display and D-Bus session described in [testing.md](testing.md).
+
+`wrapGAppsHook4` turns `bin/strata` into a wrapper around `bin/.strata-wrapped`, and every store path changes on update. The runtime-installed integrations (file chooser portal, FileManager1 service, Omarchy setup, udiskie unlock hook) record `/proc/self/exe`, which on Nix is the wrapped binary of one build: a D-Bus-activated instance would start without the wrapper's GStreamer, gdk-pixbuf, and XDG environment, and the next update or garbage collection would leave the files pointing at a stale or missing store path. The package therefore compiles with [`STRATA_INTEGRATIONS=package`](#building-with-package-provided-integrations) and ships the files itself: `passthru.fileChooserPortal` holds `share/xdg-desktop-portal/portals/strata.portal` and the `org.freedesktop.impl.portal.desktop.strata` D-Bus service, and `passthru.fileManagerService` holds the `org.freedesktop.FileManager1` service, each with `Exec` pointing at the package's wrapper. They are separate derivations rather than part of `$out` because NixOS registers every system package's `share/dbus-1/services` with the session bus, so shipping the FileManager1 service in the main package would make every install claim that bus name ahead of or behind the desktop's own file manager, depending on directory order. The README shows the NixOS and Home Manager options that enable them; `nix flake check` builds both derivations. The inactive template under `share/strata` remains for the manual copy the README describes for other installs.
+
+The default folder handler stays a user-level `xdg-mime` association because it stores only the desktop ID, which does not change between builds; Home Manager users set it through `xdg.mimeApps.defaultApplications`. The Omarchy shortcut block has no Nix equivalent, and the udiskie hook is a `services.udiskie.settings` entry.
+
 ## Other distributions
 
-Debian/Ubuntu, Fedora, Flatpak, and AppImage each have their own dependency, sandboxing, update, and review requirements and are tracked as separate issues. The AUR marker must not be reused for them until those provider-specific semantics are designed.
+Debian/Ubuntu, Fedora, Flatpak, and AppImage each have their own dependency, sandboxing, update, and review requirements and are tracked as separate issues. The AUR marker must not be reused for them until those provider-specific semantics are designed; the Nix marker above relies on the updater being compiled out, not on such a design.
+
+### Building without the in-app updater
+
+A distribution whose own packages deliver Strata updates builds with the updater compiled out:
+
+```bash
+STRATA_UPDATER=disabled cargo build --locked --release
+```
+
+Such a build never checks for, downloads, or installs a release. Settings has no Updates page and its search finds no update settings, the update notice never appears, and `services::install_update` refuses to run. Diagnostics reports the installation as having in-app updates disabled, which tells a downstream build apart in bug reports. `STRATA_UPDATER` accepts only `enabled` (the default) and `disabled`; any other value fails the build, so a typo cannot ship an updater. It combines with `--no-default-features` for builds without RAR support.
+
+### Building with package-provided integrations
+
+A package that cannot let Strata write its own integration files at runtime, because the executable path changes on every update (Nix, Guix, and other store-based or self-contained layouts), builds with the runtime installers compiled out:
+
+```bash
+STRATA_INTEGRATIONS=package cargo build --locked --release
+```
+
+Such a build never writes, removes, or refreshes the file chooser portal, the FileManager1 service, the Omarchy shortcut block, or the udiskie unlock hook. Settings → General → Desktop integration keeps the **System file manager** and **Unlock encrypted volumes** rows, so search still finds them, but each explains that the package provides the integration instead of showing status indicators and setup actions. The command-line modes `--install-portal`, `--uninstall-portal`, `--dismiss-portal-prompt`, `--install-udiskie-unlock`, and `--uninstall-udiskie-unlock` exit with the same explanation, and the start-up check that restarts a stale per-user portal backend is skipped. The `--portal`, `--gapplication-service`, and `--udiskie-hook` modes that the shipped files invoke are unaffected. `STRATA_INTEGRATIONS` accepts only `runtime` (the default) and `package`; any other value fails the build. The package must then install the files `src/portal_setup.rs` would have written, with `Exec` lines that point at the executable users launch (the wrapper on Nix), and document how to enable them; the [Nix section](#nix) is the reference implementation.

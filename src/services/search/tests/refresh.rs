@@ -298,7 +298,9 @@ fn queued_refreshes_coalesce_to_the_latest_filesystem_state() {
 fn refreshed_index_rejects_late_original_batches_and_rescores_smaller_snapshots() {
     let fixture = tempfile::tempdir().expect("fixture");
     let root = fixture.path();
-    fs::write(root.join("needle-renamed.txt"), "body").expect("file");
+    for name in ["needle.txt", "needle-stale.txt", ".needle-late.txt"] {
+        fs::write(root.join(name), "body").expect("file");
+    }
     let index = Arc::new(SharedIndex::new());
     let mut old_batch = vec![
         SearchItem::new(root.join("needle.txt"), root, false),
@@ -309,6 +311,8 @@ fn refreshed_index_rejects_late_original_batches_and_rescores_smaller_snapshots(
         start_search_session(index.clone(), SearchScorer::Name(fuzzy_score_normalized));
     handle.query("needle");
     await_paths(&events, root, &["needle.txt", "needle-stale.txt"]);
+    fs::rename(root.join("needle.txt"), root.join("needle-renamed.txt")).expect("rename");
+    fs::remove_file(root.join("needle-stale.txt")).expect("remove");
     request_index_refresh(
         index.clone(),
         vec![root.to_path_buf()],
@@ -318,7 +322,7 @@ fn refreshed_index_rejects_late_original_batches_and_rescores_smaller_snapshots(
         RefreshMode::Restart,
     );
     await_paths(&events, root, &["needle-renamed.txt"]);
-    let mut late_batch = vec![SearchItem::new(root.join("needle.txt"), root, false)];
+    let mut late_batch = vec![SearchItem::new(root.join(".needle-late.txt"), root, false)];
     append_index_items(&index, &mut late_batch, false, SearchCoverage::default());
     index.broadcast_change();
     await_paths(&events, root, &["needle-renamed.txt"]);

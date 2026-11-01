@@ -1,0 +1,6 @@
+{"scenario":"leftover-click-honors-modifiers","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Columns leftover-space Shift/Ctrl click with the modifier released before mouse-up keeps range/toggle (#795); shift-click-range lacks early release"}}
+{"wait":{"selected":["archive"],"dir":"$root"},"message":"the fresh listing to select 'archive' as the range anchor"}
+{"click":{"entry":"pictures","part":"label","dir":"$root"},"mods":["shift"],"release_mods_first":true,"at":[-2,"50%"]}
+{"wait":{"selected":["archive","documents","pictures"],"dir":"$root"},"message":"a Shift click on the label's leftover space, Shift released before the button, to extend the range"}
+{"click":{"entry":"documents","part":"label","dir":"$root"},"mods":["ctrl"],"release_mods_first":true,"at":[-2,"50%"]}
+{"wait":{"selected":["archive","pictures"],"dir":"$root"},"message":"a Ctrl click on the label's leftover space, Ctrl released before the button, to toggle 'documents' off"}

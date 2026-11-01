@@ -16,7 +16,9 @@ use gtk::gio;
 
 use crate::{
     adapters::{encode_archive_result, list_archive_entries_direct},
-    sandbox::{FILE_SIZE_LIMIT_BYTES, MAX_OUTPUT_BYTES, MediaPreviewBackend, PdfRenderSize},
+    sandbox::{
+        DocumentFormat, FILE_SIZE_LIMIT_BYTES, MAX_OUTPUT_BYTES, MediaPreviewBackend, PdfRenderSize,
+    },
     services::{ArchiveFormat, MediaPreviewSize},
 };
 
@@ -29,6 +31,7 @@ mod image_conversion;
 mod media;
 mod model;
 mod raw_metadata;
+mod route;
 
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
@@ -130,7 +133,11 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
         return fs::write(output, bytes).map_err(|e| e.to_string());
     }
     if operation == "preview-document" {
-        let document = crate::services::docx::read_document(input)?;
+        let document =
+            match DocumentFormat::from_argument(value).ok_or("Invalid document format")? {
+                DocumentFormat::Docx => crate::services::docx::read_document(input)?,
+                DocumentFormat::Odt => crate::services::odt::read_document(input)?,
+            };
         let bytes = serde_json::to_vec(&document).map_err(|e| e.to_string())?;
         if bytes.len() as u64 > MAX_OUTPUT_BYTES {
             return Err("Document output budget exceeded".into());
@@ -155,9 +162,10 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     let (png, metadata) = match operation.as_str() {
         "thumbnail-image" => (render_raw(input, numeric_value()?.clamp(16, 256))?, None),
         "thumbnail-raw" => (
-            render_raw_thumbnail(input, numeric_value()?.clamp(16, 256))?,
+            render_camera_raw(input, numeric_value()?.clamp(16, 256))?,
             None,
         ),
+        "preview-raw" => (render_camera_raw_preview(input, 800)?, None),
         "thumbnail-pdf" => (
             render_pdf_thumbnail(input, numeric_value()?.clamp(16, 256))?,
             None,
@@ -209,10 +217,27 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
         "document-inline-math" => (document_media::math(input, false)?, None),
         "preview-pdf" => {
             let (page, size) = pdf_render_request(value)?;
-            let (png, page, pages, text_layer) = render_pdf_page(input, page, size)?;
+            let uri = gio::File::for_path(input).uri();
+            let document = poppler::Document::from_file(&uri, None).map_err(|error| {
+                if error.matches(poppler::Error::Encrypted)
+                    && let Ok(bytes) =
+                        serde_json::to_vec(&crate::sandbox::PdfPreviewError::PasswordProtected)
+                {
+                    let _ = fs::write(output.with_file_name("result.error"), bytes);
+                }
+                error.to_string()
+            })?;
+            let (png, page, pages, text_layer) = render_pdf_page(&document, page, size)?;
             text_layer_bytes = text_layer;
             (png, Some(format!("{page} {pages}")))
         }
+        "preview-route" => match route::render(input, value) {
+            Ok(bytes) => (bytes, None),
+            Err(message) => {
+                let _ = fs::write(output.with_file_name("result.error"), message.as_bytes());
+                return Err(message);
+            }
+        },
         "preview-model" => {
             let progress = |stage| {
                 if let Ok(bytes) = serde_json::to_vec(&stage) {
@@ -222,14 +247,19 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
                     }
                 }
             };
-            let png = match model::render_reporting(input, value, &progress) {
+            let rendered = match model::render_reporting(input, value, &progress) {
                 Ok(result) => result,
                 Err(message) => {
                     let _ = fs::write(output.with_file_name("result.error"), message.as_bytes());
                     return Err(message);
                 }
             };
-            (png, None)
+            fs::write(
+                output.with_file_name("result.model"),
+                serde_json::to_vec(&rendered.mesh).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            (rendered.png, None)
         }
         _ => return Err("Unknown preview helper operation".to_owned()),
     };
@@ -398,7 +428,7 @@ pub(crate) fn browser_render(
                     if !oversized {
                         response.png =
                             render_pixbuf(input, 256.min(size.0.max(size.1))).unwrap_or_default();
-                    } else if let Some(png) = read_exif_thumbnail(input, 256) {
+                    } else if let Some(png) = render_oversized(input, 256) {
                         response.png = png;
                     }
                 }
@@ -409,14 +439,14 @@ pub(crate) fn browser_render(
                 }
             }
         }
-        Operation::Raw => response.png = render_raw_thumbnail(input, 256).unwrap_or_default(),
+        Operation::Raw => response.png = render_camera_raw(input, 256).unwrap_or_default(),
         Operation::Pdf => response.png = render_pdf_thumbnail(input, 256).unwrap_or_default(),
         Operation::Video => response.png = render_media(input, 256).unwrap_or_default(),
-        Operation::ThreeMfThumbnail | Operation::FreeCadThumbnail => {
-            let format = if operation == Operation::ThreeMfThumbnail {
-                crate::services::ModelFormat::ThreeMf
-            } else {
-                crate::services::ModelFormat::FreeCad
+        Operation::ThreeMfThumbnail | Operation::FreeCadThumbnail | Operation::GcodeThumbnail => {
+            let format = match operation {
+                Operation::ThreeMfThumbnail => crate::services::ModelFormat::ThreeMf,
+                Operation::GcodeThumbnail => crate::services::ModelFormat::Gcode,
+                _ => crate::services::ModelFormat::FreeCad,
             };
             response.png = model::thumbnail(input, format, 256, 256, &|_| {}).unwrap_or_default();
         }
@@ -434,6 +464,10 @@ pub(crate) fn browser_render(
         Operation::PreviewImage => {
             response.png = document_media::image(input, 800).unwrap_or_default();
         }
+        Operation::PreviewRaw => {
+            response.png = render_camera_raw_preview(input, 800).unwrap_or_default();
+        }
+        Operation::RawMetadata => response.metadata = raw_metadata::read(input).unwrap_or_default(),
         Operation::DocumentMermaid => {
             response.png = document_media::mermaid(input).unwrap_or_default();
         }
@@ -447,11 +481,13 @@ pub(crate) fn browser_render(
     response
 }
 
+const RGBA_CHANNELS: u64 = 4;
+const MAX_DECODED_PIXELS: u64 = FILE_SIZE_LIMIT_BYTES / RGBA_CHANNELS;
+
 pub(crate) fn exceeds_decoded_frame_budget(width: i32, height: i32) -> bool {
     let width = u64::try_from(width).unwrap_or(0);
     let height = u64::try_from(height).unwrap_or(0);
-    const RGBA_CHANNELS: u64 = 4;
-    width.saturating_mul(height).saturating_mul(RGBA_CHANNELS) > FILE_SIZE_LIMIT_BYTES
+    width.saturating_mul(height) > MAX_DECODED_PIXELS
 }
 
 fn read_jpeg_dimensions<R: io::Read + io::Seek>(reader: &mut R) -> Option<(i32, i32)> {
@@ -573,10 +609,8 @@ fn render_raw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
         && height > 0
     {
         if exceeds_decoded_frame_budget(width, height) {
-            if let Some(png) = read_exif_thumbnail(path, size) {
-                return Ok(png);
-            }
-            return Err("Image dimensions exceed the decoded frame budget".to_owned());
+            return render_oversized(path, size)
+                .ok_or_else(|| "Image dimensions exceed the decoded frame budget".to_owned());
         }
         return render_pixbuf(path, size.min(width.max(height)))
             .or_else(|_| render_imagemagick(path, size))
@@ -585,7 +619,7 @@ fn render_raw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
     render_imagemagick(path, size).or_else(|_| render_dcraw(path, size))
 }
 
-fn render_raw_thumbnail(path: &Path, size: i32) -> Result<Vec<u8>, String> {
+fn render_camera_raw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
     if let Some((width, height)) = image_dimensions(path)
         && exceeds_decoded_frame_budget(width, height)
     {
@@ -593,10 +627,39 @@ fn render_raw_thumbnail(path: &Path, size: i32) -> Result<Vec<u8>, String> {
             .or_else(|| render_dcraw(path, size).ok())
             .ok_or_else(|| "Image dimensions exceed the decoded frame budget".to_owned());
     }
-    // Prefer the camera JPEG so ImageMagick does not demosaic the list thumbnail.
+    // Prefer the camera JPEG so ImageMagick does not demosaic.
     render_dcraw(path, size)
         .or_else(|_| render_pixbuf(path, size))
         .or_else(|_| render_imagemagick(path, size))
+}
+
+fn render_camera_raw_preview(path: &Path, size: i32) -> Result<Vec<u8>, String> {
+    let pixbuf_sees_thumbnail =
+        image_dimensions(path).is_some_and(|(width, height)| width.max(height) < size);
+    if !pixbuf_sees_thumbnail {
+        return render_camera_raw(path, size);
+    }
+    render_dcraw(path, size)
+        .or_else(|_| render_imagemagick(path, size))
+        .or_else(|_| render_pixbuf(path, size))
+}
+
+fn render_oversized(path: &Path, size: i32) -> Option<Vec<u8>> {
+    let thumbnail = read_exif_thumbnail(path, size);
+    let covers_size = thumbnail
+        .as_deref()
+        .and_then(|png| read_png_dimensions(&mut io::Cursor::new(png)))
+        .is_some_and(|(width, height)| width.max(height) >= size);
+    if covers_size {
+        return thumbnail;
+    }
+    render_reduced_jpeg(path, size).or(thumbnail)
+}
+
+fn render_reduced_jpeg(path: &Path, size: i32) -> Option<Vec<u8>> {
+    let file = fs::File::open(path).ok()?;
+    read_jpeg_dimensions(&mut io::BufReader::new(file))?;
+    render_imagemagick(path, size).ok()
 }
 
 fn read_exif_thumbnail(path: &Path, size: i32) -> Option<Vec<u8>> {
@@ -622,6 +685,10 @@ fn render_imagemagick(path: &Path, size: i32) -> Result<Vec<u8>, String> {
     for executable in ["magick", "convert"] {
         let output = bounded_output(
             Command::new(executable)
+                .args(["-limit", "area"])
+                .arg(MAX_DECODED_PIXELS.to_string())
+                .args(["-limit", "disk", "0", "-define"])
+                .arg(format!("jpeg:size={size}x{size}"))
                 .arg(path)
                 .args(["-auto-orient", "-thumbnail"])
                 .arg(format!("{size}x{size}>"))
@@ -708,6 +775,7 @@ fn scale_embedded_thumbnail_pixbuf(data: &[u8], size: i32) -> Result<Vec<u8>, St
     let pixbuf = loader
         .pixbuf()
         .ok_or_else(|| "Unable to decode embedded thumbnail".to_owned())?;
+    let pixbuf = pixbuf.apply_embedded_orientation().unwrap_or(pixbuf);
     let width = pixbuf.width().max(1);
     let height = pixbuf.height().max(1);
     let scale = (f64::from(size) / f64::from(width))
@@ -764,12 +832,10 @@ fn render_pdf_thumbnail(path: &Path, size: i32) -> Result<Vec<u8>, String> {
 type PdfPageRender = (Vec<u8>, i32, i32, Option<Vec<u8>>);
 
 fn render_pdf_page(
-    path: &Path,
+    document: &poppler::Document,
     requested_page: i32,
     size: PdfRenderSize,
 ) -> Result<PdfPageRender, String> {
-    let uri = gio::File::for_path(path).uri();
-    let document = poppler::Document::from_file(&uri, None).map_err(|error| error.to_string())?;
     let pages = document.n_pages();
     if pages <= 0 {
         return Err("This PDF has no pages".to_owned());

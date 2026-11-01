@@ -1,0 +1,24 @@
+{"scenario":"filtered-results-group-selection","modes":["icons"],"layout":"us","mutation":null,"known_bug":null,"tree":{"match-note.txt":"root decoy\n","alpha":{"match-note.txt":"alpha source\n"},"beta":{"match-note.txt":"beta source\n","only-match.txt":"beta source\n"},"match-note-other.md":"other match\n"},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":4,"score":42,"note":"Shift-click, marquee, Shift+Right and Ctrl+A each select all recursive Icons filter results; only range-selection routes over filter results"}}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"type":"note"}
+{"wait":{"matches":{"count":4}},"message":"all recursive matches"}
+{"expect":[{"present":{"result_row":3,"containing":"match-note"}},{"absent":{"result_row":4,"containing":"match-note"}}],"message":"exactly four results"}
+{"click":{"result_row":0,"containing":"match-note"},"mods":["ctrl"]}
+{"click":{"result_row":-1,"containing":"match-note"},"mods":["shift"]}
+{"wait":{"all":[{"state":{"target":{"result_row":0,"containing":"match-note"},"selected":true}},{"state":{"target":{"result_row":1,"containing":"match-note"},"selected":true}},{"state":{"target":{"result_row":2,"containing":"match-note"},"selected":true}},{"state":{"target":{"result_row":3,"containing":"match-note"},"selected":true}}]},"message":"Shift-click on the last result to select the range from the first"}
+{"key":"ctrl+f"}
+{"key":"Down"}
+{"wait":{"all":[{"state":{"target":{"result_row":0,"containing":"match-note"},"selected":true}},{"state":{"target":{"result_row":1,"containing":"match-note"},"selected":false}},{"state":{"target":{"result_row":3,"containing":"match-note"},"selected":false}}]},"message":"Ctrl+F then Down to leave only the first result selected"}
+{"drag":{"from":{"result_row":-1,"containing":"match-note"},"from_at":["50%","end+25"],"to":{"result_row":0,"containing":"match-note"},"to_at":[15,2]},"steps":8}
+{"wait":{"all":[{"state":{"target":{"result_row":0,"containing":"match-note"},"selected":true}},{"state":{"target":{"result_row":1,"containing":"match-note"},"selected":true}},{"state":{"target":{"result_row":2,"containing":"match-note"},"selected":true}},{"state":{"target":{"result_row":3,"containing":"match-note"},"selected":true}}]},"message":"a marquee over the results to select all of them"}
+{"key":"ctrl+f"}
+{"key":"Down"}
+{"wait":{"all":[{"state":{"target":{"result_row":0,"containing":"match-note"},"selected":true}},{"state":{"target":{"result_row":1,"containing":"match-note"},"selected":false}},{"state":{"target":{"result_row":3,"containing":"match-note"},"selected":false}}]},"message":"Ctrl+F then Down to leave only the first result selected"}
+{"key":"shift+Right","repeat":3}
+{"wait":{"all":[{"state":{"target":{"result_row":0,"containing":"match-note"},"selected":true}},{"state":{"target":{"result_row":1,"containing":"match-note"},"selected":true}},{"state":{"target":{"result_row":2,"containing":"match-note"},"selected":true}},{"state":{"target":{"result_row":3,"containing":"match-note"},"selected":true}}]},"message":"Shift+Right to extend the selection over every result"}
+{"key":"ctrl+f"}
+{"key":"Down"}
+{"wait":{"all":[{"state":{"target":{"result_row":0,"containing":"match-note"},"selected":true}},{"state":{"target":{"result_row":1,"containing":"match-note"},"selected":false}},{"state":{"target":{"result_row":3,"containing":"match-note"},"selected":false}}]},"message":"Ctrl+F then Down to leave only the first result selected"}
+{"key":"ctrl+a"}
+{"wait":{"all":[{"state":{"target":{"result_row":0,"containing":"match-note"},"selected":true}},{"state":{"target":{"result_row":1,"containing":"match-note"},"selected":true}},{"state":{"target":{"result_row":2,"containing":"match-note"},"selected":true}},{"state":{"target":{"result_row":3,"containing":"match-note"},"selected":true}}]},"message":"Ctrl+A to select every result"}

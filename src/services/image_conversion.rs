@@ -69,6 +69,7 @@ impl ImageKind {
 
 // Only a bounded signature read happens outside the decoder sandbox.
 pub(crate) fn detect(path: &Path) -> Option<ImageKind> {
+    crate::util::ui_thread::assert_off();
     let mut header = [0; 32];
     let count = fs::File::open(path).ok()?.read(&mut header).ok()?;
     let header = &header[..count];
@@ -125,20 +126,18 @@ pub(crate) fn convert(
     if cancelled.is_cancelled() {
         return Err("Conversion cancelled".into());
     }
-    let directory = tempfile::Builder::new()
-        .prefix(super::remote_download::DOWNLOAD_PREFIX)
-        .tempdir()
-        .map_err(|error| {
-            rust_i18n::t!(
-                "Could not create a temporary folder: %{error}",
-                error = error
-            )
-            .into_owned()
-        })?;
+    let directory = super::remote_download::private_download_dir().map_err(|error| {
+        rust_i18n::t!(
+            "Could not create a temporary folder: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
     let destination = directory
         .path()
         .join(name.file_name().ok_or("Invalid PNG filename")?);
-    let mut file = fs::File::create(&destination).map_err(|error| error.to_string())?;
+    let mut file = super::remote_download::create_private_file(&destination)
+        .map_err(|error| error.to_string())?;
     file.write_all(&output.data).map_err(|error| {
         rust_i18n::t!("Could not write the PNG: %{error}", error = error).into_owned()
     })?;

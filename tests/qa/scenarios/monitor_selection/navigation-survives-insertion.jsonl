@@ -1,0 +1,10 @@
+{"scenario":"navigation-survives-insertion","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"tree":{"{000..099}.txt":"{}\n"},"cost":{"columns":0.6,"icons":0.6,"list":0.6},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"keyboard focus follows the right neighbour after a background insertion; no other scenario checks focus under insertion"}}
+{"select":{"entry":"003.txt"}}
+{"wait":{"focused":"003.txt"},"message":"keyboard focus to reach '003.txt'"}
+{"fs":{"path":"000-new.txt","write":"new entry\n"}}
+{"wait":{"entry":"000-new.txt"},"message":"the entry '000-new.txt' to appear"}
+{"key":"Down","modes":["columns"]}
+{"key":"Right","modes":["icons"]}
+{"key":"Down","modes":["list"]}
+{"wait":{"focused":"004.txt"},"message":"keyboard focus to reach '004.txt'"}
+{"wait":{"selected":["004.txt"]},"message":"the selection to become ['004.txt']"}

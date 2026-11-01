@@ -9,11 +9,39 @@ FHS, `/run/wrappers/bin`, `/nix/store`, or `/gnu/store`.
 
 ## Packaging non-FHS runtimes
 
-Packagers can set these optional environment variables **when compiling Strata**.
-They are embedded in the executable; setting them when launching Strata has no
-effect and does not override the sandbox's cleared environment.
+Two kinds of configuration cover packages whose runtime does not live under
+`/usr`: where the host finds bubblewrap and the other helpers it runs directly,
+and which runtime tree and helper paths the sandbox binds and runs inside.
 
-| Build-time variable | Default | Purpose |
+### Host helper directories
+
+`STRATA_TRUSTED_COMMAND_PATH` is a colon-separated list of additional directories
+in which the host looks for helpers such as `bwrap`, `xdg-mime`, and the
+provider runtimes. It is read **only when compiling Strata**, so a package can
+point it at the `bin` directories of its runtime closure without requiring users
+to install those tools into a system profile:
+
+```sh
+STRATA_TRUSTED_COMMAND_PATH='/nix/store/<bubblewrap>/bin:/nix/store/<xdg-utils>/bin' \
+cargo build --release --locked
+```
+
+The fixed system directories are always searched first, so `/run/wrappers/bin`
+and the system profiles keep priority over configured directories. Every entry
+must be an absolute directory; the build fails on empty or relative entries. At
+run time a configured directory is searched only when it canonicalizes under one
+of the trust roots above, and the helper found there must still canonicalize
+under a trust root. The user's `PATH` and home directory are never consulted,
+and a required helper that cannot be found in a trusted directory still fails
+closed.
+
+### Sandbox runtime paths
+
+These variables select the runtime tree and helper paths inside the sandbox.
+Each one is resolved in this order: a value set **when launching Strata**, then
+a value embedded **when compiling Strata**, then the default.
+
+| Variable | Default | Purpose |
 | --- | --- | --- |
 | `STRATA_SANDBOX_PATH` | `/usr/bin` | Colon-separated helper binary directories inside the sandbox |
 | `STRATA_SANDBOX_ROOT` | `/usr` | System runtime tree, bound read-only at the same absolute path |
@@ -30,6 +58,17 @@ STRATA_SANDBOX_GDK_PIXBUF_MODULE_FILE='/nix/store/<pixbuf-loaders>/lib/gdk-pixbu
 cargo build --release --locked
 ```
 
+A prebuilt release can be configured the same way at launch, once its ELF
+dependencies are available and bubblewrap is installed in a trusted system
+directory:
+
+```sh
+STRATA_SANDBOX_PATH='/nix/store/<ffmpeg>/bin:/nix/store/<imagemagick>/bin' \
+STRATA_SANDBOX_ROOT='/nix/store' \
+STRATA_SANDBOX_PRLIMIT='/nix/store/<util-linux>/bin/prlimit' \
+strata
+```
+
 Replace the illustrative store paths with package dependency paths and include
 all required helper binary directories. The root replaces `/usr`, rather than
 adding another mount. The launcher, helpers, loaders cache, and its referenced
@@ -37,6 +76,13 @@ modules and runtime dependencies must be reachable within the sandbox mounts.
 Use only trusted, admin-managed runtime trees: binding `/` or a user-data tree
 would expose private files to untrusted decoders. Values are taken literally;
 leave variables unset to use defaults, rather than setting empty values.
+
+Launch-time values are validated before use. Every path must be absolute and
+free of `..` components, and a launch-time `STRATA_SANDBOX_ROOT` must be `/usr`,
+`/nix/store`, or `/gnu/store`, or a directory inside one of them. A value
+that fails validation is logged and ignored, and the embedded or default value
+stays in effect. The launch-time variables are read by the host only; the
+sandbox still starts with a cleared environment.
 
 These settings apply to one-shot, pooled browser, media, and RAR extraction
 sandboxes. They do not change host-side trusted bubblewrap lookup, namespace
@@ -59,6 +105,9 @@ isolation, resource limits, or the other narrow optional runtime mounts.
 - Local DOCX previews run `docx-rs` in the same helper under the same 20 MiB input
   limit. Only a validated, bounded JSON payload of generated HTML returns, and the
   application reparses it with the existing bounded HTML parser.
+- Local ODT and OTT previews stream `content.xml` and `styles.xml` through
+  `quick-xml` in the same helper under the same 20 MiB input limit, and return the
+  same validated HTML payload as DOCX.
 - Local [Markdown, bounded HTML, RTF, CSV, and TSV previews](document-previews.md) are parsed
   in-process by pure-Rust parsers that receive only the bounded source string and
   cannot initiate filesystem access, network access, JavaScript execution, or
@@ -69,26 +118,112 @@ isolation, resource limits, or the other narrow optional runtime mounts.
   and user equations are passed as data, not evaluated as JavaScript;
   SVG resource resolution is disabled and only validated PNG output returns.
 
+## Password-protected PDFs
+
+Quick Preview shows **Preview unavailable** with **This PDF is password
+protected.** when Poppler reports that opening the document requires a password.
+An **Open** button under the message hands the file to the default PDF reader,
+where it can be unlocked; Strata does not prompt for, store, or submit PDF
+passwords or create an unlocked copy. The file chooser, which never opens files
+externally, shows the explanation alone. PDFs that open without a password, including owner-restricted
+PDFs with an empty user password, still preview normally. Other rendering failures
+keep their existing error behavior.
+
+The helper identifies protection through Poppler's typed `Encrypted` error and
+returns a structured code through the existing bounded private error output.
+Locked PDF thumbnails remain passwordless and fall back to the file icon.
+
 ## Local 3D model previews
 
-Quick Preview accepts STL, 3MF and FreeCAD (`.FCStd`) files. STL and single-part
-3MF geometry use a fixed-angle software render; FreeCAD uses its saved image.
+Quick Preview accepts STL, 3MF, FreeCAD (`.FCStd`), and G-code (`.gcode`, `.gco`,
+and binary `.bgcode`) files. STL and single-part
+3MF geometry use a software render with four diagonal camera views looking down
+at the model; FreeCAD and G-code use an embedded image. Rendered
+meshes show media-style previous/next controls around a circular camera-position
+indicator, with stable centring and scale. Its dot sweeps around the circle to the
+selected corner, respecting the reduced-motion and system animation settings.
+Next moves clockwise; Previous moves anticlockwise.
+The indicator is a top-down map: a hollow circle marks the model at the centre,
+and the camera dot sits on the outer circumference. Camera directions are shared
+with the renderer: +X is right, −Y is front, and +Z is up. The initial front-left
+camera therefore appears at the lower left; front-right is lower right,
+back-right upper right and back-left upper left. These names follow the model's
+coordinate axes.
+View names are exposed to assistive technology; the visible controls use the
+orbit diagram without a text caption.
+The model and controls form one vertically centred block using the shared media
+layout. Geometry renders on a square canvas, avoiding unused space from the pane's
+aspect ratio. Above the badges, the filename and its position among model files
+in the current sorted or filtered listing use the same styling as video previews.
+Above the camera controls, media-style badges show the mesh encoding (binary STL,
+ASCII STL or 3MF) and the rendered triangle count. These details come from the
+existing parse/render pass and remain part of the cached preview. Thumbnail-only
+previews do not parse geometry for badges. Dimensions and units are not shown.
+The first loading view already shows the filename, listing position and file
+format. The triangle count appears once parsing reports it, and the camera
+controls become active when the first mesh image is ready. A spinner in the
+preview header beside the open button is the only loading indicator, for both
+the first load and later view changes; its accessible label follows the loading
+stage. While another view renders, the last image dims. Failed view changes
+retain that image with a visible error so the controls can retry. Completed
+embedded-image previews have no camera controls and are never replaced with
+geometry for view selection.
 A 3MF package with exactly one usable embedded PNG uses that image, even if other
 candidates are corrupt or its geometry spans multiple model parts. Two usable
 images are ambiguous: Quick Preview tries geometry, while browser thumbnailing
 leaves the normal file icon. Multipart geometry is not rendered.
 
-Browser thumbnails extract embedded images only, through the **existing browser
+G-code uses the slicer thumbnail in the file header. Text files store PNG, JPEG,
+or QOI images as base64 comments (`; thumbnail begin`, including the `_PNG`,
+`_JPG`, and `_QOI` forms). Binary `.bgcode` stores the same images in thumbnail
+blocks. Several sizes are normal, unlike two usable PNG images in a 3MF package; Quick
+Preview shows the largest image that decodes. There is no toolpath render.
+A text file with no usable thumbnail keeps the ordinary text preview. A binary
+file with none reports “This G-code file has no usable embedded thumbnail”.
+Remote G-code is not staged for a thumbnail and keeps the text preview.
+
+The reader does not scan the toolpath. Text is read only until the first command,
+and only through `MAX_GCODE_HEADER_BYTES` (2 MiB), plus the rest of a thumbnail
+block that has already started. That block still cannot exceed one 4 MiB image.
+Binary files seek through metadata and stop at the first G-code block. Thumbnail
+blocks are uncompressed; a compressed thumbnail block is skipped. G-code is not
+subject to the 128 MiB model input cap.
+
+3MF, FreeCAD, and G-code browser thumbnails extract embedded images only, through the **existing browser
 worker pool** and its normal cache, cancellation and slow-job admission. There is
-no geometry fallback, new pool or thumbnail job for STL. The decoder does not read
-model XML when selecting an embedded image. Missing or unusable images leave the
+no geometry fallback or new pool. The 3MF decoder does not read
+model XML when selecting an embedded image. G-code thumbnails are shown whenever
+**Show thumbnails** is enabled and do not use the STL model thumbnails setting.
+Missing or unusable images leave the
 file icon, with the existing failure cache preventing immediate retries.
 
-Heavy Quick Previews (models, PDFs, workbooks and DOCX) share one process-wide
+Local STL browser thumbnails are a separate opt-in under **Settings → Appearance
+→ File icons → STL model thumbnails**; **Show thumbnails** must also be enabled.
+They reuse the software model renderer in a one-shot sandbox at 256×256, with a
+fixed camera, neutral model colors and a transparent background for the shared
+freedesktop thumbnail cache. The existing
+browser queue admits at most one such render across all windows in the process,
+within its general worker limit, and cancels obsolete requests normally. This
+does not create a reusable worker pool or raise any model/sandbox limits. An
+interactive Quick Preview may run concurrently; it does not share this background
+STL slot. Disabling the option hides cached STL thumbnails as well as preventing
+new renders. It does not delete PNG thumbnails already stored in
+`$XDG_CACHE_HOME/thumbnails/large`; other freedesktop clients may still display them.
+Cancellation or the wall deadline sends SIGKILL and releases the background STL
+worker and admission slot without waiting for the helper to be reaped. A detached
+waiter keeps its private output and file-operation hold alive until reaping and
+namespace cleanup finish. A killed helper stuck in kernel I/O can therefore
+overlap a later render until the kernel allows it to exit. Interactive Quick Preview
+retains its existing wait-for-exit policy. Failed models retain the file icon and normal retry backoff.
+
+Heavy Quick Previews (models, PDFs, workbooks, DOCX and ODT) share one process-wide
 permit and use one-shot sandboxes. Cancellation retains that permit until the
 helper exits. Format is carried explicitly across the sandbox boundary, including
 for symlinks; the UI supplies the render palette. Geometry PNG cache keys include
-format, size and palette, and open model previews reload on palette changes.
+format, size, palette and camera view. Open model previews reload on palette
+changes while retaining the selected camera; another file starts from the default
+front-left view. The helper reports whether its PNG came from a mesh or an
+embedded thumbnail, and mesh results must identify the requested camera view.
 
 Input, package and geometry limits are centralized in
 `src/services/model_preview.rs`. These are compile-time constants, not Settings
@@ -96,7 +231,8 @@ options or environment variables:
 
 | Constant | Limit | Applies to |
 | --- | --- | --- |
-| `MAX_MODEL_INPUT_BYTES` | 128 MiB (134,217,728 bytes) | Input file, including embedded-thumbnail requests |
+| `MAX_MODEL_INPUT_BYTES` | 128 MiB (134,217,728 bytes) | STL, 3MF, and FreeCAD input, including embedded-thumbnail requests |
+| `MAX_GCODE_HEADER_BYTES` | 2 MiB | Text G-code scanned before the first command. A thumbnail block already started may continue past it |
 | `MAX_MODEL_XML_BYTES` | 128 MiB, independently of compressed file size | Unpacked 3MF model XML |
 | `MAX_3MF_ARCHIVE_ENTRIES` | 256 | All ZIP entries in a 3MF package |
 | `MAX_FREECAD_ARCHIVE_ENTRIES` | 4096 | All ZIP entries in a FreeCAD package |
@@ -129,8 +265,67 @@ Embedded-image limits live in `src/sandbox_helper/model/embedded.rs`: at most 16
 candidates, 4 MiB per candidate, 16 MiB total candidate bytes read and 16 megapixels
 (16×1024×1024 pixels) total admitted to decoding. Oversized/invalid images are not
 usable; exhausting a total inspection budget fails the operation rather than
-assuming uninspected candidates are invalid. Only bounded PNG results return to
+assuming uninspected candidates are invalid. G-code reuses these limits. Only bounded PNG results return to
 GTK. Thumbnail output remains at most 256×256, in the image's original colors.
+
+## Offline route previews
+
+Quick Preview accepts local GPX, FIT and KML files, including file symlinks.
+The one-shot `preview-route` helper parses and draws the route without network,
+map tiles or external resources. The drawer and file chooser use the shared media
+layout, folder-position caption, filename header and compact format/distance badges.
+A duration badge shows elapsed time between the earliest and latest recorded
+timestamps, including pauses, when at least two distinct timestamps are available.
+An elevation line is shown against cumulative distance when a connected pair has
+recorded altitude;
+otherwise that section is omitted. The shared media play/pause shortcuts animate
+route and elevation markers over 15 seconds at a steady distance-based pace.
+Hovering either graph pauses playback and synchronizes both markers; playback
+resumes only on an explicit play action. When route passes overlap or nearly
+overlap, hovering prefers the pass nearest the current distance among hits within
+two screen pixels of the closest line. Seeking uses the media shortcuts too.
+The timer stops when the preview is hidden, closed or replaced. The elevation
+header shows the current marker height during playback, hovering and seeking,
+when altitude is available. Playback uses calculated ground distance between GPS
+points, not screen length or recorded timestamps.
+
+The helper prepares a single projected trace with cumulative distance, segment
+boundaries and optional elevation coordinates. Both PNG images are drawn from this
+trace, and the same samples drive hover and playback in the UI. The plot owns
+coordinate transforms, picking and marker drawing; the player owns position and
+the playback timer. Host validation requires the PNG dimensions to match the
+trace’s coordinate space (800×600 for the route, 800×70 for elevation).
+Units follow the saved **Settings → General → Units** preference; the preview
+has no separate unit selector. Distances use kilometres or miles; elevation uses
+metres or feet.
+Changing units updates labels in place without interrupting playback.
+
+GPX tracks, route points and isolated waypoints preserve segment boundaries.
+FIT uses `fitparser` with checksum validation, bounded sequence decoding and
+streamed records; invalid GPS fixes and timer/session boundaries break the route.
+Enhanced altitude takes precedence over legacy altitude. KML supports Points,
+LineStrings and `gx:Track`, including these inside MultiGeometry/MultiTrack.
+Polygon outlines, KMZ, NetworkLinks and external assets are not rendered. KML
+altitude contributes to the profile only with explicit `absolute` altitude mode;
+terrain-relative and default clamped altitude need terrain data unavailable here.
+
+Missing altitude stays missing, including within a segment; zero and negative
+altitudes remain valid. Distance never bridges disconnected segments. Longitude
+wrapping keeps local date-line crossings together, with Web Mercator latitude
+clamped at approximately 85 degrees for the drawing. Display thinning does not
+change distance or altitude statistics. Distances use a spherical Earth model.
+
+The helper caps input at 32 MiB, aggregate valid points at 250,000, XML nesting
+at 64 and FIT objects at 1,000,000. Existing CPU, address-space, timeout,
+cancellation and shared heavy-preview permit limits still apply. Output is bounded
+JSON containing an 800×600 route PNG, an optional 800×70 elevation PNG and small
+numeric metadata, plus at most 250,000 projected drawing positions with cumulative
+distances, optional elevation heights and segment boundaries for interaction.
+The host validates PNG dimensions, sample counts, finite drawing bounds, monotonic
+distances, segment boundaries and profile consistency before presentation.
+Geographic coordinates and original document data stay in the sandbox.
+Route previews use the existing memory cache with format and palette identity;
+visible previews reload on theme changes. No browser thumbnail job is added.
 
 ## Browser worker pool
 
@@ -304,7 +499,7 @@ the input, including cancellation and decoder-error paths; no compressed input
 is handed to an in-process media parser.
 
 Remote PDFs, animated GIFs, audio, and other video formats remain unsupported:
-copy them locally first. In particular, remote PDF rendering/printing needs a shared document
+copy them locally first. In particular, remote PDF rendering needs a shared document
 snapshot before it can safely request multiple pages without repeated downloads.
 Supported still-image formats continue to depend on installed sandbox decoder tools;
 HEIC/HEIF can use ImageMagick with libheif inside the image sandbox.
@@ -677,12 +872,41 @@ have separate limits, not a machine-global scheduler.
 | Backpressure | A full queue stops consumption and propagates pressure through bounded pipes; it does not accumulate a whole clip. Audio files read ahead until the appsrc queue is full, video until the presentation queue is, never until the playhead moves. Waiting for the consumer is not charged as decoder progress time. |
 | Audio clock | Until the sink first advances after a start, seek or resume, the playhead and video hold their position instead of leading on wall time, so a start-up or resume delay never snaps the playhead back; the 3-second stuck-clock recovery is armed only once the clock has run, leaving the 8-second progress watchdog as the bound for a sink that never starts. After that, a stalled clock lets video lead on wall time by at most 2 seconds. |
 | Paused | Keep position, frame and bounded queues for 30 seconds, then cancel the worker, drop PCM output/queues, and stop the polling timer. The displayed frame and position remain. Resume or a paused seek starts a new bounded decode. |
-| Close / selection change / destruction | Cancel promptly; pipe/queue waits check cancellation at 10–20-ms intervals. Kill/reap the renderer and its sandbox descendants. No join of a blocked pipe reader on the GTK thread. |
+| Close / selection change / destruction | Cancel promptly; pipe/queue waits check cancellation at 10–20-ms intervals. Kill/reap the renderer and its sandbox descendants, then wait for the sandbox's namespace (below). No join of a blocked pipe reader on the GTK thread. |
+| A file operation changes the file | Stop as on close, refuse new work on the file until the operation ends, then follow the selection again (below). |
 | End / malformed output / failure | Release the worker; malformed/truncated output, unavailable decoding and unsuccessful exit fail closed. No unsandboxed fallback. End-of-audio allows only sample-grid rounding (at most 22 µs), not a stalled clock. |
 
 The old batch-conversion wall timeout does not govern a paused real-time player.
 The limits do not promise instant startup, zero-latency seeking, or a total RAM
 plateau for every toolkit/driver.
+
+## Releasing files for file operations
+
+Every sandbox, pooled decode, media session and in-process read registers the
+file it reads, by the path it was given and by its real path, in
+`services/file_activity.rs` before it opens anything. Before a delete, Trash,
+move, rename, Replace, Merge, undo, restore, Empty Trash or unmount changes an
+item, the operation stops every registered read of the item and of anything
+inside it and waits, at most 2 seconds, until they have ended; reads that would
+start meanwhile fail with "This item is being changed by a file operation." On
+NFS, SMB and FUSE mounts a read still open there would leave the deleted file
+behind under a hidden name, keep its folder from being removed or renamed, or
+keep an unmounted filesystem alive. See
+[Files that are still open](filesystem-compatibility.md#files-that-are-still-open).
+
+- A preview drawer showing the item, or a file inside it, clears its target,
+  which stops playback, waveform and storyboard work. When the operation ends,
+  it shows the browser's focused entry again: the item at its new name after a
+  rename or move, the same file after a failed operation.
+- A thumbnail or metadata probe stopped or refused this way is not cached as a
+  failure; thumbnails still bound are asked for again when the operation ends.
+- bubblewrap reports its namespace's first process through `--info-fd`, on the
+  sandbox's otherwise unused stderr, and Strata opens a pidfd on it while the
+  sandbox runs. After every exit of bubblewrap, killed or normal, it waits on
+  that pidfd, at most 1 second, until the kernel has reaped the namespace and
+  dropped its bind of the user's file. With bubblewrap 0.12.0 the namespace was
+  still alive after nearly every exit; the wait costs about 2 ms after a kill and
+  0.1 ms after a normal exit. A sandbox's read counts as ended only after it.
 
 ## Isolation and hardware policy
 

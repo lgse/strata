@@ -14,6 +14,7 @@ use crate::services::{
 };
 mod audio_tracks;
 mod context_menus;
+mod direct_commands;
 mod escape_precedence;
 mod file_commands;
 mod file_verbs;
@@ -21,6 +22,8 @@ mod filter_focus;
 mod folder_jump;
 mod footer_prompt;
 mod go_prompt;
+mod keymap_conflicts;
+mod keymap_overrides;
 mod mode_exit;
 mod open_in_new;
 mod overlay_focus;
@@ -28,6 +31,9 @@ mod pane_focus;
 mod place_chords;
 mod preview_ownership;
 mod reload_cursor;
+mod sidebar_sections;
+mod structural_aliases;
+mod thumbnail_size;
 mod video_clips;
 
 use crate::ui::{
@@ -86,6 +92,8 @@ impl KeyboardFixture {
         PreferenceManager::seed_saved_preferences_for_test();
         let preferences = PreferenceManager::shared();
         preferences.set_sidebar_show_home(true);
+        preferences.set_sidebar_pinned_collapsed(false);
+        preferences.set_sidebar_devices_collapsed(false);
         preferences.set_tenxer_mode(false);
         let directory = tempfile::tempdir().expect("fixture");
         for name in ["a.txt", "b.txt", "c.txt"] {
@@ -1060,7 +1068,10 @@ fn tenxer_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
             let pins = Rc::new(Cell::new(0));
             let observed = pins.clone();
             fixture.view.set_pin_handlers(
-                Rc::new(move |_location, _name| observed.set(observed.get() + 1)),
+                Rc::new(move |_location, _name, done| {
+                    observed.set(observed.get() + 1);
+                    done(true);
+                }),
                 Rc::new(|_location| {}),
                 Rc::new(|_| PinStatus::Available),
             );
@@ -1572,6 +1583,10 @@ fn tenxer_entries_menus_and_reference_keep_their_keys() {
                 assert_eq!(directory_names(fixture._directory.path()), names);
                 assert!(fixture.view.location_has_focus());
             }
+            assert!(
+                !fixture.press(Key::asciitilde, ModifierType::empty()),
+                "~ is typed into the location"
+            );
             assert!(!russian_tilde(), "Ё is typed into the location");
             assert!(!fixture.shortcuts.reference_is_open());
             assert!(fixture.view.location_has_focus());
@@ -1888,6 +1903,34 @@ fn tenxer_columns_mirror_the_first_move_after_a_load() {
             wait_loaded(&browser, 1);
             assert!(location_ends_with(browser.location_at(1), "b-dir"));
             assert_eq!(browser.focused_item().map(|(depth, _, _)| depth), Some(0));
+        },
+    );
+}
+
+#[test]
+fn columns_mirror_does_not_cancel_an_open_that_is_still_validating() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::columns_mirror_does_not_cancel_an_open_that_is_still_validating",
+        || {
+            let fixture = KeyboardFixture::new();
+            let preferences = PreferenceManager::shared();
+            preferences.set_columns_mirror_selection(true);
+            fixture.view.set_columns_mirror_selection(true);
+            let browser = fixture.view.browser();
+            let folder = fixture._directory.path().join("opening");
+            std::fs::create_dir_all(folder.join("a-dir")).expect("fixture folder");
+            std::fs::write(folder.join("a-dir/inner.txt"), b"inner").expect("fixture file");
+            browser.navigate(Location::local(&folder));
+            wait_loaded(&browser, 0);
+            wait_until(|| focused_name(&browser) == "a-dir");
+            focus_files(&fixture);
+
+            fixture.press(Key::Return, ModifierType::empty());
+            assert!(browser.pending_navigation_generation().is_some());
+            fixture.view.mirror_focused_folder_now();
+            wait_until(|| browser.focused_item().map(|(depth, _, _)| depth) == Some(1));
+            assert!(location_ends_with(browser.location_at(1), "a-dir"));
+            assert_eq!(focused_name(&browser), "inner.txt");
         },
     );
 }
@@ -3115,6 +3158,18 @@ fn list_display_names(widget: &gtk::Widget) -> Vec<String> {
     Vec::new()
 }
 
+/// The mapped rows outlined as the one Enter in a filter field opens.
+fn marked_rows(widget: &gtk::Widget) -> Vec<gtk::Widget> {
+    let mut marked = Vec::new();
+    if widget.is_mapped() && widget.has_css_class(crate::ui::enter_target::CSS_CLASS) {
+        marked.push(widget.clone());
+    }
+    for child in std::iter::successors(widget.first_child(), gtk::Widget::next_sibling) {
+        marked.extend(marked_rows(&child));
+    }
+    marked
+}
+
 fn pump(millis: u64) {
     let deadline = Instant::now() + Duration::from_millis(millis);
     while Instant::now() < deadline {
@@ -3231,15 +3286,17 @@ fn press_phase(
     modifiers: ModifierType,
 ) -> bool {
     let controllers = window.observe_controllers();
-    let keys = (0..controllers.n_items())
+    let keys: Vec<_> = (0..controllers.n_items())
         .filter_map(|index| {
             controllers
                 .item(index)
                 .and_downcast::<gtk::EventControllerKey>()
         })
-        .find(|keys| keys.propagation_phase() == phase)
-        .unwrap_or_else(|| panic!("{phase:?} key controller"));
-    keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers])
+        .filter(|keys| keys.propagation_phase() == phase)
+        .collect();
+    assert!(!keys.is_empty(), "{phase:?} key controller");
+    keys.iter()
+        .any(|keys| keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]))
 }
 
 fn settings_layer(content: &super::super::composition::WindowContent) -> Option<gtk::Widget> {

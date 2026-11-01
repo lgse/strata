@@ -11,6 +11,7 @@ mod adapters;
 mod app;
 mod assets;
 mod build_info;
+mod child_environment;
 mod i18n;
 mod logging;
 mod media;
@@ -18,6 +19,8 @@ mod metrics;
 mod model;
 mod portal;
 mod portal_setup;
+#[cfg(feature = "qa")]
+mod qa;
 #[cfg(feature = "rar")]
 mod rar_extraction;
 mod sandbox;
@@ -31,7 +34,8 @@ mod ui;
 mod util;
 
 use std::{
-    ffi::OsString, ops::ControlFlow, os::unix::process::CommandExt, process::Stdio, time::Duration,
+    cell::OnceCell, ffi::OsString, ops::ControlFlow, os::unix::process::CommandExt, process::Stdio,
+    time::Duration,
 };
 
 use gtk::{gio, glib, prelude::*};
@@ -58,6 +62,8 @@ enum LaunchMode {
     UdiskieHook,
     InstallUdiskie,
     UninstallUdiskie,
+    #[cfg(feature = "qa")]
+    Qa,
     Application,
 }
 
@@ -76,6 +82,8 @@ fn launch_mode(arguments: &[OsString]) -> LaunchMode {
         Some("--udiskie-hook") => LaunchMode::UdiskieHook,
         Some("--install-udiskie-unlock") => LaunchMode::InstallUdiskie,
         Some("--uninstall-udiskie-unlock") => LaunchMode::UninstallUdiskie,
+        #[cfg(feature = "qa")]
+        Some("--qa") => LaunchMode::Qa,
         _ => LaunchMode::Application,
     }
 }
@@ -88,10 +96,43 @@ fn has_desktop_theme_override() -> bool {
     std::env::var_os(DESKTOP_THEME_OVERRIDE).is_some()
 }
 
+fn file_manager_debug_environment(
+    arguments: &[OsString],
+    debug: Option<&std::ffi::OsStr>,
+) -> Option<OsString> {
+    if launch_mode(arguments) != LaunchMode::Application
+        || !arguments
+            .iter()
+            .skip(1)
+            .take_while(|argument| *argument != "--")
+            .any(|argument| argument == "--gapplication-service")
+    {
+        return None;
+    }
+    let debug = debug.unwrap_or_default();
+    if debug
+        .as_encoded_bytes()
+        .split(|byte| b":;, \t".contains(byte))
+        .any(|flag| flag.eq_ignore_ascii_case(b"no-portals"))
+    {
+        return None;
+    }
+    let mut debug = debug.to_os_string();
+    if !debug.is_empty() {
+        debug.push(":");
+    }
+    debug.push("no-portals");
+    Some(debug)
+}
+
 /// GTK reads its renderer and theme override during startup. Re-exec before
 /// initializing GTK rather than mutating the environment after libraries may
 /// have started threads. Returns only when the restart fails.
-fn restart_for_gtk_environment(arguments: &[OsString], select_cairo: bool) -> gtk::glib::ExitCode {
+fn restart_for_gtk_environment(
+    arguments: &[OsString],
+    select_cairo: bool,
+    service_debug: Option<OsString>,
+) -> gtk::glib::ExitCode {
     let Ok(executable) = std::env::current_exe() else {
         eprintln!("Unable to locate Strata to restart it");
         return gtk::glib::ExitCode::FAILURE;
@@ -100,6 +141,16 @@ fn restart_for_gtk_environment(arguments: &[OsString], select_cairo: bool) -> gt
     command
         .args(&arguments[1..])
         .env_remove(DESKTOP_THEME_OVERRIDE);
+    if let Some(debug) = service_debug {
+        // OpenDirectory synchronously waits for FileManager1. GTK must not
+        // query that same portal while initializing this D-Bus-activated app.
+        command
+            .env(
+                child_environment::ORIGINAL_GDK_DEBUG,
+                std::env::var_os("GDK_DEBUG").unwrap_or_default(),
+            )
+            .env("GDK_DEBUG", debug);
+    }
     if select_cairo {
         command
             .env("GSK_RENDERER", "cairo")
@@ -165,7 +216,8 @@ fn run_udiskie_hook(arguments: &[OsString]) -> gtk::glib::ExitCode {
 
 fn main() -> gtk::glib::ExitCode {
     let arguments: Vec<OsString> = std::env::args_os().collect();
-    match launch_mode(&arguments) {
+    let mode = launch_mode(&arguments);
+    match mode {
         LaunchMode::BrowserWorker => {
             return match sandbox::browser::run() {
                 Ok(()) => gtk::glib::ExitCode::SUCCESS,
@@ -189,10 +241,18 @@ fn main() -> gtk::glib::ExitCode {
         }
         LaunchMode::Portal => {
             if has_desktop_theme_override() {
-                return restart_for_gtk_environment(&arguments, false);
+                return restart_for_gtk_environment(&arguments, false, None);
             }
             restart_with_local_vfs_if_gvfs_is_unresponsive();
-            return portal::run();
+            let _volumes = gio::VolumeMonitor::get();
+            adapters::mount_watch::start();
+            ui::read_install_facts();
+            leave_launch_folder();
+            util::ui_thread::mark();
+            return portal::run(
+                #[cfg(feature = "qa")]
+                None,
+            );
         }
         LaunchMode::InstallPortal => return finish_portal_setup(portal_setup::install()),
         LaunchMode::DismissPortalPrompt => {
@@ -210,8 +270,44 @@ fn main() -> gtk::glib::ExitCode {
         LaunchMode::UninstallUdiskie => {
             return finish_portal_setup(portal_setup::udiskie::uninstall());
         }
+        #[cfg(feature = "qa")]
+        LaunchMode::Qa => {}
         LaunchMode::Application => {}
     }
+
+    #[cfg(feature = "qa")]
+    let qa_session = match mode {
+        LaunchMode::Qa => match qa::Session::prepare(&arguments) {
+            Ok(session) => Some(session),
+            Err(error) => {
+                eprintln!("{error}");
+                return gtk::glib::ExitCode::FAILURE;
+            }
+        },
+        _ => None,
+    };
+    #[cfg(feature = "qa")]
+    if qa_session.as_ref().is_some_and(qa::Session::portal) {
+        // As `--portal` starts, minus the restart that would lose the replies.
+        if has_desktop_theme_override() {
+            eprintln!("--qa needs GTK_THEME unset");
+            return gtk::glib::ExitCode::FAILURE;
+        }
+        restart_with_local_vfs_if_gvfs_is_unresponsive();
+        let _volumes = gio::VolumeMonitor::get();
+        adapters::mount_watch::start();
+        ui::read_install_facts();
+        leave_launch_folder();
+        util::ui_thread::mark();
+        return portal::run(qa_session);
+    }
+    #[cfg(feature = "qa")]
+    let application_arguments = qa_session.as_ref().map_or_else(
+        || arguments.clone(),
+        |session| session.application_arguments().to_vec(),
+    );
+    #[cfg(not(feature = "qa"))]
+    let application_arguments = arguments.clone();
 
     install_application_identity();
     metrics::initialize();
@@ -220,8 +316,16 @@ fn main() -> gtk::glib::ExitCode {
         std::env::var_os("GSK_RENDERER").as_deref(),
         ui::preferences::PreferenceManager::shared().interface_renderer(),
     );
-    if select_cairo || has_desktop_theme_override() {
-        return restart_for_gtk_environment(&arguments, select_cairo);
+    let service_debug =
+        file_manager_debug_environment(&arguments, std::env::var_os("GDK_DEBUG").as_deref());
+    if select_cairo || has_desktop_theme_override() || service_debug.is_some() {
+        // Replies already own the original stdout, which a restart would lose.
+        #[cfg(feature = "qa")]
+        if qa_session.is_some() {
+            eprintln!("--qa needs GSK_RENDERER set and GTK_THEME unset");
+            return gtk::glib::ExitCode::FAILURE;
+        }
+        return restart_for_gtk_environment(&arguments, select_cairo, service_debug);
     }
 
     if let Err(error) = portal_setup::refresh_stale_portal() {
@@ -236,7 +340,6 @@ fn main() -> gtk::glib::ExitCode {
         elapsed_ms = launched.elapsed().as_millis() as u64,
         "startup gvfs probe finished"
     );
-
     let assets_started = std::time::Instant::now();
     if let Err(error) = assets::prepare() {
         eprintln!("Unable to prepare bundled assets: {error}");
@@ -261,10 +364,30 @@ fn main() -> gtk::glib::ExitCode {
         Some("DEVICE"),
     );
     application.connect_handle_local_options(|_, _| ControlFlow::Continue(()));
+    application.connect_startup(move |_| {
+        VOLUME_MONITOR.with(|monitor| {
+            monitor.get_or_init(gio::VolumeMonitor::get);
+        });
+        tracing::debug!(
+            elapsed_ms = launched.elapsed().as_millis() as u64,
+            "startup volume monitor ready"
+        );
+    });
+    application.connect_startup(|application| {
+        if application
+            .flags()
+            .contains(gio::ApplicationFlags::IS_SERVICE)
+        {
+            leave_launch_folder();
+        }
+    });
     application.connect_startup(|_| install_x11_program_class());
     application.connect_startup(export_file_manager_interface);
     application.connect_startup(|_application| ui::schedule_rollback_cleanup());
-    application.connect_shutdown(|_| ui::preferences::flush_pending_folder_views());
+    application.connect_shutdown(|_| {
+        ui::preferences::flush_pending_folder_views();
+        storage::writer::flush_at_exit();
+    });
     application.connect_activate(|application| {
         if let Err(error) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             ui::present(application);
@@ -295,7 +418,19 @@ fn main() -> gtk::glib::ExitCode {
             }
         }
     });
-    application.run()
+    #[cfg(feature = "qa")]
+    if let Some(session) = qa_session {
+        session.attach(&application);
+    }
+    adapters::mount_watch::start();
+    ui::read_install_facts();
+    util::ui_thread::mark();
+    util::ui_thread::stalls::start();
+    application.run_with_args_os(&application_arguments)
+}
+
+thread_local! {
+    static VOLUME_MONITOR: OnceCell<gio::VolumeMonitor> = const { OnceCell::new() };
 }
 
 const UNLOCK_VOLUME_WITH_FILES: &str = "cannot combine --unlock-volume with file arguments";
@@ -344,6 +479,7 @@ fn handle_command_line(
         .skip(1)
         .map(|argument| cmdline.create_file_for_arg(argument))
         .collect();
+    leave_launch_folder();
     let is_service = application
         .flags()
         .contains(gio::ApplicationFlags::IS_SERVICE);
@@ -370,6 +506,12 @@ fn handle_command_line(
             eprintln!("{message}");
             glib::ExitCode::FAILURE
         }
+    }
+}
+
+fn leave_launch_folder() {
+    if let Err(error) = std::env::set_current_dir("/") {
+        tracing::warn!(%error, "unable to leave the launch folder");
     }
 }
 

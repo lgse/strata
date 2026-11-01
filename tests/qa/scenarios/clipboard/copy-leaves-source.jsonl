@@ -1,0 +1,16 @@
+{"scenario":"copy-leaves-source","modes":["columns","icons","list"],"layout":"us","mutation":"clipboard","known_bug":null,"variants":[{"id":"us","vars":{"layout":"us"}},{"id":"ru","modes":["columns"],"vars":{"layout":"ru"}},{"id":"caps-lock","modes":["columns"],"vars":{"layout":"caps-lock"}}],"cost":{"columns-us":0.8,"icons-us":0.9,"list-us":0.9,"columns-ru":0.8,"columns-caps-lock":0.8},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":4,"score":33,"note":"copy keeps source across icons, list and ru/caps-lock layouts; keyboard-only-copy-paste covers only columns us"}}
+{"wait":{"view_mode":"$view"},"message":"the browser to show the $view view"}
+{"select":{"entry":"todo.txt"}}
+{"layout":"$layout"}
+{"key":"ctrl+c"}
+{"select":{"entry":"archive"},"modes":["columns"]}
+{"click":{"entry":"archive"},"count":2,"modes":["icons","list"]}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
+{"settle":{"pane":"archive"}}
+{"move":{"pane":"archive"}}
+{"key":"ctrl+v"}
+{"fs":{"path":"archive/todo.txt","exists":true},"message":"the copy to land in archive"}
+{"layout":"us"}
+{"fs":{"path":"todo.txt","exists":true},"timeout_ms":0,"message":"copying must not remove the source"}
+{"fs":{"path":"archive/todo.txt","text":"todo\n"},"timeout_ms":0}
+{"wait":{"entry":"todo.txt","dir":"archive"},"message":"the entry 'todo.txt' in 'archive' to appear"}

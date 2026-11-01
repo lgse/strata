@@ -19,7 +19,8 @@ fn namespace_aliases_preserve_document_content_and_formatting() {
         let mut output = ZipWriter::new(Cursor::new(Vec::new()));
         for index in 0..input.len() {
             let mut part = input.by_index(index).expect("part");
-            if part.name() != "word/document.xml" {
+            let name = part.name().expect("part name").into_owned();
+            if name != "word/document.xml" {
                 output.raw_copy_file(part).expect("copy part");
                 continue;
             }
@@ -43,7 +44,7 @@ fn namespace_aliases_preserve_document_content_and_formatting() {
                 .replace("<w:", &format!("<{qualified}"))
                 .replace("</w:", &format!("</{qualified}"));
             output
-                .start_file(part.name(), SimpleFileOptions::default())
+                .start_file(name, SimpleFileOptions::default())
                 .expect("document part");
             output.write_all(xml.as_bytes()).expect("write XML");
         }

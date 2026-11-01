@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: MIT
 
+pub(crate) mod gresource;
+pub(crate) mod ui_thread;
+
 use std::{cell::Cell, cell::RefCell, time::Duration};
 
 use gtk::prelude::*;

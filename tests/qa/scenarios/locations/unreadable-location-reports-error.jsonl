@@ -1,0 +1,14 @@
+{"scenario":"unreadable-location-reports-error","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"teardown":[{"fs":{"path":"blocked","chmod":"755"}}],"cost":{"columns":0.8},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Unreadable folder gets its lock description after the metadata fill, then a click opens the permission dialog; only GUI check of both"}}
+{"fs":{"path":"blocked","mkdir":true}}
+{"fs":{"path":"blocked","chmod":"000"}}
+{"wait":{"entry":"blocked"},"message":"the entry 'blocked' to appear"}
+{"remember":{"entry":"blocked"},"as":"listed"}
+{"key":"F5"}
+{"wait":{"replaced":{"target":{"entry":"blocked"},"since":"listed"}},"message":"F5's reload to replace the blocked row"}
+{"wait":{"description":{"target":{"entry":"blocked","dir":"$root"},"text":"Folder that requires administrator access"}},"message":"the metadata fill to mark 'blocked' as a folder that needs administrator access"}
+{"select":{"entry":"blocked"}}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"expect":{"dialog":"Unable to open directory"}}
+{"expect":{"mentions":{"target":{"dialog":true},"role":"label","text":"do not have permission"}}}
+{"click":{"dialog_button":"Close"}}
+{"wait":{"dialog":null},"message":"the dialog to close"}

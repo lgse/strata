@@ -57,13 +57,14 @@ impl FileSource for InertUris {
         LocalFileSource.fill_metadata(request, emit)
     }
 
-    fn watch(
+    fn start_watch(
         &self,
         location: Location,
         include_hidden: bool,
         notify: Rc<dyn Fn(DirectoryChange)>,
-    ) -> Option<LoadHandle> {
-        LocalFileSource.watch(location, include_hidden, notify)
+        report: Rc<dyn Fn(crate::services::Watching)>,
+    ) -> LoadHandle {
+        LocalFileSource.start_watch(location, include_hidden, notify, report)
     }
 }
 
@@ -484,8 +485,11 @@ fn tenxer_go_lists_matching_folders_and_tab_fills_the_chosen_one() {
             assert_eq!(browser.active_location(), origin, "Tab never navigates");
             assert!(fixture.shortcuts.prompt_has_focus());
 
+            // The fixture keeps a private history, so hold the shared one the way a window
+            // does; otherwise each call reloads it from a file the writer may not have saved.
+            let shared_history = crate::services::NavigationHistory::shared();
             for _ in 0..3 {
-                crate::services::NavigationHistory::shared().record(&root.join("beta"));
+                shared_history.record(&root.join("beta"));
             }
             fixture.shortcuts.prompt().set_text("./");
             wait_until(|| fixture.shortcuts.candidates().len() == 5);

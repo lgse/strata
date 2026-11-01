@@ -1,0 +1,38 @@
+{"scenario":"foreign-folder-drags-validate","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"False-False","vars":{"id":"False-False"}},{"id":"True-False","vars":{"id":"True-False"}},{"id":"False-True","vars":{"id":"False-True"}}],"session_bus":true,"cost":{"columns-False-False":0.7,"columns-True-False":0.7,"columns-False-True":0.7},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"foreign drag onto PINNED: GUI rejects mixed and move-only selections; directory_validation/tests.rs pins only the validation logic"}}
+{"fs":{"path":"foreign-folder","mkdir":true},"variants":["False-False"]}
+{"fs":{"path":"foreign-alias","symlink":"$fixture/foreign-folder"},"variants":["False-False"]}
+{"foreign":{"paths":["$fixture/foreign-folder","$fixture/foreign-alias"],"move_only":false},"as":"foreign","message":"the foreign drag source","variants":["False-False"]}
+{"drag":{"from":{"kept":"foreign"},"to":{"ancestor":"scroll pane","of":{"sidebar":"Home"}},"to_at":["50%",-80]},"release":false,"variants":["False-False"]}
+{"wait":{"present":{"role":"grouping","name":"PINNED"}},"message":"a file drag over the sidebar to reveal the Pinned insertion targets","variants":["False-False"]}
+{"move":{"role":"grouping","name":"PINNED","nth":0},"variants":["False-False"]}
+{"button_up":1,"variants":["False-False"]}
+{"foreign_label":"Foreign drag finished","message":"external validation and the drop protocol to finish","variants":["False-False"]}
+{"fs":{"path":"$config/gtk-3.0/bookmarks","lines_equal":["file://$fixture_quoted/foreign-folder foreign-folder","file://$fixture_quoted/foreign-alias foreign-alias"]},"timeout_ms":0,"variants":["False-False"]}
+{"fs":{"path":"foreign-folder","is":"dir"},"timeout_ms":0,"variants":["False-False"]}
+{"fs":{"path":"foreign-alias","is":"symlink"},"timeout_ms":0,"variants":["False-False"]}
+{"foreign_stop":true,"variants":["False-False"]}
+{"fs":{"path":"foreign-folder","mkdir":true},"variants":["True-False"]}
+{"fs":{"path":"foreign-alias","symlink":"$fixture/foreign-folder"},"variants":["True-False"]}
+{"fs":{"path":"foreign-file.txt","write":"not a folder"},"variants":["True-False"]}
+{"foreign":{"paths":["$fixture/foreign-folder","$fixture/foreign-alias","$fixture/foreign-file.txt"],"move_only":false},"as":"foreign","message":"the foreign drag source","variants":["True-False"]}
+{"drag":{"from":{"kept":"foreign"},"to":{"ancestor":"scroll pane","of":{"sidebar":"Home"}},"to_at":["50%",-80]},"release":false,"variants":["True-False"]}
+{"wait":{"present":{"role":"grouping","name":"PINNED"}},"message":"a file drag over the sidebar to reveal the Pinned insertion targets","variants":["True-False"]}
+{"move":{"role":"grouping","name":"PINNED","nth":0},"variants":["True-False"]}
+{"button_up":1,"variants":["True-False"]}
+{"foreign_label":"Foreign drag finished","message":"external validation and the drop protocol to finish","variants":["True-False"]}
+{"fs":{"path":"$config/gtk-3.0/bookmarks","lines_equal":[]},"timeout_ms":0,"variants":["True-False"]}
+{"fs":{"path":"foreign-folder","is":"dir"},"timeout_ms":0,"variants":["True-False"]}
+{"fs":{"path":"foreign-alias","is":"symlink"},"timeout_ms":0,"variants":["True-False"]}
+{"foreign_stop":true,"variants":["True-False"]}
+{"fs":{"path":"foreign-folder","mkdir":true},"variants":["False-True"]}
+{"fs":{"path":"foreign-alias","symlink":"$fixture/foreign-folder"},"variants":["False-True"]}
+{"foreign":{"paths":["$fixture/foreign-folder","$fixture/foreign-alias"],"move_only":true},"as":"foreign","message":"the foreign drag source","variants":["False-True"]}
+{"drag":{"from":{"kept":"foreign"},"to":{"ancestor":"scroll pane","of":{"sidebar":"Home"}},"to_at":["50%",-80]},"release":false,"variants":["False-True"]}
+{"wait":{"present":{"role":"grouping","name":"PINNED"}},"message":"a file drag over the sidebar to reveal the Pinned insertion targets","variants":["False-True"]}
+{"move":{"role":"grouping","name":"PINNED","nth":0},"variants":["False-True"]}
+{"button_up":1,"variants":["False-True"]}
+{"foreign_label":"Foreign drag finished","message":"external validation and the drop protocol to finish","variants":["False-True"]}
+{"fs":{"path":"$config/gtk-3.0/bookmarks","lines_equal":[]},"timeout_ms":0,"variants":["False-True"]}
+{"fs":{"path":"foreign-folder","is":"dir"},"timeout_ms":0,"variants":["False-True"]}
+{"fs":{"path":"foreign-alias","is":"symlink"},"timeout_ms":0,"variants":["False-True"]}
+{"foreign_stop":true,"variants":["False-True"]}

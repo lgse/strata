@@ -12,7 +12,10 @@ use std::{
 
 use crate::{
     media::{Decoder, FRAME_TIMEOUT, Header, Packet, STARTUP_TIMEOUT, TimedReader},
-    services::SandboxedMedia,
+    services::{
+        SandboxedMedia,
+        file_activity::{self, Hold},
+    },
 };
 
 use super::*;
@@ -136,11 +139,13 @@ fn spawn_helper(
     operation: ParseOperation,
     start_tick: Option<u32>,
     cancellation: &Cancellation,
-) -> Result<(Child, PrivateOutput), String> {
+) -> Result<(Renderer, PrivateOutput, Hold), String> {
     let input = source
         .path
         .canonicalize()
         .map_err(|error| crate::services::io_error_message(&error))?;
+    let stop = cancellation.clone();
+    let hold = file_activity::hold([&source.path, &input], move || stop.cancel())?;
     if !input.is_file() {
         return Err("Preview input is not a regular file".into());
     }
@@ -179,7 +184,7 @@ fn spawn_helper(
     }
     let child =
         spawn_renderer(&mut command).map_err(|error| super::sandbox_start_failed(&error))?;
-    Ok((child, output))
+    Ok((child, output, hold))
 }
 
 fn render(
@@ -193,25 +198,25 @@ fn render(
     } else {
         ParseOperation::PreviewMedia(source.size)
     };
-    let (mut child, _output) = spawn_helper(source, operation, Some(start_tick), cancellation)?;
+    let (mut child, _output, hold) =
+        spawn_helper(source, operation, Some(start_tick), cancellation)?;
     let result = consume(&mut child, source, start_tick, cancellation, sender);
     // Also tear down descendants which keep a pipe open or outlive their leader.
     if result.is_err() {
         terminate(&mut child);
     }
-    result.map_err(|error| crate::services::io_error_message(&error))
+    hold.settle(result.map_err(|error| crate::services::io_error_message(&error)))
 }
 
 fn consume(
-    child: &mut Child,
+    child: &mut Renderer,
     source: &SandboxedMedia,
     start_tick: u32,
     cancellation: &Cancellation,
     sender: &mpsc::SyncSender<Event>,
 ) -> io::Result<()> {
     let stdout = child
-        .stdout
-        .take()
+        .stdout()
         .ok_or_else(|| io::Error::other("Missing decoded-media pipe"))?;
     let mut reader = TimedReader {
         fd: &stdout,
@@ -319,7 +324,7 @@ fn render_peaks(
     cancellation: &Cancellation,
     sender: &mpsc::SyncSender<PeaksEvent>,
 ) -> Result<(), String> {
-    let (mut child, _output) =
+    let (mut child, _output, _hold) =
         spawn_helper(source, ParseOperation::AudioPeaks, None, cancellation)?;
     let result = consume_peaks(&mut child, cancellation, sender);
     if result.is_err() {
@@ -329,13 +334,12 @@ fn render_peaks(
 }
 
 fn consume_peaks(
-    child: &mut Child,
+    child: &mut Renderer,
     cancellation: &Cancellation,
     sender: &mpsc::SyncSender<PeaksEvent>,
 ) -> io::Result<()> {
     let stdout = child
-        .stdout
-        .take()
+        .stdout()
         .ok_or_else(|| io::Error::other("Missing waveform pipe"))?;
     let deadline = Instant::now() + PEAKS_TIMEOUT;
     let mut reader = TimedReader {
@@ -427,7 +431,7 @@ fn render_storyboard(
     cancellation: &Cancellation,
     sender: &mpsc::SyncSender<StoryboardEvent>,
 ) -> Result<(), String> {
-    let (mut child, _output) = spawn_helper(
+    let (mut child, _output, _hold) = spawn_helper(
         source,
         ParseOperation::VideoStoryboard { cell_edge },
         None,
@@ -441,15 +445,14 @@ fn render_storyboard(
 }
 
 fn consume_storyboard(
-    child: &mut Child,
+    child: &mut Renderer,
     cancellation: &Cancellation,
     sender: &mpsc::SyncSender<StoryboardEvent>,
 ) -> io::Result<()> {
     use crate::media::storyboard::{CellReader, Sheet};
 
     let stdout = child
-        .stdout
-        .take()
+        .stdout()
         .ok_or_else(|| io::Error::other("Missing storyboard pipe"))?;
     let deadline = Instant::now() + PEAKS_TIMEOUT;
     let mut reader = TimedReader {

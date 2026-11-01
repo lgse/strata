@@ -20,6 +20,10 @@ fn button(widget: &gtk::Widget, label: &str) -> Option<gtk::Button> {
     None
 }
 
+fn settle_download(state: &ChooserState) {
+    wait_until(|| !state.download_in_progress() || state.download_progress.borrow().is_some());
+}
+
 #[test]
 fn active_filter_matches_actual_format_and_png_aliases_not_labels() {
     crate::test_support::gtk_test(
@@ -120,6 +124,7 @@ fn remote_image_names_are_repaired_or_checked_by_the_original_filename_filter() 
                 })
                 .expect("chooser");
                 state.complete_download(path.clone());
+                settle_download(&state);
                 assert!(
                     visible_modal_layer(&state.window).is_none(),
                     "{name}: {pattern:?}"
@@ -175,9 +180,11 @@ fn already_png_bytes_are_renamed_without_conversion_and_html_is_rejected() {
             let invalid = root.path().join("error.png");
             std::fs::write(&invalid, b"<html>not an image</html>").expect("HTML");
             state.complete_download(invalid);
+            settle_download(&state);
             assert!(state.error.is_visible());
             assert!(result.borrow().is_none());
             state.complete_download(path);
+            settle_download(&state);
             let selected = result
                 .borrow_mut()
                 .take()

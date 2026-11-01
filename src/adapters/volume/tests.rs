@@ -18,23 +18,8 @@ fn distinct_device_dirs() -> Option<(tempfile::TempDir, tempfile::TempDir)> {
     crate::test_support::distinct_device_dirs("volume identity tests")
 }
 
-fn ready(volumes: DropVolumes) -> DropVolumeLookup {
-    match volumes {
-        DropVolumes::Ready(lookup) => lookup,
-        DropVolumes::Pending(_) => panic!("native lookup should resolve synchronously"),
-    }
-}
-
 fn resolve_on_private_context(
     query: &DropVolumeQuery,
-    deadline: Duration,
-) -> (Option<DropVolumeLookup>, bool) {
-    resolve_with_mounts(query, &MountTable::current(), deadline)
-}
-
-fn resolve_with_mounts(
-    query: &DropVolumeQuery,
-    mounts: &MountTable,
     deadline: Duration,
 ) -> (Option<DropVolumeLookup>, bool) {
     let context = glib::MainContext::new();
@@ -42,7 +27,7 @@ fn resolve_with_mounts(
         .with_thread_default(|| {
             let result = Rc::new(RefCell::new(None));
             let sink = result.clone();
-            let volumes = lookup_drop_volumes_with_mounts(query, mounts, move |lookup| {
+            let volumes = lookup_drop_volumes(query, move |lookup| {
                 *sink.borrow_mut() = Some(lookup);
             });
             let was_pending = matches!(volumes, DropVolumes::Pending(_));
@@ -116,22 +101,15 @@ fn two_subdirs_of_the_same_tempdir_are_the_same_volume() {
         &Location::local(&left),
         &[Location::local(right.join("file"))],
     );
-    let lookup = ready(lookup_drop_volumes(&query, |_| {}));
-    assert_eq!(lookup.relation, VolumeRelation::Same);
-}
-
-#[test]
-fn native_lookup_is_ready_and_never_calls_on_ready() {
-    let root = tempfile::tempdir().expect("tempdir");
-    let called = Rc::new(std::cell::Cell::new(false));
-    let flag = called.clone();
-    let query = DropVolumeQuery::new(
-        &Location::local(root.path()),
-        &[Location::local(root.path())],
+    let (lookup, was_pending) = resolve_on_private_context(&query, Duration::from_secs(5));
+    assert!(
+        was_pending,
+        "a local folder is never looked up on the caller"
     );
-    let lookup = ready(lookup_drop_volumes(&query, move |_| flag.set(true)));
-    assert_eq!(lookup.relation, VolumeRelation::Same);
-    assert!(!called.get());
+    assert_eq!(
+        lookup.expect("local lookup should resolve").relation,
+        VolumeRelation::Same
+    );
 }
 
 #[test]
@@ -144,11 +122,7 @@ fn dest_directory_symlink_to_another_device_is_different() {
     let link = home.path().join("usb");
     std::os::unix::fs::symlink(stick.path(), &link).expect("symlink");
     let query = DropVolumeQuery::new(&Location::local(&link), &[Location::local(&source)]);
-    let (lookup, was_pending) = resolve_on_private_context(&query, Duration::from_secs(5));
-    assert!(
-        was_pending,
-        "following a dest symlink must not query_info on the caller"
-    );
+    let (lookup, _) = resolve_on_private_context(&query, Duration::from_secs(5));
     let lookup = lookup.expect("dest symlink lookup should resolve");
     assert_eq!(
         lookup.relation,
@@ -171,8 +145,11 @@ fn source_symlink_to_another_device_stays_on_its_parent_volume() {
     let dest = home.path().join("dest");
     fs::create_dir(&dest).expect("dest");
     let query = DropVolumeQuery::new(&Location::local(&dest), &[Location::local(&link)]);
-    let lookup = ready(lookup_drop_volumes(&query, |_| {}));
-    assert_eq!(lookup.relation, VolumeRelation::Same);
+    let (lookup, _) = resolve_on_private_context(&query, Duration::from_secs(5));
+    assert_eq!(
+        lookup.expect("source link lookup should resolve").relation,
+        VolumeRelation::Same
+    );
 }
 
 #[test]
@@ -182,7 +159,8 @@ fn missing_native_directory_is_unknown() {
         &Location::local(root.path().join("missing")),
         &[Location::local(root.path().join("file"))],
     );
-    let lookup = ready(lookup_drop_volumes(&query, |_| {}));
+    let (lookup, _) = resolve_on_private_context(&query, Duration::from_secs(5));
+    let lookup = lookup.expect("a missing folder still reports");
     assert!(lookup.dest.is_none());
     assert_eq!(lookup.relation, VolumeRelation::Unknown);
 }
@@ -192,7 +170,7 @@ fn restore_identity_walks_missing_dest_to_an_existing_ancestor() {
     let root = tempfile::tempdir().expect("tempdir");
     let dest = root.path().join("new/dir/file.txt");
     let walked = volume_identity_of_existing_ancestor(&Location::local(&dest));
-    let root_id = native_volume_identity(&Location::local(root.path()));
+    let root_id = volume_identity_of_existing_ancestor(&Location::local(root.path()));
     assert_eq!(walked, root_id);
     assert_eq!(
         restore_volume_relation(
@@ -250,15 +228,6 @@ fn restore_identity_rejects_a_path_on_another_device() {
 }
 
 #[test]
-fn smb_and_sftp_uris_are_remote() {
-    assert!(!location_is_remote(&Location::local("/tmp")));
-    assert!(!location_is_remote(&Location::uri("trash:///foo")));
-    assert!(!location_is_remote(&Location::uri("file:///tmp")));
-    assert!(location_is_remote(&Location::uri("smb://host/share")));
-    assert!(location_is_remote(&Location::uri("sftp://host/path")));
-}
-
-#[test]
 fn uri_lookup_is_pending_then_reports_once_resolved() {
     let root = tempfile::tempdir().expect("tempdir");
     let file = root.path().join("file");
@@ -266,8 +235,7 @@ fn uri_lookup_is_pending_then_reports_once_resolved() {
     let dest = Location::uri(gio::File::for_path(root.path()).uri().to_string());
     let source = Location::uri(gio::File::for_path(&file).uri().to_string());
     let query = DropVolumeQuery::new(&dest, &[source]);
-    let (lookup, was_pending) = resolve_on_private_context(&query, Duration::from_secs(5));
-    assert!(was_pending);
+    let (lookup, _) = resolve_on_private_context(&query, Duration::from_secs(5));
     let lookup = lookup.expect("file uri lookup should resolve");
     assert_eq!(lookup.relation, VolumeRelation::Same);
     assert!(lookup.dest.is_some_and(|identity| {
@@ -283,8 +251,7 @@ fn native_path_and_file_uri_of_the_same_directory_share_an_identity() {
     let native = Location::local(root.path());
     let uri = Location::uri(gio::File::for_path(&file).uri().to_string());
     let query = DropVolumeQuery::new(&native, &[uri]);
-    let (lookup, was_pending) = resolve_on_private_context(&query, Duration::from_secs(5));
-    assert!(was_pending);
+    let (lookup, _) = resolve_on_private_context(&query, Duration::from_secs(5));
     let lookup = lookup.expect("mixed lookup should resolve");
     assert_eq!(
         lookup.relation,
@@ -309,28 +276,6 @@ fn mounts_treating_as(path: &Path, fs_type: &str) -> MountTable {
 }
 
 #[test]
-fn native_path_on_a_blocking_mount_is_looked_up_asynchronously() {
-    let root = tempfile::tempdir().expect("tempdir");
-    let dest = root.path().join("dest");
-    let file = root.path().join("file");
-    fs::create_dir(&dest).expect("dest");
-    fs::write(&file, b"x").expect("file");
-    let query = DropVolumeQuery::new(&Location::local(&dest), &[Location::local(&file)]);
-    for fs_type in ["nfs4", "autofs"] {
-        let mounts = mounts_treating_as(root.path(), fs_type);
-        let (lookup, was_pending) = resolve_with_mounts(&query, &mounts, Duration::from_secs(5));
-        assert!(was_pending, "{fs_type} must not stat on the caller");
-        let lookup = lookup.expect("asynchronous native lookup should resolve");
-        assert_eq!(lookup.relation, VolumeRelation::Same, "{fs_type}");
-        assert!(
-            lookup
-                .dest
-                .is_some_and(|identity| identity.backend == "file")
-        );
-    }
-}
-
-#[test]
 fn network_mount_aliases_preserve_identity_and_plain_drop_move_policy() {
     use crate::services::{
         CrossVolumeDropStrategy, DropActionInput, DropCommit, DropOverride, drop_commit,
@@ -351,11 +296,7 @@ fn network_mount_aliases_preserve_identity_and_plain_drop_move_policy() {
             &[Location::local(source_root.join("a/file"))],
             &mounts,
         );
-        let (lookup, was_pending) = resolve_with_mounts(&query, &mounts, Duration::from_secs(5));
-        assert!(
-            was_pending,
-            "mounts and aliases require asynchronous lookup"
-        );
+        let (lookup, _) = resolve_on_private_context(&query, Duration::from_secs(5));
         let lookup = lookup.expect("alias lookup should resolve");
         let dest = lookup.dest.as_ref().expect("destination identity");
         let source = lookup.sources[0].as_ref().expect("source identity");
@@ -380,92 +321,6 @@ fn network_mount_aliases_preserve_identity_and_plain_drop_move_policy() {
             }
         }
     }
-}
-
-#[test]
-fn mount_classification_does_not_override_native_filesystem_identity() {
-    let root = tempfile::tempdir().expect("tempdir");
-    let remote = root.path().join("remote");
-    let local = root.path().join("local");
-    fs::create_dir(&remote).expect("remote");
-    fs::create_dir(&local).expect("local");
-    fs::write(local.join("file"), b"x").expect("file");
-    fs::write(remote.join("file"), b"x").expect("file");
-    for fs_type in ["nfs4", "autofs"] {
-        let mounts = mounts_treating_as(&remote, fs_type);
-        for (dest, source) in [(&remote, &local), (&local, &remote)] {
-            let query = DropVolumeQuery::with_mounts(
-                &Location::local(dest),
-                &[Location::local(source.join("file"))],
-                &mounts,
-            );
-            let (lookup, was_pending) =
-                resolve_with_mounts(&query, &mounts, Duration::from_secs(5));
-            assert!(was_pending, "{fs_type} destination or source must be async");
-            let lookup = lookup.expect("mixed lookup should resolve");
-            assert_eq!(lookup.relation, VolumeRelation::Same, "{fs_type}");
-        }
-    }
-}
-
-fn local_only_mounts() -> MountTable {
-    MountTable::parse("1 0 0:1 / / rw - ext4 /dev/root rw\n")
-}
-
-#[test]
-fn dest_symlink_is_not_resolved_on_the_caller() {
-    let root = tempfile::tempdir().expect("tempdir");
-    let dest = root.path().join("link");
-    std::os::unix::fs::symlink(root.path(), &dest).expect("symlink");
-    let query = DropVolumeQuery::new(&Location::local(&dest), &[Location::local(root.path())]);
-    let (_, was_pending) =
-        resolve_with_mounts(&query, &local_only_mounts(), Duration::from_secs(5));
-    assert!(
-        was_pending,
-        "a dest symlink must not query_info on the caller"
-    );
-}
-
-#[test]
-fn path_through_a_symlink_is_not_resolved_on_the_caller() {
-    let root = tempfile::tempdir().expect("tempdir");
-    let real = root.path().join("real");
-    fs::create_dir(&real).expect("real");
-    let link = root.path().join("link");
-    std::os::unix::fs::symlink(&real, &link).expect("symlink");
-    let nested = link.join("nested");
-    fs::create_dir(&nested).expect("nested");
-    let query = DropVolumeQuery::new(&Location::local(&nested), &[Location::local(root.path())]);
-    let (_, was_pending) =
-        resolve_with_mounts(&query, &local_only_mounts(), Duration::from_secs(5));
-    assert!(
-        was_pending,
-        "an intermediate symlink must not query_info on the caller"
-    );
-}
-
-#[test]
-fn path_with_parent_dir_component_is_not_resolved_on_the_caller() {
-    let root = tempfile::tempdir().expect("tempdir");
-    let dest = root.path().join("sub").join("..").join("other");
-    let query = DropVolumeQuery::new(&Location::local(&dest), &[Location::local(root.path())]);
-    let (_, was_pending) =
-        resolve_with_mounts(&query, &local_only_mounts(), Duration::from_secs(5));
-    assert!(
-        was_pending,
-        "a path with .. must not query_info on the caller"
-    );
-}
-
-#[test]
-fn local_native_paths_stay_synchronous() {
-    let root = tempfile::tempdir().expect("tempdir");
-    let query = DropVolumeQuery::new(
-        &Location::local(root.path()),
-        &[Location::local(root.path())],
-    );
-    let volumes = lookup_drop_volumes_with_mounts(&query, &local_only_mounts(), |_| {});
-    assert_eq!(ready(volumes).relation, VolumeRelation::Same);
 }
 
 #[test]
@@ -511,6 +366,7 @@ fn timeout_finishes_with_partial_results_and_ignores_late_callbacks() {
         on_ready: Some(Box::new(move |lookup: DropVolumeLookup| {
             sink.borrow_mut().push(lookup);
         })),
+        waiting: Vec::new(),
     }));
     let dest = VolumeIdentity {
         filesystem_id: "l1".into(),
@@ -561,10 +417,41 @@ fn cancelled_pending_lookup_never_reports() {
 fn unreachable_uri_resolves_to_unknown_without_hanging() {
     let dest = Location::uri("sftp://strata-volume-test.invalid/nowhere");
     let query = DropVolumeQuery::new(&dest, &[Location::local("/tmp")]);
-    let (lookup, was_pending) =
+    let (lookup, _) =
         resolve_on_private_context(&query, REMOTE_QUERY_TIMEOUT + Duration::from_secs(3));
-    assert!(was_pending);
     let lookup = lookup.expect("failed or timed out remote lookup should still report");
     assert!(lookup.dest.is_none());
     assert_eq!(lookup.relation, VolumeRelation::Unknown);
+}
+
+#[test]
+fn navigation_lookups_read_the_mount_table_the_watcher_published() {
+    crate::test_support::gtk_test(
+        "adapters::volume::tests::navigation_lookups_read_the_mount_table_the_watcher_published",
+        || {
+            let root = tempfile::tempdir().expect("fixture");
+            let share = root.path().join("share");
+            let publish = |mountinfo: String| {
+                mount_watch::publish_for_isolated_test(Some(MountTable::parse(mountinfo)));
+            };
+            let looked_up = || {
+                with_mount_snapshot(|snapshot| {
+                    (
+                        snapshot.table.is_network_path(&share.join("folder")),
+                        snapshot.table.has_mount_inside(root.path()),
+                    )
+                })
+            };
+
+            publish(format!(
+                "1 0 8:1 / / rw - ext4 /dev/root rw\n\
+                 900 1 0:90 / {} rw - nfs4 server:/export rw\n",
+                share.display()
+            ));
+            assert_eq!(looked_up(), (true, true));
+
+            publish("1 0 8:1 / / rw - ext4 /dev/root rw\n".to_owned());
+            assert_eq!(looked_up(), (false, false));
+        },
+    );
 }

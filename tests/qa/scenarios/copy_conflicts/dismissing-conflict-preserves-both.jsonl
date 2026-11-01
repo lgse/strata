@@ -1,0 +1,18 @@
+{"scenario":"dismissing-conflict-preserves-both","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"copy-cancel","vars":{"id":"copy-Cancel","chord":"ctrl+c","action":"Cancel"}},{"id":"copy-escape","vars":{"id":"copy-Escape","chord":"ctrl+c","action":"Escape"}},{"id":"copy-close","vars":{"id":"copy-Close","chord":"ctrl+c","action":"Close dialog"}},{"id":"move-cancel","vars":{"id":"move-Cancel","chord":"ctrl+x","action":"Cancel"}}],"cost":{"columns-copy-cancel":1.1,"columns-copy-escape":0.9,"columns-copy-close":1.0,"columns-move-cancel":1.0},"quality":{"impact":5,"coverage":5,"criticality":4,"diagnostic":4,"score":84,"note":"paste-conflict dismissal by Cancel/Escape/Close/move keeps both files; only scenario checking dismissal outcomes"}}
+{"fs":{"path":"archive/todo.txt","write":"existing\n"}}
+{"select":{"entry":"todo.txt"}}
+{"key":"$chord"}
+{"select":{"entry":"archive"}}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
+{"settle":{"pane":"archive"}}
+{"move":{"pane":"archive"}}
+{"key":"ctrl+v"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"expect":{"present":{"role":"button","name":"Keep Both","within":{"dialog":true}}}}
+{"expect":{"absent":{"role":"button","name":"Merge","within":{"dialog":true}}},"message":"a file collision cannot merge"}
+{"key":"Escape","variants":["copy-escape"]}
+{"click":{"dialog_button":"$action"},"variants":["copy-cancel","copy-close","move-cancel"]}
+{"wait":{"dialog":null},"message":"the conflict dialog to close"}
+{"fs":{"path":"todo.txt","text":"todo\n"},"timeout_ms":0}
+{"fs":{"path":"archive/todo.txt","text":"existing\n"},"timeout_ms":0}
+{"fs":{"path":"archive/todo (1).txt","exists":false},"timeout_ms":0}

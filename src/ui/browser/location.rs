@@ -18,7 +18,7 @@ use crate::ui::controls::{
 };
 use crate::ui::modal::{
     ModalHost, close_on_escape, dismiss_modal_layer, modal_layer, show_error_dialog,
-    submit_on_enter,
+    show_error_dialog_with_action, submit_on_enter,
 };
 use crate::ui::window::{crypto_password_uuid_for_volume, gio_volume_is_encrypted};
 use futures_channel::oneshot;
@@ -37,6 +37,13 @@ const BREADCRUMB_LABEL_MAX_CHARS: i32 = 32;
 fn ellipsize_crumb_label(label: &gtk::Label) {
     label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     label.set_max_width_chars(BREADCRUMB_LABEL_MAX_CHARS);
+    label.set_width_chars(
+        label
+            .text()
+            .chars()
+            .take(BREADCRUMB_LABEL_MAX_CHARS as usize)
+            .count() as i32,
+    );
 }
 
 pub(super) struct UnlockProgressView {
@@ -495,9 +502,15 @@ fn dismiss_authentication_prompt(browser_overlay: &gtk::Overlay, layer: &gtk::Bo
     dismiss_modal_layer(layer, &window_overlay, blurred_root.as_ref());
 }
 
-fn append_authentication_field(fields: &gtk::Box, label_text: &str, field: &impl IsA<gtk::Widget>) {
+fn append_authentication_field(
+    fields: &gtk::Box,
+    label_text: &str,
+    field: &(impl IsA<gtk::Widget> + IsA<gtk::Accessible>),
+) {
     let group = gtk::Box::new(gtk::Orientation::Vertical, 5);
-    group.append(&form_label(&crate::i18n::tr(label_text)));
+    let label = form_label(&crate::i18n::tr(label_text));
+    crate::ui::accessibility::set_labelled_by(field, &[label.upcast_ref()]);
+    group.append(&label);
     group.append(field);
     fields.append(&group);
 }
@@ -538,8 +551,36 @@ fn mounting_entry_text(input: &str, sanitized: &str) -> Option<String> {
 }
 
 pub(super) enum TypedLocation {
-    Navigating,
-    Mounting { sanitized: String },
+    Navigating {
+        location: Location,
+    },
+    Mounting {
+        location: Location,
+        sanitized: String,
+    },
+}
+
+/// How a typed location a dialog waits on turned out.
+pub(in crate::ui) enum ConnectOutcome {
+    Opened(Location),
+    /// The message to show, or `None` when the user cancelled authentication.
+    Failed(Option<String>),
+}
+
+/// A typed location a dialog waits on until it opens or fails.
+pub(in crate::ui) struct PendingConnect {
+    /// Unknown until the typed input resolves; remote targets open asynchronously.
+    target: RefCell<Option<Location>>,
+    cancellable: gio::Cancellable,
+    finished: Box<dyn Fn(ConnectOutcome)>,
+}
+
+/// Remote roots differ only by a trailing slash depending on who built the URI.
+fn same_location(a: &Location, b: &Location) -> bool {
+    match (a.uri_value(), b.uri_value()) {
+        (Some(a), Some(b)) => a.trim_end_matches('/') == b.trim_end_matches('/'),
+        _ => a == b,
+    }
 }
 
 #[derive(Clone)]
@@ -640,30 +681,14 @@ fn mount_result_is_ok(result: &Result<(), glib::Error>) -> bool {
 }
 
 fn mount_error_is_authentication_failure(location: &Location, error: &glib::Error) -> bool {
-    if location.uri_value().is_none() {
+    if location.uri_value().is_none() || location.is_administrator() {
         return false;
     }
     if mount_error_is_host_key_rejection(error) {
         return false;
     }
-    if error.matches(gio::IOErrorEnum::PermissionDenied) {
-        return true;
-    }
-
-    // GVfs' SMB backend reports rejected credentials as G_IO_ERROR_FAILED on
-    // some versions, preserving the useful distinction only in its message.
-    let message = error.message().to_ascii_lowercase();
-    [
-        "permission denied",
-        "authentication failed",
-        "authentication required",
-        "auth fail",
-        "too many authentication failures",
-        "logon failure",
-        "invalid credentials",
-    ]
-    .iter()
-    .any(|reason| message.contains(reason))
+    error.matches(gio::IOErrorEnum::PermissionDenied)
+        || crate::services::describes_refused_credentials(error.message())
 }
 
 fn mount_error_is_host_key_rejection(error: &glib::Error) -> bool {
@@ -685,7 +710,7 @@ fn mount_error_is_host_key_rejection(error: &glib::Error) -> bool {
 /// per lgse/strata#20's "cancelling authentication returns to the prior
 /// committed location" requirement.
 fn mount_failure_message(location: &Location, error: &glib::Error) -> Option<String> {
-    if mount_error_is_cancelled(error) {
+    if mount_error_is_cancelled(error) || mount_error_is_unauthorized(location, error) {
         return None;
     }
     if error.matches(gio::IOErrorEnum::NotSupported)
@@ -701,7 +726,11 @@ fn mount_failure_message(location: &Location, error: &glib::Error) -> Option<Str
     if let Some(message) = transport_failure_message(error) {
         return Some(message);
     }
-    Some(sanitize_failure_message(&error.to_string()))
+    Some(if location.native_path().is_some() {
+        sanitize_failure_message(&crate::services::gio_error_message(error))
+    } else {
+        crate::services::gio_backend_error_message(error)
+    })
 }
 
 fn transport_failure_message(error: &glib::Error) -> Option<String> {
@@ -723,6 +752,11 @@ fn transport_failure_message(error: &glib::Error) -> Option<String> {
 
 fn mount_error_is_cancelled(error: &glib::Error) -> bool {
     error.matches(gio::IOErrorEnum::Cancelled) || error.matches(gio::IOErrorEnum::FailedHandled)
+}
+
+/// GVfs reports a dismissed or refused polkit prompt for `admin://` as `PERMISSION_DENIED`.
+fn mount_error_is_unauthorized(location: &Location, error: &glib::Error) -> bool {
+    location.is_administrator() && error.matches(gio::IOErrorEnum::PermissionDenied)
 }
 
 enum MountTarget {
@@ -1267,6 +1301,7 @@ impl ViewState {
         self.mount_target(
             MountTarget::Volume(volume.clone()),
             credentials,
+            None,
             move |state, result, attempted, details| {
                 if !result
                     .as_ref()
@@ -1381,6 +1416,7 @@ impl ViewState {
         self.mount_target(
             MountTarget::Drive(drive.clone()),
             credentials,
+            None,
             move |state, result, attempted, details| {
                 if !result
                     .as_ref()
@@ -1514,6 +1550,19 @@ impl ViewState {
         );
     }
 
+    /// The entry's focus sits on its inner text widget, so the root's focus
+    /// widget is checked rather than the entry itself.
+    pub(super) fn location_entry_has_focus(&self) -> bool {
+        let entry = self.location_entry.upcast_ref::<gtk::Widget>();
+        self.location_entry.has_focus()
+            || self
+                .overlay
+                .root()
+                .and_then(|root| root.focus())
+                .as_ref()
+                .is_some_and(|focused| focused == entry || focused.is_ancestor(entry))
+    }
+
     pub(super) fn begin_location_edit(&self) {
         self.location_stack.set_visible_child_name("entry");
         self.location_entry.grab_focus();
@@ -1522,10 +1571,15 @@ impl ViewState {
             .refresh(&self.location_entry, &self.browser);
     }
 
+    fn show_breadcrumbs(&self) {
+        self.breadcrumb_reveal_pending.set(true);
+        self.location_stack.set_visible_child_name("breadcrumbs");
+    }
+
     pub(super) fn cancel_location_edit(&self) {
         self.path_completion.dismiss();
         // Resetting a visible entry emits changed and reopens its completion popover.
-        self.location_stack.set_visible_child_name("breadcrumbs");
+        self.show_breadcrumbs();
         self.restore_location_text();
         self.browser.focus_active();
     }
@@ -1534,17 +1588,17 @@ impl ViewState {
         self.path_completion.dismiss();
         let input = self.location_entry.text();
         match self.open_typed_location(input.as_str(), None) {
-            Ok(TypedLocation::Navigating) => {
-                self.location_stack.set_visible_child_name("breadcrumbs");
+            Ok(TypedLocation::Navigating { .. }) => {
+                self.show_breadcrumbs();
                 self.browser.focus_active();
             }
-            Ok(TypedLocation::Mounting { sanitized }) => {
+            Ok(TypedLocation::Mounting { sanitized, .. }) => {
                 if let Some(text) = mounting_entry_text(input.as_str(), &sanitized) {
                     self.location_entry.set_text(&text);
                 }
             }
             Err(error) => {
-                self.location_stack.set_visible_child_name("breadcrumbs");
+                self.show_breadcrumbs();
                 self.restore_location_text();
                 show_error_dialog(
                     &self.overlay,
@@ -1565,25 +1619,31 @@ impl ViewState {
     ) -> Result<TypedLocation, LocationValidationError> {
         let (input, credentials) = credentials_from_location_input(input)?;
         self.pending_location_credentials.replace(credentials);
-        match self.browser.navigate_input_from(&input, base) {
-            Ok(()) => Ok(TypedLocation::Navigating),
+        match self.browser.navigate_input_located(&input, base) {
+            Ok(location) => Ok(TypedLocation::Navigating { location }),
             Err(LocationValidationError::NotMounted(location)) => {
                 let credentials = self.pending_location_credentials.take();
                 self.mount_then_navigate_with_credentials(
-                    location,
+                    location.clone(),
                     MountStrategy::EnclosingVolume,
                     credentials,
                 );
-                Ok(TypedLocation::Mounting { sanitized: input })
+                Ok(TypedLocation::Mounting {
+                    location,
+                    sanitized: input,
+                })
             }
             Err(LocationValidationError::Mountable(location)) => {
                 let credentials = self.pending_location_credentials.take();
                 self.mount_then_navigate_with_credentials(
-                    location,
+                    location.clone(),
                     MountStrategy::Mountable,
                     credentials,
                 );
-                Ok(TypedLocation::Mounting { sanitized: input })
+                Ok(TypedLocation::Mounting {
+                    location,
+                    sanitized: input,
+                })
             }
             Err(error) => {
                 self.pending_location_credentials.take();
@@ -1592,9 +1652,101 @@ impl ViewState {
         }
     }
 
+    pub(super) fn connect_typed_location(
+        self: &Rc<Self>,
+        input: &str,
+        base: Option<&Path>,
+        finished: Box<dyn Fn(ConnectOutcome)>,
+    ) -> Result<(), LocationValidationError> {
+        self.cancel_connect();
+        let connect = Rc::new(PendingConnect {
+            target: RefCell::new(None),
+            cancellable: gio::Cancellable::new(),
+            finished,
+        });
+        // Installed first: a native volume starts mounting before this returns.
+        self.pending_connect.replace(Some(connect.clone()));
+        match self.open_typed_location(input, base) {
+            Ok(TypedLocation::Navigating { location }) => {
+                let reopened = self
+                    .browser
+                    .active_location()
+                    .is_some_and(|active| same_location(&active, &location));
+                if reopened {
+                    self.settle_connect(&connect, ConnectOutcome::Opened(location));
+                } else {
+                    connect.target.replace(Some(location));
+                }
+                Ok(())
+            }
+            Ok(TypedLocation::Mounting { location, .. }) => {
+                connect.target.replace(Some(location));
+                Ok(())
+            }
+            Err(error) => {
+                self.pending_connect.take();
+                Err(error)
+            }
+        }
+    }
+
+    /// Abandons the pending connect so neither its validation nor its mount navigates.
+    pub(super) fn cancel_connect(&self) {
+        let Some(connect) = self.pending_connect.take() else {
+            return;
+        };
+        connect.cancellable.cancel();
+        self.pending_location_credentials.take();
+        self.browser.bump_navigation_generation();
+    }
+
+    /// Reports `outcome` when `connect` is still the pending one; false otherwise.
+    fn settle_connect(&self, connect: &Rc<PendingConnect>, outcome: ConnectOutcome) -> bool {
+        if !self.is_pending_connect(connect) {
+            return false;
+        }
+        self.pending_connect.take();
+        (connect.finished)(outcome);
+        true
+    }
+
+    fn is_pending_connect(&self, connect: &Rc<PendingConnect>) -> bool {
+        self.pending_connect
+            .borrow()
+            .as_ref()
+            .is_some_and(|pending| Rc::ptr_eq(pending, connect))
+    }
+
+    /// Reports a failure to the pending connect; false when none is waiting.
+    pub(super) fn fail_pending_connect(&self, message: Option<String>) -> bool {
+        let connect = self.pending_connect.borrow().clone();
+        connect
+            .is_some_and(|connect| self.settle_connect(&connect, ConnectOutcome::Failed(message)))
+    }
+
+    /// Opens the pending connect once its validated target becomes a column. A
+    /// native target was validated before any of its columns appear, so the
+    /// first ancestor column settles it too (a typed file reveals its folder).
+    pub(super) fn settle_connect_column(&self, location: &Location) {
+        let connect = self.pending_connect.borrow().clone();
+        if let Some(connect) = connect {
+            let reached = connect.target.borrow().as_ref().is_some_and(|target| {
+                same_location(target, location)
+                    || target
+                        .native_path()
+                        .zip(location.native_path())
+                        .is_some_and(|(target, column)| target.starts_with(column))
+            });
+            if reached {
+                self.settle_connect(&connect, ConnectOutcome::Opened(location.clone()));
+            }
+        }
+    }
+
     pub(super) fn handle_navigation_rejected(
         self: &Rc<Self>,
         parent_depth: usize,
+        rejected: &Location,
         error: LocationValidationError,
     ) {
         match error {
@@ -1604,14 +1756,53 @@ impl ViewState {
             LocationValidationError::Mountable(location) => {
                 self.mount_then_descend(parent_depth, location, MountStrategy::Mountable);
             }
+            LocationValidationError::NotAuthorized => {}
             error => {
-                show_error_dialog(
-                    &self.overlay,
+                self.show_open_failure(
                     &crate::i18n::tr("Unable to open directory"),
-                    &error.message(),
+                    rejected,
+                    &error,
                 );
             }
         }
+    }
+
+    /// Reports why `location` can't be opened, offering `admin://` when only
+    /// permissions stand in the way.
+    pub(super) fn show_open_failure(
+        self: &Rc<Self>,
+        title: &str,
+        location: &Location,
+        error: &LocationValidationError,
+    ) {
+        let Some(administrator) = matches!(error, LocationValidationError::Inaccessible)
+            .then(|| self.browser.administrator_alternative(location))
+            .flatten()
+        else {
+            show_error_dialog(&self.overlay, title, &error.message());
+            return;
+        };
+        let weak = Rc::downgrade(self);
+        show_error_dialog_with_action(
+            &self.overlay,
+            title,
+            &error.message(),
+            (
+                crate::assets::icons::LOCK,
+                &crate::i18n::tr("Open as Administrator"),
+            ),
+            Rc::new(move || {
+                if let Some(state) = weak.upgrade() {
+                    state.open_as_administrator(administrator.clone());
+                }
+            }),
+        );
+    }
+
+    /// Validation runs the first `admin://` operation, so polkit prompts before the
+    /// current folder is replaced, and a dismissed prompt leaves it open.
+    pub(super) fn open_as_administrator(self: &Rc<Self>, location: Location) {
+        self.browser.navigate_location(location, true);
     }
 
     pub(super) fn mount_then_navigate_with_credentials(
@@ -1620,13 +1811,29 @@ impl ViewState {
         strategy: MountStrategy,
         credentials: Option<MountCredentials>,
     ) {
+        let connect = self.pending_connect.borrow().clone();
+        let cancellable = connect.as_ref().map(|connect| connect.cancellable.clone());
         self.mount_location(
             location.clone(),
             strategy,
             credentials,
+            cancellable,
             move |state, result, attempted_credentials, prompt_details| {
+                if connect
+                    .as_ref()
+                    .is_some_and(|connect| !state.is_pending_connect(connect))
+                {
+                    return;
+                }
                 if mount_result_is_ok(&result) {
-                    state.browser.navigate(location.clone());
+                    if let Some(connect) = &connect {
+                        state.settle_connect(connect, ConnectOutcome::Opened(location.clone()));
+                    }
+                    if location.is_administrator() {
+                        state.open_as_administrator(location.clone());
+                    } else {
+                        state.browser.navigate(location.clone());
+                    }
                     state.location_stack.set_visible_child_name("breadcrumbs");
                     state.browser.focus_active();
                 } else if let Err(error) = result {
@@ -1641,7 +1848,11 @@ impl ViewState {
                         state.abandon_deferred_reveal();
                         state.location_stack.set_visible_child_name("breadcrumbs");
                         state.restore_location_text();
-                        if let Some(message) = mount_failure_message(&location, &error) {
+                        let message = mount_failure_message(&location, &error);
+                        let reported = connect.as_ref().is_some_and(|connect| {
+                            state.settle_connect(connect, ConnectOutcome::Failed(message.clone()))
+                        });
+                        if !reported && let Some(message) = message {
                             show_error_dialog(
                                 &state.overlay,
                                 &crate::i18n::tr("Unable to connect"),
@@ -1674,6 +1885,7 @@ impl ViewState {
             location.clone(),
             strategy,
             credentials,
+            None,
             move |state, result, attempted_credentials, prompt_details| {
                 if mount_result_is_ok(&result) {
                     state.browser.descend(parent_depth, location.clone());
@@ -1725,7 +1937,9 @@ impl ViewState {
                     state.abandon_deferred_reveal();
                     state.location_stack.set_visible_child_name("breadcrumbs");
                     state.restore_location_text();
-                    state.browser.focus_active();
+                    if !state.fail_pending_connect(None) {
+                        state.browser.focus_active();
+                    }
                 }
             },
         );
@@ -1810,6 +2024,7 @@ impl ViewState {
         location: Location,
         strategy: MountStrategy,
         credentials: Option<MountCredentials>,
+        cancellable: Option<gio::Cancellable>,
         on_result: impl Fn(
             &Rc<Self>,
             Result<(), glib::Error>,
@@ -1820,6 +2035,7 @@ impl ViewState {
         self.mount_target(
             MountTarget::Location(location, strategy),
             credentials,
+            cancellable,
             on_result,
         );
     }
@@ -2021,6 +2237,7 @@ impl ViewState {
         self: &Rc<Self>,
         target: MountTarget,
         credentials: Option<MountCredentials>,
+        cancellable: Option<gio::Cancellable>,
         on_result: impl Fn(
             &Rc<Self>,
             Result<(), glib::Error>,
@@ -2170,33 +2387,49 @@ impl ViewState {
         let result_overlay = self.overlay.clone();
         glib::MainContext::default().spawn_local(async move {
             let _activity = activity;
-            let result = match target {
-                MountTarget::Volume(volume) => {
-                    volume
-                        .mount_future(gio::MountMountFlags::NONE, Some(&operation))
-                        .await
-                }
-                MountTarget::Drive(drive) => {
-                    drive
-                        .start_future(gio::DriveStartFlags::NONE, Some(&operation))
-                        .await
-                }
-                MountTarget::Location(location, strategy) => {
-                    let file = gio_file_for_location(&location);
-                    match strategy {
-                        MountStrategy::EnclosingVolume => {
-                            file.mount_enclosing_volume_future(
-                                gio::MountMountFlags::NONE,
-                                Some(&operation),
-                            )
+            let mount = async {
+                match target {
+                    MountTarget::Volume(volume) => {
+                        volume
+                            .mount_future(gio::MountMountFlags::NONE, Some(&operation))
                             .await
+                    }
+                    MountTarget::Drive(drive) => {
+                        drive
+                            .start_future(gio::DriveStartFlags::NONE, Some(&operation))
+                            .await
+                    }
+                    MountTarget::Location(location, strategy) => {
+                        let file = gio_file_for_location(&location);
+                        match strategy {
+                            MountStrategy::EnclosingVolume => {
+                                file.mount_enclosing_volume_future(
+                                    gio::MountMountFlags::NONE,
+                                    Some(&operation),
+                                )
+                                .await
+                            }
+                            MountStrategy::Mountable => file
+                                .mount_mountable_future(
+                                    gio::MountMountFlags::NONE,
+                                    Some(&operation),
+                                )
+                                .await
+                                .map(|_| ()),
                         }
-                        MountStrategy::Mountable => file
-                            .mount_mountable_future(gio::MountMountFlags::NONE, Some(&operation))
-                            .await
-                            .map(|_| ()),
                     }
                 }
+            };
+            let result = match cancellable {
+                Some(cancellable) => gio::CancellableFuture::new(mount, cancellable)
+                    .await
+                    .unwrap_or_else(|gio::Cancelled| {
+                        Err(glib::Error::new(
+                            gio::IOErrorEnum::Cancelled,
+                            "Mount cancelled",
+                        ))
+                    }),
+                None => mount.await,
             };
             let result = trust_question_result(result, question_declined.get());
             if let Some(location) = log_location.as_ref() {
@@ -2269,9 +2502,11 @@ impl ViewState {
                     &current_label,
                     Some(&crumb.display_path()),
                 );
-                let copy = gtk::Button::builder()
-                    .tooltip_text(crate::i18n::tr("Copy path"))
-                    .build();
+                let copy = gtk::Button::new();
+                crate::ui::accessibility::set_tooltip_and_label(
+                    &copy,
+                    &crate::i18n::tr("Copy path"),
+                );
                 let copy_icon = crate::assets::primary_icon(crate::assets::icons::COPY, 16);
                 copy.set_child(Some(&copy_icon));
                 copy.add_css_class("copy-path");
@@ -2286,14 +2521,20 @@ impl ViewState {
                     let generation = feedback_generation.get().saturating_add(1);
                     feedback_generation.set(generation);
                     crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::CHECK);
-                    button.set_tooltip_text(Some(&crate::i18n::tr("Path copied")));
+                    crate::ui::accessibility::set_tooltip_and_label(
+                        button,
+                        &crate::i18n::tr("Path copied"),
+                    );
                     let button = button.clone();
                     let copy_icon = copy_icon.clone();
                     let feedback_generation = feedback_generation.clone();
                     glib::timeout_add_local_once(Duration::from_secs(2), move || {
                         if feedback_generation.get() == generation {
                             crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::COPY);
-                            button.set_tooltip_text(Some(&crate::i18n::tr("Copy path")));
+                            crate::ui::accessibility::set_tooltip_and_label(
+                                &button,
+                                &crate::i18n::tr("Copy path"),
+                            );
                         }
                     });
                 });
@@ -2304,6 +2545,13 @@ impl ViewState {
                 let button = gtk::Button::with_label(&label);
                 if let Some(label) = button.child().and_downcast::<gtk::Label>() {
                     ellipsize_crumb_label(&label);
+                }
+                if crumb.is_administrator() && crumb.parent().is_none() {
+                    let content = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+                    content.append(&crate::assets::primary_icon(crate::assets::icons::LOCK, 14));
+                    content.append(&gtk::Label::new(Some(&label)));
+                    button.set_child(Some(&content));
+                    crate::ui::accessibility::set_label(&button, &label);
                 }
                 button.add_css_class("breadcrumb");
                 if crumb
@@ -2361,49 +2609,43 @@ impl ViewState {
                 drop.connect_leave(move |_| {
                     state_for_leave.cancel_spring_load_navigation();
                 });
+                let handler: super::DropHandler = {
+                    let weak = weak.clone();
+                    Rc::new(move |destination, request| {
+                        if let Some(state) = weak.upgrade() {
+                            state.commit_drop(destination, request);
+                        }
+                    })
+                };
+                let handler_for_drop = handler.clone();
+                let state_for_drop = drop_state.clone();
                 drop.connect_drop(move |target, value, _, _| {
-                    drop_state.cancel_spring_load_navigation();
-                    let Some(state) = weak.upgrade() else {
+                    state_for_drop.cancel_spring_load_navigation();
+                    let Some(destination) = state_for_drop.destination() else {
                         return false;
                     };
-                    let Some(destination) = drop_state.destination() else {
-                        return false;
-                    };
-                    let Some(sources) = super::locations_from_file_list_value(value) else {
-                        return false;
-                    };
-                    if sources.is_empty() {
-                        return false;
-                    }
-                    let commit =
-                        super::file_drop_commit(target, &destination, &sources, &drop_state);
-                    state.commit_file_drop(destination, sources, commit);
-                    true
+                    let handler = handler_for_drop.clone();
+                    super::commit_dropped_value(
+                        target,
+                        value,
+                        destination,
+                        &state_for_drop,
+                        move |destination, request| handler(destination, request),
+                    )
                 });
-                button.add_controller(drop);
+                super::attach_drop_target(&button, &drop, &drop_state, handler);
                 self.breadcrumbs.append(&button);
             }
         }
-        self.location_stack.set_visible_child_name("breadcrumbs");
-        self.location_entry.set_text(&location.display_path());
-        let Some(last) = self.breadcrumbs.last_child() else {
-            return;
-        };
-        let last = last.downgrade();
-        let _tick = self
-            .breadcrumb_scroller
-            .add_tick_callback(move |scroller, _| {
-                let Some(last) = last.upgrade() else {
-                    return glib::ControlFlow::Break;
-                };
-                // The adjustment's upper bound is stale until the new crumbs are allocated.
-                if last.width() <= 0 {
-                    return glib::ControlFlow::Continue;
-                }
-                let adjustment = scroller.hadjustment();
-                adjustment.set_value(adjustment.upper() - adjustment.page_size());
-                glib::ControlFlow::Break
-            });
+        // A folder that arrives while the user types a location, such as a new
+        // tab's first load, must not close the entry or replace the typed text.
+        let editing = self.location_stack.visible_child_name().as_deref() == Some("entry")
+            && self.location_entry_has_focus();
+        if !editing {
+            self.show_breadcrumbs();
+            self.location_entry.set_text(&location.display_path());
+        }
+        self.breadcrumb_reveal_pending.set(true);
     }
 
     pub(super) fn show_breadcrumb_hierarchy_menu(

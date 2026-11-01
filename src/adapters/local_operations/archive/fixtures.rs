@@ -7,7 +7,7 @@ use super::{
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
-    services::ArchiveFormat,
+    services::{ArchiveFormat, TransferReport},
 };
 use std::{
     error::Error,
@@ -21,6 +21,8 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
+
+pub(super) use super::super::tests::names;
 
 /// GIO cannot trash test fixtures across devices into the home Trash.
 pub(super) fn tempdir_on_home_device() -> Result<tempfile::TempDir, Box<dyn Error>> {
@@ -103,11 +105,12 @@ pub(super) fn test_file_entry(path: &Path) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_uri: None,
     }
 }
 
-pub(super) const COMPRESSION_STAGE: &str = ".strata-compression-";
+pub(super) const COMPRESSION_STAGE: &str = ".strata-copy-";
 pub(super) const EXTRACTION_STAGE: &str = ".strata-extraction-";
 
 pub(super) fn stages(destination: &Path, prefix: &str) -> Result<Vec<OsString>, Box<dyn Error>> {
@@ -133,6 +136,15 @@ pub(crate) fn write_compression_fixture(
     format: ArchiveFormat,
     password: Option<&str>,
 ) -> Result<usize, String> {
+    // The filesystem seam asserts it runs off the main thread.
+    if crate::util::ui_thread::is_current() {
+        return std::thread::scope(|scope| {
+            scope
+                .spawn(|| write_compression_fixture(path, entries, format, password))
+                .join()
+                .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+        });
+    }
     let file = fs::File::create(path).map_err(|error| error.to_string())?;
     let progress = Arc::new(AtomicUsize::new(0));
     let cancelled = never_cancelled();
@@ -345,6 +357,7 @@ pub(super) fn extract_zip(path: &Path, destination: &Path) -> Result<Option<Stri
             None,
             &Arc::new(AtomicUsize::new(0)),
             &never_cancelled(),
+            &mut TransferReport::default(),
         )
         .map_err(|error| error.to_string())?,
     )
@@ -430,7 +443,7 @@ fn write_zip_members(path: &Path, members: &[FixtureMember<'_>]) -> Result<(), B
                     options = options.unix_permissions(*mode);
                 }
                 if let Some(seconds) = modified {
-                    options.add_extra_data(0x5455, zip_extended_timestamp(*seconds)?, false)?;
+                    options.add_extra_field(0x5455, zip_extended_timestamp(*seconds)?, false)?;
                 }
                 writer.start_file(*name, options)?;
                 writer.write_all(contents)?;
@@ -444,7 +457,7 @@ fn write_zip_members(path: &Path, members: &[FixtureMember<'_>]) -> Result<(), B
                     options = options.unix_permissions(*mode);
                 }
                 if let Some(seconds) = modified {
-                    options.add_extra_data(0x5455, zip_extended_timestamp(*seconds)?, false)?;
+                    options.add_extra_field(0x5455, zip_extended_timestamp(*seconds)?, false)?;
                 }
                 writer.add_directory(*name, options)?;
             }

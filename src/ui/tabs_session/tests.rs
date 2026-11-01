@@ -5,6 +5,10 @@ use std::fs;
 use super::*;
 use crate::model::Location;
 
+fn save_to(path: &Path, tabs: &[Location], active: usize) -> io::Result<()> {
+    fs::write(path, session_contents(tabs, active)?)
+}
+
 fn session_file() -> (tempfile::TempDir, PathBuf) {
     let directory = tempfile::tempdir().expect("session fixture");
     let path = directory.path().join("tabs.toml");
@@ -49,7 +53,7 @@ fn save_excludes_credentials_and_transient_locations() {
 }
 
 #[test]
-fn missing_and_relative_directories_are_dropped() {
+fn relative_directories_are_dropped_and_missing_ones_are_left_to_the_window() {
     let (directory, path) = session_file();
     let kept = existing_dir(directory.path(), "kept");
     let gone = directory.path().join("gone");
@@ -65,7 +69,10 @@ fn missing_and_relative_directories_are_dropped() {
     .expect("save session");
 
     let restored = load_from(&path).expect("restored session");
-    assert_eq!(restored.tabs, vec![Location::local(&kept)]);
+    assert_eq!(
+        restored.tabs,
+        vec![Location::local(&gone), Location::local(&kept)]
+    );
     assert_eq!(restored.active, 0);
 }
 
@@ -84,6 +91,7 @@ fn uri_entries_keep_roots_and_reject_secrets_and_transients() {
             StoredTab::from(KIND_URI, "trash:///some-deleted-file"),
             StoredTab::from(KIND_URI, "recent:///some-recent-file"),
             StoredTab::from(KIND_URI, "gphoto2://camera"),
+            StoredTab::from(KIND_URI, "admin:///run/media/user/drive/backups"),
             StoredTab::from(KIND_URI, "https://example.com/share"),
             StoredTab::from("bookmark", "whatever"),
         ],
@@ -120,7 +128,7 @@ fn invalid_tab_before_active_preserves_the_selected_location() {
             .expect("parse saved fixture");
     stored
         .tabs
-        .insert(0, StoredTab::from(KIND_PATH, "/definitely/not/here"));
+        .insert(0, StoredTab::from(KIND_PATH, "definitely/not/here"));
     stored.active = 2;
     fs::write(&path, toml::to_string(&stored).expect("serialize fixture")).expect("write fixture");
     let restored = load_from(&path).expect("restored session");
@@ -151,7 +159,7 @@ fn empty_and_fully_invalid_sessions_restore_nothing() {
     let stored = StoredSession {
         version: SESSION_VERSION,
         active: 0,
-        tabs: vec![StoredTab::from(KIND_PATH, "/definitely/not/here")],
+        tabs: vec![StoredTab::from(KIND_PATH, "definitely/not/here")],
     };
     fs::write(&path, toml::to_string(&stored).expect("session fixture"))
         .expect("write session fixture");

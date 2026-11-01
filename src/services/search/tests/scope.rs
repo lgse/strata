@@ -163,6 +163,65 @@ fn plain_filters_rank_literal_names_above_typos_and_reject_scattered_or_path_mat
 }
 
 #[test]
+fn multi_word_filters_rank_phrase_hits_above_scattered_words() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    for name in [
+        "ducks_in_the_pool.txt",
+        "duck.md",
+        "goose.txt",
+        "nested/duck txt notes.md",
+    ] {
+        fixture_file(fixture.path(), name);
+    }
+    for recursive in [false, true] {
+        let (search, events) = index_filter(
+            fixture.path().into(),
+            false,
+            recursive,
+            SearchLimits::default(),
+        );
+        search.query("duck txt");
+        let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
+        let names: Vec<_> = items.iter().map(|item| item.name.as_str()).collect();
+        let expected: &[&str] = if recursive {
+            &["duck txt notes.md", "ducks_in_the_pool.txt"]
+        } else {
+            &["ducks_in_the_pool.txt"]
+        };
+        assert_eq!(names, expected, "recursive={recursive}");
+    }
+}
+
+#[test]
+fn global_search_matches_multi_word_queries_and_ranks_phrase_above_scattered_words() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    for name in [
+        "ducks_in_the_pool.txt",
+        "duck.md",
+        "goose.txt",
+        "nested/duck txt notes.md",
+        "nested/subfolder/notes.txt",
+    ] {
+        fixture_file(fixture.path(), name);
+    }
+    let (global, events) = index_trees_with_exclusions(
+        vec![fixture.path().into()],
+        false,
+        Vec::new(),
+        SearchLimits::default(),
+    );
+    global.query("duck txt");
+    let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
+    let names: Vec<_> = items.iter().map(|item| item.name.as_str()).collect();
+    assert_eq!(names, &["duck txt notes.md", "ducks_in_the_pool.txt"]);
+
+    global.query("subfolder txt");
+    let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
+    let names: Vec<_> = items.iter().map(|item| item.name.as_str()).collect();
+    assert_eq!(names, &["notes.txt"]);
+}
+
+#[test]
 fn wildcard_scoring_is_session_local_and_applies_to_new_index_batches() {
     let index = Arc::new(SharedIndex::new());
     let (filter, events) =
@@ -170,9 +229,13 @@ fn wildcard_scoring_is_session_local_and_applies_to_new_index_batches() {
     filter.query("*.MOV");
     let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("empty index");
     assert!(items.is_empty());
+    let fixture = tempfile::tempdir().expect("fixture");
     let mut batch: Vec<_> = ["clip.MOV", "clip.MOV.bak", "*.MOV", "IMG_001.jpg"]
         .into_iter()
-        .map(|name| SearchItem::for_test(PathBuf::from("/fixture").join(name), false))
+        .map(|name| {
+            fs::write(fixture.path().join(name), b"").expect("fixture file");
+            SearchItem::for_test(fixture.path().join(name), false)
+        })
         .collect();
     append_index_items(&index, &mut batch, false, SearchCoverage::default());
     index.broadcast_change();

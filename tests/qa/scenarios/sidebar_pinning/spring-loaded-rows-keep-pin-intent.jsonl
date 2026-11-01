@@ -1,0 +1,12 @@
+{"scenario":"spring-loaded-rows-keep-pin-intent","modes":["columns"],"prefs":{"reduce_motion":false},"layout":"us","mutation":null,"known_bug":null,"gtk_settings":{"gtk-enable-animations":"true"},"setup":[{"fs":{"path":"$config/gtk-3.0","mkdir":true,"parents":true}},{"fs":{"path":"$config/gtk-3.0/bookmarks","write":"file://$fixture_quoted/documents First\nfile://$fixture_quoted/pictures Second\n"}}],"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":4,"score":38,"note":"Drag spring-loads a pinned row, then leaves for a PINNED gap: folder pins, no transfer, no late spring-load; overlaps pinned-rows-transfer-and-remote-gaps"}}
+{"drag":{"from":{"entry":"archive"},"to":{"sidebar":"First"}},"steps":8,"release":false}
+{"wait":{"directory":"documents"},"message":"hovering the pinned row 'First' to spring-load 'documents'"}
+{"move":{"sidebar":"Second"}}
+{"wait":{"present":{"role":"grouping","name":"PINNED"}},"message":"the Pinned insertion targets"}
+{"move":{"role":"grouping","name":"PINNED","nth":1}}
+{"during":{"directory":"documents"},"ms":900,"every_ms":50,"message":"a departed row must not spring-load later"}
+{"button_up":1}
+{"fs":{"path":"$config/gtk-3.0/bookmarks","lines_equal":["file://$fixture_quoted/documents First","file://$fixture_quoted/archive archive","file://$fixture_quoted/pictures Second"]},"message":"the gap to pin rather than transfer the folder"}
+{"fs":{"path":"archive","is":"dir"},"timeout_ms":0}
+{"fs":{"path":"documents/archive","exists":false},"timeout_ms":0}
+{"fs":{"path":"pictures/archive","exists":false},"timeout_ms":0}

@@ -12,8 +12,8 @@ use super::{
 };
 use crate::{
     adapters::gio_file_for_location,
-    model::{FileEntry, Location, SortDirection, SortKey},
-    services::{ActionHandle, ArchiveFormat, InvocationSource},
+    model::{ActionInput, FileEntry, Location, SortDirection, SortKey},
+    services::{ActionCatalog, ActionHandle, ArchiveFormat, InvocationSource, TypedPath},
 };
 
 pub(crate) use super::transfer::ConflictFocus;
@@ -61,17 +61,48 @@ pub(crate) enum CreateRefusal {
     Unsupported,
     Invalid(&'static str),
     Exists(String),
+    Unstorable(String),
+    NotAFolder(String),
+}
+
+pub(crate) struct TypedEntry {
+    parent: Location,
+    name: String,
+    directory: bool,
+}
+
+impl TypedEntry {
+    /// The operation still checks collisions atomically; this keeps the name editable.
+    pub(crate) async fn refusal(&self) -> Option<CreateRefusal> {
+        let folder = gio_file_for_location(&self.parent);
+        if let Some(message) =
+            crate::adapters::typed_name_refusal(&folder, &self.name, self.directory).await
+        {
+            return Some(CreateRefusal::Unstorable(message));
+        }
+        let path = self.parent.native_path()?.join(&self.name);
+        let exists = gtk::gio::spawn_blocking(move || std::fs::symlink_metadata(path).is_ok())
+            .await
+            .unwrap_or(false);
+        exists.then(|| CreateRefusal::Exists(self.name.clone()))
+    }
 }
 
 impl BrowserView {
+    /// 10xer falls back to the item under the cursor; the default map acts on
+    /// the selection only, as its Copy and Delete do.
     pub fn command_targets(&self) -> Vec<FileEntry> {
+        let tenxer = crate::ui::preferences::PreferenceManager::shared().tenxer_mode();
         if let Some(results) = self.selected_search_results() {
-            if !results.is_empty() {
+            if !results.is_empty() || !tenxer {
                 return results;
             }
             return self.selected_search_result().into_iter().collect();
         }
         self.state.sync_mode_selection();
+        if !tenxer {
+            return self.state.browser.transfer_entries();
+        }
         self.focused_listing_depth()
             .map(|depth| self.state.browser.command_entries(depth))
             .unwrap_or_default()
@@ -172,7 +203,7 @@ impl BrowserView {
             .is_some_and(|(_, parent)| !is_trash_location(&parent) && !parent.is_recent_location())
     }
 
-    pub fn create_typed_entry(&self, text: &str) -> Result<(), CreateRefusal> {
+    pub fn prepare_typed_entry(&self, text: &str) -> Result<TypedEntry, CreateRefusal> {
         let (name, directory) = match text.strip_suffix('/') {
             Some(name) => (name, true),
             None => (text, false),
@@ -184,16 +215,17 @@ impl BrowserView {
         else {
             return Err(CreateRefusal::Unsupported);
         };
-        // The operation still checks collisions atomically; this provides editable feedback.
-        if let Some(path) = parent.native_path()
-            && std::fs::symlink_metadata(path.join(name)).is_ok()
-        {
-            return Err(CreateRefusal::Exists(name.to_owned()));
-        }
+        Ok(TypedEntry {
+            parent,
+            name: name.to_owned(),
+            directory,
+        })
+    }
+
+    pub fn create_typed_entry(&self, entry: TypedEntry) {
         self.state
             .browser
-            .create_exact_entry(parent, name.to_owned(), directory);
-        Ok(())
+            .create_exact_entry(entry.parent, entry.name, entry.directory);
     }
 }
 
@@ -201,33 +233,103 @@ pub(crate) fn can_rename(entry: &FileEntry) -> bool {
     !is_trash_location(&entry.location)
 }
 
+pub(crate) struct TypedRename {
+    pub(crate) entry: FileEntry,
+    pub(crate) name: String,
+    /// Set when the name moves the item out of its folder.
+    path: Option<TypedPath>,
+}
+
+impl TypedRename {
+    /// Every typed name, with whether it names a folder.
+    pub(crate) fn components(&self) -> Vec<(&str, bool)> {
+        let Some(path) = &self.path else {
+            return vec![(self.name.as_str(), false)];
+        };
+        path.folders
+            .iter()
+            .map(|folder| (folder.as_str(), true))
+            .chain([(path.name.as_str(), path.folder)])
+            .collect()
+    }
+
+    /// The folder the typed names are relative to.
+    pub(crate) fn start_folder(&self) -> Option<Location> {
+        let parent = self.entry.location.parent()?;
+        match &self.path {
+            Some(path) => path.start(&parent),
+            None => Some(parent),
+        }
+    }
+
+    pub(crate) fn native_paths(&self) -> Option<(PathBuf, PathBuf)> {
+        let current = self.entry.location.native_path()?;
+        let wanted = self.components().into_iter().fold(
+            self.start_folder()?.native_path()?.to_path_buf(),
+            |path, (name, _)| path.join(name),
+        );
+        Some((current.to_path_buf(), wanted))
+    }
+
+    pub(crate) fn folders(&self) -> Vec<String> {
+        self.path
+            .as_ref()
+            .map(|path| path.folders.clone())
+            .unwrap_or_default()
+    }
+}
+
 impl BrowserView {
-    /// Renames `entry` to exactly `text`. An unchanged name does nothing, and an
-    /// invalid or occupied one is refused before anything is renamed; the
-    /// operation's own failures are reported like an inline rename's.
-    pub fn rename_typed_entry(&self, entry: FileEntry, text: &str) -> Result<(), CreateRefusal> {
+    pub fn prepare_typed_rename(
+        &self,
+        entry: FileEntry,
+        text: &str,
+    ) -> Result<Option<TypedRename>, CreateRefusal> {
         if !can_rename(&entry) {
             return Err(CreateRefusal::Unsupported);
         }
-        crate::services::validate_basename(text).map_err(CreateRefusal::Invalid)?;
-        if entry.display_name == text || entry.native_name == std::ffi::OsStr::new(text) {
-            return Ok(());
-        }
-        // The rename itself refuses to replace; this only keeps the prompt open to fix the name.
-        if let Some(parent) = entry
+        let (name, path) = if let Some(parent) = entry
             .location
             .native_path()
-            .and_then(std::path::Path::parent)
-            && std::fs::symlink_metadata(parent.join(text)).is_ok()
+            .and_then(|_| entry.location.parent())
         {
-            return Err(CreateRefusal::Exists(text.to_owned()));
+            let path = TypedPath::parse(text, entry.is_directory(), false)
+                .map_err(CreateRefusal::Invalid)?
+                .within(&parent);
+            if path.is_rename_of(entry.is_directory()) {
+                (path.name, None)
+            } else {
+                (text.to_owned(), Some(path))
+            }
+        } else {
+            crate::services::validate_basename(text).map_err(CreateRefusal::Invalid)?;
+            (text.to_owned(), None)
+        };
+        if path.is_none()
+            && (entry.display_name == name || entry.native_name == std::ffi::OsStr::new(&name))
+        {
+            return Ok(None);
         }
-        if let Some(request) = self.state.browser.rename(entry, text.to_owned()) {
+        Ok(Some(TypedRename { entry, name, path }))
+    }
+
+    pub fn start_typed_rename(&self, rename: TypedRename) {
+        let start = rename.start_folder();
+        let started = match rename.path {
+            Some(path) => {
+                let replacement =
+                    start.and_then(|start| start.child(std::ffi::OsStr::new(path.first())));
+                let started = self.state.browser.place_entry(rename.entry, path, false);
+                self.state.typed_placement.replace(started.zip(replacement));
+                started
+            }
+            None => self.state.browser.rename(rename.entry, rename.name),
+        };
+        if let Some(request) = started {
             self.state
                 .keyboard_refocus
                 .set(Some(KeyboardRefocus::Rename(request)));
         }
-        Ok(())
     }
 }
 
@@ -310,6 +412,26 @@ impl BrowserView {
     }
 
     pub(crate) fn numbered_actions(&self) -> NumberedActions {
+        self.actions_for_targets(ActionCatalog::numbered)
+    }
+
+    /// The targets and the action at `index` in Settings → Actions' order,
+    /// when that action can run on them.
+    pub(crate) fn listed_action(
+        &self,
+        index: usize,
+    ) -> Option<(NumberedActions, Rc<ActionHandle>)> {
+        let numbered = self.actions_for_targets(|catalog, inputs| {
+            catalog.listed(index, inputs).into_iter().collect()
+        });
+        let action = numbered.actions.first().cloned()?;
+        Some((numbered, action))
+    }
+
+    fn actions_for_targets(
+        &self,
+        choose: impl FnOnce(&ActionCatalog, &[ActionInput]) -> Vec<Rc<ActionHandle>>,
+    ) -> NumberedActions {
         let entries = self.command_targets();
         let targets = entries.iter().map(|entry| entry.location.clone()).collect();
         let parent = self
@@ -326,7 +448,7 @@ impl BrowserView {
         let actions = if inputs.is_empty() {
             Vec::new()
         } else {
-            crate::ui::actions::shared().catalog().numbered(&inputs)
+            choose(&crate::ui::actions::shared().catalog(), &inputs)
         };
         NumberedActions {
             targets,
@@ -370,10 +492,14 @@ impl BrowserView {
             return None;
         }
         let locations: Vec<Location> = entries.iter().map(|entry| entry.location.clone()).collect();
+        let administrator = locations.iter().any(Location::is_administrator);
         let files: Vec<_> = locations.iter().map(gio_file_for_location).collect();
         let folder = self.state.browser.active_location();
         let state = Rc::downgrade(&self.state);
         Some(glib::MainContext::default().spawn_local(async move {
+            if administrator {
+                return report(super::desktop::ADMINISTRATOR_OPEN_REFUSAL);
+            }
             let unchanged = || {
                 current()
                     && state.upgrade().is_some_and(|state| {
@@ -404,8 +530,7 @@ impl BrowserView {
                 &state.overlay,
                 files,
                 applications.content_types,
-                applications.recommended,
-                applications.other,
+                applications.choices,
                 crate::ui::open_with::OpenWithContext::Explicit,
                 Rc::new(move || {
                     if let Some(browser) = browser.upgrade() {
@@ -429,9 +554,9 @@ impl BrowserView {
         Some((location, name))
     }
 
-    pub fn change_keyboard_pin(&self, pin: bool) -> PinChange {
+    pub fn change_keyboard_pin(&self, pin: bool, done: impl FnOnce(PinChange) + 'static) {
         let Some((location, name)) = self.keyboard_pin_folder() else {
-            return PinChange::Nothing;
+            return done(PinChange::Nothing);
         };
         let status = if is_trash_location(&location) {
             PinStatus::Unavailable
@@ -442,27 +567,38 @@ impl BrowserView {
                 .as_ref()
                 .map_or(PinStatus::Unavailable, |handler| handler(&location))
         };
-        match (pin, status) {
+        let change = match (pin, status) {
             (true, PinStatus::Available) => {
                 let handler = self.state.pin_handler.borrow().clone();
                 let Some(handler) = handler else {
-                    return PinChange::Refused(name);
+                    return done(PinChange::Refused(name));
                 };
-                handler(location.clone(), name.clone());
-                PinChange::Pinned(location, name)
+                handler(
+                    location.clone(),
+                    name.clone(),
+                    Box::new(move |saved| {
+                        done(if saved {
+                            PinChange::Pinned(location, name)
+                        } else {
+                            PinChange::Refused(name)
+                        });
+                    }),
+                );
+                return;
             }
             (true, PinStatus::Pinned) => PinChange::AlreadyPinned(name),
             (true, PinStatus::Unavailable) => PinChange::Refused(name),
             (false, PinStatus::Pinned) => {
                 let handler = self.state.unpin_handler.borrow().clone();
                 let Some(handler) = handler else {
-                    return PinChange::NotPinned(name);
+                    return done(PinChange::NotPinned(name));
                 };
                 handler(&location);
                 PinChange::Unpinned(name)
             }
             (false, _) => PinChange::NotPinned(name),
-        }
+        };
+        done(change);
     }
 
     pub fn transfer_targets(&self, moving: bool) -> Result<Vec<FileEntry>, &'static str> {

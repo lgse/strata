@@ -20,7 +20,7 @@ use crate::{
         media::{PeaksEvent, PeaksSession},
         metadata::AudioTags,
     },
-    services::SandboxedMedia,
+    services::{SandboxedMedia, file_activity},
 };
 
 const DETAILS_CACHE: usize = 12;
@@ -113,11 +113,12 @@ pub(super) fn cached_details(key: &TrackKey) -> Option<Rc<Details>> {
 }
 
 /// Cancels its sandbox jobs when dropped.
-pub(super) struct DetailsLoad(Cancellation);
+pub(super) struct DetailsLoad(Cancellation, Cancellation);
 
 impl Drop for DetailsLoad {
     fn drop(&mut self) {
         self.0.cancel();
+        self.1.cancel();
     }
 }
 
@@ -139,7 +140,7 @@ pub(in crate::ui::preview) fn parse(
 
 fn folder_art(directory: &Path) -> std::io::Result<Option<PathBuf>> {
     let mut best = None;
-    for entry in std::fs::read_dir(directory)? {
+    for entry in file_activity::list(directory)? {
         let entry = entry?;
         let path = entry.path();
         let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
@@ -203,6 +204,7 @@ struct FolderArt {
 fn load_folder_art(
     directory: &Path,
     job: &Cancellation,
+    decode: &Cancellation,
     parse: &impl Fn(&Path, ParseOperation, &Cancellation) -> Option<Vec<u8>>,
 ) -> Option<Option<Cover>> {
     static CACHE: OnceLock<Mutex<Lru<PathBuf, FolderArt>>> = OnceLock::new();
@@ -215,7 +217,7 @@ fn load_folder_art(
     if let Some(cached) = cached.filter(|cached| cached.version == version) {
         return Some(Some(cached.cover));
     }
-    let cover = texture(parse(&path, ParseOperation::PreviewImage, job)?)?;
+    let cover = texture(parse(&path, ParseOperation::PreviewImage, decode)?)?;
     if !job.is_cancelled() {
         cache.lock().expect("folder artwork cache").insert(
             path,
@@ -303,6 +305,8 @@ fn load_details_with(
         .map(Path::to_path_buf);
     let job = cancellation.clone();
     let cancelled = cancellation.clone();
+    let folder_cover = Cancellation::default();
+    let decode = folder_cover.clone();
     glib::MainContext::default().spawn_local(async move {
         glib::timeout_future(LOAD_SETTLE).await;
         if cancelled.is_cancelled() {
@@ -321,7 +325,7 @@ fn load_details_with(
                 return (Some(cover.clone()), true);
             }
             let folder = directory.as_deref().map_or(Some(None), |directory| {
-                load_folder_art(directory, &job, &parse)
+                load_folder_art(directory, &job, &decode, &parse)
             });
             let completed = embedded.is_some() && folder.is_some();
             (folder.flatten(), completed)
@@ -335,7 +339,7 @@ fn load_details_with(
         finish(completed);
         on_cover(cover);
     });
-    DetailsLoad(cancellation)
+    DetailsLoad(cancellation, folder_cover)
 }
 
 type Timer = Rc<RefCell<Option<glib::SourceId>>>;

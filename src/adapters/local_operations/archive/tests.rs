@@ -4,22 +4,31 @@ use super::{
     ArchiveError, copy_with_big_buf,
     decoders::{extract_7z_from_reader, extract_tar},
     fixtures::{
-        COMPRESSION_STAGE, EXTRACTION_STAGE, HomeTrashGuard, corrupt_gzip_trailer, expected_mode,
-        extract_zip, never_cancelled, set_times_without_following, stages, tempdir_on_home_device,
-        test_file_entry, write_7z_entries, write_tar_entries, write_zip_stored,
+        COMPRESSION_STAGE, EXTRACTION_STAGE, FixtureMember, HomeTrashGuard, corrupt_gzip_trailer,
+        expected_mode, extract_zip, never_cancelled, set_times_without_following, stages,
+        tempdir_on_home_device, test_file_entry, write_7z_entries, write_members,
+        write_tar_entries, write_zip_stored,
     },
     listing::INVALID_ARCHIVE,
 };
 use crate::{
-    adapters::local_operations::LocalOperationProvider,
+    adapters::local_operations::{
+        LocalOperationProvider,
+        tests::{
+            base_places_files_by_linking,
+            fs_quirks::{FsQuirks, Op, Preset, Quirks, Trash},
+        },
+    },
     model::Location,
     services::{
-        ArchiveFormat, CompressRequest, ExtractRequest, LoadHandle, OperationEvent,
-        OperationProvider, OperationRequestId, PasswordFailure, TransferConflict,
+        ArchiveFormat, CompressRequest, ExtractRequest, KeptCause, KeptItem, LoadHandle,
+        OperationEvent, OperationProvider, OperationRequestId, PasswordFailure, RenameCause,
+        RenamedItem, ReplacedOriginal, SkippedItem, SpecialKind, TransferConflict, TransferReport,
     },
     test_support::ASYNC_MAIN_CONTEXT_DEFAULT,
 };
 use gtk::glib;
+use rustix::io::Errno;
 use std::{
     cell::RefCell,
     error::Error,
@@ -103,6 +112,64 @@ fn compression_provider_rejects_escaping_archive_names() -> Result<(), Box<dyn E
     assert!(matches!(events.as_slice(), [OperationEvent::Failed { .. }]));
     assert!(!root.path().join("outside.zip").exists());
     assert!(stages(&destination, COMPRESSION_STAGE)?.is_empty());
+    Ok(())
+}
+
+#[test]
+fn an_archive_name_the_location_would_store_otherwise_is_refused_before_anything_is_written()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let rows: [(Preset, &str, Option<String>); 2] = [
+        (
+            Quirks::vfat,
+            "nul",
+            Some(
+                rust_i18n::t!(
+                    "“%{name}” is a reserved name in this location",
+                    name = "nul"
+                )
+                .into_owned(),
+            ),
+        ),
+        (Quirks::ext4, "a:b", None),
+    ];
+    for (quirks, archive_name, refusal) in rows {
+        let root = tempfile::tempdir()?;
+        let destination = root.path().join("destination");
+        let source = root.path().join("source.txt");
+        fs::create_dir(&destination)?;
+        fs::write(&source, b"source")?;
+        let _scope = FsQuirks::install(&destination, quirks());
+
+        let events = run_compression(CompressRequest {
+            id: OperationRequestId(1),
+            entries: vec![test_file_entry(&source)],
+            destination: Location::local(&destination),
+            archive_name: archive_name.to_owned(),
+            conflict: TransferConflict::FailIfExists,
+            format: ArchiveFormat::Zip,
+            password: None,
+        });
+
+        match refusal {
+            Some(refusal) => {
+                assert!(
+                    matches!(events.last(), Some(OperationEvent::Failed { message, .. }) if *message == refusal),
+                    "{archive_name}: {events:?}"
+                );
+                assert!(entry_names(&destination)?.is_empty(), "{archive_name}");
+            }
+            None => {
+                assert!(
+                    matches!(events.last(), Some(OperationEvent::Compressed { .. })),
+                    "{archive_name}: {events:?}"
+                );
+                assert_eq!(entry_names(&destination)?, [format!("{archive_name}.zip")]);
+            }
+        }
+    }
     Ok(())
 }
 
@@ -208,6 +275,91 @@ fn compression_failure_preserves_an_existing_archive() -> Result<(), Box<dyn Err
 }
 
 #[test]
+fn an_archive_that_replaced_an_original_it_cannot_remove_completes_and_reports_it()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    if base_places_files_by_linking(root.path())? {
+        eprintln!("skipped on a base that places files by linking them");
+        return Ok(());
+    }
+    let destination = root.path().join("destination");
+    let source = root.path().join("source.txt");
+    fs::create_dir(&destination)?;
+    fs::write(&source, b"replacement")?;
+    fs::write(destination.join("existing.zip"), b"original")?;
+    let _scope = FsQuirks::install(
+        &destination,
+        Quirks {
+            trash: Trash::Unsupported,
+            fail: vec![(Op::Unlink, "existing.zip", 0, Errno::ACCESS)],
+            ..Quirks::ext4()
+        },
+    );
+
+    let events = run_compression(CompressRequest {
+        id: OperationRequestId(4),
+        entries: vec![test_file_entry(&source)],
+        destination: Location::local(&destination),
+        archive_name: "existing".to_owned(),
+        conflict: TransferConflict::ReplaceExisting,
+        format: ArchiveFormat::Zip,
+        password: None,
+    });
+
+    assert!(
+        matches!(
+            events.last(),
+            Some(OperationEvent::Compressed {
+                archive_name,
+                original: Some(ReplacedOriginal::Deleted),
+                ..
+            }) if archive_name == "existing.zip"
+        ),
+        "{events:?}"
+    );
+    let names = entry_names(&destination)?;
+    let [originals, published] = names.as_slice() else {
+        return Err(format!("the kept original and the archive: {names:?}").into());
+    };
+    assert!(originals.starts_with(".strata-originals-"), "{names:?}");
+    assert_eq!(published, "existing.zip");
+    let kept_original = destination.join(originals).join("existing.zip");
+    assert_eq!(fs::read(&kept_original)?, b"original");
+    let extracted = root.path().join("extracted");
+    fs::create_dir(&extracted)?;
+    assert_eq!(
+        extract_zip(&destination.join("existing.zip"), &extracted)?,
+        Some("source.txt".to_owned())
+    );
+    let kept: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            OperationEvent::ItemsReported {
+                request_id: OperationRequestId(4),
+                report,
+            } => Some(report.kept.clone()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    let [
+        KeptItem {
+            location,
+            cause: KeptCause::OriginalNotRemoved(error),
+        },
+    ] = kept.as_slice()
+    else {
+        return Err(format!("the original is reported as kept: {kept:?}").into());
+    };
+    assert_eq!(location, &Location::local(&kept_original));
+    assert!(!error.contains(".strata-"), "{error}");
+    Ok(())
+}
+
+#[test]
 fn every_compression_format_commits_a_readable_archive() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
@@ -257,6 +409,7 @@ fn every_compression_format_commits_a_readable_archive() -> Result<(), Box<dyn E
                     sevenz_rust2::Password::empty(),
                     &Arc::new(AtomicUsize::new(0)),
                     &never_cancelled(),
+                    &mut TransferReport::default(),
                 )?;
             }
             ArchiveFormat::TarGz => {
@@ -267,6 +420,7 @@ fn every_compression_format_commits_a_readable_archive() -> Result<(), Box<dyn E
                     true,
                     &Arc::new(AtomicUsize::new(0)),
                     &never_cancelled(),
+                    &mut TransferReport::default(),
                 )?;
             }
             ArchiveFormat::Tar => {
@@ -277,6 +431,7 @@ fn every_compression_format_commits_a_readable_archive() -> Result<(), Box<dyn E
                     false,
                     &Arc::new(AtomicUsize::new(0)),
                     &never_cancelled(),
+                    &mut TransferReport::default(),
                 )?;
             }
             ArchiveFormat::Rar => unreachable!("RAR compression is not supported"),
@@ -713,6 +868,25 @@ fn failed_extraction_removes_a_newly_created_empty_destination() -> Result<(), B
     let archive = root.path().join("fake.zip");
     fs::write(&archive, b"not an archive")?;
     let destination = root.path().join("leftover");
+    let on_ui_thread = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen = |step: &'static str| {
+        let seen = on_ui_thread.clone();
+        Box::new(move || {
+            seen.lock()
+                .expect("steps")
+                .push((step, crate::util::ui_thread::is_current()));
+        }) as Box<dyn FnMut() + Send>
+    };
+    let _scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            before: vec![
+                (Op::FolderStamp, "fake.zip", 0, seen("archive check")),
+                (Op::Unlink, "leftover", 0, seen("cleanup")),
+            ],
+            ..Quirks::default()
+        },
+    );
     let events = run_extraction(ExtractRequest {
         id: OperationRequestId(908),
         entry: test_file_entry(&archive),
@@ -728,6 +902,11 @@ fn failed_extraction_removes_a_newly_created_empty_destination() -> Result<(), B
     assert!(
         !destination.exists(),
         "leftover destination was not cleaned up"
+    );
+    assert_eq!(
+        *on_ui_thread.lock().expect("steps"),
+        [("archive check", false), ("cleanup", false)],
+        "the archive is checked and the folder removed off the UI thread"
     );
     Ok(())
 }
@@ -1213,6 +1392,87 @@ fn password_failures_reach_the_event_as_their_kind_and_leave_nothing_behind()
                 "{format:?} {password:?}"
             );
         }
+    }
+    Ok(())
+}
+
+#[test]
+fn an_extraction_reports_what_it_renamed_and_left_out_before_it_ends() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    for (format, name, damaged, output) in [
+        (ArchiveFormat::TarGz, "venv.tar.gz", false, ""),
+        (ArchiveFormat::TarGz, "venv.tar.gz", true, "venv"),
+        (ArchiveFormat::Zip, "venv.zip", false, ""),
+        (ArchiveFormat::SevenZ, "venv.7z", false, ""),
+    ] {
+        let root = tempfile::tempdir()?;
+        let archive = root.path().join(name);
+        write_members(
+            &archive,
+            format,
+            &[
+                FixtureMember::Directory {
+                    name: "10:00",
+                    mode: None,
+                    modified: None,
+                },
+                FixtureMember::File {
+                    name: "10:00/a.txt",
+                    contents: b"a",
+                    mode: None,
+                    modified: None,
+                },
+                FixtureMember::Symlink {
+                    name: "10:00/lnk",
+                    target: b"a.txt",
+                },
+            ],
+        )?;
+        if damaged {
+            corrupt_gzip_trailer(&archive, 8)?;
+        }
+        let stick = root.path().join("stick");
+        fs::create_dir(&stick)?;
+        let _quirks = FsQuirks::install(&stick, Quirks::vfat());
+
+        let events = run_extraction(ExtractRequest {
+            id: OperationRequestId(9),
+            entry: test_file_entry(&archive),
+            destination: Location::local(&stick),
+            created_destination: false,
+            password: None,
+        });
+
+        let [.., OperationEvent::ItemsReported { report, .. }, ending] = events.as_slice() else {
+            panic!("no report came before the end: {events:?}");
+        };
+        assert_eq!(
+            matches!(ending, OperationEvent::Failed { .. }),
+            damaged,
+            "{name}: {ending:?}"
+        );
+        let output = stick.join(output);
+        assert_eq!(
+            report.renamed,
+            [RenamedItem {
+                requested: Location::local(output.join("10:00")),
+                saved_as: Location::local(output.join("10_00")),
+                cause: RenameCause::Invalid,
+            }],
+            "{name}"
+        );
+        assert_eq!(
+            report.skipped,
+            [SkippedItem {
+                location: Location::local(output.join("10_00/lnk")),
+                kind: SpecialKind::Symlink,
+            }],
+            "{name}"
+        );
+        assert_eq!(fs::read(output.join("10_00/a.txt"))?, b"a", "{name}");
     }
     Ok(())
 }

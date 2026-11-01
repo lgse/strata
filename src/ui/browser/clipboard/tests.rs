@@ -6,66 +6,6 @@ use gtk::gio;
 use std::path::Path;
 
 #[test]
-fn pasted_images_preserve_collisions_and_dangling_symlinks() {
-    let dir = tempfile::tempdir().expect("temporary directory");
-    let target = dir.path().join("missing.png");
-    std::os::unix::fs::symlink(&target, dir.path().join("image.png")).expect("dangling symlink");
-    std::fs::create_dir(dir.path().join("image (1).png")).expect("existing directory");
-    std::fs::write(dir.path().join("image (2).png"), b"original").expect("existing image");
-
-    let path = write_pasted_image(dir.path(), "image", b"pasted").expect("paste image");
-
-    assert_eq!(path, dir.path().join("image (3).png"));
-    assert_eq!(std::fs::read(path).expect("pasted image"), b"pasted");
-    assert!(!target.exists());
-    assert_eq!(
-        std::fs::read(dir.path().join("image (2).png")).expect("original image"),
-        b"original"
-    );
-}
-
-#[test]
-fn concurrent_image_pastes_keep_every_payload() {
-    let dir = tempfile::tempdir().expect("temporary directory");
-    let barrier = std::sync::Barrier::new(8);
-    std::thread::scope(|scope| {
-        let handles = (0u8..8)
-            .map(|value| {
-                let dir = dir.path();
-                let barrier = &barrier;
-                scope.spawn(move || {
-                    barrier.wait();
-                    let path =
-                        write_pasted_image(dir, "image", &[value]).expect("concurrent paste");
-                    (path, value)
-                })
-            })
-            .collect::<Vec<_>>();
-        for handle in handles {
-            let (path, value) = handle.join().expect("paste thread");
-            assert_eq!(std::fs::read(path).expect("pasted payload"), [value]);
-        }
-    });
-    assert_eq!(
-        std::fs::read_dir(dir.path())
-            .expect("image directory")
-            .count(),
-        8
-    );
-}
-
-#[test]
-fn image_paste_reports_missing_destination() {
-    let dir = tempfile::tempdir().expect("temporary directory");
-    assert_eq!(
-        write_pasted_image(&dir.path().join("missing"), "image", b"image")
-            .expect_err("missing destination must fail")
-            .kind(),
-        std::io::ErrorKind::NotFound
-    );
-}
-
-#[test]
 fn incoming_file_lists_preserve_local_and_remote_locations() {
     let files = gtk::gdk::FileList::from_array(&[
         gio::File::for_path("/fixture/photo.raw"),
@@ -141,6 +81,7 @@ fn drag_preview_icon_renders_single_and_multiple_entries() {
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
                 }
             }
 
@@ -344,25 +285,42 @@ fn file_drop_action_hover_matches_cross_volume_strategy() {
 }
 
 #[test]
-fn file_drop_commit_rejects_the_recent_collection() {
+fn file_drop_commit_waits_for_the_volume_answer_and_rejects_the_recent_collection() {
     crate::test_support::gtk_test(
-        "ui::browser::clipboard::tests::file_drop_commit_rejects_the_recent_collection",
+        "ui::browser::clipboard::tests::file_drop_commit_waits_for_the_volume_answer_and_rejects_the_recent_collection",
         || {
-            let recent = Location::uri("recent:///");
-            let prepared = prepare_file_drop_target({
-                let recent = recent.clone();
-                move || Some(recent.clone())
-            });
-
-            assert_eq!(
+            let root = tempfile::tempdir().expect("fixture");
+            std::fs::create_dir(root.path().join("folder")).expect("folder");
+            std::fs::write(root.path().join("note.txt"), b"x").expect("source");
+            for (destination, source, expected) in [
+                (
+                    Location::uri("recent:///"),
+                    Location::local("/fixture/source.txt"),
+                    crate::services::DropCommit::Forbidden,
+                ),
+                (
+                    Location::local(root.path().join("folder")),
+                    Location::local(root.path().join("note.txt")),
+                    crate::services::DropCommit::Move,
+                ),
+            ] {
+                let prepared = prepare_file_drop_target({
+                    let destination = destination.clone();
+                    move || Some(destination.clone())
+                });
+                let committed = Rc::new(Cell::new(None));
+                let sink = committed.clone();
                 file_drop_commit(
                     &prepared.target,
-                    &recent,
-                    &[Location::local("/fixture/source.txt")],
+                    destination.clone(),
+                    vec![source],
                     &prepared.state,
-                ),
-                crate::services::DropCommit::Forbidden
-            );
+                    move |_, _, commit| sink.set(Some(commit)),
+                );
+                prepared.state.reset();
+                pump_main_loop_until(Duration::from_secs(5), || committed.get().is_some());
+                assert_eq!(committed.get(), Some(expected), "{destination:?}");
+            }
         },
     );
 }
@@ -1060,12 +1018,68 @@ fn recycling_the_hovered_row_does_not_open_its_previous_folder() {
 }
 
 #[test]
+fn directory_drag_snapshot_uses_entry_metadata_without_touching_paths() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::directory_drag_snapshot_uses_entry_metadata_without_touching_paths",
+        || {
+            use crate::model::EntryKind;
+            let fixture = tempfile::tempdir().expect("fixture");
+            for (kinds, expected) in [
+                (
+                    vec![EntryKind::Directory, EntryKind::DirectorySymbolicLink],
+                    true,
+                ),
+                (vec![EntryKind::File], false),
+                (vec![EntryKind::Directory, EntryKind::File], false),
+            ] {
+                let entries = kinds
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, kind)| {
+                        let mut entry = crate::test_support::operations::entry(Location::local(
+                            fixture.path().join(index.to_string()),
+                        ));
+                        entry.kind = kind;
+                        entry.display_name = format!("Display {index}");
+                        entry
+                    })
+                    .collect::<Vec<_>>();
+                let content =
+                    file_drag_content(&gtk::DragSource::new(), &entries).expect("drag content");
+                let snapshot = drag_snapshot_for_content(&content).expect("trusted snapshot");
+                assert_eq!(
+                    &*snapshot.locations,
+                    entries
+                        .iter()
+                        .map(|entry| entry.location.clone())
+                        .collect::<Vec<_>>()
+                );
+                assert_eq!(
+                    snapshot.folders.as_deref(),
+                    expected
+                        .then(|| {
+                            entries
+                                .iter()
+                                .map(|entry| (entry.location.clone(), entry.display_name.clone()))
+                                .collect::<Vec<_>>()
+                        })
+                        .as_deref()
+                );
+                let foreign = gtk::gdk::ContentProvider::for_value(&"foreign".to_value());
+                assert!(drag_snapshot_for_content(&foreign).is_none());
+            }
+        },
+    );
+}
+
+#[test]
 fn a_cached_internal_drag_never_replaces_another_drops_sources() {
     crate::test_support::gtk_test(
         "ui::browser::clipboard::tests::a_cached_internal_drag_never_replaces_another_drops_sources",
         || {
             let dragged = crate::test_support::operations::entry(Location::local("/fixture/a.txt"));
-            let _content = file_drag_content(&[dragged]).expect("drag content");
+            let _content =
+                file_drag_content(&gtk::DragSource::new(), &[dragged]).expect("drag content");
             let prepared = prepare_file_drop_target(|| Some(Location::local("/fixture/dest")));
 
             assert!(prepared.state.sources(&prepared.target).is_empty());

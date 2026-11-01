@@ -227,6 +227,7 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         footer.assert_hints_visible(enabled);
         other.assert_hints_visible(enabled);
     }
+    crate::storage::writer::settle();
     let settings =
         std::path::PathBuf::from(std::env::var_os("XDG_CONFIG_HOME").expect("isolated config"))
             .join("strata/settings.toml");
@@ -364,9 +365,9 @@ fn tenxer_reference_follows_the_active_map() {
             manager.set_show_keybinding_hints(true);
             let footer = ShortcutFooter::new(BrowserMode::Columns);
             footer.bind_preferences(&manager);
-            let entry = gtk::Entry::new();
+            let files = gtk::Button::new();
             let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
-            root.append(&entry);
+            root.append(&files);
             root.append(footer.widget());
             let overlay = gtk::Overlay::new();
             overlay.set_child(Some(&root));
@@ -376,7 +377,7 @@ fn tenxer_reference_follows_the_active_map() {
                 .default_height(480)
                 .build();
             window.present();
-            entry.grab_focus();
+            files.grab_focus();
             settle();
             let phrase = crate::ui::shortcut_reference::EXPERIMENTAL_LABEL;
             let none = gdk::ModifierType::empty();
@@ -592,6 +593,13 @@ fn tenxer_reference_follows_the_active_map() {
                 Some(glib::Propagation::Stop)
             );
             assert!(footer.scroll.vadjustment().value() > before);
+            let scrolled = footer.scroll.vadjustment().value();
+            press_reference(&footer, gdk::Key::h);
+            assert_eq!(
+                footer.scroll.vadjustment().value(),
+                scrolled,
+                "h does not scroll the list"
+            );
             assert_eq!(
                 footer.handle_key(&press(gdk::Key::f, ctrl)),
                 Some(glib::Propagation::Stop)
@@ -615,7 +623,7 @@ fn tenxer_reference_follows_the_active_map() {
                 Some(glib::Propagation::Stop)
             );
             assert!(footer.scroll.has_focus());
-            entry.grab_focus();
+            files.grab_focus();
             assert!(
                 gtk::prelude::RootExt::focus(&window)
                     .is_some_and(|focus| focus == *footer.search.upcast_ref::<gtk::Widget>()
@@ -637,7 +645,7 @@ fn tenxer_reference_follows_the_active_map() {
                         .is_some_and(|widget| widget.has_css_class("search-backdrop")))
             );
             assert!(gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
-                focus == *entry.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&entry)
+                focus == *files.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&files)
             }));
             footer.handle_key(&press(gdk::Key::asciitilde, none));
             settle();
@@ -745,6 +753,73 @@ fn tenxer_reference_follows_the_active_map() {
                 assert!(!labels.iter().any(|label| label == "Toggle 10xer mode"));
             }
             window.destroy();
+        },
+    );
+}
+
+#[test]
+fn reference_follows_keymap_overrides_without_reopening() {
+    crate::test_support::gtk_test(
+        "ui::shortcut_footer::tests::reference_follows_keymap_overrides_without_reopening",
+        || {
+            use crate::ui::keys::{
+                Binding, Map,
+                bindings::{SEARCH, TAB_NEXT},
+            };
+            let manager = super::super::preferences::PreferenceManager::shared();
+            manager.set_tenxer_mode(false);
+            let footer = ShortcutFooter::new(BrowserMode::Columns);
+            footer.bind_preferences(&manager);
+            let labels = reference_labels(&footer);
+            assert!(
+                reference_pairs(&labels, "Ctrl+K", "Open global search"),
+                "{labels:?}"
+            );
+            manager.set_bindings(Map::Default, SEARCH, Vec::new());
+            manager.set_bindings(
+                Map::Default,
+                TAB_NEXT,
+                vec![
+                    Binding::ctrl(gdk::Key::Tab),
+                    Binding::ctrl(gdk::Key::Page_Down),
+                    Binding::alt(gdk::Key::n),
+                ],
+            );
+            let labels = reference_labels(&footer);
+            assert!(
+                !labels.iter().any(|label| label == "Open global search"),
+                "an unbound command has no row: {labels:?}"
+            );
+            assert!(
+                reference_pairs(
+                    &labels,
+                    "Ctrl+Tab / Ctrl+Page Down / Alt+N / Ctrl+Shift+Tab",
+                    "Next / previous tab"
+                ),
+                "{labels:?}"
+            );
+            assert!(
+                reference_pairs(&labels, "Ctrl+Page Up", "Previous / next tab"),
+                "{labels:?}"
+            );
+
+            manager.set_type_to_search(true);
+            manager.set_bindings(
+                Map::Default,
+                SEARCH,
+                vec![Binding::ctrl(gdk::Key::k), Binding::plain(gdk::Key::e)],
+            );
+            let labels = reference_labels(&footer);
+            assert!(
+                reference_pairs(&labels, "Ctrl+K", "Open global search"),
+                "type-to-search types the added key: {labels:?}"
+            );
+            manager.set_type_to_search(false);
+            let labels = reference_labels(&footer);
+            assert!(
+                reference_pairs(&labels, "Ctrl+K / e", "Open global search"),
+                "{labels:?}"
+            );
         },
     );
 }

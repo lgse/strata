@@ -12,6 +12,13 @@ use crate::{
     ui::{accessibility, controls::pane_header_action},
 };
 
+pub(super) struct Notice<'a> {
+    pub(super) title: &'a str,
+    pub(super) text: &'a str,
+    pub(super) action: &'a str,
+    pub(super) shown_for: Duration,
+}
+
 pub(super) struct CompactProgress {
     pub(super) root: gtk::Box,
     pub(super) title: gtk::Label,
@@ -175,6 +182,17 @@ impl CompactProgress {
         self.completion.set_cancel(action);
     }
 
+    pub(super) fn notice(overlay: &gtk::Overlay, icon: &str, notice: Notice<'_>) -> Self {
+        let card = Self::new(overlay, icon);
+        card.info.set_text(notice.text);
+        card.destination.set_visible(false);
+        card.complete.set_label(notice.action);
+        accessibility::set_label(&card.complete, notice.action);
+        card.close_after(notice.title, notice.shown_for);
+        card.status.set_visible(false);
+        card
+    }
+
     pub(super) fn completed(&self, title: &str) {
         self.complete_after(title, Duration::from_secs(5));
     }
@@ -183,8 +201,12 @@ impl CompactProgress {
         if self.root.parent().is_none() {
             return;
         }
-        self.title.set_text(title);
         assets::set_primary_icon(&self.icon, assets::icons::CHECK);
+        self.close_after(title, duration);
+    }
+
+    fn close_after(&self, title: &str, duration: Duration) {
+        self.title.set_text(title);
         self.complete.set_visible(true);
         self.pin.set_visible(true);
         self.cancel.set_visible(true);

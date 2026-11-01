@@ -137,23 +137,30 @@ fn tenxer_footer_rename_changes_only_the_focused_item_on_enter() {
             submit_rename(&fixture, "a.txt");
             assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
             submit_rename(&fixture, "renamed.txt");
-            assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
+            wait_until(|| fixture.shortcuts.open_prompt_kind().is_none());
             wait_until(|| directory.join("renamed.txt").is_file());
             assert!(!directory.join("a.txt").exists());
             assert_eq!(contents(&directory.join("renamed.txt")), "preview");
             assert!(directory.join("c.txt").is_file(), "the fill is not renamed");
             wait_until(|| focused_name(&browser) == "renamed.txt");
 
+            let too_long = "x".repeat(300);
             for (text, hint) in [
                 ("", "Enter a name"),
                 ("  ", "Enter a name"),
                 ("..", "That name is reserved"),
-                ("nested/name", "Names cannot contain /"),
+                ("b.txt/name", "\u{201c}b.txt\u{201d} is not a folder"),
+                (
+                    "renamed.txt/",
+                    "An existing file can\u{2019}t become a folder",
+                ),
+                ("nested//name", "Enter a name"),
                 ("b.txt", "\u{201c}b.txt\u{201d} already exists"),
+                (&too_long, "The name is too long"),
             ] {
                 submit_rename(&fixture, text);
+                wait_until(|| fixture.shortcuts.prompt_hint().as_deref() == Some(hint));
                 assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(Prompt::Rename));
-                assert_eq!(fixture.shortcuts.prompt_hint().as_deref(), Some(hint));
                 assert_eq!(
                     fixture.shortcuts.prompt_text(),
                     text,
@@ -185,12 +192,6 @@ fn tenxer_footer_rename_changes_only_the_focused_item_on_enter() {
             assert_eq!(contents(&directory.join("folder.d/inside.txt")), "kept");
 
             move_to_named(&fixture, &browser, "b.txt");
-            submit_rename(&fixture, &"x".repeat(300));
-            wait_until(|| modal_visible(&fixture.overlay));
-            assert!(click_class(&fixture.overlay, "action-dialog-close"));
-            wait_until(|| !modal_visible(&fixture.overlay));
-            assert_eq!(contents(&directory.join("b.txt")), "preview");
-
             let writable = std::fs::metadata(&directory)
                 .expect("fixture")
                 .permissions();
@@ -207,6 +208,53 @@ fn tenxer_footer_rename_changes_only_the_focused_item_on_enter() {
                 assert!(!directory.join("denied.txt").exists());
             }
             std::fs::set_permissions(&directory, writable).expect("restore fixture");
+
+            move_to_named(&fixture, &browser, "b.txt");
+            submit_rename(&fixture, "nested/b.txt");
+            wait_until(|| directory.join("nested/b.txt").is_file());
+            assert!(!directory.join("b.txt").exists());
+            assert_eq!(contents(&directory.join("nested/b.txt")), "preview");
+            wait_until(|| focused_name(&browser) == "nested");
+        },
+    );
+}
+
+#[test]
+fn typed_rename_drops_a_dismissed_request_and_refuses_a_hard_link_name() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::typed_rename_drops_a_dismissed_request_and_refuses_a_hard_link_name",
+        || {
+            let fixture = KeyboardFixture::new();
+            enable_tenxer(&fixture);
+            let directory = fixture._directory.path().to_path_buf();
+            let browser = fixture.view.browser();
+            std::fs::hard_link(directory.join("a.txt"), directory.join("link.txt"))
+                .expect("hard link");
+            refresh(&fixture, "link.txt");
+            move_to_named(&fixture, &browser, "a.txt");
+
+            submit_rename(&fixture, "later.txt");
+            plain(&fixture, Key::Escape);
+            open_rename(&fixture, Key::r);
+            fixture.shortcuts.prompt().set_text("later.txt");
+            pump(200);
+            assert!(
+                !directory.join("later.txt").exists(),
+                "a dismissed request must not submit the reopened prompt"
+            );
+            assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(Prompt::Rename));
+            plain(&fixture, Key::Escape);
+
+            submit_rename(&fixture, "link.txt");
+            wait_until(|| {
+                fixture.shortcuts.prompt_hint().as_deref()
+                    == Some("\u{201c}link.txt\u{201d} already exists")
+            });
+            assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(Prompt::Rename));
+            assert!(!modal_visible(&fixture.overlay));
+            plain(&fixture, Key::Escape);
+            assert_eq!(contents(&directory.join("a.txt")), "preview");
+            assert_eq!(contents(&directory.join("link.txt")), "preview");
         },
     );
 }
@@ -813,7 +861,7 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
                     "runtime = \"command\"\nconfirm = true",
                 );
             std::fs::write(&confirming, manifest).expect("confirming action");
-            crate::ui::actions::shared().reload();
+            gtk::glib::MainContext::default().block_on(crate::ui::actions::shared().reload());
             std::fs::write(directory.join("notes.md"), "notes").expect("markdown");
             enable_tenxer(&fixture);
             let browser = fixture.view.browser();
@@ -906,11 +954,39 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
             move_to_named(&fixture, &browser, "notes.md");
             plain(&fixture, Key::semicolon);
             write_action("aa-new", "Aa new", "submenu", "\"md\"", "", &unlisted);
-            crate::ui::actions::shared().reload();
+            gtk::glib::MainContext::default().block_on(crate::ui::actions::shared().reload());
             plain(&fixture, Key::_1);
             assert_eq!(feedback(&fixture), "Actions changed");
             run_jobs(Duration::from_millis(300));
             assert!(!unlisted.exists() && !modal_visible(&fixture.overlay));
+
+            let held = crate::storage::writer::hold();
+            let manifest = crate::storage::config_directory().join("actions/aa-new/action.toml");
+            let edited = std::fs::read_to_string(&manifest)
+                .expect("manifest")
+                .replace(
+                    "runtime = \"command\"",
+                    "runtime = \"command\"\nconfirm = true",
+                );
+            std::fs::write(&manifest, edited).expect("edited outside Strata");
+            plain(&fixture, Key::semicolon);
+            plain(&fixture, Key::_1);
+            run_jobs(Duration::from_millis(300));
+            drop(held);
+            crate::storage::writer::settle();
+            wait_until(|| modal_visible(&fixture.overlay));
+            run_jobs(Duration::from_millis(300));
+            assert!(
+                !unlisted.exists(),
+                "an action edited since the chord was armed does not run"
+            );
+            assert!(
+                label_texts(fixture.overlay.upcast_ref())
+                    .iter()
+                    .any(|text| text == "Actions changed")
+            );
+            assert!(click_class(&fixture.overlay, "action-dialog-close"));
+            wait_until(|| !modal_visible(&fixture.overlay));
 
             open_empty_folder(&fixture);
             plain(&fixture, Key::semicolon);
@@ -927,6 +1003,59 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
             );
             plain(&fixture, Key::_1);
             assert_eq!(feedback(&fixture), "No action 1");
+        },
+    );
+}
+
+/// Slot N is the Nth action Settings → Actions lists, disabled ones included,
+/// so a slot never runs another action in its place.
+#[test]
+fn default_map_custom_action_slots_run_their_listed_action() {
+    use crate::ui::keys::{Binding, CUSTOM_ACTIONS, Keymap, Map, use_keymap};
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::default_map_custom_action_slots_run_their_listed_action",
+        || {
+            let fixture = KeyboardFixture::new();
+            let preferences = PreferenceManager::shared();
+            fixture.shortcuts.bind_preferences(&preferences);
+            preferences.set_type_to_search(false);
+            let directory = fixture._directory.path().to_path_buf();
+            let output = fixture._history_directory.path().join("invocations");
+            write_action("a-off", "Off", "top", "\"txt\"", "enabled = false", &output);
+            write_action("b-images", "Images", "top", "\"png\"", "", &output);
+            write_action("c-text", "Text", "submenu", "\"txt\"", "", &output);
+            gtk::glib::MainContext::default().block_on(crate::ui::actions::shared().reload());
+            let key = Binding::ctrl_alt(Key::e);
+            let press_slot = |number: usize| {
+                let _keymap = use_keymap(Keymap::defaults().with(
+                    Map::Default,
+                    CUSTOM_ACTIONS[number - 1],
+                    vec![key],
+                ));
+                select_named(&fixture, "a.txt");
+                assert!(fixture.press(Key::e, ModifierType::CONTROL_MASK | ModifierType::ALT_MASK));
+            };
+
+            press_slot(3);
+            assert_eq!(
+                wait_invocations(&output, 2),
+                ["c-text", directory.join("a.txt").to_string_lossy().as_ref()]
+            );
+            std::fs::remove_file(&output).expect("reset recorder");
+
+            for (number, message) in [
+                (1, "No matching actions"),
+                (2, "No matching actions"),
+                (4, "No action 4"),
+            ] {
+                press_slot(number);
+                assert_eq!(feedback(&fixture), message, "slot {number}");
+            }
+            run_jobs(Duration::from_millis(300));
+            assert!(
+                invocations(&output).is_empty(),
+                "no other action runs instead"
+            );
         },
     );
 }
@@ -991,6 +1120,13 @@ fn history_path() -> PathBuf {
     gtk::glib::user_data_dir().join("strata/recent-apps.toml")
 }
 
+fn recorded_apps(content_type: &str) -> Vec<String> {
+    gtk::glib::MainContext::default()
+        .block_on(crate::ui::recent_apps::read())
+        .expect("recent-app history")
+        .recent_ids(&[content_type.to_owned()])
+}
+
 #[test]
 fn open_with_shows_recently_used_first_and_excludes_it_from_recommended() {
     crate::test_support::gtk_test(
@@ -1019,7 +1155,18 @@ fn open_with_shows_recently_used_first_and_excludes_it_from_recommended() {
 
             launch_recorder("strata-beta", &[(&directory.join("a.txt"), "text/plain")]);
             wait_until(|| received(&output_beta) == [directory.join("a.txt")]);
-            open_single_with_dialog(&fixture, &browser, "b.txt");
+            let writer = crate::storage::writer::hold();
+            fixture.view.browser().clear_active_selection();
+            move_to_named(&fixture, &browser, "b.txt");
+            plain(&fixture, Key::space);
+            shifted(&fixture, Key::O);
+            pump(200);
+            assert!(
+                !modal_visible(&fixture.overlay),
+                "the chooser waits for the history read"
+            );
+            drop(writer);
+            wait_until(|| modal_visible(&fixture.overlay));
             let sections = chooser_sections(&fixture.overlay);
             assert_eq!(sections[0].0, "Recently Used", "{sections:?}");
             assert_eq!(sections[0].1, ["Beta Editor"], "{sections:?}");
@@ -1226,7 +1373,9 @@ fn open_with_hides_recently_used_for_uninstalled_applications() {
         "ui::window::tests::keyboard_dispatch::file_verbs::open_with_hides_recently_used_for_uninstalled_applications",
         || {
             let output = gtk::glib::user_data_dir().join("received");
+            let kept_output = gtk::glib::user_data_dir().join("received-kept");
             recorder_app("strata-gone", "Gone Editor", "text/plain;", &output);
+            recorder_app("strata-kept", "Kept Editor", "text/plain;", &kept_output);
             let fixture = KeyboardFixture::new();
             let directory = fixture._directory.path().to_path_buf();
             let browser = fixture.view.browser();
@@ -1441,14 +1590,9 @@ fn default_activation_records_application_history_for_files_and_folders() {
 
             launch_recorder("strata-dirs", &[(&directory, "inode/directory")]);
             wait_until(|| received(&output_dirs) == [directory.clone()]);
-            let stored =
-                crate::ui::recent_apps::load().recent_ids(&["inode/directory".to_string()]);
-            assert_eq!(stored, ["strata-dirs.desktop"]);
-            assert!(
-                crate::ui::recent_apps::load()
-                    .recent_ids(&["text/plain".to_string()])
-                    .is_empty()
-            );
+            crate::storage::writer::settle();
+            assert_eq!(recorded_apps("inode/directory"), ["strata-dirs.desktop"]);
+            assert!(recorded_apps("text/plain").is_empty());
 
             let associations = gtk::glib::user_config_dir().join("mimeapps.list");
             let mut mimeapps = std::fs::read_to_string(&associations).expect("mimeapps");
@@ -1457,10 +1601,49 @@ fn default_activation_records_application_history_for_files_and_folders() {
             move_to_named(&fixture, &browser, "a.txt");
             plain(&fixture, Key::Return);
             wait_until(|| received(&output_alpha) == [directory.join("a.txt")]);
-            wait_until(|| {
-                crate::ui::recent_apps::load().recent_ids(&["text/plain".to_string()])
-                    == ["strata-alpha.desktop"]
-            });
+            wait_until(|| recorded_apps("text/plain") == ["strata-alpha.desktop"]);
+        },
+    );
+}
+
+#[test]
+fn activation_fallback_opens_one_chooser_after_the_history_read() {
+    let no_applications = tempfile::tempdir().expect("data dirs without applications");
+    crate::test_support::gtk_test_with_env(
+        "ui::window::tests::keyboard_dispatch::file_verbs::activation_fallback_opens_one_chooser_after_the_history_read",
+        [("XDG_DATA_DIRS", no_applications.path())],
+        || {
+            let fixture = KeyboardFixture::new();
+            let browser = fixture.view.browser();
+            let choosers = || {
+                let mut count = 0;
+                let mut child = fixture.overlay.first_child();
+                while let Some(widget) = child {
+                    if widget.is_visible()
+                        && widget_with_class(&widget, "open-with-dialog").is_some()
+                    {
+                        count += 1;
+                    }
+                    child = widget.next_sibling();
+                }
+                count
+            };
+
+            move_to_named(&fixture, &browser, "a.txt");
+            let writer = crate::storage::writer::hold();
+            plain(&fixture, Key::Return);
+            plain(&fixture, Key::Return);
+            pump(200);
+            assert_eq!(choosers(), 0, "the chooser waits for the history read");
+            drop(writer);
+            wait_until(|| choosers() > 0);
+            crate::storage::writer::settle();
+            pump(200);
+            assert_eq!(
+                choosers(),
+                1,
+                "a repeated activation stacks no second chooser"
+            );
         },
     );
 }

@@ -10,7 +10,7 @@ use super::{Dispatcher, KeyResult};
 use crate::{
     app::Browser,
     ui::{
-        keys::{Binding, KeyPress, SHORTCUT_MODIFIERS, bindings::*},
+        keys::{Binding, KeyPress, Map, Match, SHORTCUT_MODIFIERS, bindings::*},
         preview::{ArchiveMove, DocumentScroll, PreviewSurface, media_key_command, preview_target},
         tenxer_mode::Chord,
     },
@@ -47,7 +47,8 @@ impl Dispatcher {
     /// including characters the footer would otherwise claim.
     pub(super) fn tenxer_preview_text(&self, browser: &Browser, press: &KeyPress) -> KeyResult {
         if !self.type_to_search.preferences.tenxer_mode()
-            || press.is_any(&[REFERENCE.ignoring(SHORTCUT_MODIFIERS), TENXER_MODE])
+            || press.is(REFERENCE.in_map(Map::Default).ignoring(SHORTCUT_MODIFIERS))
+            || press.is(TENXER_MODE)
         {
             return None;
         }
@@ -67,7 +68,7 @@ impl Dispatcher {
             return Some(result);
         }
         // `i` toggled the preview open from the listing; from inside it, it closes.
-        if press.is(PEEK) {
+        if press.is(PREVIEW) {
             self.close_preview(browser);
             return Some(Propagation::Stop);
         }
@@ -93,6 +94,22 @@ impl Dispatcher {
             PreviewSurface::Archive => self.preview_archive_key(browser, press),
             PreviewSurface::Media => self.preview_media_key(browser, press),
             PreviewSurface::Control | PreviewSurface::Text => {
+                if surface == PreviewSurface::Control
+                    && self.preview.feedback_action_focused(&focused)
+                {
+                    // Arrows would otherwise walk GTK focus out of the drawer.
+                    if press.is(LEFT.or_alternates()) {
+                        self.return_from_preview(browser);
+                        return Some(Propagation::Stop);
+                    }
+                    if press.is_any(&[
+                        UP.or_alternates(),
+                        DOWN.or_alternates(),
+                        RIGHT.or_alternates(),
+                    ]) {
+                        return Some(Propagation::Stop);
+                    }
+                }
                 // A focused button or slider keeps GTK's Enter.
                 let listing = surface == PreviewSurface::Control
                     && !press.is(ENTER_ANY)
@@ -152,31 +169,32 @@ impl Dispatcher {
     }
 
     fn preview_document_key(&self, press: &KeyPress) -> bool {
-        if press.is_any(&[VIM_LEFT, LEFT]) {
+        if press.is(LEFT.or_alternates()) {
             self.return_from_preview(&self.view.browser());
             return true;
         }
-        let Some((_, motion)) = [
-            (HALF_PAGE_UP, DocumentScroll::HalfPage(-1)),
-            (HALF_PAGE_DOWN, DocumentScroll::HalfPage(1)),
-            (TENXER_PAGE_UP, DocumentScroll::Page(-1)),
-            (TENXER_PAGE_UP_PAGE_UP, DocumentScroll::Page(-1)),
-            (TENXER_PAGE_DOWN, DocumentScroll::Page(1)),
-            (TENXER_PAGE_DOWN_PAGE_DOWN, DocumentScroll::Page(1)),
-            (FIRST_ITEM_UP, DocumentScroll::Start),
-            (LAST_ITEM_DOWN, DocumentScroll::End),
-            (VIM_DOWN, DocumentScroll::Line(1)),
-            (DOWN, DocumentScroll::Line(1)),
-            (VIM_UP, DocumentScroll::Line(-1)),
-            (UP, DocumentScroll::Line(-1)),
-            (PAGE_UP.ignoring(SHIFT), DocumentScroll::Page(-1)),
-            (PAGE_DOWN.ignoring(SHIFT), DocumentScroll::Page(1)),
-            (FIRST_ITEM, DocumentScroll::Start),
-            (LAST_ITEM, DocumentScroll::End),
-            (TENXER_LAST_ITEM, DocumentScroll::End),
-        ]
-        .into_iter()
-        .find(|(key, _)| press.is(*key)) else {
+        if (press.is(DOWN.or_alternates()) || press.is(RIGHT.or_alternates()))
+            && self.preview.focus_feedback_action()
+        {
+            return true;
+        }
+        let motions: [(&dyn Match, DocumentScroll); 14] = [
+            (&HALF_PAGE_UP, DocumentScroll::HalfPage(-1)),
+            (&HALF_PAGE_DOWN, DocumentScroll::HalfPage(1)),
+            (&PAGE_UP, DocumentScroll::Page(-1)),
+            (&PAGE_DOWN, DocumentScroll::Page(1)),
+            (&FIRST_ITEM_UP, DocumentScroll::Start),
+            (&LAST_ITEM_DOWN, DocumentScroll::End),
+            (&DOWN.or_alternates(), DocumentScroll::Line(1)),
+            (&UP.or_alternates(), DocumentScroll::Line(-1)),
+            (&PAGE_UP_KEY.ignoring(SHIFT), DocumentScroll::Page(-1)),
+            (&PAGE_DOWN_KEY.ignoring(SHIFT), DocumentScroll::Page(1)),
+            (&HOME_KEY, DocumentScroll::Start),
+            (&END_KEY, DocumentScroll::End),
+            (&FIRST_ITEM, DocumentScroll::Start),
+            (&LAST_ITEM, DocumentScroll::End),
+        ];
+        let Some((_, motion)) = motions.into_iter().find(|(key, _)| press.is(key)) else {
             return false;
         };
         self.preview.scroll_document(motion);
@@ -184,21 +202,21 @@ impl Dispatcher {
     }
 
     fn preview_archive_key(&self, browser: &Browser, press: &KeyPress) -> bool {
-        if press.is_any(&[VIM_DOWN, DOWN]) {
+        if press.is(DOWN.or_alternates()) {
             self.preview.archive_key(ArchiveMove::Next);
-        } else if press.is_any(&[VIM_UP, UP]) {
+        } else if press.is(UP.or_alternates()) {
             self.preview.archive_key(ArchiveMove::Previous);
-        } else if press.is_any(&[VIM_RIGHT, RIGHT, ENTER]) {
+        } else if press.is(RIGHT.or_alternates()) || press.is(ENTER) {
             self.preview.archive_key(ArchiveMove::Open);
-        } else if press.is_any(&[VIM_LEFT, LEFT]) {
+        } else if press.is(LEFT.or_alternates()) {
             if self.preview.archive_at_root() {
                 self.return_from_preview(browser);
             } else {
                 self.preview.archive_key(ArchiveMove::Parent);
             }
-        } else if press.is(FIRST_ITEM) {
+        } else if press.is(HOME_KEY) || press.is(FIRST_ITEM) {
             self.preview.archive_edge(false);
-        } else if press.is_any(&[LAST_ITEM, TENXER_LAST_ITEM]) {
+        } else if press.is(END_KEY) || press.is(LAST_ITEM) {
             self.preview.archive_edge(true);
         } else {
             return false;
@@ -207,11 +225,11 @@ impl Dispatcher {
     }
 
     fn preview_media_key(&self, browser: &Browser, press: &KeyPress) -> bool {
-        if press.is(VIM_LEFT) {
+        if press.is(LEFT.alternates()) {
             self.return_from_preview(browser);
             return true;
         }
-        let Some(command) = media_key_command(press) else {
+        let Some(command) = media_key_command(&press.untyped()) else {
             return false;
         };
         self.preview.media_key(command);
@@ -300,23 +318,21 @@ fn passes_through_preview(press: &KeyPress) -> bool {
         REFERENCE,
         REFRESH,
         SEARCH,
+        JUMP_TO_FOLDER,
+        ARROW_SCOPE,
         LOCATION,
         SETTINGS,
-        HIDDEN_FILES,
-        HIDDEN_FILES_PERIOD,
-        TENXER_SIDEBAR,
+        SIDEBAR,
         VIEW_COLUMNS,
         VIEW_ICONS,
         VIEW_LIST,
         TEXT_LARGER,
-        TEXT_LARGER_EQUAL,
         TEXT_SMALLER,
         TEXT_RESET,
         SIDEBAR_FOCUS,
         TENXER_MODE,
         UNDO,
         REDO,
-        REDO_Y,
         // Media controls reach the drawer's player from the window handler.
         MEDIA_PLAY_PAUSE,
         MEDIA_SEEK_BACK,
@@ -324,20 +340,17 @@ fn passes_through_preview(press: &KeyPress) -> bool {
         MEDIA_VOLUME_UP,
         MEDIA_VOLUME_DOWN,
         MEDIA_MUTE,
-    ])
+    ]) || (press.is(HIDDEN_FILES) && press.binding().is_some_and(|binding| !binding.is_typed()))
 }
 
 fn reaches_listing(press: &KeyPress) -> bool {
     press.is_any(&[
         GO,
         JUMP_VISITED,
-        FILTER_LISTING,
+        FILTER,
         SEARCH_SUBFOLDERS,
         REPEAT_FIND,
         FIND,
-        BACKSPACE,
-        TENXER_HISTORY_BACK,
-        TENXER_HISTORY_FORWARD,
         JUMP_RECENT,
         REPEAT_FIND_REVERSED,
         FIND_BACKWARD,
@@ -348,31 +361,26 @@ fn reaches_listing(press: &KeyPress) -> bool {
         YANK,
         YANK_CUT,
         PASTE_KEEP_BOTH,
-        TENXER_DELETE,
+        MOVE_TO_TRASH,
         CREATE,
         COPY_AS,
-        TENXER_RENAME,
         RENAME,
         CONTEXT_MENU,
         UNYANK,
-        UNYANK_X,
         PASTE_REPLACE,
-        TENXER_DELETE_PERMANENTLY,
+        DELETE_PERMANENTLY,
         OPEN_WITH,
         MOVE_TO,
         COPY_TO,
         RESTORE,
-        CONTEXT_MENU_F10,
         SORT_BY,
         ACTIONS,
-        TENXER_HIDDEN_FILES,
-        DELETE,
-        DELETE_PERMANENTLY,
-        ENTER,
+        HIDDEN_FILES,
         PROPERTIES,
         COPY,
         CUT,
         PASTE,
         NEW_FOLDER,
-    ])
+    ]) || press.is(BACKSPACE)
+        || press.is(ENTER)
 }

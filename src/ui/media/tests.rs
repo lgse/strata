@@ -59,8 +59,13 @@ fn open_restoring(path: &str, position: u64) -> (DecodedMedia, Rc<RefCell<Vec<u3
 
 #[test]
 fn reopening_resumes_where_the_preview_closed() {
-    gtk::init().expect("GTK display");
+    crate::test_support::gtk_test(
+        "ui::media::tests::reopening_resumes_where_the_preview_closed",
+        resume_where_the_preview_closed,
+    );
+}
 
+fn resume_where_the_preview_closed() {
     let (media, calls) = open_restoring("/remembered", media::timestamp(900));
     let deadline = Instant::now() + Duration::from_secs(15);
     while (media.timestamp() as u64) < media::timestamp(900) {
@@ -296,12 +301,16 @@ fn audio_and_video_play_through_a_sink_that_starts_late() {
 }
 
 fn late_sink_playback() {
+    thread_probe::register();
     // 600 ms is far more than the three-frame presentation queue holds.
     for (edge, depth) in [
         (0, PRESENTATION_QUEUE + 1..=usize::MAX),
         (16, 0..=PRESENTATION_QUEUE),
     ] {
-        let media = open_on(model_sink(600, 33_333), audio_header(edge));
+        let media = open_on(
+            format!("{} strataprobe", model_sink(600, 33_333)),
+            audio_header(edge),
+        );
         let imp = media.imp();
         let deadline = Instant::now() + Duration::from_secs(10);
         let (mut last, mut deepest) = (0, 0);
@@ -322,6 +331,108 @@ fn late_sink_playback() {
             "{edge}px: queued {deepest} frames"
         );
         media.close();
+    }
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let closed = |seen: &[(String, bool)]| {
+        seen.iter()
+            .filter(|(event, _)| event == "ReadyToNull")
+            .count()
+    };
+    while closed(&thread_probe::seen()) < 2 {
+        assert!(Instant::now() < deadline, "both outputs close");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let seen = thread_probe::seen();
+    for event in [
+        "built",
+        "NullToReady",
+        "ReadyToPaused",
+        "PausedToPlaying",
+        "PlayingToPaused",
+        "PausedToReady",
+    ] {
+        assert!(
+            seen.iter().any(|(seen, _)| seen == event),
+            "{event}: {seen:?}"
+        );
+    }
+    assert!(
+        seen.iter().all(|(_, on_ui_thread)| !on_ui_thread),
+        "the sink was built or changed state on the UI thread: {seen:?}"
+    );
+}
+
+mod thread_probe {
+    use super::*;
+    use gst::subclass::prelude::*;
+    use std::sync::{Mutex, OnceLock};
+
+    static SEEN: Mutex<Vec<(String, bool)>> = Mutex::new(Vec::new());
+
+    fn record(event: String) {
+        SEEN.lock()
+            .expect("probe events")
+            .push((event, crate::util::ui_thread::is_current()));
+    }
+
+    pub fn seen() -> Vec<(String, bool)> {
+        SEEN.lock().expect("probe events").clone()
+    }
+
+    #[derive(Default)]
+    pub struct Imp;
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for Imp {
+        const NAME: &'static str = "StrataThreadProbe";
+        type Type = ThreadProbe;
+        type ParentType = gst::Element;
+    }
+
+    impl ObjectImpl for Imp {
+        fn constructed(&self) {
+            self.parent_constructed();
+            record("built".to_owned());
+        }
+    }
+
+    impl GstObjectImpl for Imp {}
+
+    impl ElementImpl for Imp {
+        fn metadata() -> Option<&'static gst::subclass::ElementMetadata> {
+            static METADATA: OnceLock<gst::subclass::ElementMetadata> = OnceLock::new();
+            Some(METADATA.get_or_init(|| {
+                gst::subclass::ElementMetadata::new(
+                    "Thread probe",
+                    "Testing",
+                    "Records the threads that build it and change its state",
+                    "Strata",
+                )
+            }))
+        }
+
+        fn change_state(
+            &self,
+            transition: gst::StateChange,
+        ) -> Result<gst::StateChangeSuccess, gst::StateChangeError> {
+            record(format!("{transition:?}"));
+            self.parent_change_state(transition)
+        }
+    }
+
+    glib::wrapper! {
+        pub struct ThreadProbe(ObjectSubclass<Imp>) @extends gst::Element, gst::Object;
+    }
+
+    pub fn register() {
+        gst::init().expect("GStreamer");
+        gst::Element::register(
+            None,
+            "strataprobe",
+            gst::Rank::NONE,
+            ThreadProbe::static_type(),
+        )
+        .expect("probe element");
     }
 }
 
@@ -617,6 +728,11 @@ fn the_fade_scales_the_volume_without_replacing_it() {
                 None,
             )
             .expect("test sink");
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while !output.has_capacity() {
+                assert!(Instant::now() < deadline, "the output opens");
+                std::thread::sleep(Duration::from_millis(1));
+            }
             assert!((output.effective_volume() - 0.8).abs() < 1e-6);
             output.set_fade(0.5);
             assert!((output.effective_volume() - 0.4).abs() < 1e-6);

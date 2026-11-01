@@ -1,0 +1,30 @@
+{"scenario":"appearance-menu-switches-view-list","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"List column visibility toggle/reset via Customize columns is unique in QA; Appearance switch to List duplicates appearance-menu-switches-view"}}
+{"expect":{"view_mode":"Columns"}}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"radio menu item","name":"List"}},"message":"the List option"}
+{"click":{"role":"radio menu item","name":"List"}}
+{"wait":{"view_mode":"List"},"message":"the browser to switch to the List view"}
+{"expect":[{"view_mode":"List"},{"pane":"$root"},{"entries":{"contains":["documents"]}}]}
+{"wait":{"pref":{"key":"browser_mode","value":"list"}},"message":"the chosen view to be written to settings.toml"}
+{"click":{"header":"Size"}}
+{"wait":{"entries":{"ends_with":["todo.txt","readme.md"]}},"message":"the files to be sorted by size rather than name"}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"menu item","name":"Customize columns…"}},"message":"the List column customization action"}
+{"expect":{"state":{"target":{"role":"menu item","name":"Customize columns…"},"sensitive":true}}}
+{"click":{"role":"menu item","name":"Customize columns…"}}
+{"wait":{"present":{"role":"check menu item","name":"Size"}},"message":"the List column visibility menu"}
+{"remember":{"role":"check menu item","name":"Size"},"as":"size"}
+{"expect":{"state":{"target":{"remembered":"size"},"checked":true}}}
+{"click":{"remembered":"size"}}
+{"wait":{"all":[{"state":{"target":{"remembered":"size"},"checked":false}},{"pref":{"key":"list_hidden_columns","contains":"size"}}]},"message":"Size visibility to be saved without changing the sort"}
+{"expect":{"entries":{"ends_with":["todo.txt","readme.md"]}}}
+{"click":{"remembered":"size"}}
+{"wait":{"all":[{"state":{"target":{"remembered":"size"},"checked":true}},{"not":{"pref":{"key":"list_hidden_columns","contains":"size"}}}]},"message":"Size visibility to be saved without changing the sort"}
+{"expect":{"entries":{"ends_with":["todo.txt","readme.md"]}}}
+{"click":{"remembered":"size"}}
+{"wait":{"all":[{"state":{"target":{"remembered":"size"},"checked":false}},{"pref":{"key":"list_hidden_columns","contains":"size"}}]},"message":"Size visibility to be saved without changing the sort"}
+{"expect":{"entries":{"ends_with":["todo.txt","readme.md"]}}}
+{"expect":{"present":{"role":"menu item","name":"Reset to default columns"}}}
+{"click":{"role":"menu item","name":"Reset to default columns"}}
+{"wait":{"all":[{"state":{"target":{"remembered":"size"},"checked":true}},{"pref":{"key":"list_hidden_columns","value":null}}]},"message":"default column visibility to be restored"}
+{"expect":{"entries":{"ends_with":["todo.txt","readme.md"]}}}

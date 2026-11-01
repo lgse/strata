@@ -40,8 +40,26 @@ impl ChooserState {
     }
 
     pub(super) fn complete_download(self: &Rc<Self>, path: PathBuf) {
-        self.accept_button.set_sensitive(true);
-        let Some(kind) = image_conversion::detect(&path) else {
+        let probe = path.clone();
+        self.after_download_step(
+            move || image_conversion::detect(&probe),
+            move |state, kind| state.classify_download(path, kind),
+        );
+    }
+
+    pub(super) fn reuse_download(self: &Rc<Self>, url: String, path: PathBuf) {
+        let probe = path.clone();
+        self.after_download_step(
+            move || probe.is_file().then(|| image_conversion::detect(&probe)),
+            move |state, kept| match kept {
+                Some(kind) => state.classify_download(path, kind),
+                None => state.download(url),
+            },
+        );
+    }
+
+    fn classify_download(self: &Rc<Self>, path: PathBuf, kind: Option<ImageKind>) {
+        let Some(kind) = kind else {
             // A PNG-looking filename alone must not pass a PNG-only filter.
             if path
                 .extension()
@@ -58,17 +76,25 @@ impl ChooserState {
             return;
         };
         if let Some(target) = self.image_target(&path, kind) {
-            if path != target
-                && let Err(error) = self.rename_download(&path, &target)
-            {
-                self.show_error(&rust_i18n::t!(
-                    "Could not name the downloaded image: %{error}",
-                    error = error
-                ));
+            if path == target {
+                // Accepted PNG downloads bypass validation, including APNG and corrupt PNG data.
+                self.finish_remote(target);
                 return;
             }
-            // Accepted PNG downloads bypass validation, including APNG and corrupt PNG data.
-            self.finish_remote(target);
+            let (from, to) = (path.clone(), target.clone());
+            self.after_download_step(
+                move || std::fs::rename(&from, &to),
+                move |state, renamed| match renamed {
+                    Ok(()) => {
+                        state.renamed_download(&path, &target);
+                        state.finish_remote(target);
+                    }
+                    Err(error) => state.show_error(&rust_i18n::t!(
+                        "Could not name the downloaded image: %{error}",
+                        error = error
+                    )),
+                },
+            );
             return;
         }
         let Some(target) = self.image_target(&path, ImageKind::Png) else {
@@ -85,14 +111,12 @@ impl ChooserState {
         );
     }
 
-    fn rename_download(&self, path: &Path, target: &Path) -> Result<(), std::io::Error> {
-        std::fs::rename(path, target)?;
+    fn renamed_download(&self, path: &Path, target: &Path) {
         if let Some((_, cached)) = self.downloaded_file.borrow_mut().as_mut()
             && cached.as_path() == path
         {
             *cached = target.to_path_buf();
         }
-        Ok(())
     }
 
     pub(super) fn image_job<T: Send + 'static>(

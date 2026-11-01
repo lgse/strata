@@ -2,12 +2,14 @@
 
 use std::{
     cell::{Cell, RefCell},
+    path::PathBuf,
     rc::Rc,
 };
 
 use gtk::{glib, prelude::*};
 
 use crate::{
+    model::Location,
     services::{
         BuildKind, InstallRequest, InstallSource, ManagedInstall, ReleaseMetadata, UpdateMethod,
     },
@@ -97,12 +99,19 @@ impl SettingsLauncher {
         if let Some(layer) = self.layer.borrow().clone() {
             return layer;
         }
+        let browser = self.browser.clone();
+        let open_folder: settings::OpenFolder = Rc::new(move |path: PathBuf| {
+            if let Some(browser) = browser.upgrade() {
+                browser.navigate_location(Location::local(path));
+            }
+        });
         let layer = settings::build_layer(
             &self.button,
             &self.blurred_root,
             self.preferences.clone(),
             self.notice.clone(),
             self.guard.clone(),
+            open_folder,
         );
         self.overlay.add_overlay(&layer);
         self.focus_restore
@@ -114,12 +123,13 @@ impl SettingsLauncher {
     }
 
     fn show(&self) {
-        let mut child = self.overlay.first_child();
-        while let Some(widget) = child {
-            child = widget.next_sibling();
-            if widget.is_visible() && widget.has_css_class("app-modal-layer") {
-                return;
-            }
+        if self
+            .overlay
+            .root()
+            .and_downcast::<gtk::Window>()
+            .is_some_and(|window| super::super::visible_modal_layer(&window).is_some())
+        {
+            return;
         }
         self.shortcuts.cancel_chord();
         // Closing Settings returns focus to the file list, not to the gear or other chrome

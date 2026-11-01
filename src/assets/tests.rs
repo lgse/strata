@@ -203,6 +203,50 @@ fn cold_interface_icons_render_when_decoder_workers_cannot_start() {
 }
 
 #[test]
+fn nested_spin_button_steps_resolve_to_bundled_icons() {
+    crate::test_support::gtk_test(
+        "assets::tests::nested_spin_button_steps_resolve_to_bundled_icons",
+        || {
+            let spin = gtk::SpinButton::with_range(0.0, 10.0, 1.0);
+            let container = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            container.append(&spin);
+            super::use_bundled_spin_icons(&container);
+
+            let display = gtk::gdk::Display::default().expect("display");
+            let theme = gtk::IconTheme::for_display(&display);
+            let mut steps = Vec::new();
+            let mut child = spin.first_child();
+            while let Some(widget) = child {
+                child = widget.next_sibling();
+                let Some(button) = widget.downcast_ref::<gtk::Button>() else {
+                    continue;
+                };
+                let name = button.icon_name().expect("step icon").to_string();
+                let uri = theme
+                    .lookup_icon(
+                        &name,
+                        &[],
+                        16,
+                        1,
+                        gtk::TextDirection::Ltr,
+                        gtk::IconLookupFlags::empty(),
+                    )
+                    .file()
+                    .expect("resolved icon file")
+                    .uri();
+                assert!(
+                    uri.starts_with("resource:///io/github/lgse/Strata/icons/"),
+                    "{name} resolved outside the bundle: {uri}"
+                );
+                steps.push(name);
+            }
+            steps.sort();
+            assert_eq!(steps, [icons::MINUS_SYMBOLIC, icons::PLUS_SYMBOLIC]);
+        },
+    );
+}
+
+#[test]
 fn icon_texture_cache_bounds_entries_and_preserves_lru() {
     crate::test_support::gtk_test(
         "assets::tests::icon_texture_cache_bounds_entries_and_preserves_lru",

@@ -1,0 +1,23 @@
+{"scenario":"png-conversion-consent-reuses-download","modes":["list"],"layout":"us","mutation":null,"known_bug":null,"portal":true,"session_bus":true,"cost":{"list":2.7},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"PNG conversion consent gate (Cancel) then retry reuses the download, checked by real HTTP count; unit test covers decline logic, not GUI route or request count"}}
+{"portal_open":"PNG conversion test","options":{"current_folder":"$fixture","filters":[["PNG images",[[1,"image/png"]]]]}}
+{"adopt":"PNG conversion test","timeout_ms":20000,"message":"PNG conversion test chooser"}
+{"http":"/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAARABcDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDi6KKK+ZP3EKKKKACiiigAooooA//Z","as":"url"}
+{"wait":{"present":{"role":"text","states":["editable"]}},"message":"Name field"}
+{"click":{"role":"text","states":["editable"]}}
+{"key":"ctrl+a"}
+{"type":"$url"}
+{"key":"Return"}
+{"wait":{"present":{"role":"dialog","name":"Convert image to PNG?"}},"message":"conversion confirmation","timeout_ms":20000}
+{"portal_response":{"done":false}}
+{"activate":{"role":"button","name":"Cancel","within":{"role":"dialog","name":"Convert image to PNG?"}}}
+{"wait":{"absent":{"role":"dialog","name":"Convert image to PNG?"}},"message":"declined conversion"}
+{"portal_response":{"done":false}}
+{"wait":{"present":{"role":"text","states":["editable"]}},"message":"Name field"}
+{"click":{"role":"text","states":["editable"]}}
+{"key":"ctrl+a"}
+{"type":"$url"}
+{"key":"Return"}
+{"wait":{"present":{"role":"dialog","name":"Convert image to PNG?"}},"message":"retry confirmation","timeout_ms":20000}
+{"activate":{"role":"button","name":"Convert to PNG","within":{"role":"dialog","name":"Convert image to PNG?"}}}
+{"portal_response":{"done":true,"status":0,"png":{"size":[23,17],"at":[5,5],"min":[241,0,0],"max":[255,9,9]},"discard":true},"timeout_ms":20000,"message":"PNG portal response"}
+{"http_requests":1,"message":"retry must reuse the downloaded original"}

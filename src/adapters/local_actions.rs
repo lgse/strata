@@ -1,19 +1,22 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    ffi::OsStr,
+    collections::HashMap,
+    ffi::{OsStr, OsString},
     fs::{self, DirBuilder},
     io,
     os::unix::fs::{DirBuilderExt, PermissionsExt},
     path::{Path, PathBuf},
-    rc::Rc,
+    sync::Arc,
 };
 
+use crate::adapters::mount_lanes::{self, Class, Unanswered};
 use crate::model::{ActionDefinition, ActionError, ActionRuntime, InterpreterFamily};
 use crate::services::actions::{
-    ActionAvailability, ActionCatalog, ActionHandle, ActionLoadFailure, ActionProgram,
-    ActionScript, ActionStore, ActionStoreError, ActionWriteRequest,
+    ActionAvailability, ActionHandle, ActionLoadFailure, ActionProgram, ActionScript, ActionStore,
+    ActionStoreError, ActionWriteRequest, StoredActions,
 };
+use crate::util::ui_thread;
 
 #[cfg(test)]
 mod tests;
@@ -32,12 +35,12 @@ pub(crate) struct LocalActionStore {
 }
 
 impl LocalActionStore {
-    pub(crate) fn new() -> Rc<Self> {
+    pub(crate) fn new() -> Arc<Self> {
         Self::at(actions_directory())
     }
 
-    pub(crate) fn at(root: PathBuf) -> Rc<Self> {
-        Rc::new(Self { root })
+    pub(crate) fn at(root: PathBuf) -> Arc<Self> {
+        Arc::new(Self { root })
     }
 
     #[cfg(test)]
@@ -54,30 +57,25 @@ impl LocalActionStore {
         Ok(self.root.join(id))
     }
 
-    fn load_action(&self, id: &str, directory: &Path) -> Result<ActionHandle, ActionStoreError> {
-        ensure_plain_directory(directory)?;
-        let manifest = directory.join(MANIFEST_FILE);
-        let source = match read_regular_text(&manifest, MAX_MANIFEST_BYTES) {
-            Ok(source) => source,
-            Err(ActionStoreError::NotFound(_)) => {
-                return Err(ActionStoreError::NotAnActionDirectory(
-                    directory.display().to_string(),
-                ));
+    fn existing_action_directory(&self, id: &str) -> Result<PathBuf, ActionStoreError> {
+        let directory = self.action_directory(id)?;
+        match fs::symlink_metadata(&directory) {
+            Ok(metadata) if metadata.file_type().is_dir() => Ok(directory),
+            Ok(_) => Err(ActionStoreError::NotARegularFile(id.to_owned())),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                Err(ActionStoreError::NotFound(id.to_owned()))
             }
-            Err(error) => return Err(error),
-        };
-        let definition = ActionDefinition::parse(&source)?;
-        if definition.id != id {
-            return Err(ActionStoreError::IdMismatch {
-                declared: definition.id.clone(),
-                directory: id.to_owned(),
-            });
+            Err(error) => Err(io_error(error)),
         }
-        let availability = resolve_availability(directory, &definition)?;
+    }
+
+    fn load_action(&self, id: &str, directory: &Path) -> Result<ActionHandle, ActionStoreError> {
+        let definition = definition_in(id, directory)?;
+        let program = program_as_written(directory, &definition)?;
         Ok(ActionHandle {
             definition,
             directory: directory.to_path_buf(),
-            availability,
+            availability: ActionAvailability::Available(program),
         })
     }
 
@@ -139,15 +137,16 @@ impl LocalActionStore {
 }
 
 impl ActionStore for LocalActionStore {
-    fn load(&self) -> ActionCatalog {
+    fn load(&self) -> StoredActions {
+        ui_thread::assert_off();
         let entries = match fs::read_dir(&self.root) {
             Ok(entries) => entries,
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                return ActionCatalog::default();
+                return StoredActions::default();
             }
             Err(error) => {
                 tracing::warn!(%error, root = %self.root.display(), "unable to read the actions directory");
-                return ActionCatalog::default();
+                return StoredActions::default();
             }
         };
         let mut candidates: Vec<(String, PathBuf)> = entries
@@ -167,7 +166,7 @@ impl ActionStore for LocalActionStore {
         let mut failures = Vec::new();
         for (name, path) in candidates {
             match self.load_action(&name, &path) {
-                Ok(handle) => actions.push(Rc::new(handle)),
+                Ok(handle) => actions.push(handle),
                 Err(error) => {
                     tracing::warn!(
                         action = %name,
@@ -181,10 +180,62 @@ impl ActionStore for LocalActionStore {
                 }
             }
         }
-        ActionCatalog::new(actions, failures)
+        StoredActions { actions, failures }
+    }
+
+    fn locate(&self, mut stored: StoredActions) -> StoredActions {
+        ui_thread::assert_off();
+        let mut found: HashMap<OsString, Option<PathBuf>> = HashMap::new();
+        for action in &mut stored.actions {
+            let ActionAvailability::Available(program) = &mut action.availability else {
+                continue;
+            };
+            let (written, missing): (&mut OsString, fn(String) -> ActionStoreError) = match program
+            {
+                ActionProgram::Command { program, .. } => {
+                    (program, ActionStoreError::MissingProgram)
+                }
+                ActionProgram::Script { interpreter, .. } => {
+                    (interpreter, ActionStoreError::MissingInterpreter)
+                }
+            };
+            let name = written.to_string_lossy().into_owned();
+            let located = found
+                .entry(written.clone())
+                .or_insert_with(|| resolve_executable(&name));
+            match located {
+                Some(path) => *written = path.clone().into_os_string(),
+                None => {
+                    action.availability = ActionAvailability::Unavailable {
+                        reason: missing(name).user_message(),
+                    };
+                }
+            }
+        }
+        stored
+    }
+
+    fn definition(&self, id: &str) -> Result<ActionDefinition, ActionStoreError> {
+        ui_thread::assert_off();
+        definition_in(id, &self.existing_action_directory(id)?)
+    }
+
+    fn read(&self, id: &str) -> Result<ActionWriteRequest, ActionStoreError> {
+        ui_thread::assert_off();
+        let directory = self.existing_action_directory(id)?;
+        let definition = definition_in(id, &directory)?;
+        let script = match definition.run.script_entrypoint() {
+            Some(entrypoint) => Some(ActionScript {
+                file_name: entrypoint.to_owned(),
+                contents: read_entrypoint(&directory, entrypoint)?,
+            }),
+            None => None,
+        };
+        Ok(ActionWriteRequest { definition, script })
     }
 
     fn create(&self, request: &ActionWriteRequest) -> Result<(), ActionStoreError> {
+        ui_thread::assert_off();
         request.definition.validate()?;
         let directory = self.action_directory(&request.definition.id)?;
         ensure_private_directory(&self.root)?;
@@ -206,11 +257,10 @@ impl ActionStore for LocalActionStore {
     }
 
     fn write(&self, request: &ActionWriteRequest) -> Result<(), ActionStoreError> {
+        ui_thread::assert_off();
         let definition = &request.definition;
         definition.validate()?;
-        let directory = self.action_directory(&definition.id)?;
-        ensure_private_directory(&self.root)?;
-        ensure_private_directory(&directory)?;
+        let directory = self.existing_action_directory(&definition.id)?;
 
         match (request.script.as_ref(), definition.run.script_entrypoint()) {
             (Some(script), Some(entrypoint)) => {
@@ -257,96 +307,115 @@ impl ActionStore for LocalActionStore {
     }
 
     fn delete(&self, id: &str) -> Result<(), ActionStoreError> {
-        let directory = self.action_directory(id)?;
-        let metadata = match fs::symlink_metadata(&directory) {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                return Err(ActionStoreError::NotFound(id.to_owned()));
-            }
-            Err(error) => return Err(io_error(error)),
-        };
-        if !metadata.file_type().is_dir() {
-            return Err(ActionStoreError::NotARegularFile(id.to_owned()));
+        ui_thread::assert_off();
+        fs::remove_dir_all(self.existing_action_directory(id)?).map_err(io_error)
+    }
+
+    fn read_import(&self, source: &Path) -> Result<ActionWriteRequest, ActionStoreError> {
+        ui_thread::assert_off();
+        let admitted = mount_lanes::admit(source, Class::Interactive).map_err(unanswered)?;
+        let read = self.prepare_import(source);
+        if read.is_ok() {
+            admitted.progress().beat();
         }
-        ensure_plain_directory(&directory)?;
-        fs::remove_dir_all(&directory).map_err(io_error)
+        let (definition, script) = read?;
+        Ok(ActionWriteRequest { definition, script })
     }
 
-    fn read_script(&self, id: &str) -> Result<Option<ActionScript>, ActionStoreError> {
-        let catalog = self.load();
-        let handle = catalog
-            .get(id)
-            .ok_or_else(|| ActionStoreError::NotFound(id.to_owned()))?;
-        let Some(entrypoint) = handle.definition.run.script_entrypoint() else {
-            return Ok(None);
-        };
-        let contents = read_regular_text(&handle.directory.join(entrypoint), MAX_SCRIPT_BYTES)
-            .map_err(|error| match error {
-                ActionStoreError::NotFound(_) => {
-                    ActionStoreError::MissingEntrypoint(entrypoint.to_owned())
-                }
-                other => other,
-            })?;
-        Ok(Some(ActionScript {
-            file_name: entrypoint.to_owned(),
-            contents,
-        }))
-    }
-
-    fn import(&self, source: &Path) -> Result<String, ActionStoreError> {
-        let (mut definition, script) = self.prepare_import(source)?;
+    fn import(&self, request: ActionWriteRequest) -> Result<String, ActionStoreError> {
+        ui_thread::assert_off();
+        let ActionWriteRequest {
+            mut definition,
+            script,
+        } = request;
         definition.enabled = false;
         let id = self.unique_id(&definition.id)?;
         definition.id = id.clone();
-        ensure_private_directory(&self.root)?;
-        let directory = self.action_directory(&id)?;
-        if directory.exists() {
-            return Err(ActionStoreError::AlreadyExists(id));
-        }
         self.create(&ActionWriteRequest { definition, script })?;
         Ok(id)
     }
 
-    fn export(&self, id: &str, destination: &Path) -> Result<PathBuf, ActionStoreError> {
-        let catalog = self.load();
-        let handle = catalog
-            .get(id)
-            .ok_or_else(|| ActionStoreError::NotFound(id.to_owned()))?;
-        ensure_plain_directory(destination)?;
-        let target = destination.join(id);
-        DirBuilder::new()
-            .mode(0o700)
-            .create(&target)
-            .map_err(|error| {
-                if error.kind() == io::ErrorKind::AlreadyExists {
-                    ActionStoreError::AlreadyExists(id.to_owned())
-                } else {
-                    io_error(error)
-                }
-            })?;
-
-        if let Some(entrypoint) = handle.definition.run.script_entrypoint() {
-            let contents = read_regular_text(&handle.directory.join(entrypoint), MAX_SCRIPT_BYTES)
-                .map_err(|error| match error {
-                    ActionStoreError::NotFound(_) => {
-                        ActionStoreError::MissingEntrypoint(entrypoint.to_owned())
-                    }
-                    other => other,
-                })?;
-            crate::storage::atomic_write(&target.join(entrypoint), contents.as_bytes())
-                .map_err(io_error)?;
+    fn export(
+        &self,
+        request: &ActionWriteRequest,
+        destination: &Path,
+    ) -> Result<PathBuf, ActionStoreError> {
+        ui_thread::assert_off();
+        let admitted = mount_lanes::admit(destination, Class::Interactive).map_err(unanswered)?;
+        let exported = export_to(request, destination);
+        if exported.is_ok() {
+            admitted.progress().beat();
         }
-        let manifest = handle.definition.to_manifest()?;
-        crate::storage::atomic_write(&target.join(MANIFEST_FILE), manifest.as_bytes())
-            .map_err(io_error)?;
-        Ok(target)
+        exported
     }
 }
 
-fn resolve_availability(
+fn definition_in(id: &str, directory: &Path) -> Result<ActionDefinition, ActionStoreError> {
+    ensure_plain_directory(directory)?;
+    let manifest = directory.join(MANIFEST_FILE);
+    let source = match read_regular_text(&manifest, MAX_MANIFEST_BYTES) {
+        Ok(source) => source,
+        Err(ActionStoreError::NotFound(_)) => {
+            return Err(ActionStoreError::NotAnActionDirectory(
+                directory.display().to_string(),
+            ));
+        }
+        Err(error) => return Err(error),
+    };
+    let definition = ActionDefinition::parse(&source)?;
+    if definition.id != id {
+        return Err(ActionStoreError::IdMismatch {
+            declared: definition.id.clone(),
+            directory: id.to_owned(),
+        });
+    }
+    Ok(definition)
+}
+
+fn read_entrypoint(directory: &Path, entrypoint: &str) -> Result<String, ActionStoreError> {
+    read_regular_text(&directory.join(entrypoint), MAX_SCRIPT_BYTES).map_err(|error| match error {
+        ActionStoreError::NotFound(_) => ActionStoreError::MissingEntrypoint(entrypoint.to_owned()),
+        other => other,
+    })
+}
+
+fn export_to(
+    request: &ActionWriteRequest,
+    destination: &Path,
+) -> Result<PathBuf, ActionStoreError> {
+    let id = &request.definition.id;
+    ensure_plain_directory(destination)?;
+    let target = destination.join(id);
+    DirBuilder::new()
+        .mode(0o700)
+        .create(&target)
+        .map_err(|error| {
+            if error.kind() == io::ErrorKind::AlreadyExists {
+                ActionStoreError::AlreadyExists(id.clone())
+            } else {
+                io_error(error)
+            }
+        })?;
+    if let Some(script) = &request.script {
+        crate::storage::atomic_write(&target.join(&script.file_name), script.contents.as_bytes())
+            .map_err(io_error)?;
+    }
+    let manifest = request.definition.to_manifest()?;
+    crate::storage::atomic_write(&target.join(MANIFEST_FILE), manifest.as_bytes())
+        .map_err(io_error)?;
+    Ok(target)
+}
+
+fn unanswered(_: Unanswered) -> ActionStoreError {
+    ActionStoreError::Io(crate::services::io_error_message(
+        &io::ErrorKind::TimedOut.into(),
+    ))
+}
+
+fn program_as_written(
     directory: &Path,
     definition: &ActionDefinition,
-) -> Result<ActionAvailability, ActionStoreError> {
+) -> Result<ActionProgram, ActionStoreError> {
     match definition.run.runtime {
         ActionRuntime::Command => {
             let program = definition
@@ -354,15 +423,9 @@ fn resolve_availability(
                 .program
                 .as_deref()
                 .expect("validated command actions have a program");
-            let arguments = definition.run.argument_tokens()?;
-            Ok(match resolve_executable(program) {
-                Some(path) => ActionAvailability::Available(ActionProgram::Command {
-                    program: path.into_os_string(),
-                    arguments,
-                }),
-                None => ActionAvailability::Unavailable {
-                    reason: ActionStoreError::MissingProgram(program.to_owned()).user_message(),
-                },
+            Ok(ActionProgram::Command {
+                program: program.into(),
+                arguments: definition.run.argument_tokens()?,
             })
         }
         ActionRuntime::Python | ActionRuntime::Bash => {
@@ -402,19 +465,11 @@ fn resolve_availability(
                     (program.to_owned(), Vec::new(), family)
                 }
             };
-            Ok(match resolve_executable(&program) {
-                Some(path) => ActionAvailability::Available(ActionProgram::Script {
-                    interpreter: path.into_os_string(),
-                    interpreter_arguments: interpreter_arguments
-                        .into_iter()
-                        .map(Into::into)
-                        .collect(),
-                    script,
-                    family,
-                }),
-                None => ActionAvailability::Unavailable {
-                    reason: ActionStoreError::MissingInterpreter(program).user_message(),
-                },
+            Ok(ActionProgram::Script {
+                interpreter: program.into(),
+                interpreter_arguments: interpreter_arguments.into_iter().map(Into::into).collect(),
+                script,
+                family,
             })
         }
     }
@@ -422,6 +477,7 @@ fn resolve_availability(
 
 /// Unlike sandbox helpers, trusted actions need the user's PATH, including shims.
 pub(crate) fn resolve_executable(program: &str) -> Option<PathBuf> {
+    ui_thread::assert_off();
     if program.contains('/') {
         if !Path::new(program).is_absolute() {
             return None;
@@ -436,9 +492,12 @@ pub(crate) fn resolve_executable(program: &str) -> Option<PathBuf> {
 }
 
 fn is_executable_file(path: &Path) -> bool {
-    fs::metadata(path)
-        .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
+    let Ok(admitted) = mount_lanes::admit(path.parent().unwrap_or(path), Class::Interactive) else {
+        return false;
+    };
+    let metadata = fs::metadata(path);
+    admitted.progress().answered(&metadata);
+    metadata.is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
 }
 
 fn read_regular_text(path: &Path, max_bytes: u64) -> Result<String, ActionStoreError> {

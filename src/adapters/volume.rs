@@ -1,17 +1,15 @@
 // SPDX-License-Identifier: MIT
 
+mod mount_capabilities;
+pub(crate) mod mount_lanes;
 mod mount_snapshot;
+pub(crate) mod mount_watch;
 mod mounts;
+mod names;
 #[cfg(test)]
 mod tests;
 
-use std::{
-    cell::RefCell,
-    collections::HashSet,
-    path::{Component, Path, PathBuf},
-    rc::Rc,
-    time::Duration,
-};
+use std::{cell::RefCell, collections::HashSet, path::Path, rc::Rc, time::Duration};
 
 use gtk::{gio, glib, prelude::*};
 
@@ -21,8 +19,26 @@ use crate::{
     services::{VolumeIdentity, VolumeRelation, volume_relation},
 };
 
+#[cfg(test)]
+pub(crate) use mount_capabilities::forget_test_mount_capabilities;
+pub(crate) use mount_capabilities::{
+    MountCapabilities, MountKey, XattrNamespace, learn_mount_capability, mount_capabilities,
+    teach_mount_capability,
+};
 pub(crate) use mount_snapshot::{RemovableRoot, invalidate_mount_snapshot, with_mount_snapshot};
-pub(crate) use mounts::MountTable;
+#[cfg(test)]
+pub(crate) use mounts::FAT32_MAX_FILE_SIZE;
+#[cfg(test)]
+pub(crate) use mounts::set_mountinfo_for_isolated_test;
+pub(crate) use mounts::{
+    CoarseTimes, Family, FuseFormat, LONGEST_NAME_NTFS_3G_RENAMES_OVER, MountKey as TrashMountKey,
+    MountSite, MountTable, MountType, SillyNames, family, holds_symlinks, is_fuse_fs_type,
+    is_local_fuse_overlay, max_file_size,
+};
+pub(crate) use names::{
+    MountNames, NameEncoding, NameLimit, NameProfile, NameRules, PrivateUse, Reserved, StrictRule,
+    Strictness, Strip, gvfs_bridge_profile, gvfs_profile,
+};
 
 pub(crate) const REMOTE_QUERY_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -34,7 +50,7 @@ pub(crate) struct DropVolumeQuery {
 
 impl DropVolumeQuery {
     pub(crate) fn new(dest: &Location, sources: &[Location]) -> Self {
-        Self::with_mounts(dest, sources, &MountTable::current())
+        Self::with_mounts(dest, sources, &mount_watch::latest())
     }
 
     fn with_mounts(dest: &Location, sources: &[Location], mounts: &MountTable) -> Self {
@@ -128,63 +144,8 @@ pub(crate) fn lookup_drop_volumes(
     query: &DropVolumeQuery,
     on_ready: impl FnOnce(DropVolumeLookup) + 'static,
 ) -> DropVolumes {
-    lookup_drop_volumes_with_mounts(query, &MountTable::current(), on_ready)
-}
-
-fn lookup_drop_volumes_with_mounts(
-    query: &DropVolumeQuery,
-    mounts: &MountTable,
-    on_ready: impl FnOnce(DropVolumeLookup) + 'static,
-) -> DropVolumes {
-    let locations = query
-        .locations()
-        .map(|location| Directory::classify(location, mounts))
-        .collect::<Vec<_>>();
-    if locations
-        .iter()
-        .all(|directory| directory.resolves_synchronously())
-    {
-        let identities = locations
-            .iter()
-            .map(|directory| native_volume_identity(directory.location))
-            .collect();
-        return DropVolumes::Ready(DropVolumeLookup::from_identities(identities));
-    }
+    let locations = query.locations().collect::<Vec<_>>();
     DropVolumes::Pending(PendingVolumeLookup::start(&locations, Box::new(on_ready)))
-}
-
-struct Directory<'a> {
-    location: &'a Location,
-    synchronous: bool,
-}
-
-impl<'a> Directory<'a> {
-    fn classify(location: &'a Location, mounts: &MountTable) -> Self {
-        Self::classify_with_probe(location, mounts, native_query_may_leave_mount)
-    }
-
-    fn classify_with_probe(
-        location: &'a Location,
-        mounts: &MountTable,
-        native_probe: impl FnOnce(&Path) -> bool,
-    ) -> Self {
-        let may_block = match location.native_path() {
-            Some(path) => mounts.query_may_block(path),
-            None => location_is_remote(location),
-        };
-        let synchronous = !may_block
-            && location
-                .native_path()
-                .is_some_and(|path| !native_probe(path));
-        Self {
-            location,
-            synchronous,
-        }
-    }
-
-    fn resolves_synchronously(&self) -> bool {
-        self.synchronous
-    }
 }
 
 fn source_volume_directory(source: &Location, mounts: &MountTable) -> Location {
@@ -192,23 +153,6 @@ fn source_volume_directory(source: &Location, mounts: &MountTable) -> Location {
         Some(path) if mounts.is_mount_point(path) => source.clone(),
         _ => source.parent().unwrap_or_else(|| source.clone()),
     }
-}
-
-/// GIO may follow a local-looking path onto a blocking remote mount.
-fn native_query_may_leave_mount(path: &Path) -> bool {
-    let mut prefix = PathBuf::new();
-    for component in path.components() {
-        if matches!(component, Component::CurDir | Component::ParentDir) {
-            return true;
-        }
-        prefix.push(component);
-        if matches!(component, Component::Normal(_))
-            && std::fs::symlink_metadata(&prefix).is_ok_and(|meta| meta.is_symlink())
-        {
-            return true;
-        }
-    }
-    false
 }
 
 pub(crate) struct PendingVolumeLookup {
@@ -220,24 +164,20 @@ struct PendingState {
     identities: Vec<Option<VolumeIdentity>>,
     remaining: usize,
     on_ready: Option<Box<dyn FnOnce(DropVolumeLookup)>>,
+    waiting: Vec<Box<dyn FnOnce(VolumeRelation)>>,
 }
 
 impl PendingVolumeLookup {
-    fn start(directories: &[Directory<'_>], on_ready: Box<dyn FnOnce(DropVolumeLookup)>) -> Self {
+    fn start(locations: &[&Location], on_ready: Box<dyn FnOnce(DropVolumeLookup)>) -> Self {
         let cancellable = gio::Cancellable::new();
         let state = Rc::new(RefCell::new(PendingState {
-            identities: vec![None; directories.len()],
-            remaining: directories.len(),
+            identities: vec![None; locations.len()],
+            remaining: locations.len(),
             on_ready: Some(on_ready),
+            waiting: Vec::new(),
         }));
-        for (index, directory) in directories.iter().enumerate() {
-            if directory.resolves_synchronously() {
-                let mut state = state.borrow_mut();
-                state.identities[index] = native_volume_identity(directory.location);
-                state.remaining -= 1;
-                continue;
-            }
-            let file = gio_file_for_location(directory.location);
+        for (index, location) in locations.iter().enumerate() {
+            let file = gio_file_for_location(location);
             let backend = file.uri_scheme().unwrap_or_default().to_string();
             let state = state.clone();
             file.query_info_async(
@@ -265,9 +205,16 @@ impl PendingVolumeLookup {
         Self { cancellable, state }
     }
 
+    pub(crate) fn wait(&self, then: impl FnOnce(VolumeRelation) + 'static) {
+        self.state.borrow_mut().waiting.push(Box::new(then));
+    }
+
     pub(crate) fn cancel(&self) {
-        self.state.borrow_mut().on_ready = None;
-        self.cancellable.cancel();
+        let mut state = self.state.borrow_mut();
+        state.on_ready = None;
+        if state.waiting.is_empty() {
+            self.cancellable.cancel();
+        }
     }
 }
 
@@ -281,7 +228,7 @@ impl PendingState {
     fn resolve(state: &Rc<RefCell<Self>>, index: usize, identity: Option<VolumeIdentity>) {
         {
             let mut state = state.borrow_mut();
-            if state.on_ready.is_none() {
+            if state.on_ready.is_none() && state.waiting.is_empty() {
                 return;
             }
             state.identities[index] = identity;
@@ -294,15 +241,27 @@ impl PendingState {
     }
 
     fn finish(state: &Rc<RefCell<Self>>) {
-        let (on_ready, lookup) = {
+        let (on_ready, waiting, lookup) = {
             let mut state = state.borrow_mut();
-            let Some(on_ready) = state.on_ready.take() else {
+            let on_ready = state.on_ready.take();
+            let waiting = std::mem::take(&mut state.waiting);
+            if on_ready.is_none() && waiting.is_empty() {
                 return;
-            };
+            }
             let identities = std::mem::take(&mut state.identities);
-            (on_ready, DropVolumeLookup::from_identities(identities))
+            (
+                on_ready,
+                waiting,
+                DropVolumeLookup::from_identities(identities),
+            )
         };
-        on_ready(lookup);
+        let relation = lookup.relation;
+        if let Some(on_ready) = on_ready {
+            on_ready(lookup);
+        }
+        for then in waiting {
+            then(relation);
+        }
     }
 }
 
@@ -334,10 +293,6 @@ pub(crate) fn restore_volume_relation(source: &Location, dest: &Location) -> Vol
 }
 
 /// Uses GIO for native paths so native and `file://` identities are comparable.
-pub(crate) fn native_volume_identity(location: &Location) -> Option<VolumeIdentity> {
-    native_volume_identity_with(location, gio::FileQueryInfoFlags::NONE)
-}
-
 fn native_volume_identity_with(
     location: &Location,
     flags: gio::FileQueryInfoFlags,
@@ -350,16 +305,6 @@ fn native_volume_identity_with(
         )
         .ok()?;
     identity_from_gio(&info, "file")
-}
-
-pub(crate) fn location_is_remote(location: &Location) -> bool {
-    match location.native_path() {
-        Some(path) => MountTable::current().is_remote_path(path),
-        None => {
-            let scheme = location.backend_name();
-            scheme != "file" && scheme != "trash"
-        }
-    }
 }
 
 fn identity_from_gio(info: &gio::FileInfo, backend: &str) -> Option<VolumeIdentity> {

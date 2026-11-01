@@ -14,7 +14,8 @@ fn variant_choices_sync_across_windows_without_initialization_writes() {
             seed_omarchy_for_test();
             let preferences = PreferenceManager::shared();
             let themes = ThemeManager::shared();
-            preferences.set_omarchy_variant(OmarchyVariant::Darker);
+            preferences.set_omarchy_variant(OmarchyVariant::Lighter);
+            crate::storage::writer::settle();
             let settings = crate::ui::preferences::config_directory().join("settings.toml");
             let before = std::fs::read(&settings).expect("saved settings");
             let windows = [gtk::Window::new(), gtk::Window::new()];
@@ -39,7 +40,7 @@ fn variant_choices_sync_across_windows_without_initialization_writes() {
             );
             for (row, button) in &controls {
                 assert!(row.is_visible() && row.is_sensitive());
-                assert_eq!(button.label().as_deref(), Some("Darker"));
+                assert_eq!(button.label().as_deref(), Some("Lighter"));
             }
             let menu = controls[0]
                 .1
@@ -49,12 +50,32 @@ fn variant_choices_sync_across_windows_without_initialization_writes() {
                 .expect("variant menu");
             menu.last_child()
                 .and_downcast::<gtk::Button>()
-                .expect("high contrast option")
+                .expect("contrast option")
                 .emit_clicked();
-            assert_eq!(preferences.omarchy_variant(), OmarchyVariant::HighContrast);
+            assert_eq!(preferences.omarchy_variant(), OmarchyVariant::Contrast);
             for (_, button) in &controls {
-                assert_eq!(button.label().as_deref(), Some("High contrast"));
+                assert_eq!(button.label().as_deref(), Some("Contrast"));
             }
+            let switch_omarchy_theme = |name: &str| {
+                let state = crate::ui::theme::omarchy_state_dir();
+                std::fs::write(state.join("theme.name"), name).expect("switch Omarchy theme");
+                themes.refresh_omarchy_state();
+                crate::storage::writer::settle();
+            };
+            switch_omarchy_theme("other");
+            assert_eq!(preferences.omarchy_variant(), OmarchyVariant::Darker);
+            for (_, button) in &controls {
+                assert_eq!(button.label().as_deref(), Some("Darker"));
+            }
+            preferences.set_omarchy_variant(OmarchyVariant::Lighter);
+            switch_omarchy_theme("fixture");
+            assert_eq!(preferences.omarchy_variant(), OmarchyVariant::Contrast);
+            for (_, button) in &controls {
+                assert_eq!(button.label().as_deref(), Some("Contrast"));
+            }
+            switch_omarchy_theme("other");
+            assert_eq!(preferences.omarchy_variant(), OmarchyVariant::Lighter);
+            switch_omarchy_theme("fixture");
             themes.set_follow_omarchy(false);
             for (row, _) in &controls {
                 assert!(!row.is_sensitive());
@@ -62,12 +83,12 @@ fn variant_choices_sync_across_windows_without_initialization_writes() {
             themes.set_follow_omarchy(true);
             menu.first_child()
                 .and_downcast::<gtk::Button>()
-                .expect("original option")
+                .expect("lighter option")
                 .emit_clicked();
-            assert_eq!(preferences.omarchy_variant(), OmarchyVariant::Original);
+            assert_eq!(preferences.omarchy_variant(), OmarchyVariant::Lighter);
             for (row, button) in &controls {
                 assert!(row.is_sensitive());
-                assert_eq!(button.label().as_deref(), Some("Original"));
+                assert_eq!(button.label().as_deref(), Some("Lighter"));
             }
             for window in windows {
                 window.close();
@@ -83,6 +104,7 @@ fn corner_roundness_controls_follow_the_preference_across_windows() {
         || {
             let preferences = PreferenceManager::shared();
             preferences.set_corner_roundness(CornerRoundness::new(40));
+            crate::storage::writer::settle();
             let settings = crate::ui::preferences::config_directory().join("settings.toml");
             let before = std::fs::read(&settings).expect("saved settings");
             let windows = [gtk::Window::new(), gtk::Window::new()];
@@ -149,6 +171,7 @@ fn interface_font_choices_follow_the_preference_across_windows() {
         || {
             let preferences = PreferenceManager::shared();
             preferences.set_interface_font(Some("Fixture Sans".into()));
+            crate::storage::writer::settle();
             let settings = crate::ui::preferences::config_directory().join("settings.toml");
             let before = std::fs::read(&settings).expect("saved settings");
             let windows = [gtk::Window::new(), gtk::Window::new()];

@@ -56,6 +56,9 @@ fn records_round_trip_byte_safe_paths() {
     let history = NavigationHistory::open(store.clone());
     history.record_at(&path, WEEK_SECONDS);
     drop(history);
+    assert!(crate::storage::writer::flush(
+        std::time::Duration::from_secs(10)
+    ));
 
     let loaded = NavigationHistory::open(store);
     let results = loaded.search_at("", WEEK_SECONDS);

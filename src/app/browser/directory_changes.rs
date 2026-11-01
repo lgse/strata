@@ -41,6 +41,12 @@ pub(super) enum DepartureEvidence {
     FailedLoad,
 }
 
+pub(super) struct DepartureProbe {
+    generation: u64,
+    answered: Rc<Cell<bool>>,
+    _probe: LoadHandle,
+}
+
 /// A chooser refuses folders outside its boundary, which includes missing ones.
 fn departure_confirmed(error: &LocationValidationError) -> bool {
     matches!(
@@ -195,6 +201,12 @@ impl Browser {
         self.keep_departure_probe(generation, &answered, probe);
     }
 
+    pub(super) fn departure_check_pending(&self) -> bool {
+        self.departure_probe.borrow().as_ref().is_some_and(|probe| {
+            !probe.answered.get() && probe.generation == self.navigation_generation()
+        })
+    }
+
     fn departure_check_is_current(
         &self,
         generation: u64,
@@ -206,9 +218,13 @@ impl Browser {
     }
 
     /// A step that already answered may have started the next one, which must stay.
-    fn keep_departure_probe(&self, generation: u64, answered: &Cell<bool>, probe: LoadHandle) {
+    fn keep_departure_probe(&self, generation: u64, answered: &Rc<Cell<bool>>, probe: LoadHandle) {
         if !answered.get() && self.navigation_generation() == generation {
-            self.departure_probe.replace(Some(probe));
+            self.departure_probe.replace(Some(DepartureProbe {
+                generation,
+                answered: answered.clone(),
+                _probe: probe,
+            }));
         }
     }
 
@@ -389,17 +405,32 @@ impl Browser {
             .state
             .borrow()
             .path_after_external_change(depth, &change);
-        if let Some(path) = path_update
-            && !matches!(&change, DirectoryChange::Move { .. })
-        {
-            self.restore_path(path);
-            return;
+        let hidden_move = matches!(&change, DirectoryChange::Move { entry, .. }
+            if entry.is_hidden && !self.preferences.get().show_hidden);
+        if let Some(path) = path_update {
+            if !matches!(&change, DirectoryChange::Move { .. }) {
+                self.restore_path(path);
+                return;
+            }
+            if hidden_move {
+                self.truncate_columns(depth + 1, false);
+            }
         }
-        let focused_was_removed = matches!(&change, DirectoryChange::Remove(location)
-            if self.focused_item().is_some_and(|(focused_depth, _, entry)|
-                focused_depth == depth && entry.location == *location));
+        let gone = match &change {
+            DirectoryChange::Remove(location) => Some(location),
+            DirectoryChange::Move { from, .. } if hidden_move => Some(from),
+            _ => None,
+        };
+        let focused_was_removed = gone.is_some_and(|location| {
+            self.focused_item()
+                .is_some_and(|(focused_depth, _, entry)| {
+                    focused_depth == depth && entry.location == *location
+                })
+        });
         let relocation = match &change {
-            DirectoryChange::Move { from, entry } => Some((from.clone(), entry.location.clone())),
+            DirectoryChange::Move { from, entry } if !hidden_move => {
+                Some((from.clone(), entry.location.clone()))
+            }
             _ => None,
         };
         let application = self

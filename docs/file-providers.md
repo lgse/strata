@@ -14,7 +14,8 @@ The browser does not need to know about cloud accounts, pins or service sockets.
 ## Registration and artwork
 
 Install one directory per provider under `$XDG_CONFIG_HOME/strata/providers/`
-(default `~/.config/strata/providers/`), then restart Strata. For example:
+(default `~/.config/strata/providers/`), then select **Refresh** in
+**Settings → Integrations** or restart Strata. For example:
 
 ```json
 {
@@ -31,12 +32,17 @@ Save this as `example/provider.json`. The id must match the directory name.
 The optional `name` supplies the human-readable menu group heading; without it,
 Strata uses the id. Names must contain non-whitespace plain text, at most 64 UTF-8
 bytes, without control characters. The optional `icon` names one of the declared
-icons and is drawn before that heading. Existing registrations need no changes.
+icons and is drawn before that heading and on the provider's **Send to…**
+submenu. Without one, that submenu uses an icon for the optional `category`
+(`cloud`, `devices`, `version-control` or `other`), which catalog installs
+record. Existing registrations need no changes.
 Commands are literal argv with an absolute executable; no shell interpolation,
 PATH lookup, placeholder expansion or working-directory executable lookup is
 performed. The child runs with `/` as its working directory. Nothing in a browsed
-folder registers a provider. Removing the registration and restarting Strata
-uninstalls it. Editing a registration takes effect on restart.
+folder registers a provider. Removing the registration uninstalls it, and
+edits to a registration take effect after **Refresh** or a restart. An empty
+file named `disabled` beside `provider.json` keeps the registration installed
+but stops it from loading; **Settings → Integrations** toggles it with a switch.
 
 Registration directories/manifests and icon files must be owned by the current
 user or root, must not be group/world writable, and cannot be symlinks. Executable
@@ -46,6 +52,29 @@ filenames, no subdirectories), at most 64 KiB and 256×256 per image, up to 16 i
 It is loaded once from trusted configuration, never from selected file content or
 URLs. Branded artwork preserves its colors; use artwork legible on both light and
 dark backgrounds. Strata's own interface continues to use themed Lucide icons.
+
+## Bundled integrations
+
+Integrations maintained in this repository live under [`integrations/`](../integrations/README.md),
+one directory per integration with a `catalog.toml` beside the program. Strata
+embeds that directory at build time and shows it in **Settings → Integrations**
+as a catalog grid that can be filtered by category and searched. Each card
+summarizes its requirement checks and expands to list them with, for anything
+missing, an install command that can be copied or run in a terminal.
+**Install** copies the files into the registration directory above, writes
+`provider.json` with the interpreter and script paths resolved on this machine,
+and records a content hash in `catalog-install.json`. Installed registrations
+are listed above the catalog with a switch that disables them without removing
+them and **Remove**, which deletes the directory. When a release changes a
+bundled provider, its row offers **Update**; nothing updates on its own, and
+local edits are detected and confirmed before they are replaced. Registrations
+without an install record are marked **Manual** and can only be removed.
+**Open folder** shows the registration directory in the browser. Each change stops
+the running providers and discovers the registrations again, so it takes
+effect at once; **Refresh** does the same after edits made by hand.
+
+`STRATA_INTEGRATION_CATALOG=<directory>` replaces the bundled catalog with a
+directory in the same layout, for developing an entry without rebuilding Strata.
 
 ## Transport
 
@@ -82,10 +111,10 @@ row. Badges share the thumbnail/icon rendering used by Columns, List and Icons.
 ```
 
 Return an empty `actions` array for ineligible selections. No placeholder or
-disabled global menu item is inserted. Strata always keeps each provider's root
-entries together in an inline section with a small, muted, non-interactive
-heading. This is not an extra submenu: providers choose flat actions, recursive
-submenus, or a mixture within their section:
+disabled global menu item is inserted. Unless placed in **Send to…** (below),
+Strata keeps each provider's root entries together in an inline section with a
+small, muted, non-interactive heading. This is not an extra submenu: providers
+choose flat actions, recursive submenus, or a mixture within their section:
 
 ```json
 {"version":1,"id":2,"actions":[{"id":"share","label":"Copy share link","context":"opaque-selection-token"},{"id":"offline","label":"Offline availability","children":[{"id":"keep","label":"Keep offline","icon":"available","context":"opaque-selection-token"}]}]}
@@ -103,6 +132,41 @@ providers supply identical labels. Empty sections and their headings disappear.
 Menus populate asynchronously; retained provider sections and branches reuse
 their models on refresh. Removed leaves are disabled before removal, including
 when their containing section or branch is withdrawn or the menu closes.
+
+A root action that names a *destination*, such as a paired phone, can ask
+to appear inside Strata's **Send to…** submenu instead of the provider section:
+
+```json
+{"version":1,"id":2,"actions":[{"id":"pixel","label":"Pixel","icon":"phone","placement":"send-to","context":"opaque-selection-token"},{"id":"tablet","label":"Tablet","icon":"tablet","placement":"send-to","context":"opaque-selection-token"}]}
+```
+
+Removable drives come first in **Send to…**; each provider's destinations follow
+in a submenu named after the provider and drawn with its icon, like a drive, so
+labels should be the bare destination name. **Send to…** appears as soon as any
+destination exists, including ones that arrive while the menu is open, and
+disappears when the last one is withdrawn. Destinations may have `children`, with the usual tree
+bounds, and their leaves activate exactly like section leaves.
+
+A provider whose Send to… item is one action rather than a list of destinations,
+such as handing the selection to an app that has its own device picker, uses
+`send-to-entry` instead. The leaf then *is* the provider's item in **Send to…**,
+with its own label, and with the provider's icon when it declares none:
+
+```json
+{"version":1,"id":2,"actions":[{"id":"open","label":"LocalSend","placement":"send-to-entry","context":"opaque-selection-token"}]}
+```
+
+The provider chooses its presentation; Strata never collapses a submenu that
+holds one `send-to` destination. A `send-to-entry` action is drawn as an entry
+only while it is the provider's sole Send to… action and has no `children`;
+otherwise it joins that provider's submenu like a `send-to` destination.
+
+`placement` is read on root actions only; it is ignored on children, on
+background (folder) menus and in menus without a Send to… entry, where the
+action stays in the provider section. Unrecognized values also keep the section,
+so a provider that uses `placement` degrades to a heading section on older
+Strata versions without a handshake; Strata versions before `send-to-entry`
+treat it that way.
 
 Each menu and activation describes the whole selection, never a silently filtered
 subset. An adapter may support cross-account selections; otherwise return no
@@ -220,8 +284,10 @@ or a capabilities request. A future optional negotiation must preserve that base
 ## Bounds and failure behavior
 
 At most eight registrations are loaded (from at most 64 directory entries), with
-one child per provider. Strata sends **one request at a time** on each connection;
-serial adapters are supported, and events may arrive at any time. It queues up to
+one child per provider, except that after **Refresh** a child still answering an
+activation keeps running beside its replacement until that action settles.
+Strata sends **one request at a time** on each connection; serial adapters are
+supported, and events may arrive at any time. It queues up to
 16 speculative query/menu requests and eight activations separately. User actions
 have dispatch priority after the current request; pending refreshes for the same
 visible path/menu are coalesced by the host. A full queue rejects admission, never
@@ -266,9 +332,14 @@ filenames are unsupported; no lossy conversion is performed.
 `./scripts/test-headless.py file_providers` covers trusted registration, protocol
 bounds, literal filenames, process framing, queue saturation, snapshot ordering,
 recursive action retirement, tracking admission and window remapping.
-`./scripts/e2e.sh tests/e2e/scenarios/test_file_providers.py` exercises live menu
-refresh and withdrawal, sustained events, overlapping providers, mixed selections
-and flat/nested leaf activation through the actual GUI.
-The normal pinned quality and E2E checks remain required for this cross-cutting
+`./scripts/test-headless.py integration_catalog` covers catalog parsing and bounds,
+installation records, update and edit detection, and that every bundled entry
+parses and is translated; `./scripts/test-headless.py integrations` covers the
+Settings page. The QA scenarios in `tests/qa/scenarios/file_providers/`
+(`./scripts/qa.sh provider-updates-open-menu`, for one) exercise live menu
+refresh and withdrawal, sustained events, overlapping providers, mixed
+selections and flat/nested leaf activation through the actual GUI. Installing,
+updating and removing a catalog entry from Settings has no GUI scenario.
+The normal pinned quality and QA checks remain required for this cross-cutting
 change. Use private display/configuration environments; do not test by changing
 the default file manager or loading fixtures into a user's installed application.

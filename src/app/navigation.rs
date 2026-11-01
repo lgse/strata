@@ -11,6 +11,7 @@ use crate::{
     app::peek::PeekState,
     model::{
         FileEntry, FolderSort, Location, MetadataValue, SortDirection, SortKey, ViewPreferences,
+        hidden_names::{self, Leftover},
     },
     services::{DirectoryChange, MetadataUpdate, RequestId},
 };
@@ -25,6 +26,11 @@ pub enum LoadState {
     Ready,
     Empty,
     Error(String),
+    /// Permissions kept the user out of a native folder that `administrator` may open.
+    Denied {
+        message: String,
+        administrator: Location,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -200,6 +206,8 @@ pub struct ColumnState {
     pub location: Location,
     pub entries: Vec<FileEntry>,
     entry_counts: Cell<Option<(bool, ColumnEntryCounts)>>,
+    leftovers: OnceCell<Rc<[(usize, Leftover)]>>,
+    pub(crate) surfaced_leftovers: Cell<usize>,
     // Providers may list a location twice.
     each_location_once: OnceCell<bool>,
     metadata_positions: Option<HashMap<Location, usize>>,
@@ -381,6 +389,8 @@ impl NavigationState {
                 location,
                 entries: Vec::new(),
                 entry_counts: Cell::new(None),
+                leftovers: OnceCell::new(),
+                surfaced_leftovers: Cell::new(0),
                 each_location_once: OnceCell::new(),
                 metadata_positions: None,
                 selected: None,
@@ -460,6 +470,8 @@ impl NavigationState {
             location,
             entries: Vec::new(),
             entry_counts: Cell::new(None),
+            leftovers: OnceCell::new(),
+            surfaced_leftovers: Cell::new(0),
             each_location_once: OnceCell::new(),
             metadata_positions: None,
             selected: None,
@@ -686,16 +698,8 @@ impl NavigationState {
         if updates.is_empty() {
             return None;
         }
-        // Full-sort fills arrive in small chunks. Build routing once, not a directory scan
-        // per chunk; structural changes invalidate it and the sort terminal releases it.
-        let index = column.metadata_positions.get_or_insert_with(|| {
-            column
-                .entries
-                .iter()
-                .enumerate()
-                .map(|(position, entry)| (entry.location.clone(), position))
-                .collect()
-        });
+        column.index_metadata_positions();
+        let index = column.metadata_positions.as_ref().expect("indexed entries");
         let mut positions = Vec::with_capacity(updates.len());
         if index.len() == column.entries.len() {
             for (location, update) in updates {
@@ -1011,22 +1015,44 @@ impl NavigationState {
                         entry.duration_seconds = previous.duration_seconds.clone();
                     }
                 }
-                if selected_location.as_ref() == Some(&from) {
-                    selected_location = Some(entry.location.clone());
+                // A hidden destination leaves the filtered view, so the cursor moves as on removal.
+                let hides = entry.is_hidden && !preferences.show_hidden;
+                let removed_position = column
+                    .entries
+                    .iter()
+                    .position(|previous| previous.location == from);
+                let follow = (!hides).then(|| entry.location.clone());
+                if follow.is_some() {
+                    column
+                        .selected_locations
+                        .relocate(&from, entry.location.clone());
+                } else {
+                    column.selected_locations.remove(&from);
                 }
-                column
-                    .selected_locations
-                    .relocate(&from, entry.location.clone());
                 for target in [
                     &mut column.selection_target,
                     &mut column.selection_anchor,
                     &mut column.load_cursor,
                 ] {
                     if target.as_ref() == Some(&from) {
-                        *target = Some(entry.location.clone());
+                        *target = follow.clone();
                     }
                 }
                 remove_monitored_entry(&mut column.entries, &from, &mut splices);
+                if selected_location.as_ref() == Some(&from) {
+                    selected_location = follow.or_else(|| {
+                        removed_position
+                            .and_then(|position| column.visible_neighbor(position))
+                            .and_then(|index| column.entries.get(index))
+                            .map(|neighbor| neighbor.location.clone())
+                    });
+                    if hides
+                        && !self.preserve_fill_on_removal
+                        && let Some(ref replacement) = selected_location
+                    {
+                        column.selected_locations.insert(replacement.clone());
+                    }
+                }
                 upsert_monitored_entry(&mut column.entries, entry, preferences, &mut splices);
             }
             DirectoryChange::Rescan => return None,
@@ -1258,6 +1284,7 @@ impl NavigationState {
         column.metadata_positions = None;
         if preferences.sort_key != SortKey::DeviceOrder {
             column.entries = sort_entries(std::mem::take(&mut column.entries), preferences);
+            column.leftovers.take();
             column.selected_locations.forget_positions();
         }
         column.selected = selected_location.and_then(|location| {
@@ -1320,10 +1347,35 @@ impl NavigationState {
         Some((depth, cursor_moved))
     }
 
-    pub fn fail(&mut self, request_id: RequestId, message: String) -> Option<usize> {
+    pub fn keep_listing(&mut self, request_id: RequestId, truncated: bool) -> bool {
+        let Some((_, column)) = self.column_for_request_mut(request_id) else {
+            return false;
+        };
+        column.pending_selection.clear();
+        column.truncated = truncated;
+        column.load_state = if column.entries.is_empty() {
+            LoadState::Empty
+        } else {
+            LoadState::Ready
+        };
+        true
+    }
+
+    pub fn fail(
+        &mut self,
+        request_id: RequestId,
+        message: String,
+        administrator: Option<Location>,
+    ) -> Option<usize> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
         column.drop_load_intents();
-        column.load_state = LoadState::Error(message);
+        column.load_state = match administrator {
+            Some(administrator) => LoadState::Denied {
+                message,
+                administrator,
+            },
+            None => LoadState::Error(message),
+        };
         Some(depth)
     }
 
@@ -2187,6 +2239,14 @@ impl NavigationState {
             return None;
         }
         self.record_navigation();
+        self.drop_columns_from(depth)
+    }
+
+    /// Like `close_from`, without a history entry.
+    pub fn drop_columns_from(&mut self, depth: usize) -> Option<(usize, Option<usize>)> {
+        if depth == 0 || depth >= self.columns.len() {
+            return None;
+        }
         self.peek = None;
         self.visual = None;
         self.columns.truncate(depth);
@@ -2197,6 +2257,26 @@ impl NavigationState {
 
     pub fn entry_at(&self, depth: usize, position: usize) -> Option<FileEntry> {
         self.columns.get(depth)?.entries.get(position).cloned()
+    }
+
+    pub fn resolve_entry_at(
+        &mut self,
+        depth: usize,
+        position: usize,
+        location: &Location,
+    ) -> Option<(usize, FileEntry)> {
+        let column = self.columns.get_mut(depth)?;
+        let position = if column
+            .entries
+            .get(position)
+            .is_some_and(|entry| &entry.location == location)
+        {
+            position
+        } else {
+            column.index_metadata_positions();
+            *column.metadata_positions.as_ref()?.get(location)?
+        };
+        Some((position, column.entries.get(position)?.clone()))
     }
 
     pub fn column_entry_counts(&self, depth: usize) -> Option<ColumnEntryCounts> {
@@ -2227,6 +2307,25 @@ impl NavigationState {
         };
         column.entry_counts.set(Some((show_hidden, counts)));
         Some(counts)
+    }
+
+    pub(crate) fn column_leftover_names(&self, depth: usize) -> Rc<[(usize, Leftover)]> {
+        let Some(column) = self.columns.get(depth) else {
+            return Rc::new([]);
+        };
+        column
+            .leftovers
+            .get_or_init(|| {
+                column
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(position, entry)| {
+                        Some((position, hidden_names::classify(&entry.native_name)?))
+                    })
+                    .collect()
+            })
+            .clone()
     }
 
     pub fn active_child_position(&self, depth: usize) -> Option<usize> {
@@ -2364,6 +2463,19 @@ impl ColumnState {
             .or_else(|| (0..position.min(self.entries.len())).rev().find(visible))
     }
 
+    fn index_metadata_positions(&mut self) {
+        // Sort chunks and shifted viewport targets share one index per structural revision.
+        if self.metadata_positions.is_none() {
+            self.metadata_positions = Some(
+                self.entries
+                    .iter()
+                    .enumerate()
+                    .map(|(position, entry)| (entry.location.clone(), position))
+                    .collect(),
+            );
+        }
+    }
+
     fn invalidate_entry_indexes(&mut self) {
         self.each_location_once.take();
         self.invalidate_spliced_entry_indexes();
@@ -2372,6 +2484,7 @@ impl ColumnState {
     /// Splices add, replace and remove rows by location, so they never add a repeat.
     fn invalidate_spliced_entry_indexes(&mut self) {
         self.entry_counts.set(None);
+        self.leftovers.take();
         self.metadata_positions = None;
         self.selected_locations.forget_positions();
     }
@@ -2586,6 +2699,10 @@ fn apply_metadata_update(entry: &mut FileEntry, update: &MetadataUpdate) -> bool
         && entry.duration_seconds != update.duration_seconds
     {
         entry.duration_seconds = update.duration_seconds.clone();
+        changed = true;
+    }
+    if update.listable != MetadataValue::Unknown && entry.listable != update.listable {
+        entry.listable = update.listable.clone();
         changed = true;
     }
     changed

@@ -8,6 +8,7 @@ fn result(query: &str) -> SearchEvent {
         indexing: false,
         coverage: SearchCoverage::default(),
         has_more: false,
+        candidates: 0,
     }
 }
 
@@ -51,6 +52,7 @@ fn changed_search_limits_restart_the_worker_on_the_next_update() {
                 show_hidden: false,
                 scope: SearchScope::Subfolders,
                 refused: Default::default(),
+                within: None,
             };
             let manager = crate::ui::preferences::PreferenceManager::shared();
             manager.set_search_entry_limit(200_000);
@@ -97,6 +99,7 @@ fn restart_intent_cancellation_and_drop_retire_worker_delivery() {
                 show_hidden: false,
                 scope: SearchScope::Subfolders,
                 refused: Default::default(),
+                within: None,
             };
             let session = SearchSession::default();
             let delivered = Rc::new(RefCell::new(Vec::new()));
@@ -156,6 +159,7 @@ fn scope_change_retires_the_recursive_worker_for_the_same_query() {
                 show_hidden: false,
                 scope,
                 refused: Default::default(),
+                within: None,
             };
             let session = SearchSession::default();
             let delivered = Rc::new(RefCell::new(Vec::new()));

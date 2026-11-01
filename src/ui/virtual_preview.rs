@@ -16,10 +16,12 @@ use crate::services::{
     normalize_preview_text,
 };
 use crate::ui::keys::{
-    self, KeyPress,
-    bindings::{COPY, DOWN, FIRST_ITEM, LAST_ITEM, LEFT, RIGHT, SELECT_ALL, UP},
+    self, KeyPress, Match,
+    bindings::{COPY, DOWN, END_KEY, HOME_KEY, LEFT, RIGHT, SELECT_ALL, UP},
 };
 
+mod line_numbers;
+mod scrollbar;
 mod selection;
 use selection::Motion;
 pub(super) use selection::match_ranges;
@@ -45,7 +47,7 @@ impl PreviewUnit {
     fn display_text(&self) -> &str {
         match self {
             Self::Document(unit) => &unit.text,
-            Self::Source(unit) => &unit.display,
+            Self::Source(unit) => unit.display_text(),
         }
     }
 
@@ -73,11 +75,27 @@ impl PreviewUnit {
 
 #[derive(Clone)]
 struct SourceUnit {
-    display: String,
     source: String,
+    display_end: usize,
     first_line: usize,
     line_count: usize,
     continuation: bool,
+}
+
+impl SourceUnit {
+    fn new(source: String, first_line: usize, line_count: usize, continuation: bool) -> Self {
+        Self {
+            display_end: source.strip_suffix('\n').unwrap_or(&source).len(),
+            source,
+            first_line,
+            line_count,
+            continuation,
+        }
+    }
+
+    fn display_text(&self) -> &str {
+        &self.source[..self.display_end]
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -108,9 +126,17 @@ impl DocumentSelection {
 
 #[derive(Default)]
 struct BoundRow {
+    materialized: bool,
     root: glib::WeakRef<gtk::Box>,
     view: glib::WeakRef<super::document_view::DocumentTextView>,
     table: glib::WeakRef<gtk::Box>,
+}
+
+impl BoundRow {
+    fn mapped_root(&self) -> Option<gtk::Box> {
+        // GTK keeps prefetched rows bound with stale allocations while hidden.
+        self.root.upgrade().filter(|row| row.is_mapped())
+    }
 }
 
 pub(super) struct VirtualPreviewState {
@@ -222,6 +248,8 @@ fn virtual_preview(
     let selection = gtk::NoSelection::new(Some(model.clone()));
     let document_tags = (!source).then(document_tag_table);
     let factory = gtk::SignalListItemFactory::new();
+    let state_for_map = Rc::downgrade(&state);
+    let document_tags_for_map = document_tags.clone();
     factory.connect_setup(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
@@ -232,6 +260,19 @@ fn virtual_preview(
         row.set_hexpand(true);
         if !source {
             row.set_layout_manager(Some(super::preview::media_layout::ContentColumn::new()));
+            let weak_item = item.downgrade();
+            let state_for_map = state_for_map.clone();
+            let document_tags = document_tags_for_map.clone();
+            row.connect_map(move |row| {
+                if let (Some(item), Some(state)) = (weak_item.upgrade(), state_for_map.upgrade()) {
+                    materialize_row(
+                        row,
+                        item.position() as usize,
+                        &state,
+                        document_tags.as_ref(),
+                    );
+                }
+            });
         }
         item.set_child(Some(&row));
     });
@@ -246,58 +287,26 @@ fn virtual_preview(
             return;
         };
         let index = item.position() as usize;
-        let Some(unit) = state_for_bind.units.get(index) else {
-            return;
-        };
-        let bound = if let PreviewUnit::Document(DocumentUnit {
-            kind: DocumentUnitKind::Media { source, list_depth },
-            text,
-            ..
-        }) = unit
-        {
-            clear_box(&row);
-            row.set_margin_start(16 + list_indent(*list_depth));
-            row.set_margin_end(16);
-            row.set_margin_top(8);
-            row.set_margin_bottom(12);
-            state_for_bind
-                .media_cache
-                .bind((index, None), source, text, &row);
-            let bound = BoundRow::default();
-            bound.root.set(Some(&row));
-            bound
-        } else {
-            bind_unit(
-                &row,
-                unit,
-                index,
-                &state_for_bind,
-                document_tags_for_bind.as_ref(),
-            )
-        };
-        align_document_row(&row, state_for_bind.wrapped.get());
-        if !source && let Some(view) = bound.view.upgrade() {
-            if let PreviewUnit::Document(unit) = unit {
-                bind_inline_math(&view, unit, index, &state_for_bind.media_cache);
-            }
-            schedule_document_view_size(&view, rendered_width(row.width()));
-        }
-        let mut bound_rows = state_for_bind.bound.borrow_mut();
-        bound_rows.retain(|_, bound| {
-            bound
-                .root
-                .upgrade()
-                .is_some_and(|bound_row| bound_row != row)
-        });
-        bound_rows.insert(index, bound);
-        drop(bound_rows);
-        update_bound_selection(&state_for_bind, index);
-        if let Some(hovered) = state_for_bind
-            .hovered
-            .get()
-            .filter(|(unit, _)| *unit == index)
-        {
-            set_link_hover(&state_for_bind, hovered, true);
+        let bound = BoundRow::default();
+        bound.root.set(Some(&row));
+        state_for_bind.bound.borrow_mut().insert(index, bound);
+        if source {
+            materialize_row(&row, index, &state_for_bind, None);
+        } else if row.is_mapped() {
+            // GTK rebinds rows before unmapping its old prefetch window. Discard
+            // intermediate bindings before building their widget trees.
+            let weak_state = Rc::downgrade(&state_for_bind);
+            let weak_item = item.downgrade();
+            let document_tags = document_tags_for_bind.clone();
+            row.add_tick_callback(move |row, _| {
+                if let (Some(state), Some(item)) = (weak_state.upgrade(), weak_item.upgrade())
+                    && row.is_mapped()
+                    && item.position() as usize == index
+                {
+                    materialize_row(row, index, &state, document_tags.as_ref());
+                }
+                glib::ControlFlow::Break
+            });
         }
     });
 
@@ -306,14 +315,10 @@ fn virtual_preview(
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
         };
-        if let Some(row) = item.child().and_downcast::<gtk::Box>() {
-            state_for_unbind.bound.borrow_mut().retain(|_, bound| {
-                bound
-                    .root
-                    .upgrade()
-                    .is_some_and(|bound_row| bound_row != row)
-            });
-        }
+        state_for_unbind
+            .bound
+            .borrow_mut()
+            .remove(&(item.position() as usize));
     });
 
     let list = gtk::ListView::new(Some(selection), Some(factory));
@@ -361,7 +366,7 @@ fn virtual_preview(
     for warning in warnings {
         container.append(&super::preview::document_notice(&warning));
     }
-    container.append(&scroll);
+    container.append(&scrollbar::wrap(&scroll, &state));
     (container, state)
 }
 
@@ -502,7 +507,11 @@ impl VirtualPreviewState {
                     });
                 }
                 Some(PreviewUnit::Source(unit)) => {
-                    apply_source_view_wrap(&view, &normalize_preview_text(&unit.display), wrapped);
+                    apply_source_view_wrap(
+                        &view,
+                        &normalize_preview_text(unit.display_text()),
+                        wrapped,
+                    );
                 }
                 None => {}
             }
@@ -544,6 +553,58 @@ fn apply_source_view_wrap(
         view.set_hexpand(true);
         view.set_wrap_mode(gtk::WrapMode::None);
         set_text_view_content(view.upcast_ref(), text, view.right_margin());
+    }
+}
+
+fn materialize_row(
+    row: &gtk::Box,
+    index: usize,
+    state: &VirtualPreviewState,
+    document_tags: Option<&gtk::TextTagTable>,
+) {
+    if state
+        .bound
+        .borrow()
+        .get(&index)
+        .is_some_and(|bound| bound.materialized)
+    {
+        return;
+    }
+    let Some(unit) = state.units.get(index) else {
+        return;
+    };
+    let mut bound = if let PreviewUnit::Document(DocumentUnit {
+        kind: DocumentUnitKind::Media { source, list_depth },
+        text,
+        ..
+    }) = unit
+    {
+        clear_box(row);
+        row.set_margin_start(16 + list_indent(*list_depth));
+        row.set_margin_end(16);
+        row.set_margin_top(8);
+        row.set_margin_bottom(12);
+        state.media_cache.bind((index, None), source, text, row);
+        let bound = BoundRow::default();
+        bound.root.set(Some(row));
+        bound
+    } else {
+        bind_unit(row, unit, index, state, document_tags)
+    };
+    align_document_row(row, state.wrapped.get());
+    if document_tags.is_some()
+        && let Some(view) = bound.view.upgrade()
+    {
+        if let PreviewUnit::Document(unit) = unit {
+            bind_inline_math(&view, unit, index, &state.media_cache);
+        }
+        schedule_document_view_size(&view, rendered_width(row.width()));
+    }
+    bound.materialized = true;
+    state.bound.borrow_mut().insert(index, bound);
+    update_bound_selection(state, index);
+    if let Some(hovered) = state.hovered.get().filter(|(unit, _)| *unit == index) {
+        set_link_hover(state, hovered, true);
     }
 }
 
@@ -686,7 +747,7 @@ fn reusable_document_view(
 
 fn document_uses_source_buffer(unit: &DocumentUnit) -> bool {
     highlighted_code_language(unit).is_some_and(|language| {
-        sourceview5::LanguageManager::default()
+        super::theme::source_languages()
             .language(language)
             .is_some()
     })
@@ -694,13 +755,8 @@ fn document_uses_source_buffer(unit: &DocumentUnit) -> bool {
 
 fn bind_source_row(row: &gtk::Box, unit: &SourceUnit, wrapped: bool) -> BoundRow {
     let view = if let Some((numbers, view)) = source_row_views(row) {
-        let numbers_text = source_line_numbers(unit);
-        set_text_view_content(
-            &numbers,
-            &numbers_text,
-            numbers.left_margin() + numbers.right_margin(),
-        );
-        let text = normalize_preview_text(&unit.display);
+        numbers.set_text(source_line_numbers(unit));
+        let text = normalize_preview_text(unit.display_text());
         set_text_view_content(view.upcast_ref(), &text, view.right_margin());
         view.set_selection_range(None);
         apply_source_view_wrap(&view, &text, wrapped);
@@ -709,9 +765,9 @@ fn bind_source_row(row: &gtk::Box, unit: &SourceUnit, wrapped: bool) -> BoundRow
         clear_box(row);
         let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         line.add_css_class("preview-source-row");
-        let numbers = source_line_numbers_view(unit);
-        let view = plain_text_view(&unit.display, true);
-        let text = normalize_preview_text(&unit.display);
+        let numbers = line_numbers::LineNumbers::new(source_line_numbers(unit));
+        let view = plain_text_view(unit.display_text(), true);
+        let text = normalize_preview_text(unit.display_text());
         apply_source_view_wrap(&view, &text, wrapped);
         line.append(&numbers);
         line.append(&view);
@@ -726,9 +782,15 @@ fn bind_source_row(row: &gtk::Box, unit: &SourceUnit, wrapped: bool) -> BoundRow
 
 fn source_row_views(
     row: &gtk::Box,
-) -> Option<(gtk::TextView, super::document_view::DocumentTextView)> {
+) -> Option<(
+    line_numbers::LineNumbers,
+    super::document_view::DocumentTextView,
+)> {
     let line = row.first_child()?.downcast::<gtk::Box>().ok()?;
-    let numbers = line.first_child()?.downcast::<gtk::TextView>().ok()?;
+    let numbers = line
+        .first_child()?
+        .downcast::<line_numbers::LineNumbers>()
+        .ok()?;
     let view = numbers
         .next_sibling()?
         .downcast::<super::document_view::DocumentTextView>()
@@ -741,7 +803,7 @@ fn rendered_width(width: i32) -> i32 {
 }
 
 fn size_document_row(bound: &BoundRow, width: i32) {
-    if !bound.root.upgrade().is_some_and(|row| row.is_mapped()) {
+    if bound.mapped_root().is_none() {
         return;
     }
     let Some(view) = bound.view.upgrade() else {
@@ -754,6 +816,10 @@ pub(super) fn schedule_document_view_size(
     view: &super::document_view::DocumentTextView,
     fallback_width: i32,
 ) {
+    // Mapping schedules the first measurement; prefetched rows need no idle work.
+    if !view.is_mapped() {
+        return;
+    }
     let view = view.downgrade();
     glib::idle_add_local_once(move || {
         let Some(view) = view.upgrade().filter(|view| view.is_mapped()) else {
@@ -804,24 +870,6 @@ fn unwrapped_document_width(view: &super::document_view::DocumentTextView) -> i3
     widest + view.right_margin()
 }
 
-fn source_line_numbers_view(unit: &SourceUnit) -> gtk::TextView {
-    let text = source_line_numbers(unit);
-    let buffer = gtk::TextBuffer::new(None);
-    let view = gtk::TextView::with_buffer(&buffer);
-    view.set_editable(false);
-    view.set_cursor_visible(false);
-    view.set_accepts_tab(false);
-    view.set_wrap_mode(gtk::WrapMode::None);
-    view.set_can_target(false);
-    view.set_focusable(false);
-    view.set_accessible_role(gtk::AccessibleRole::Presentation);
-    view.add_css_class("preview-source-lines");
-    view.set_left_margin(2);
-    view.set_right_margin(6);
-    set_text_view_content(&view, &text, view.left_margin() + view.right_margin());
-    view
-}
-
 fn set_text_view_content(view: &gtk::TextView, text: &str, padding: i32) {
     view.buffer().set_text(text);
     let (width, height) = view.create_pango_layout(Some(text)).pixel_size();
@@ -869,8 +917,7 @@ fn document_text_view(
     wrapped: bool,
 ) -> super::document_view::DocumentTextView {
     let buffer = if document_uses_source_buffer(unit) {
-        let buffer = sourceview5::Buffer::new(None);
-        super::theme::register_source_buffer(&buffer);
+        let buffer = super::theme::new_source_buffer();
         buffer.upcast::<gtk::TextBuffer>()
     } else {
         gtk::TextBuffer::new(Some(document_tags))
@@ -901,7 +948,7 @@ fn bind_document_text_view(
     let text = normalize_preview_text(&unit.text);
     if let Ok(source_buffer) = buffer.clone().downcast::<sourceview5::Buffer>() {
         let language = highlighted_code_language(unit)
-            .and_then(|language| sourceview5::LanguageManager::default().language(language));
+            .and_then(|language| super::theme::source_languages().language(language));
         source_buffer.set_highlight_syntax(language.is_some());
         source_buffer.set_language(language.as_ref());
         source_buffer.set_text(&text);
@@ -1332,7 +1379,8 @@ pub(super) fn set_table_cell(label: &gtk::Label, cell: &DocumentTableCellLayout)
 }
 
 pub(super) fn open_web_link(uri: &str, parent: &impl IsA<gtk::Widget>) {
-    if let Err(error) = gio::AppInfo::launch_default_for_uri(uri, None::<&gio::AppLaunchContext>) {
+    let context = crate::child_environment::launch_context(&parent.display());
+    if let Err(error) = gio::AppInfo::launch_default_for_uri(uri, Some(&context)) {
         super::modal::show_error_dialog(
             parent,
             &crate::i18n::tr("Unable to open link"),
@@ -1655,7 +1703,7 @@ fn install_keyboard_selection(list: &gtk::ListView, state: Rc<VirtualPreviewStat
             return glib::Propagation::Stop;
         }
         let held = press.modifiers();
-        if let Some(motion) = caret_motion(press)
+        if let Some(motion) = caret_motion(&press.untyped())
             && let Some(selection) = selection::move_selection(
                 &state.units,
                 state.selection.get(),
@@ -1675,16 +1723,17 @@ fn install_keyboard_selection(list: &gtk::ListView, state: Rc<VirtualPreviewStat
 /// Ctrl moves by word or to the document's ends; Shift extends.
 fn caret_motion(press: &KeyPress) -> Option<Motion> {
     const HELD: Modifiers = Modifiers::CONTROL_MASK.union(Modifiers::SHIFT_MASK);
-    [
-        (LEFT, Motion::Left),
-        (RIGHT, Motion::Right),
-        (UP, Motion::Up),
-        (DOWN, Motion::Down),
-        (FIRST_ITEM, Motion::Home),
-        (LAST_ITEM, Motion::End),
-    ]
-    .into_iter()
-    .find_map(|(binding, motion)| press.is(binding.ignoring(HELD)).then_some(motion))
+    let motions: [(&dyn Match, Motion); 6] = [
+        (&LEFT.ignoring(HELD), Motion::Left),
+        (&RIGHT.ignoring(HELD), Motion::Right),
+        (&UP.ignoring(HELD), Motion::Up),
+        (&DOWN.ignoring(HELD), Motion::Down),
+        (&HOME_KEY.ignoring(HELD), Motion::Home),
+        (&END_KEY.ignoring(HELD), Motion::End),
+    ];
+    motions
+        .into_iter()
+        .find_map(|(key, motion)| press.is(key).then_some(motion))
 }
 
 fn start_autoscroll(
@@ -1751,7 +1800,7 @@ fn point_at(
     let mut rows = bound
         .iter()
         .filter_map(|(index, bound)| {
-            bound.root.upgrade().and_then(|root| {
+            bound.mapped_root().and_then(|root| {
                 root.compute_bounds(list)
                     .map(|bounds| (*index, bound, bounds))
             })
@@ -1867,7 +1916,7 @@ fn link_point_at(
     let point = gtk::graphene::Point::new(x as f32, y as f32);
     let bound = state.bound.borrow();
     let (index, row, _) = bound.iter().find_map(|(index, row)| {
-        let root = row.root.upgrade()?;
+        let root = row.mapped_root()?;
         let bounds = root.compute_bounds(list)?;
         (bounds.x() <= point.x()
             && point.x() < bounds.x() + bounds.width()
@@ -1875,6 +1924,16 @@ fn link_point_at(
             && point.y() < bounds.y() + bounds.height())
         .then_some((*index, row, bounds))
     })?;
+    let PreviewUnit::Document(unit) = state.units.get(index)? else {
+        return None;
+    };
+    if !unit
+        .spans
+        .iter()
+        .any(|span| matches!(span.style, DocumentSpanStyle::Link(_)))
+    {
+        return None;
+    }
     let view = row.view.upgrade()?;
     let local = list.compute_point(&view, &point)?;
     if local.x() < 0.0
@@ -2099,13 +2158,7 @@ fn source_units(content: &str) -> (Vec<SourceUnit>, bool) {
     }
     push_source_group(&mut units, &mut group, group_line, group_lines);
     if units.is_empty() {
-        units.push(SourceUnit {
-            display: String::new(),
-            source: String::new(),
-            first_line: 1,
-            line_count: 1,
-            continuation: false,
-        });
+        units.push(SourceUnit::new(String::new(), 1, 1, false));
     }
     (units, split_lines)
 }
@@ -2119,15 +2172,12 @@ fn push_source_group(
     if group.is_empty() {
         return;
     }
-    let source = std::mem::take(group);
-    let display = source.strip_suffix('\n').unwrap_or(&source).to_owned();
-    units.push(SourceUnit {
-        display,
-        source,
+    units.push(SourceUnit::new(
+        std::mem::take(group),
         first_line,
         line_count,
-        continuation: false,
-    });
+        false,
+    ));
 }
 
 fn push_source_line_chunks(units: &mut Vec<SourceUnit>, line: &str, first_line: usize) {
@@ -2145,26 +2195,21 @@ fn push_source_line_chunks(units: &mut Vec<SourceUnit>, line: &str, first_line: 
         while !line.is_char_boundary(end) {
             end -= 1;
         }
-        units.push(SourceUnit {
-            display: line[start..end].to_owned(),
-            source: line[start..end].to_owned(),
+        units.push(SourceUnit::new(
+            line[start..end].to_owned(),
             first_line,
-            line_count: usize::from(!continuation),
+            usize::from(!continuation),
             continuation,
-        });
+        ));
         start = end;
         continuation = true;
     }
-    units.push(SourceUnit {
-        display: line[start..]
-            .strip_suffix('\n')
-            .unwrap_or(&line[start..])
-            .to_owned(),
-        source: line[start..].to_owned(),
+    units.push(SourceUnit::new(
+        line[start..].to_owned(),
         first_line,
-        line_count: usize::from(!continuation),
+        usize::from(!continuation),
         continuation,
-    });
+    ));
 }
 
 fn source_line_numbers(unit: &SourceUnit) -> String {

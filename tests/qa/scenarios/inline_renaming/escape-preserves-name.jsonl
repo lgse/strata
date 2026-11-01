@@ -1,0 +1,16 @@
+{"scenario":"escape-preserves-name","modes":["columns"],"layout":"us","mutation":"rename-escape","known_bug":null,"cost":{"columns":0.8},"quality":{"impact":3,"coverage":2,"criticality":4,"diagnostic":4,"score":16,"note":"Escape discards a typed name on an existing file; subset of escape-preserves-name-remaining, only the file entry kind is unique"}}
+{"select":{"entry":"readme.md"}}
+{"select_with_keyboard":"todo.txt"}
+{"key":"F2"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus"}
+{"remember":{"field":true},"as":"rename"}
+{"key":"ctrl+a"}
+{"wait":{"field":{"of":"rename","text":"todo.txt"}},"message":"the original name to appear"}
+{"fs":{"path":"todo.txt","is":"file"},"timeout_ms":0}
+{"type":"discarded"}
+{"wait":{"field":{"of":"rename","text":"discarded"}},"message":"the proposed name to appear"}
+{"key":"Escape"}
+{"wait":{"absent":{"role":"text","name":"Rename"}},"message":"the name editor to close"}
+{"wait":{"entry":"todo.txt"},"message":"the entry 'todo.txt' to appear"}
+{"fs":{"path":"todo.txt","exists":true},"timeout_ms":0}
+{"fs":{"path":"discarded","exists":false},"timeout_ms":0}

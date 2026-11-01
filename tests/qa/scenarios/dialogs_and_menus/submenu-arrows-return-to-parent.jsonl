@@ -1,0 +1,61 @@
+{"scenario":"submenu-arrows-return-to-parent","modes":["columns","icons","list"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"$data/applications","mkdir":true}},{"fs":{"path":"$data/applications/strata-context-viewer.desktop","write":"[Desktop Entry]\nType=Application\nName=Context Viewer\nExec=true %U\nMimeType=text/plain;text/markdown;\n"}},{"fs":{"path":"$config/mimeapps.list","write":"[Default Applications]\ntext/plain=strata-context-viewer.desktop;\ntext/markdown=strata-context-viewer.desktop;\n[Added Associations]\ntext/plain=strata-context-viewer.desktop;\ntext/markdown=strata-context-viewer.desktop;\n"}},{"fs":{"path":"$config/strata/actions/first-action","mkdir":true,"parents":true}},{"fs":{"path":"$config/strata/actions/first-action/action.toml","write":"schema_version = 1\nid = \"first-action\"\nname = \"First action\"\nmenu = \"submenu\"\n[when]\n[run]\nruntime = \"command\"\nprogram = \"true\"\nargs = [\"{paths}\"]\n"}},{"fs":{"path":"$config/strata/actions/second-action","mkdir":true,"parents":true}},{"fs":{"path":"$config/strata/actions/second-action/action.toml","write":"schema_version = 1\nid = \"second-action\"\nname = \"Second action\"\nmenu = \"submenu\"\n[when]\n[run]\nruntime = \"command\"\nprogram = \"true\"\nargs = [\"{paths}\"]\n"}}],"cost":{"columns":1.5,"icons":1.6,"list":1.6},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Left closes a keyboard submenu and returns focus to its parent item; only scenario pressing Left in a submenu (no unit test)"}}
+{"select":{"entry":"todo.txt","dir":"$root"}}
+{"click":{"entry":"readme.md","dir":"$root"},"mods":["ctrl"]}
+{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the selection to become ['readme.md', 'todo.txt']"}
+{"key":"shift+F10"}
+{"wait":{"menu_items":{}},"message":"multi-selection context menu"}
+{"key":"Home"}
+{"note":"menu_items","as":"items"}
+{"keys_until":{"state":{"target":{"menu_item":"Actions"},"focused":true}},"keys":["Down"],"times":"$items","check_first":true}
+{"wait":{"state":{"target":{"menu_item":"Actions"},"focused":true}},"message":"Actions focus"}
+{"key":"Right"}
+{"wait":{"state":{"target":{"menu_item":"First action"},"focused":true}},"message":"first submenu action focus"}
+{"key":"Down"}
+{"wait":{"state":{"target":{"menu_item":"Second action"},"focused":true}},"message":"navigation inside the submenu"}
+{"key":"Left"}
+{"wait":{"absent":{"role":"menu item","name":"Second action"}},"message":"Left to close only the submenu"}
+{"wait":{"state":{"target":{"menu_item":"Actions"},"focused":true}},"message":"owner focus"}
+{"key":"Down"}
+{"wait":{"state":{"target":{"menu_item":"Cut"},"focused":true}},"message":"parent Down navigation"}
+{"key":"Up"}
+{"wait":{"state":{"target":{"menu_item":"Actions"},"focused":true}},"message":"parent Up navigation"}
+{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the selection to become ['readme.md', 'todo.txt']"}
+{"key":"space"}
+{"wait":{"state":{"target":{"menu_item":"First action"},"focused":true}},"message":"first submenu action focus"}
+{"key":"Down"}
+{"wait":{"state":{"target":{"menu_item":"Second action"},"focused":true}},"message":"navigation inside the submenu"}
+{"key":"Left"}
+{"wait":{"absent":{"role":"menu item","name":"Second action"}},"message":"Left to close only the submenu"}
+{"wait":{"state":{"target":{"menu_item":"Actions"},"focused":true}},"message":"owner focus"}
+{"key":"Down"}
+{"wait":{"state":{"target":{"menu_item":"Cut"},"focused":true}},"message":"parent Down navigation"}
+{"key":"Up"}
+{"wait":{"state":{"target":{"menu_item":"Actions"},"focused":true}},"message":"parent Up navigation"}
+{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the selection to become ['readme.md', 'todo.txt']"}
+{"key":"Return"}
+{"wait":{"state":{"target":{"menu_item":"First action"},"focused":true}},"message":"first submenu action focus"}
+{"key":"Down"}
+{"wait":{"state":{"target":{"menu_item":"Second action"},"focused":true}},"message":"navigation inside the submenu"}
+{"key":"Left"}
+{"wait":{"absent":{"role":"menu item","name":"Second action"}},"message":"Left to close only the submenu"}
+{"wait":{"state":{"target":{"menu_item":"Actions"},"focused":true}},"message":"owner focus"}
+{"key":"Down"}
+{"wait":{"state":{"target":{"menu_item":"Cut"},"focused":true}},"message":"parent Down navigation"}
+{"key":"Up"}
+{"wait":{"state":{"target":{"menu_item":"Actions"},"focused":true}},"message":"parent Up navigation"}
+{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the selection to become ['readme.md', 'todo.txt']"}
+{"key":"Down"}
+{"key":"Down"}
+{"wait":{"state":{"target":{"menu_item":"Copy"},"focused":true}},"message":"Copy focus after submenu return"}
+{"key":"Return"}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"select":{"entry":"archive"},"modes":["columns"]}
+{"click":{"entry":"archive"},"count":2,"modes":["icons","list"]}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
+{"settle":{"pane":"archive"}}
+{"move":{"pane":"archive"}}
+{"key":"ctrl+v"}
+{"fs":{"path":"archive/readme.md","exists":true},"message":"readme.md copied from the parent menu"}
+{"fs":{"path":"archive/readme.md","copy_of":"readme.md"},"timeout_ms":0}
+{"fs":{"path":"archive/todo.txt","exists":true},"message":"todo.txt copied from the parent menu"}
+{"fs":{"path":"archive/todo.txt","copy_of":"todo.txt"},"timeout_ms":0}

@@ -531,6 +531,23 @@ fn tenxer_filter_commits_results_without_touching_the_hidden_directory() {
                     fixture.shortcuts.prompt_has_focus(),
                     "{mode:?}: typing filters live and stays in the prompt"
                 );
+                fixture.view.step_filter_results(1, 1, false);
+                let stepped = selected_result_names(&fixture);
+                assert_eq!(stepped.len(), 1, "{mode:?}");
+                fixture.shortcuts.prompt().set_text("repo");
+                wait_until(|| fixture.view.listing_filter().as_deref() == Some("repo"));
+                pump(300);
+                assert_eq!(
+                    selected_result_names(&fixture),
+                    stepped,
+                    "{mode:?}: editing the query keeps a stepped hit, unlike the Ctrl+F field"
+                );
+                assert!(
+                    marked_rows(fixture.window.upcast_ref()).is_empty(),
+                    "{mode:?}: the prompt shows no Enter mark"
+                );
+                fixture.shortcuts.prompt().set_text("report");
+                wait_results(&fixture, &IMMEDIATE_REPORTS);
 
                 assert!(fixture.press(Key::Return, none));
                 assert_eq!(fixture.shortcuts.open_prompt_kind(), None);

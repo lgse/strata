@@ -1,20 +1,32 @@
 // SPDX-License-Identifier: MIT
 
+mod density;
 mod syntax;
 mod text_size;
 
-use std::{cell::Cell, collections::HashSet, rc::Rc};
+use std::{cell::Cell, collections::HashSet, path::Path, rc::Rc};
 
 use crate::ui::preferences::{CornerRoundness, PreferenceManager};
 
 use super::{
-    Theme, ThemeManager, ThemeTokens, azure_tokens, blend, builtins, canonical_color, color_to_hex,
-    custom_theme_id, is_omarchy_theme_event, merge_builtin_and_custom_themes, omarchy::contrast,
-    slugify, source_palette_from_quattro, source_style_scheme_xml, themes_directory,
-    title_case_slug, tokens_from_quattro, validate_tokens,
+    PINNED_GTK_THEME, Theme, ThemeManager, ThemeTokens, azure_tokens, blend, builtins,
+    canonical_color, color_to_hex, custom_theme_id, is_omarchy_theme_event,
+    merge_builtin_and_custom_themes, omarchy::contrast, slugify, source_palette_from_quattro,
+    source_style_scheme_xml, themes_directory, title_case_slug, tokens_from_quattro,
+    validate_tokens,
 };
 use crate::test_support::{gtk_test, gtk_test_with_env, texture_has_visible_pixels};
 use gtk::prelude::*;
+
+fn save_custom_theme(manager: &Rc<ThemeManager>, tokens: ThemeTokens) -> std::io::Result<String> {
+    let saved = Rc::new(std::cell::RefCell::new(None));
+    let done = saved.clone();
+    manager.save_custom_theme(tokens, move |result| {
+        done.replace(Some(result));
+    });
+    crate::storage::writer::settle();
+    saved.take().expect("theme save finished")
+}
 
 #[test]
 fn bundled_catalog_is_valid_unique_and_alphabetical() {
@@ -55,10 +67,15 @@ fn bundled_catalog_is_valid_unique_and_alphabetical() {
     }
 }
 
+type TextColor = (&'static str, fn(&ThemeTokens) -> &str);
 type ContrastFloor = (&'static str, fn(&ThemeTokens) -> &str, f64);
 
 #[test]
-fn bundled_themes_keep_body_text_readable() {
+fn bundled_themes_keep_text_readable() {
+    let colors: [TextColor; 2] = [
+        ("text", |tokens| &tokens.text),
+        ("dim text", |tokens| &tokens.dim_text),
+    ];
     let floors: [ContrastFloor; 2] = [
         ("background", |tokens| &tokens.background, 4.5),
         ("surface", |tokens| &tokens.surface, 3.0),
@@ -67,13 +84,15 @@ fn bundled_themes_keep_body_text_readable() {
     assert!(!themes.is_empty());
     let mut failures = Vec::new();
     for theme in &themes {
-        for (role, color, floor) in floors {
-            let ratio = contrast(&theme.tokens.text, color(&theme.tokens));
-            if ratio < floor {
-                failures.push(format!(
-                    "{} text on {role} is {ratio:.2}:1, below the {floor}:1 floor",
-                    theme.id
-                ));
+        for (name, color) in colors {
+            for (role, background, floor) in floors {
+                let ratio = contrast(color(&theme.tokens), background(&theme.tokens));
+                if ratio < floor {
+                    failures.push(format!(
+                        "{} {name} on {role} is {ratio:.2}:1, below the {floor}:1 floor",
+                        theme.id
+                    ));
+                }
             }
         }
     }
@@ -133,7 +152,7 @@ fn saving_a_custom_theme_never_overwrites_an_existing_theme_file() {
             )
             .expect("link added after startup");
 
-            let id = manager.save_custom_theme(tokens).expect("saved theme");
+            let id = save_custom_theme(&manager, tokens).expect("saved theme");
 
             assert_eq!(id, "ocean-blue-5");
             assert!(directory.join("ocean-blue-5.toml").is_file());
@@ -211,6 +230,112 @@ fn rewriting_the_selected_custom_theme_applies_without_a_restart() {
     );
 }
 
+#[test]
+fn rewriting_a_symlinked_theme_target_applies_without_a_restart() {
+    gtk_test(
+        "ui::theme::tests::rewriting_a_symlinked_theme_target_applies_without_a_restart",
+        || {
+            let directory = themes_directory();
+            let config = directory.parent().expect("config directory");
+            let (dotfiles, generated) = (config.join("dotfiles"), config.join("generated"));
+            for path in [&directory, &dotfiles, &generated] {
+                std::fs::create_dir_all(path).expect("theme directories");
+            }
+            let write_theme = |folder: &Path, name: &str, accent: &str| {
+                let mut tokens = azure_tokens();
+                tokens.name = name.to_owned();
+                tokens.accent = accent.to_owned();
+                std::fs::write(
+                    folder.join(format!("{name}.toml")),
+                    toml::to_string_pretty(&tokens).expect("theme file"),
+                )
+                .expect("written dotfile");
+            };
+            let link = |folder: &Path, name: &str| {
+                std::os::unix::fs::symlink(
+                    folder.join(format!("{name}.toml")),
+                    directory.join(format!("{name}.toml")),
+                )
+                .expect("dotfiles link");
+            };
+            write_theme(&dotfiles, "linked", "#112233");
+            link(&dotfiles, "linked");
+
+            let manager = ThemeManager::shared();
+            manager.select_theme("linked");
+            assert_eq!(manager.active_model_palette().accent, 0x11_22_33);
+
+            // Dangling until the generator first writes it, in a directory not yet watched.
+            link(&generated, "later");
+            write_theme(&dotfiles, "linked", "#445566");
+            wait_for_live_theme(|| manager.active_model_palette().accent == 0x44_55_66);
+
+            write_theme(&generated, "later", "#778899");
+            wait_for_live_theme(|| manager.themes().iter().any(|theme| theme.id == "later"));
+            manager.select_theme("later");
+            assert_eq!(manager.active_model_palette().accent, 0x77_88_99);
+
+            write_theme(&generated, "later", "#aabbcc");
+            wait_for_live_theme(|| manager.active_model_palette().accent == 0xaa_bb_cc);
+        },
+    );
+}
+
+#[test]
+fn switching_omarchy_symlinks_keeps_direct_and_atomic_palette_edits_live() {
+    gtk_test(
+        "ui::theme::tests::switching_omarchy_symlinks_keeps_direct_and_atomic_palette_edits_live",
+        || {
+            let state = super::omarchy_state_dir();
+            let themes = gtk::glib::home_dir().join("palettes");
+            let write = |folder: &Path, accent: &str, atomic: bool| {
+                std::fs::create_dir_all(folder).expect("palette directory");
+                let destination = folder.join("colors.toml");
+                let path = if atomic {
+                    folder.join("colors.new")
+                } else {
+                    destination.clone()
+                };
+                std::fs::write(
+                    &path,
+                    format!(
+                        "background = '#112233'\nforeground = '#ddeeff'\naccent = '{accent}'\n"
+                    ),
+                )
+                .expect("palette written");
+                if atomic {
+                    std::fs::rename(path, destination).expect("atomic palette replacement");
+                }
+            };
+            let switch = |name: &str| {
+                let pending = state.join("next-theme");
+                std::os::unix::fs::symlink(themes.join(name), &pending).expect("new theme link");
+                std::fs::rename(pending, state.join("theme")).expect("atomic theme switch");
+            };
+            std::fs::create_dir_all(&state).expect("Omarchy state");
+            std::fs::write(state.join("theme.name"), "fixture").expect("theme name");
+            write(&themes.join("a"), "#112244", false);
+            write(&themes.join("b"), "#445566", false);
+            switch("a");
+            let manager = ThemeManager::shared();
+            manager.set_follow_omarchy(true);
+            assert_eq!(manager.active_model_palette().accent, 0x11_22_44);
+
+            for (name, initial, edited, color) in [
+                ("b", 0x44_55_66, "#778899", 0x77_88_99),
+                ("a", 0x11_22_44, "#aabbcc", 0xaa_bb_cc),
+            ] {
+                switch(name);
+                wait_for_live_theme(|| manager.active_model_palette().accent == initial);
+                write(&themes.join(name), edited, false);
+                wait_for_live_theme(|| manager.active_model_palette().accent == color);
+                write(&themes.join(name), "#abcdef", true);
+                wait_for_live_theme(|| manager.active_model_palette().accent == 0xab_cd_ef);
+            }
+        },
+    );
+}
+
 fn wait_for_live_theme(mut ready: impl FnMut() -> bool) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     while !ready() {
@@ -221,6 +346,13 @@ fn wait_for_live_theme(mut ready: impl FnMut() -> bool) {
         gtk::glib::MainContext::default().iteration(false);
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
+}
+
+fn has_color(label: &gtk::Label, expected: &gtk::gdk::RGBA) -> bool {
+    let actual = label.color();
+    (actual.red() - expected.red()).abs() < 0.01
+        && (actual.green() - expected.green()).abs() < 0.01
+        && (actual.blue() - expected.blue()).abs() < 0.01
 }
 
 /// Runs the main loop past the refresh debounce so a missing change is a real absence.
@@ -463,19 +595,35 @@ fn quattro_colors_map_to_strata_tokens() {
         "azure-glow",
         r##"
 background = "#0a0f1a"
+dark_background = "#070b13"
+lighter_background = "#142033"
 foreground = "#a8dfff"
 accent = "#00aaff"
-selection = "#a8dfff"
-color8 = "#123247"
+selection = "#1d3350"
+muted = "#3a5068"
+color8 = "#99aabb"
 "##,
-        super::OmarchyVariant::Original,
+        super::OmarchyVariant::Lighter,
     )
     .expect("valid Quattro colors should map");
 
     assert_eq!(theme.name, "Azure Glow");
-    assert_eq!(theme.background, "#0d1b2a");
+    assert_eq!(theme.background, "#0a0f1a");
+    assert_eq!(theme.surface, "#070b13");
+    assert_eq!(theme.muted, "#142033");
+    assert_eq!(theme.highlight, "#1d3350");
+    assert_eq!(theme.border, "#3a5068");
     assert_eq!(theme.accent, "#00aaff");
-    assert_eq!(theme.border, "#487089");
+
+    let minimal = tokens_from_quattro(
+        "azure-glow",
+        "background = \"#0a0f1a\"\nlighter_background = \"#0a0f1a\"\nforeground = \"#a8dfff\"\naccent = \"#00aaff\"\ncolor8 = \"#99aabb\"\n",
+        super::OmarchyVariant::Lighter,
+    )
+    .expect("required Quattro colors should map");
+    assert_eq!(minimal.background, "#0a0f1a");
+    assert_eq!(minimal.surface, "#0a0f1a");
+    assert_ne!(minimal.muted, minimal.background);
     let derived = super::resolved_source_palette(&theme, None);
     for (source, expected) in [
         ("color2 = \"#00ff00\"", "#00ff00"),
@@ -485,7 +633,7 @@ color8 = "#123247"
         let source = format!(
             "background = \"#0a0f1a\"\nforeground = \"#a8dfff\"\naccent = \"#00aaff\"\nselection = \"#a8dfff\"\ncolor8 = \"#123247\"\n{source}"
         );
-        let tokens = tokens_from_quattro("azure-glow", &source, super::OmarchyVariant::Original)
+        let tokens = tokens_from_quattro("azure-glow", &source, super::OmarchyVariant::Lighter)
             .expect("partial Quattro palette");
         let palette = super::resolved_source_palette(&tokens, None);
         assert_eq!(palette.string, expected);
@@ -565,7 +713,7 @@ fn quattro_syntax_palette_treats_unparsable_colors_as_missing() {
         "background = \"#0a0f1a\"\nforeground = \"#a8dfff\"\naccent = \"#00aaff\"\n{}",
         source_with("orange", "0x555555").replace("#666666", "notacolor")
     );
-    let tokens = tokens_from_quattro("azure-glow", &source, super::OmarchyVariant::Original)
+    let tokens = tokens_from_quattro("azure-glow", &source, super::OmarchyVariant::Lighter)
         .expect("required Quattro colors are valid");
     let xml = source_style_scheme_xml(&tokens, source_palette_from_quattro(&source).as_ref());
     let values = scheme_color_values(&xml);
@@ -584,7 +732,7 @@ fn legacy_palette_without_quattro_semantics_is_not_detected() {
         tokens_from_quattro(
             "legacy",
             "color4 = \"#00aaff\"",
-            super::OmarchyVariant::Original
+            super::OmarchyVariant::Lighter
         )
         .is_none()
     );
@@ -652,6 +800,115 @@ fn appearance_changes_keep_an_active_preview_until_it_is_cancelled() {
 }
 
 #[test]
+fn theme_and_omarchy_folders_are_watched_and_released_on_the_monitors_worker() {
+    gtk_test(
+        "ui::theme::tests::theme_and_omarchy_folders_are_watched_and_released_on_the_monitors_worker",
+        || {
+            use crate::adapters::{FsOp, FsQuirks, Quirks};
+
+            crate::ui::preferences::fixtures::seed_omarchy_for_test();
+            std::fs::create_dir_all(themes_directory()).expect("custom themes folder");
+            let themes = FsQuirks::install(&themes_directory(), Quirks::default());
+            let creating = crate::test_support::Gate::default();
+            let omarchy = FsQuirks::install(
+                &gtk::glib::home_dir(),
+                Quirks {
+                    before: vec![(FsOp::Watch, "*", 0, creating.racer())],
+                    ..Quirks::default()
+                },
+            );
+            let watched = super::OmarchyRefresh::read().directories.len();
+            let pump_until = |what: &dyn Fn() -> String, done: &dyn Fn() -> bool| {
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+                while !done() {
+                    assert!(std::time::Instant::now() < deadline, "{}", what());
+                    gtk::glib::MainContext::default().iteration(false);
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+            };
+            let calls = || {
+                [
+                    themes.count(FsOp::Watch),
+                    themes.count(FsOp::Unwatch),
+                    omarchy.count(FsOp::Watch),
+                    omarchy.count(FsOp::Unwatch),
+                ]
+            };
+            let wait_for = |what: &str, expected: &dyn Fn([usize; 4]) -> bool| {
+                pump_until(&|| format!("{what}: {:?}", calls()), &|| expected(calls()));
+            };
+            let still = |expected: [usize; 4], what: &str| {
+                crate::storage::writer::settle();
+                for _ in 0..50 {
+                    gtk::glib::MainContext::default().iteration(false);
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+                assert_eq!(calls(), expected, "{what}");
+            };
+            assert!(watched > 1, "the Omarchy theme folder and its ancestors");
+
+            let manager = ThemeManager::shared();
+            pump_until(&|| "the first watch starts".to_owned(), &|| {
+                creating.reached()
+            });
+            crate::ui::preferences::fixtures::seed_omarchy_colors_for_test(
+                "background = '#010203'\nforeground = '#ddeeff'\naccent = '#445566'\n",
+            );
+            let mut outside = azure_tokens();
+            outside.name = "Outside".to_owned();
+            std::fs::write(
+                themes_directory().join("outside.toml"),
+                toml::to_string(&outside).expect("theme file"),
+            )
+            .expect("a theme saved elsewhere");
+            creating.release();
+            wait_for("watched at start", &|calls| calls == [1, 0, watched, 0]);
+            pump_until(
+                &|| "changes made while the watches started are read".to_owned(),
+                &|| {
+                    crate::storage::writer::settle();
+                    manager
+                        .omarchy_state
+                        .borrow()
+                        .as_ref()
+                        .is_some_and(|state| state.colors.contains("#010203"))
+                        && manager
+                            .themes()
+                            .iter()
+                            .any(|theme| theme.tokens.name == "Outside")
+                },
+            );
+
+            let mut tokens = azure_tokens();
+            tokens.name = "Watched".to_owned();
+            save_custom_theme(&manager, tokens).expect("custom theme saves");
+            manager.refresh_omarchy_state();
+            still(
+                [1, 0, watched, 0],
+                "a save and a refresh keep the watches they have",
+            );
+
+            let theme_folder = super::omarchy_state_dir().join("theme");
+            std::fs::remove_dir_all(&theme_folder).expect("Omarchy theme folder removed");
+            manager.refresh_omarchy_state();
+            pump_until(&|| "the removed folder is read".to_owned(), &|| {
+                crate::storage::writer::settle();
+                manager.omarchy_state.borrow().is_none()
+            });
+            crate::ui::preferences::fixtures::seed_omarchy_for_test();
+            manager.refresh_omarchy_state();
+            wait_for(
+                "only the folder that came back is watched again",
+                &|[themes_watched, themes_released, watching, released]| {
+                    [themes_watched, themes_released, watching] == [1, 0, watched + 1]
+                        && released <= 1
+                },
+            );
+        },
+    );
+}
+
+#[test]
 fn non_ascii_theme_names_save_under_a_fallback_id() {
     gtk_test(
         "ui::theme::tests::non_ascii_theme_names_save_under_a_fallback_id",
@@ -663,8 +920,26 @@ fn non_ascii_theme_names_save_under_a_fallback_id() {
 
             let mut tokens = azure_tokens();
             tokens.name = "日本語".to_owned();
-            let id = manager
-                .save_custom_theme(tokens)
+            let held = crate::storage::writer::hold();
+            let saved = Rc::new(std::cell::RefCell::new(None));
+            let done = saved.clone();
+            manager.save_custom_theme(tokens, move |result| {
+                done.replace(Some(result));
+            });
+            for _ in 0..20 {
+                gtk::glib::MainContext::default().iteration(false);
+            }
+            assert!(
+                saved.borrow().is_none(),
+                "the save waits for the settings writer"
+            );
+            assert!(!directory.join("custom-theme.toml").exists());
+            assert_eq!(manager.selected_id(), "azure-glow");
+            drop(held);
+            crate::storage::writer::settle();
+            let id = saved
+                .take()
+                .expect("theme save finished")
                 .expect("a non-ASCII name saves");
             assert_eq!(id, "custom-theme");
             let saved = std::fs::read_to_string(directory.join("custom-theme.toml"))
@@ -688,9 +963,7 @@ fn non_ascii_theme_names_save_under_a_fallback_id() {
             let files_before = std::fs::read_dir(&directory).expect("themes").count();
             let mut blank = azure_tokens();
             blank.name = "   ".to_owned();
-            let error = manager
-                .save_custom_theme(blank)
-                .expect_err("a blank name is rejected");
+            let error = save_custom_theme(&manager, blank).expect_err("a blank name is rejected");
             assert_eq!(error.to_string(), "Enter a theme name");
             assert_eq!(
                 std::fs::read_dir(&directory).expect("themes").count(),
@@ -741,7 +1014,7 @@ fn file_icon_colors_repaint_catppuccin_icons_live_across_images() {
 }
 
 #[test]
-fn desktop_gtk_theme_and_user_stylesheet_do_not_restyle_widgets() {
+fn desktop_gtk_theme_and_gtk_css_do_not_restyle_widgets() {
     let desktop = tempfile::tempdir().expect("desktop config");
     let config = desktop.path().join("config");
     let data = desktop.path().join("data");
@@ -765,7 +1038,7 @@ fn desktop_gtk_theme_and_user_stylesheet_do_not_restyle_widgets() {
     )
     .expect("user stylesheet");
     gtk_test_with_env(
-        "ui::theme::tests::desktop_gtk_theme_and_user_stylesheet_do_not_restyle_widgets",
+        "ui::theme::tests::desktop_gtk_theme_and_gtk_css_do_not_restyle_widgets",
         [
             ("GTK_THEME", String::new()),
             ("XDG_CONFIG_HOME", config.display().to_string()),
@@ -784,14 +1057,20 @@ fn desktop_gtk_theme_and_user_stylesheet_do_not_restyle_widgets() {
                 gtk::glib::MainContext::default().iteration(false);
             }
 
-            assert_eq!(settings.gtk_theme_name().as_deref(), Some("Default"));
+            assert_eq!(settings.gtk_theme_name().as_deref(), Some(PINNED_GTK_THEME));
+            for variant in ["gtk.css", "gtk-dark.css"] {
+                let path = format!("/org/gtk/libgtk/theme/{PINNED_GTK_THEME}/{variant}");
+                if let Err(error) =
+                    gtk::gio::resources_get_info(&path, gtk::gio::ResourceLookupFlags::NONE)
+                {
+                    panic!("{path} should be bundled: {error}");
+                }
+            }
             let expected =
                 gtk::gdk::RGBA::parse(&manager.starter_tokens().text).expect("text color");
             let actual = label.color();
             assert!(
-                (actual.red() - expected.red()).abs() < 0.01
-                    && (actual.green() - expected.green()).abs() < 0.01
-                    && (actual.blue() - expected.blue()).abs() < 0.01,
+                has_color(&label, &expected),
                 "label color {actual} should be Strata's text color {expected}"
             );
             window.close();
@@ -908,6 +1187,41 @@ fn interface_font_applies_before_settings_open_and_live_while_previews_stay_mono
             assert_eq!(parse_errors.get(), 0, "font stylesheet parses cleanly");
             popover.unparent();
             window.destroy();
+        },
+    );
+}
+
+#[test]
+fn user_stylesheet_overrides_strata_and_reloads_live() {
+    gtk_test(
+        "ui::theme::tests::user_stylesheet_overrides_strata_and_reloads_live",
+        || {
+            let config = crate::ui::preferences::config_directory();
+            std::fs::create_dir_all(&config).expect("config directory");
+            let stylesheet = config.join("style.css");
+
+            let manager = ThemeManager::shared();
+            std::fs::write(
+                &stylesheet,
+                "label { color: nope; }\nlabel { color: rgb(255, 0, 0); }\n",
+            )
+            .expect("user stylesheet");
+            let window = gtk::Window::new();
+            let label = gtk::Label::new(Some("styled"));
+            window.set_child(Some(&label));
+            window.present();
+            let red = gtk::gdk::RGBA::parse("rgb(255, 0, 0)").expect("red");
+            let green = gtk::gdk::RGBA::parse("rgb(0, 255, 0)").expect("green");
+            let text = gtk::gdk::RGBA::parse(&manager.starter_tokens().text).expect("text color");
+            wait_for_live_theme(|| has_color(&label, &red));
+
+            std::fs::write(&stylesheet, "label { color: rgb(0, 255, 0); }\n")
+                .expect("edited stylesheet");
+            wait_for_live_theme(|| has_color(&label, &green));
+
+            std::fs::remove_file(&stylesheet).expect("remove stylesheet");
+            wait_for_live_theme(|| has_color(&label, &text));
+            window.close();
         },
     );
 }

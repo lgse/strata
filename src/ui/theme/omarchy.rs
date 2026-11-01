@@ -3,64 +3,62 @@
 use super::{SourcePalette, ThemeTokens, blend, parse_rgb_channels, resolved_source_palette};
 use crate::ui::preferences::OmarchyVariant;
 
+/// Quattro's `mode` decides when present; otherwise the background's brightness does.
+pub(super) fn is_light(background: &str, mode: Option<&str>) -> bool {
+    match mode {
+        Some("light") => true,
+        Some("dark") => false,
+        _ => luminance(background) > 0.45,
+    }
+}
+
+/// Lighter is the plain mapping. Darker moves the file columns onto the pane color,
+/// and Contrast raises foregrounds on that darker layout.
 pub(super) fn apply_variant(
     tokens: &mut ThemeTokens,
-    source_background: &str,
+    light: bool,
     variant: OmarchyVariant,
     source_palette: Option<&SourcePalette>,
 ) {
-    let high_contrast = variant == OmarchyVariant::HighContrast;
-    let light = high_contrast && luminance(source_background) > 0.45;
-    let background_pole = if light { "white" } else { "black" };
-    let foreground_pole = if light { "black" } else { "white" };
-    let background_limit = if light {
-        0.90
-    } else if high_contrast {
-        0.012
-    } else {
-        0.025
-    };
+    if variant == OmarchyVariant::Lighter {
+        return;
+    }
+    tokens.background = tokens.surface.clone();
+    if variant == OmarchyVariant::Contrast {
+        apply_contrast(tokens, light, source_palette);
+    }
+}
 
-    // Use the terminal background, not ANSI color8: bright gray can otherwise
-    // wash out every surface. Endpoints only adjust luminance, retaining hue.
-    tokens.background = (0..=255)
-        .map(|step| blend(source_background, background_pole, f64::from(step) / 255.0))
-        .find(|color| {
-            if light {
-                luminance(color) >= background_limit
-            } else {
-                luminance(color) <= background_limit
-            }
-        })
-        .expect("the luminance endpoint is reachable");
-    tokens.surface = blend(
-        &tokens.background,
-        foreground_pole,
-        if high_contrast { 0.055 } else { 0.035 },
-    );
-    tokens.muted = blend(&tokens.surface, foreground_pole, 0.04);
-    tokens.highlight = blend(&tokens.surface, &tokens.highlight, 0.12);
+/// Keeps the theme's surfaces and raises foregrounds to their contrast targets.
+fn apply_contrast(tokens: &mut ThemeTokens, light: bool, source_palette: Option<&SourcePalette>) {
+    let (background_pole, foreground_pole) = if light {
+        ("white", "black")
+    } else {
+        ("black", "white")
+    };
+    // A mid-tone surface is darkened or lightened only when even the foreground
+    // pole could not reach the text target on it.
+    for surface in [
+        &mut tokens.background,
+        &mut tokens.surface,
+        &mut tokens.muted,
+        &mut tokens.highlight,
+    ] {
+        *surface = toward(surface, background_pole, |color| {
+            contrast(color, foreground_pole) >= 7.0
+        });
+    }
     let backgrounds = [
         &tokens.background,
         &tokens.surface,
         &tokens.muted,
         &tokens.highlight,
     ];
-    tokens.text = readable(
-        &tokens.text,
-        &backgrounds,
-        foreground_pole,
-        if high_contrast { 7.0 } else { 4.5 },
-    );
+    tokens.text = readable(&tokens.text, &backgrounds, foreground_pole, 7.0);
     tokens.dim_text = readable(&tokens.dim_text, &backgrounds, foreground_pole, 4.5);
     tokens.accent = readable(&tokens.accent, &backgrounds, foreground_pole, 4.5);
     tokens.danger = readable(&tokens.danger, &backgrounds, foreground_pole, 4.5);
-    tokens.border = readable(
-        &tokens.border,
-        &backgrounds,
-        foreground_pole,
-        if high_contrast { 3.0 } else { 1.5 },
-    );
+    tokens.border = readable(&tokens.border, &backgrounds, foreground_pole, 3.0);
 
     let palette = resolved_source_palette(tokens, source_palette);
     let backgrounds = [&tokens.background, &tokens.surface];
@@ -72,7 +70,15 @@ pub(super) fn apply_variant(
     tokens.syntax_preprocessor = syntax(&palette.preprocessor);
 }
 
-fn readable(color: &str, backgrounds: &[&String], pole: &str, ratio: f64) -> String {
+/// Moves `color` toward `pole` until `done` holds; only luminance changes, so hue is kept.
+fn toward(color: &str, pole: &str, done: impl Fn(&str) -> bool) -> String {
+    (0..=255)
+        .map(|step| blend(color, pole, f64::from(step) / 255.0))
+        .find(|color| done(color))
+        .unwrap_or_else(|| pole.to_owned())
+}
+
+pub(super) fn readable(color: &str, backgrounds: &[&String], pole: &str, ratio: f64) -> String {
     (0..=255)
         .map(|step| blend(color, pole, f64::from(step) / 255.0))
         .find(|color| {
@@ -80,7 +86,7 @@ fn readable(color: &str, backgrounds: &[&String], pole: &str, ratio: f64) -> Str
                 .iter()
                 .all(|background| contrast(color, background) >= ratio)
         })
-        .expect("variant surfaces leave enough contrast at the foreground endpoint")
+        .expect("the foreground endpoint reaches the contrast floor")
 }
 
 fn luminance(color: &str) -> f64 {

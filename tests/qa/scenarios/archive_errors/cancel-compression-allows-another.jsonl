@@ -1,0 +1,34 @@
+{"scenario":"cancel-compression-allows-another","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"7z","vars":{"format":"7Z"}},{"id":"tar-gz","vars":{"format":"TAR.GZ"}}],"cost":{"columns-7z":2.0,"columns-tar-gz":2.0},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":3,"score":34,"note":"Docked Cancel compressing stops worker, leaves no partial archive, then another compression runs; unit tests pin worker cleanup only"}}
+{"fs":{"path":"payload.bin","random":67108864}}
+{"wait":{"entry":"payload.bin"},"message":"the entry 'payload.bin' to appear"}
+{"click":{"entry":"payload.bin"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'payload.bin'"}
+{"wait":{"present":{"menu_item":"Compress…"}},"message":"the menu item 'Compress…'"}
+{"settle":{"menu_item":"Compress…"}}
+{"click":{"menu_item":"Compress…"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"click":{"role":"toggle button","name":"$format","within":{"dialog":true}}}
+{"click":{"dialog_button":"Compress"}}
+{"wait":{"present":{"role":"button","name":"Cancel compressing"}},"message":"docked compression cancellation action"}
+{"wait":{"dialog":null},"message":"compression configuration dismissal"}
+{"click":{"role":"button","name":"Cancel compressing"}}
+{"wait":{"dialog":"Operation cancelled"},"message":"compression worker to stop and report cancellation"}
+{"expect":{"absent":{"role":"progress bar"}}}
+{"fs":{"path":".","glob_none":".strata-copy-*"},"timeout_ms":0}
+{"fs":{"path":".","glob_none":"*.7z"},"timeout_ms":0}
+{"fs":{"path":".","glob_none":"*.tar.gz"},"timeout_ms":0}
+{"fs":{"path":"payload.bin","size":67108864},"timeout_ms":0}
+{"click":{"dialog_button":"Close"}}
+{"wait":{"dialog":null},"message":"cancellation summary dismissal"}
+{"click":{"entry":"todo.txt"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'todo.txt'"}
+{"wait":{"present":{"menu_item":"Compress…"}},"message":"the menu item 'Compress…'"}
+{"settle":{"menu_item":"Compress…"}}
+{"click":{"menu_item":"Compress…"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"click":{"dialog_button":"Compress"}}
+{"fs":{"path":"todo.txt.zip","exists":true},"message":"subsequent compression"}
+{"wait":{"dialog":null},"message":"subsequent progress dismissal"}
+{"fs":{"path":"todo.txt.zip","zip_member":["todo.txt","todo.txt"]},"timeout_ms":0}

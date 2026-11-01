@@ -13,6 +13,7 @@ use super::{InstallCancel, InstallLauncher, InstallRequest, UpdateInstall};
 
 mod dismissal;
 mod general;
+mod release_picker;
 mod restart;
 mod update_dialog;
 mod updates;

@@ -2,7 +2,10 @@
 
 Custom actions add your own scripts to the file and folder context menus. In
 [10xer mode](10xer-mode.md), **;** then **1**–**9** / **0** runs the first
-ten matching actions on the focused item or filled selection.
+ten matching actions on the focused item or filled selection. Outside it, bind
+a key to one of the ten **Custom action** slots in **Settings → Keyboard**:
+slot N runs the Nth action **Settings → Actions** lists, on the selection (see
+[Keymap](keymap.md#custom-action-slots)).
 
 They are ordinary programs running with your permissions. There is no sandbox and
 no install step beyond enabling an action. Strata validates the definition and the
@@ -90,8 +93,8 @@ asks you to **Replace script** or **Keep draft**, without opening another dialog
 Code replacement can be undone in the editor; drafts for the other runtimes are retained.
 Escape or clicking outside closes only the dropdown, leaving the editor open.
 Searching, browsing, or applying a template never saves or executes it. Review
-and save the action, then launch it from its file/folder context menu or, in
-10xer mode, **;** then a digit.
+and save the action, then launch it from its file/folder context menu, a key
+bound to its custom action slot or, in 10xer mode, **;** then a digit.
 
 The documented Python starter and every Python recipe include the same maintained
 [`context()` reference](../data/actions/context-api.txt) as a module docstring.
@@ -207,7 +210,7 @@ Opening the folder background menu offers the same rules with the folder itself 
 the single input. Actions are only offered for native paths: Trash, GVfs, and other
 non-native locations are excluded in this release.
 
-Custom actions occupy a separate section between the opening/printing commands
+Custom actions occupy a separate section between the opening commands
 and Cut/Copy. The context menu uses GTK's native nested menu model: hover over
 **Actions** to open its submenu, then move onto an action to highlight it.
 Hovering another menu item closes the submenu. Clicking or keyboard activation
@@ -377,6 +380,16 @@ Enable it, then right-click a file that matches `[when]` and choose it. The Jobs
 dashboard shows the invocation, its output, and its exit status. A definition that
 cannot load appears under **Settings → Actions → Problems** with the reason, and
 never silently disappears from the menus.
+
+Strata reads and writes the actions folder on its background settings writer, never
+on the interface thread. A menu, the 10xer action chord and **Settings → Actions**
+show the actions as last read and read the folder again in the background, so an
+action changed outside Strata appears once that read finishes, usually from the
+next opening. Choosing an action reads its definition again first: an action
+changed or removed since the menu or chord listed it does not run, and Strata says
+the actions changed. Programs and interpreters are looked up, and actions imported
+or exported, on a separate worker through the same per-mount limits as folder
+loads, so a server that stops answering never holds up saving settings.
 
 ## Service-dependent actions and badges
 

@@ -1,0 +1,17 @@
+{"scenario":"delete-trashes-filtered-result","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"tree":{"match-note.txt":"root decoy\n","alpha":{"match-note.txt":"alpha source\n"},"beta":{"match-note.txt":"beta source\n","only-match.txt":"beta source\n"},"match-note-other.md":"other match\n","destination":{},"thumb.txt":"thumbnail search companion"},"images":{"beta/thumb.png":{"width":64,"height":64,"rgb":[230,40,60]}},"cost":{"columns":0.9,"icons":0.9,"list":0.9},"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":4,"score":56,"note":"Delete on a selected filtered result trashes only that nested file; only QA scenario pressing Delete on a filter result, unit tests skip the filter selection"}}
+{"select":{"entry":"match-note.txt"}}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"filter"}
+{"type":"match-note"}
+{"wait":{"matches":{"count":4}},"message":"all recursive matches"}
+{"wait":{"present":{"result":"beta/match-note.txt"}},"message":"the beta result"}
+{"click":{"result":"beta/match-note.txt"},"mods":["ctrl"]}
+{"key":"F2"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"key":"Escape"}
+{"wait":{"state":{"target":{"result":"beta/match-note.txt"},"focused":true}},"message":"result focus"}
+{"key":"Delete"}
+{"fs":{"path":"beta/match-note.txt","exists":false},"message":"the selected result to be trashed"}
+{"fs":{"path":"match-note.txt","text":"root decoy\n"},"timeout_ms":0}
+{"fs":{"path":"alpha/match-note.txt","text":"alpha source\n"},"timeout_ms":0}

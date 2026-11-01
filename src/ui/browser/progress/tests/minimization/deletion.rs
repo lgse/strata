@@ -189,6 +189,7 @@ fn fast_delete_animates_only_its_own_success_without_showing_progress() {
                         &crate::app::BrowserEvent::OperationFailed {
                             message: "Unrelated copy failure".into(),
                             password_failure: None,
+                            report: Default::default(),
                         },
                     );
                     fixture
@@ -197,6 +198,7 @@ fn fast_delete_animates_only_its_own_success_without_showing_progress() {
                         .handle(&crate::app::BrowserEvent::OperationFailed {
                             message: "Unrelated foreground failure".into(),
                             password_failure: None,
+                            report: Default::default(),
                         });
                     pump_until(|| {
                         crate::ui::window::visible_modal_layer(&fixture.window).is_some()
@@ -237,17 +239,20 @@ fn fast_delete_animates_only_its_own_success_without_showing_progress() {
                         "failed" => crate::app::BrowserEvent::OperationFailed {
                             message: "Delete failed".into(),
                             password_failure: None,
+                            report: Default::default(),
                         },
                         "cancelled" => crate::app::BrowserEvent::OperationCancelled {
                             completed: 0,
                             failed: 0,
                             not_attempted: 1,
                             affected_locations: Default::default(),
+                            report: Default::default(),
                         },
                         _ => crate::app::BrowserEvent::OperationCompletedWithErrors {
                             message: "Partial deletion".into(),
                             retryable_locations: Vec::new(),
                             has_non_retryable_failures: true,
+                            report: Default::default(),
                         },
                     };
                     fixture
@@ -377,6 +382,7 @@ fn cancelling_docked_deletion_keeps_animations_discarded_and_reports_the_result(
                         failed: 0,
                         not_attempted: 1,
                         affected_locations: Default::default(),
+                        report: Default::default(),
                     },
                 );
                 assert!(crate::ui::window::visible_modal_layer(&fixture.window).is_some());

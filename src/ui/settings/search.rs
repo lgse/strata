@@ -14,10 +14,16 @@ struct Target {
 
 const TARGETS: &[Target] = &[
     Target {
+        id: "units",
+        page: "general",
+        title: "Units",
+        aliases: "metric imperial kilometres miles metres feet distance elevation route gpx fit kml",
+    },
+    Target {
         id: "language",
         page: "general",
         title: "Language",
-        aliases: "locale translation auto detect restart English Français Deutsch Español 日本語 Português 한국어 Tiếng Việt Italiano Русский 简体中文",
+        aliases: "locale translation auto detect restart English Français Deutsch Español 日本語 Português 한국어 Tiếng Việt Italiano Magyar Hungarian Русский 简体中文",
     },
     Target {
         id: "custom-actions",
@@ -188,10 +194,10 @@ const TARGETS: &[Target] = &[
         aliases: "file transfers drag drop destination navigate reveal copy move",
     },
     Target {
-        id: "refresh",
+        id: "watch-network-folders",
         page: "general",
-        title: "Auto-refresh folder",
-        aliases: "performance timer reload network share monitors",
+        title: "Watch network folders",
+        aliases: "performance network share nfs smb sftp remote changes check refresh reload monitor",
     },
     Target {
         id: "video",
@@ -284,6 +290,12 @@ const TARGETS: &[Target] = &[
         aliases: "appearance images pictures photos videos documents thumbnails icons previews disable",
     },
     Target {
+        id: "stl-thumbnails",
+        page: "theme",
+        title: "STL model thumbnails",
+        aliases: "appearance 3d stl models printing mesh rendered thumbnails icons",
+    },
+    Target {
         id: "file-icon-colors",
         page: "theme",
         title: "File icon colors",
@@ -326,10 +338,28 @@ const TARGETS: &[Target] = &[
         aliases: "stable preview nightly builds",
     },
     Target {
+        id: "release",
+        page: "updates",
+        title: "Install a specific release",
+        aliases: "rollback roll back downgrade older previous version choose pick",
+    },
+    Target {
         id: "notes",
         page: "updates",
         title: "Release notes",
         aliases: "what new changes changelog",
+    },
+    Target {
+        id: "integrations",
+        page: "integrations",
+        title: "Integrations",
+        aliases: "add-ons addons plugins extensions providers catalog install kde connect localsend nextcloud dropbox cloud devices phone",
+    },
+    Target {
+        id: "diagnostics",
+        page: "diagnostics",
+        title: "Run diagnostics",
+        aliases: "troubleshoot troubleshooting problems health check dependencies missing packages report bug sandbox bubblewrap ffmpeg gstreamer gvfs sftp smb udisks portal",
     },
     Target {
         id: "version",
@@ -361,12 +391,25 @@ const TARGETS: &[Target] = &[
         title: "License",
         aliases: "links mit copyright",
     },
+    Target {
+        id: KEYBOARD_SHORTCUTS,
+        page: "keyboard",
+        title: "Keyboard shortcuts",
+        aliases: "keymap keybindings hotkeys accelerators rebind remap keys 10xer default reset",
+    },
 ];
+
+const KEYBOARD_SHORTCUTS: &str = "keyboard-shortcuts";
 
 pub(super) fn tag(widget: &impl IsA<gtk::Widget>, title: &str) {
     if let Some(target) = TARGETS.iter().find(|target| target.title == title) {
         widget.set_widget_name(&format!("settings-search-{}", target.id));
     }
+}
+
+/// Registers a row that [`super::keyboard::search_targets`] lists by `id`.
+pub(super) fn tag_id(widget: &impl IsA<gtk::Widget>, id: &str) {
+    widget.set_widget_name(&format!("settings-search-{id}"));
 }
 
 pub(super) fn set_available(widget: &impl IsA<gtk::Widget>, available: bool) {
@@ -430,19 +473,31 @@ fn word_score(query: &str, word: &str) -> Option<i32> {
 }
 
 fn score(query: &str, target: &Target) -> Option<i32> {
-    let source_title = normalized(&super::translated_in("en", target.title));
-    let localized_title = normalized(&super::translated(target.title));
+    score_text(
+        query,
+        target.title,
+        target.page,
+        &format!("{} {}", target.aliases, localized_keywords(target)),
+    )
+}
+
+fn score_text(query: &str, title: &str, page: &str, aliases: &str) -> Option<i32> {
+    let (source_title, localized_title) = if title.is_empty() {
+        (String::new(), String::new())
+    } else {
+        (
+            normalized(&super::translated_in("en", title)),
+            normalized(&super::translated(title)),
+        )
+    };
     let title = format!("{source_title} {localized_title}");
     // Chinese and Japanese queries run across the spaces titles put around Latin words.
     let joined_title = localized_title.split_whitespace().collect::<String>();
     let aliases = normalized(&format!(
-        "{} {} {} {} settings {}",
-        target.aliases,
-        localized_keywords(target),
-        target.page,
-        page_title(target.page)
-            .map(crate::i18n::tr)
-            .unwrap_or_default(),
+        "{} {} {} settings {}",
+        aliases,
+        page,
+        page_title(page).map(crate::i18n::tr).unwrap_or_default(),
         crate::i18n::tr("Settings"),
     ));
     let mut total = 0;
@@ -460,7 +515,9 @@ fn score(query: &str, target: &Target) -> Option<i32> {
     }
     Some(
         total
-            + if source_title == query || localized_title == query {
+            + if source_title.is_empty() {
+                0
+            } else if source_title == query || localized_title == query {
                 1000
             } else if source_title.contains(query) || localized_title.contains(query) {
                 200
@@ -490,7 +547,7 @@ fn page_title(page: &str) -> Option<&'static str> {
 
 #[derive(Default)]
 pub(super) struct Matches {
-    ids: HashSet<&'static str>,
+    ids: HashSet<String>,
     pages: HashSet<&'static str>,
     best_page: Option<&'static str>,
 }
@@ -501,13 +558,35 @@ fn find_matches(query: &str) -> Matches {
     }
     let mut result = Matches::default();
     let mut best = -1;
-    for target in TARGETS {
+    for target in TARGETS
+        .iter()
+        .filter(|target| super::page_shown(target.page))
+    {
         if let Some(score) = score(query, target) {
-            result.ids.insert(target.id);
+            result.ids.insert(target.id.to_owned());
             result.pages.insert(target.page);
             if score > best {
                 best = score;
                 result.best_page = Some(target.page);
+            }
+        }
+    }
+    // A query for the page itself lists every row; otherwise action names
+    // score as aliases, so a setting keeps a query it ties.
+    let whole_page = result.ids.contains(KEYBOARD_SHORTCUTS);
+    for target in super::keyboard::search_targets() {
+        let aliases = format!("{} {}", target.names, target.aliases);
+        let scored = score_text(query, "", super::keyboard::PAGE, &aliases);
+        if whole_page || scored.is_some() {
+            result.ids.insert(target.id);
+        }
+        if let Some(score) = scored {
+            // Keeps the table switch shown, since a row may match only in the hidden table.
+            result.ids.insert(KEYBOARD_SHORTCUTS.to_owned());
+            result.pages.insert(super::keyboard::PAGE);
+            if score > best {
+                best = score;
+                result.best_page = Some(super::keyboard::PAGE);
             }
         }
     }
@@ -532,7 +611,7 @@ fn children(widget: &gtk::Widget) -> Vec<gtk::Widget> {
 
 fn filter_tree(widget: &gtk::Widget, matches: Option<&Matches>) -> Option<bool> {
     if let Some(id) = widget.widget_name().strip_prefix("settings-search-")
-        && TARGETS.iter().any(|target| target.id == id)
+        && (TARGETS.iter().any(|target| target.id == id) || super::keyboard::is_target(id))
     {
         let visible = !widget.has_css_class("settings-search-unavailable")
             && matches.is_none_or(|matches| matches.ids.contains(id));
@@ -551,7 +630,9 @@ fn filter_tree(widget: &gtk::Widget, matches: Option<&Matches>) -> Option<bool> 
     if widget.has_css_class("settings-group") {
         widget.set_visible(visible);
     }
-    if widget.has_css_class("settings-preferences") {
+    if widget.has_css_class("settings-preferences")
+        || widget.has_css_class("settings-search-section")
+    {
         for (index, child) in children.iter().enumerate() {
             if child.has_css_class("settings-search-page-empty") {
                 child.set_visible(matches.is_some() && !visible);

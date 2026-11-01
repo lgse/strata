@@ -32,12 +32,28 @@ pub struct ManagedInstall {
     #[serde(default)]
     aur_helpers: Vec<String>,
     alternate_package: Option<String>,
+    #[serde(skip)]
+    installed_aur_helper: OnceLock<Option<String>>,
 }
+
+static DETECTED: OnceLock<InstallSource> = OnceLock::new();
 
 impl InstallSource {
     pub fn detect() -> &'static Self {
-        static DETECTED: OnceLock<InstallSource> = OnceLock::new();
-        DETECTED.get_or_init(|| Self::from_marker_path(marker_path()))
+        DETECTED.get_or_init(|| {
+            #[cfg(not(test))]
+            crate::util::ui_thread::assert_off();
+            Self::from_marker_path(marker_path())
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn seed_for_test(marker: &str) {
+        let managed = toml::from_str::<ManagedInstall>(marker).expect("install marker");
+        assert!(
+            DETECTED.set(Self::Managed(managed.normalized())).is_ok(),
+            "the install source was already detected"
+        );
     }
 
     fn from_marker_path(marker: Option<PathBuf>) -> Self {
@@ -110,11 +126,24 @@ impl ManagedInstall {
     }
 
     pub fn update_instruction(&self) -> String {
-        self.update_instruction_with(on_path)
+        self.update_instruction_with(|helper| self.is_installed_aur_helper(helper))
     }
 
     pub(crate) fn aur_update_target(&self) -> Option<(&str, &str)> {
-        self.aur_update_target_with(on_path)
+        self.aur_update_target_with(|helper| self.is_installed_aur_helper(helper))
+    }
+
+    pub(crate) fn find_installed_aur_helper(&self) {
+        self.installed_aur_helper.get_or_init(|| {
+            self.aur_helpers
+                .iter()
+                .find(|helper| on_path(helper))
+                .cloned()
+        });
+    }
+
+    fn is_installed_aur_helper(&self, helper: &str) -> bool {
+        self.installed_aur_helper.get().and_then(Option::as_deref) == Some(helper)
     }
 
     fn aur_update_target_with(&self, available: impl Fn(&str) -> bool) -> Option<(&str, &str)> {
@@ -184,6 +213,7 @@ impl ManagedInstall {
                 .filter(|helper| !helper.trim().is_empty())
                 .collect(),
             alternate_package: present(self.alternate_package),
+            installed_aur_helper: self.installed_aur_helper,
         }
     }
 }
@@ -216,6 +246,7 @@ fn marker_path() -> Option<PathBuf> {
 }
 
 fn on_path(program: &str) -> bool {
+    crate::util::ui_thread::assert_off();
     let Some(path) = std::env::var_os("PATH") else {
         return false;
     };

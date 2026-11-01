@@ -1,0 +1,6 @@
+{"scenario":"keyboard-selection-in-single-click-mode","modes":["columns","icons","list"],"prefs":{"list_folder_clicks":1,"list_file_clicks":1,"grid_folder_clicks":1,"grid_file_clicks":1,"explorer_folder_clicks":1,"explorer_file_clicks":1},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.3,"icons":0.3,"list":0.3},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Down selects without opening under single-click activation in columns, icons and list; only scenario pressing keys in single-click mode"}}
+{"key":"Down"}
+{"wait":{"focused":true},"message":"keyboard focus"}
+{"note":"focused","as":"cursor"}
+{"wait":{"selected":["$cursor"],"dir":"$root"},"message":"the keyboard to select without opening anything"}
+{"expect":{"directory":"$root"},"message":"moving the keyboard cursor must not navigate in single-click mode"}

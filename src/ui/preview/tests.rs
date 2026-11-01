@@ -6,7 +6,10 @@ use crate::model::{Location, MetadataValue};
 mod audio;
 mod find;
 mod media_controls;
+mod model;
+mod operations;
 mod pdf;
+mod route;
 mod video;
 
 struct Pending {
@@ -38,6 +41,7 @@ pub(super) fn entry(name: &str) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         is_hidden: false,
         recent_uri: None,
     }
@@ -81,16 +85,21 @@ fn model_progress_and_theme_reloads_follow_the_current_request_in_each_drawer() 
                 2,
                 crate::services::ModelPreviewStage::Rendering { triangles: 23 },
             );
-            let label = first
+            let triangles = first
                 .state
-                .loading_label
+                .model
                 .borrow()
                 .as_ref()
-                .expect("loading feedback")
+                .expect("loading model UI")
+                .triangles
                 .clone();
-            assert_eq!(label.text(), "Rendering 23 triangles…");
-            emit_progress(0, crate::services::ModelPreviewStage::Finishing);
-            assert_eq!(label.text(), "Rendering 23 triangles…");
+            assert_eq!(triangles.text(), "23 triangles");
+            emit_progress(
+                0,
+                crate::services::ModelPreviewStage::Rendering { triangles: 99 },
+            );
+            assert_eq!(triangles.text(), "23 triangles");
+            assert!(first.state.model_spinner.is_visible());
             {
                 let pending = provider.0.borrow();
                 (pending[0].emit)(PreviewEvent::Failed {
@@ -99,7 +108,20 @@ fn model_progress_and_theme_reloads_follow_the_current_request_in_each_drawer() 
                     message: "stale failure".into(),
                 });
             }
-            assert!(first.state.loading_label.borrow().is_some());
+            assert!(first.state.model.borrow().is_some(), "current model");
+            assert!(first.state.model_spinner.is_visible());
+            model::ready(&provider, 2, Some(crate::services::ModelView::FrontLeft));
+            model::ready(&provider, 1, Some(crate::services::ModelView::FrontLeft));
+            let next = first
+                .state
+                .model
+                .borrow()
+                .as_ref()
+                .expect("mesh controls")
+                .next
+                .clone();
+            next.emit_clicked();
+            model::ready(&provider, 3, Some(crate::services::ModelView::BackLeft));
             let old_palette = manager.active_model_palette();
             let mut tokens = manager.appearance_tokens();
             tokens.accent = if old_palette.accent == 0xff0000 {
@@ -111,10 +133,18 @@ fn model_progress_and_theme_reloads_follow_the_current_request_in_each_drawer() 
             manager.preview(&tokens);
             {
                 let pending = provider.0.borrow();
-                assert_eq!(pending.len(), 5);
-                assert_eq!(pending[3].request.entry.native_name, "new.stl");
-                assert_eq!(pending[4].request.entry.native_name, "second.stl");
-                for request in &pending[3..] {
+                assert_eq!(pending.len(), 6);
+                assert_eq!(pending[4].request.entry.native_name, "new.stl");
+                assert_eq!(
+                    pending[4].request.model_view,
+                    crate::services::ModelView::BackLeft
+                );
+                assert_eq!(pending[5].request.entry.native_name, "second.stl");
+                assert_eq!(
+                    pending[5].request.model_view,
+                    crate::services::ModelView::FrontLeft
+                );
+                for request in &pending[4..] {
                     assert_eq!(
                         request.request.model_palette,
                         manager.active_model_palette()
@@ -123,14 +153,14 @@ fn model_progress_and_theme_reloads_follow_the_current_request_in_each_drawer() 
                 }
             }
             first.close();
-            emit_progress(3, crate::services::ModelPreviewStage::Finishing);
+            emit_progress(4, crate::services::ModelPreviewStage::Finishing);
             assert!(first.state.current_request.get().is_none());
-            assert!(first.state.loading_label.borrow().is_none());
+            assert!(first.state.model.borrow().is_none());
             tokens.surface = "#102030".into();
             manager.preview(&tokens);
             assert_eq!(
                 provider.0.borrow().len(),
-                6,
+                7,
                 "closed drawer must not reload"
             );
             second.close();

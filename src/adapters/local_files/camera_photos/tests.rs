@@ -35,6 +35,7 @@ fn collect(root: &Path, max_entries: usize, time_budget: Duration) -> Vec<Direct
             include_metadata: true,
             max_entries,
             time_budget,
+            background: false,
         },
         Rc::new(move |event| emitted.borrow_mut().push(event)),
     );
@@ -287,6 +288,7 @@ fn cancellation_after_first_batch_stops_recursive_discovery() {
                     include_metadata: false,
                     max_entries: usize::MAX,
                     time_budget: Duration::MAX,
+                    background: false,
                 },
                 Rc::new(move |event| {
                     assert!(matches!(event, DirectoryEvent::Batch { .. }));

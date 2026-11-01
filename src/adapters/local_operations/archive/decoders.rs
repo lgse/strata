@@ -20,7 +20,7 @@ use std::{
 
 use gtk::glib;
 
-use crate::services::INCORRECT_ARCHIVE_PASSWORD;
+use crate::services::{INCORRECT_ARCHIVE_PASSWORD, TransferReport};
 
 use super::{
     ArchiveError, MAYBE_BAD_PASSWORD, PASSWORD_REQUIRED, archive_failed, archive_io_failed,
@@ -122,6 +122,12 @@ fn archive_read_error(error: std::io::Error, decrypting: bool) -> std::io::Error
             ArchiveError::IncorrectPassword(MAYBE_BAD_PASSWORD.to_owned()),
         );
     }
+    // zip enforces the declared size itself; copy_member reports which member overran.
+    if error.kind() == ErrorKind::InvalidData
+        && error.to_string() == "File is larger than its declared uncompressed size"
+    {
+        return std::io::Error::from(ErrorKind::FileTooLarge);
+    }
     // TAR reports these malformed-header errors as Other, not InvalidData.
     let invalid_tar = error.kind() == ErrorKind::Other
         && matches!(
@@ -195,12 +201,12 @@ fn zip_member_modified(entry: &zip::read::ZipFile<'_, std::fs::File>) -> Option<
         zip::ExtraField::ExtendedTimestamp(stamp) => stamp
             .mod_time()
             .and_then(|seconds| unix_seconds(seconds as i32)),
-        zip::ExtraField::Ntfs(_) => None,
+        _ => None,
     });
     let ntfs = || {
         entry.extra_data_fields().find_map(|field| match field {
             zip::ExtraField::Ntfs(ntfs) => filetime(ntfs.mtime()),
-            zip::ExtraField::ExtendedTimestamp(_) => None,
+            _ => None,
         })
     };
     extended.or_else(ntfs).or_else(|| {
@@ -343,8 +349,9 @@ pub(super) fn extract_zip_from_archive(
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
+    report: &mut TransferReport,
 ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
-    let mut session = ExtractionSession::open(dest_dir, archive_name, progress, cancelled)?;
+    let mut session = ExtractionSession::open(dest_dir, archive_name, progress, cancelled, report)?;
     if let Some(claimed) = archive.decompressed_size() {
         session.preflight_claimed_size(claimed)?;
     }
@@ -357,7 +364,7 @@ pub(super) fn extract_zip_from_archive(
             let mut entry = archive
                 .by_index_with_options(index, options)
                 .map_err(zip_error)?;
-            let name = entry.name().to_owned();
+            let name = entry.name().map_err(zip_error)?.into_owned();
             let declared_size = entry.size();
             let directory = entry.is_dir();
             let symlink = !directory && entry.is_symlink();
@@ -386,8 +393,8 @@ pub(super) fn extract_zip_from_archive(
     })();
     session.finish(result, || {
         (next_index..archive.len())
-            .filter_map(|index| archive.name_for_index(index))
-            .map(str::to_owned)
+            .filter_map(|index| archive.name_for_index(index)?.ok())
+            .map(Cow::into_owned)
             .collect()
     })
 }
@@ -414,8 +421,9 @@ pub(super) fn extract_tar(
     gzip: bool,
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
+    report: &mut TransferReport,
 ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
-    let mut session = ExtractionSession::open(dest_dir, archive_name, progress, cancelled)?;
+    let mut session = ExtractionSession::open(dest_dir, archive_name, progress, cancelled, report)?;
     session.record_hard_link_targets();
     let file = std::fs::File::open(archive_path).map_err(|error| archive_io_failed(&error))?;
     let reader = if gzip {
@@ -455,9 +463,6 @@ pub(super) fn extract_tar(
             }
             let name = entry.path().map_err(|error| archive_io_failed(&error))?;
             let entry_type = entry.header().entry_type();
-            if entry_type.is_dir() && name == Path::new(".") {
-                continue;
-            }
             let declared_size = entry.size();
             let path = name.into_owned();
             let name = path.display();
@@ -531,8 +536,9 @@ pub(super) fn extract_7z_from_reader(
     password: sevenz_rust2::Password,
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
+    report: &mut TransferReport,
 ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
-    let mut session = ExtractionSession::open(dest_dir, archive_name, progress, cancelled)?;
+    let mut session = ExtractionSession::open(dest_dir, archive_name, progress, cancelled, report)?;
     let password_supplied = !password.is_empty();
     let mut archive =
         sevenz_rust2::ArchiveReader::new(reader, password).map_err(sevenz_decode_error)?;

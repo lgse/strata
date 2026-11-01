@@ -10,6 +10,9 @@ use crate::services::{
 };
 use crate::ui::browser::ViewState;
 use crate::ui::browser::columns::set_mark_path_style;
+use crate::ui::browser::content_drop::{
+    self, DropHandler, DropRequest, attach_drop_target, commit_dropped_value,
+};
 use crate::ui::browser::paths::{can_remove_location, is_trash_location};
 use crate::ui::browser::transfer::ConflictFocus;
 use gtk::prelude::*;
@@ -210,9 +213,17 @@ pub(crate) struct PreparedFileDrop {
     pub state: Rc<FileDropState>,
 }
 
+#[derive(Clone)]
+pub(crate) struct DragSnapshot {
+    pub locations: Rc<[Location]>,
+    /// Locations with display names, present only when every entry is a directory.
+    pub folders: Option<Rc<[(Location, String)]>>,
+}
+
 struct ActiveDrag {
+    source: glib::WeakRef<gtk::DragSource>,
     content: glib::WeakRef<gtk::gdk::ContentProvider>,
-    locations: Rc<[Location]>,
+    snapshot: DragSnapshot,
 }
 
 thread_local! {
@@ -222,13 +233,24 @@ thread_local! {
 /// Only trusted when the drop carries the provider this process created; foreign
 /// drops and stale entries fall back to the dropped value.
 fn active_drag_locations(target: &gtk::DropTarget) -> Option<Rc<[Location]>> {
-    let content = target.current_drop()?.drag()?.content();
+    active_drag_snapshot(&target.current_drop()?).map(|snapshot| snapshot.locations)
+}
+
+pub(crate) fn active_drag_snapshot(drop: &gtk::gdk::Drop) -> Option<DragSnapshot> {
+    drag_snapshot_for_content(&drop.drag()?.content())
+}
+
+fn drag_snapshot_for_content(content: &gtk::gdk::ContentProvider) -> Option<DragSnapshot> {
     ACTIVE_DRAG.with(|cell| {
         cell.borrow()
             .as_ref()
-            .filter(|active| active.content.upgrade().as_ref() == Some(&content))
-            .map(|active| active.locations.clone())
+            .filter(|active| active.content.upgrade().as_ref() == Some(content))
+            .map(|active| active.snapshot.clone())
     })
+}
+
+pub(crate) fn active_file_drag_source() -> Option<gtk::DragSource> {
+    ACTIVE_DRAG.with(|cell| cell.borrow().as_ref()?.source.upgrade())
 }
 
 pub(crate) fn clear_active_drag() {
@@ -239,6 +261,8 @@ pub(crate) fn clear_active_drag() {
 
 pub(crate) const SPRING_LOAD_NAVIGATE_DELAY: Duration = Duration::from_millis(750);
 
+type OfferFilter = Box<dyn Fn(&gtk::gdk::Drop) -> bool>;
+
 /// Reuses one classification for cursor feedback and the eventual transfer.
 pub(crate) struct FileDropState {
     destination: Rc<dyn Fn() -> Option<Location>>,
@@ -246,6 +270,7 @@ pub(crate) struct FileDropState {
     sources: RefCell<Option<Rc<[Location]>>>,
     classification: RefCell<Option<DropClassification>>,
     spring_load: RefCell<Option<SpringLoadPending>>,
+    offer_filter: RefCell<Option<OfferFilter>>,
 }
 
 struct SpringLoadPending {
@@ -276,11 +301,26 @@ impl FileDropState {
             sources: RefCell::new(None),
             classification: RefCell::new(None),
             spring_load: RefCell::new(None),
+            offer_filter: RefCell::new(None),
         }
     }
 
     pub(crate) fn destination(&self) -> Option<Location> {
         (self.destination)()
+    }
+
+    /// Narrows the offers this target accepts beyond the shared rules.
+    pub(crate) fn filter_offers(&self, filter: impl Fn(&gtk::gdk::Drop) -> bool + 'static) {
+        self.offer_filter.replace(Some(Box::new(filter)));
+    }
+
+    pub(super) fn accepts(&self, target: &gtk::DropTarget, offered: &gtk::gdk::Drop) -> bool {
+        content_drop::accepts_offer(target, offered, self.destination().as_ref())
+            && self
+                .offer_filter
+                .borrow()
+                .as_ref()
+                .is_none_or(|filter| filter(offered))
     }
 
     // Repeated motion must not postpone navigation; recycled rows must not open stale destinations.
@@ -437,14 +477,7 @@ pub(crate) fn file_drag_hover_target(
     target: &gtk::DropTarget,
 ) -> Option<Location> {
     let destination = drop_state.destination()?;
-    target
-        .current_drop()
-        .filter(|offered| {
-            offered
-                .formats()
-                .contains_type(gtk::gdk::FileList::static_type())
-        })
-        .map(|_| destination)
+    target.current_drop().map(|_| destination)
 }
 
 /// Ignore drop validity so the source folder can spring open even though a self-drop is forbidden.
@@ -478,11 +511,16 @@ pub(crate) fn prepare_file_drop_target(
     destination: impl Fn() -> Option<Location> + 'static,
 ) -> PreparedFileDrop {
     let drop = gtk::DropTarget::new(
-        gtk::gdk::FileList::static_type(),
+        glib::Type::INVALID,
         gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
     );
-    drop.set_preload(true);
+    drop.set_types(&content_drop::drop_types());
     let state = Rc::new(FileDropState::new(Rc::new(destination)));
+    let state_for_accept = state.clone();
+    drop.connect_accept(move |target, offered| {
+        target.set_preload(content_drop::preloads(offered));
+        state_for_accept.accepts(target, offered)
+    });
     let state_for_leave = state.clone();
     drop.connect_leave(move |_| state_for_leave.reset());
     let state_for_value = state.clone();
@@ -525,37 +563,37 @@ pub(super) fn install_directory_drop_target(
     let state_for_motion = drop_state.clone();
     drop.connect_motion(move |target, _, _| file_drop_action(target, &state_for_motion));
     let weak = Rc::downgrade(state);
-    drop.connect_drop(move |target, value, _, _| {
-        let Some(state) = weak.upgrade() else {
-            return false;
-        };
-        transfer_dropped_files(&state, target, value, destination.clone(), &drop_state)
+    let handler: DropHandler = Rc::new(move |destination, request| {
+        if let Some(state) = weak.upgrade() {
+            state.commit_drop(destination, request);
+        }
     });
-    widget.add_controller(drop);
-}
-
-fn transfer_dropped_files(
-    state: &Rc<ViewState>,
-    target: &gtk::DropTarget,
-    value: &glib::Value,
-    destination: Location,
-    drop_state: &Rc<FileDropState>,
-) -> bool {
-    let sources = drop_state.sources(target);
-    let sources = if sources.is_empty() {
-        let Some(sources) = locations_from_file_list_value(value) else {
-            return false;
-        };
-        sources
-    } else {
-        sources.to_vec()
-    };
-    if sources.is_empty() {
-        return false;
-    }
-    let commit = file_drop_commit(target, &destination, &sources, drop_state);
-    state.commit_file_drop(destination, sources, commit);
-    true
+    let handler_for_drop = handler.clone();
+    let state_for_drop = drop_state.clone();
+    drop.connect_drop(move |target, value, _, _| {
+        let handler = handler_for_drop.clone();
+        let sources = state_for_drop.sources(target);
+        if sources.is_empty() || content_drop::value_kind(value) != content_drop::ValueKind::Files {
+            return commit_dropped_value(
+                target,
+                value,
+                destination.clone(),
+                &state_for_drop,
+                move |destination, request| handler(destination, request),
+            );
+        }
+        file_drop_commit(
+            target,
+            destination.clone(),
+            sources.to_vec(),
+            &state_for_drop,
+            move |destination, sources, commit| {
+                handler(destination, DropRequest::Files(sources, commit));
+            },
+        );
+        true
+    });
+    attach_drop_target(widget, &drop, &drop_state, handler);
 }
 
 pub(crate) fn drag_actions_for_modifiers(
@@ -575,24 +613,43 @@ pub(crate) fn file_drop_action(
     state: &Rc<FileDropState>,
 ) -> gtk::gdk::DragAction {
     let destination = state.destination();
+    // Classifying files may query their volumes, which a web address must never reach.
+    if let Some(action) = content_drop::content_drop_action(target, destination.as_ref()) {
+        return action;
+    }
     let sources = state.sources(target);
-    drop_commit_action(classify_file_drop(
-        target,
-        state,
-        destination.as_ref(),
-        sources,
-        false,
-    ))
+    drop_commit_action(
+        classify_file_drop(target, state, destination.as_ref(), sources, false)
+            .map_or(DropCommit::Forbidden, |(choice, relation)| {
+                choice.commit(relation)
+            }),
+    )
 }
 
 pub(crate) fn file_drop_commit(
     target: &gtk::DropTarget,
-    destination: &Location,
-    sources: &[Location],
+    destination: Location,
+    sources: Vec<Location>,
     state: &Rc<FileDropState>,
-) -> DropCommit {
-    let sources = state.sources_matching(target, sources);
-    classify_file_drop(target, state, Some(destination), sources, true)
+    then: impl FnOnce(Location, Vec<Location>, DropCommit) + 'static,
+) {
+    let matching = state.sources_matching(target, &sources);
+    let Some((choice, relation)) =
+        classify_file_drop(target, state, Some(&destination), matching, true)
+    else {
+        return then(destination, sources, DropCommit::Forbidden);
+    };
+    if let Some(DropVolumes::Pending(pending)) = state
+        .classification
+        .borrow()
+        .as_ref()
+        .map(|cached| &cached.volumes)
+        && choice.commit(VolumeRelation::Same) != choice.commit(VolumeRelation::Unknown)
+    {
+        pending.wait(move |relation| then(destination, sources, choice.commit(relation)));
+        return;
+    }
+    then(destination, sources, choice.commit(relation));
 }
 
 fn drop_source_locations(target: &gtk::DropTarget) -> Vec<Location> {
@@ -603,27 +660,45 @@ fn drop_source_locations(target: &gtk::DropTarget) -> Vec<Location> {
         .unwrap_or_default()
 }
 
+#[derive(Clone, Copy)]
+struct FileDropChoice {
+    offered: gtk::gdk::DragAction,
+    override_with: DropOverride,
+    is_noop: bool,
+    strategy: CrossVolumeDropStrategy,
+}
+
+impl FileDropChoice {
+    fn commit(self, relation: VolumeRelation) -> DropCommit {
+        preferred_file_drop_commit(
+            self.offered,
+            self.override_with,
+            relation,
+            self.is_noop,
+            self.strategy,
+        )
+    }
+}
+
 fn classify_file_drop(
     target: &gtk::DropTarget,
     state: &Rc<FileDropState>,
     destination: Option<&Location>,
     sources: Rc<[Location]>,
     commit: bool,
-) -> DropCommit {
+) -> Option<(FileDropChoice, VolumeRelation)> {
     let drop = target.current_drop();
     if drop.is_none() && !commit {
-        return DropCommit::Forbidden;
+        return None;
     }
     let override_with = if commit {
         commit_override(target, &state.last_override)
     } else {
         hover_override(target, &state.last_override)
     };
-    let Some(destination) = destination else {
-        return DropCommit::Forbidden;
-    };
+    let destination = destination?;
     if destination.is_recent_location() {
-        return DropCommit::Forbidden;
+        return None;
     }
     let (relation, is_noop) = state.classify(target, destination, sources.clone());
     let source_actions = drop
@@ -647,7 +722,15 @@ fn classify_file_drop(
             "drop action classified"
         );
     }
-    preferred_file_drop_commit(offered, override_with, relation, is_noop, strategy)
+    Some((
+        FileDropChoice {
+            offered,
+            override_with,
+            is_noop,
+            strategy,
+        },
+        relation,
+    ))
 }
 
 fn current_cross_volume_drop_strategy() -> CrossVolumeDropStrategy {
@@ -744,7 +827,10 @@ pub(crate) fn locations_from_file_list_value(value: &glib::Value) -> Option<Vec<
     (!locations.is_empty()).then_some(locations)
 }
 
-pub(in crate::ui) fn file_drag_content(entries: &[FileEntry]) -> Option<gtk::gdk::ContentProvider> {
+pub(in crate::ui) fn file_drag_content(
+    source: &gtk::DragSource,
+    entries: &[FileEntry],
+) -> Option<gtk::gdk::ContentProvider> {
     if entries.is_empty() {
         return None;
     }
@@ -767,8 +853,17 @@ pub(in crate::ui) fn file_drag_content(entries: &[FileEntry]) -> Option<gtk::gdk
     let locations = entries.iter().map(|entry| entry.location.clone()).collect();
     ACTIVE_DRAG.with(|cell| {
         *cell.borrow_mut() = Some(ActiveDrag {
+            source: source.downgrade(),
             content: content.downgrade(),
-            locations,
+            snapshot: DragSnapshot {
+                locations,
+                folders: entries.iter().all(FileEntry::is_directory).then(|| {
+                    entries
+                        .iter()
+                        .map(|entry| (entry.location.clone(), entry.display_name.clone()))
+                        .collect()
+                }),
+            },
         });
     });
     Some(content)
@@ -1304,41 +1399,13 @@ impl ViewState {
         let png_bytes = texture.save_to_png_bytes();
         let stem = crate::i18n::tr("pasted_image.name");
         gio::spawn_blocking(move || {
-            if let Err(error) = write_pasted_image(&dir, &stem, png_bytes.as_ref()) {
+            if let Err(error) =
+                crate::services::save_new_file(&dir, &stem, "png", png_bytes.as_ref())
+            {
                 tracing::warn!(%error, "unable to write pasted image");
             }
         });
     }
-}
-
-fn write_pasted_image(
-    dir: &std::path::Path,
-    stem: &str,
-    bytes: &[u8],
-) -> std::io::Result<std::path::PathBuf> {
-    use std::io::Write;
-
-    for suffix in 0u64.. {
-        let name = if suffix == 0 {
-            format!("{stem}.png")
-        } else {
-            format!("{stem} ({suffix}).png")
-        };
-        let path = dir.join(name);
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-        {
-            Ok(mut file) => {
-                file.write_all(bytes)?;
-                return Ok(path);
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
-        }
-    }
-    Err(std::io::Error::other("image filename suffixes exhausted"))
 }
 
 #[cfg(test)]

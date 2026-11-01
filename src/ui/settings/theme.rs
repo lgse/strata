@@ -10,7 +10,7 @@ use gtk::{gdk, gio, glib, prelude::*};
 use crate::{
     assets::icons,
     ui::{
-        controls::segmented_control,
+        controls::{number_stepper, segmented_control},
         preferences::{
             CornerRoundness, FileIconColors, InterfaceRenderer, OmarchyVariant, PreferenceManager,
             TextSize,
@@ -330,6 +330,18 @@ fn append_file_icon_colors_option(content: &gtk::Box, preferences: &Rc<Preferenc
         PreferenceManager::set_show_thumbnails,
     );
     group.append(&row);
+    let (row, toggle) = super::settings_option(
+        "STL model thumbnails",
+        "Render local STL models as file thumbnails, one at a time. Requires Show thumbnails.",
+        preferences.stl_thumbnails(),
+    );
+    bind_switch(
+        preferences,
+        &toggle,
+        PreferenceManager::stl_thumbnails,
+        PreferenceManager::set_stl_thumbnails,
+    );
+    group.append(&row);
 }
 
 fn append_omarchy_variant_option(
@@ -341,16 +353,16 @@ fn append_omarchy_variant_option(
         preferences,
         "Omarchy variant",
         &[
-            ("Original", OmarchyVariant::Original),
+            ("Lighter", OmarchyVariant::Lighter),
             ("Darker", OmarchyVariant::Darker),
-            ("High contrast", OmarchyVariant::HighContrast),
+            ("Contrast", OmarchyVariant::Contrast),
         ],
         PreferenceManager::omarchy_variant,
         PreferenceManager::set_omarchy_variant,
     );
     let row = super::control_row(
         "Omarchy variant",
-        "Original palette mapping, darker surfaces, or stronger contrast. Keeps following your system theme.",
+        "Lighter or darker file columns, or stronger contrast. Keeps following your system theme.",
         &choice,
     );
     super::indent_row(&row);
@@ -365,26 +377,6 @@ fn append_omarchy_variant_option(
     content.append(&row);
 }
 
-/// A numeric stepper with GTK's native spin actions, decrement before the entry.
-fn stepper(min: u32, max: u32, step: u32) -> gtk::SpinButton {
-    let control = gtk::SpinButton::with_range(f64::from(min), f64::from(max), f64::from(step));
-    control.set_numeric(true);
-    control.set_width_chars(3);
-    control.set_alignment(0.5);
-    let mut child = control.first_child();
-    while let Some(widget) = child {
-        child = widget.next_sibling();
-        if widget.has_css_class("down") {
-            widget.insert_before(&control, control.first_child().as_ref());
-            break;
-        }
-    }
-    control.set_update_policy(gtk::SpinButtonUpdatePolicy::IfValid);
-    control.add_css_class("form-control");
-    control.add_css_class("text-size-control");
-    control
-}
-
 fn append_text_size_option(content: &gtk::Box, preferences: &Rc<PreferenceManager>) {
     let group = super::settings_group(content, "TEXT");
     group.append(&super::control_row(
@@ -392,7 +384,7 @@ fn append_text_size_option(content: &gtk::Box, preferences: &Rc<PreferenceManage
         "The typeface for menus, file lists, and dialogs. File previews keep a monospace font.",
         &interface_font_choice(preferences),
     ));
-    let text_size_control = stepper(TextSize::MIN, TextSize::MAX, 1);
+    let text_size_control = number_stepper(TextSize::MIN, TextSize::MAX, 1);
     crate::ui::accessibility::set_label(
         &text_size_control,
         &crate::i18n::tr("Text size in pixels"),
@@ -429,35 +421,52 @@ fn append_text_size_option(content: &gtk::Box, preferences: &Rc<PreferenceManage
     keys.set_halign(gtk::Align::Start);
     keys.set_hexpand(false);
     keys.set_valign(gtk::Align::Center);
-    {
+    crate::ui::shortcut_reference::follow_keys(&keys, |keys| {
         use crate::ui::keys::{
             self as shortcuts, Binding, Keys,
             bindings::{TEXT_LARGER, TEXT_RESET, TEXT_SMALLER},
         };
+        while let Some(child) = keys.first_child() {
+            child.unparent();
+        }
         let keycap = |text: &str, class| {
             let label = gtk::Label::new(Some(text));
             label.add_css_class("settings-nowrap");
             label.add_css_class(class);
             keys.append(&label);
         };
-        // The three bindings share their modifiers, shown once.
-        keycap(
-            &shortcuts::modifiers_label(TEXT_LARGER.modifiers()),
-            "settings-keycap",
-        );
-        for (index, binding) in [TEXT_LARGER, TEXT_SMALLER, TEXT_RESET]
+        let bindings: Vec<Binding> = [TEXT_LARGER, TEXT_SMALLER, TEXT_RESET]
             .into_iter()
-            .enumerate()
-        {
+            .filter_map(|command| command.primary())
+            .collect();
+        // Shared modifiers, as the shipped bindings have, are shown once.
+        let shared = bindings
+            .first()
+            .map(|first| first.modifiers())
+            .filter(|modifiers| {
+                !modifiers.is_empty()
+                    && bindings
+                        .iter()
+                        .all(|binding| binding.modifiers() == *modifiers)
+            });
+        if let Some(modifiers) = shared {
+            keycap(&shortcuts::modifiers_label(modifiers), "settings-keycap");
+        }
+        for (index, binding) in bindings.into_iter().enumerate() {
             if index > 0 {
                 keycap("/", "keycap-separator");
             }
+            let shown = if shared.is_some() {
+                Binding::plain(binding.key())
+            } else {
+                binding
+            };
             keycap(
-                &shortcuts::label(&Keys::One(Binding::plain(binding.key()))),
+                &shortcuts::label(&Keys::One(shown.shown())),
                 "settings-keycap",
             );
         }
-    }
+    });
     description.append(&keys);
     text_size_copy.append(&text_size_title);
     text_size_copy.append(&description);
@@ -675,7 +684,7 @@ fn installed_font_families(widget: &impl IsA<gtk::Widget>) -> impl Iterator<Item
 
 fn append_corner_roundness_option(content: &gtk::Box, preferences: &Rc<PreferenceManager>) {
     let group = super::settings_group(content, "SHAPE");
-    let control = stepper(
+    let control = number_stepper(
         CornerRoundness::MIN,
         CornerRoundness::MAX,
         CornerRoundness::STEP,

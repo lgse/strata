@@ -165,15 +165,8 @@ mod imp {
                 obj.restart_at(self.position.get());
             } else if self.first_frame.get() {
                 self.clock.set(obj.wall_clock_allowed().then(Instant::now));
-                let result = self
-                    .audio
-                    .borrow()
-                    .as_ref()
-                    .map(PcmOutput::play)
-                    .transpose();
-                if let Err(error) = result {
-                    obj.fail(&error);
-                    return false;
+                if let Some(audio) = self.audio.borrow().as_ref() {
+                    audio.play();
                 }
             }
             self.last_progress.set(Some(Instant::now()));
@@ -188,14 +181,8 @@ mod imp {
             self.clock.set(None);
             self.audio_stuck_since.set(None);
             self.paused.set(Some(Instant::now()));
-            let result = self
-                .audio
-                .borrow()
-                .as_ref()
-                .map(PcmOutput::pause)
-                .transpose();
-            if let Err(error) = result {
-                self.obj().fail(&error);
+            if let Some(audio) = self.audio.borrow().as_ref() {
+                audio.pause();
             }
         }
 
@@ -813,7 +800,7 @@ impl DecodedMedia {
                         if self.is_playing() {
                             imp.clock.set(self.wall_clock_allowed().then(Instant::now));
                             if let Some(audio) = imp.audio.borrow().as_ref() {
-                                audio.play()?;
+                                audio.play();
                             }
                         }
                         self.present(frame);

@@ -68,7 +68,15 @@ pub(super) fn sorted_listing(
 
 #[test]
 fn media_families_split_audio_and_video_and_skip_gifs() {
-    for name in ["clip.mp4", "clip.mkv", "clip.webm", "clip.mov", "clip.avi"] {
+    for name in [
+        "clip.mp4",
+        "clip.mkv",
+        "clip.webm",
+        "clip.mov",
+        "clip.avi",
+        "clip.h264",
+        "CLIP.H264",
+    ] {
         assert_eq!(
             entry_family(&entry(name)),
             Some(MediaFamily::Video),
@@ -97,6 +105,11 @@ fn media_families_split_audio_and_video_and_skip_gifs() {
     let mut not_really_media = entry("clip.mp4");
     not_really_media.duration_seconds = MetadataValue::Unavailable;
     assert_eq!(entry_family(&not_really_media), None);
+
+    let mut raw_video = entry("clip.h264");
+    raw_video.duration_seconds = MetadataValue::Unavailable;
+    raw_video.image_dimensions = MetadataValue::Known((320, 180));
+    assert_eq!(entry_family(&raw_video), Some(MediaFamily::Video));
 }
 
 #[test]

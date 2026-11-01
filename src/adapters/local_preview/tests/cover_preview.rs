@@ -37,6 +37,7 @@ fn comic_and_epub_requests_render_covers_instead_of_archive_trees() {
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
+            listable: MetadataValue::Unknown,
             is_hidden: false,
             recent_uri: None,
         };
@@ -51,6 +52,7 @@ fn comic_and_epub_requests_render_covers_instead_of_archive_trees() {
                 pdf_page: 0,
                 media_size: MediaPreviewSize::new(800, 800),
                 model_palette: ModelPalette::default(),
+                model_view: Default::default(),
                 archive_password: None,
             },
             Rc::new(move |event| emit.borrow_mut().push(event)),
@@ -61,6 +63,7 @@ fn comic_and_epub_requests_render_covers_instead_of_archive_trees() {
                     page: 0,
                     pages: 0,
                     text_layer: None,
+                    model_mesh: None,
                 })
             },
         );

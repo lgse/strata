@@ -69,7 +69,7 @@ pub fn mime_description_for_name(name: &str) -> String {
 }
 
 fn guess_mime_description(name: &str) -> String {
-    let (content_type, _) = gio::content_type_guess(Some(Path::new(name)), None::<&[u8]>);
+    let (content_type, _) = super::guess_content_type(Path::new(name));
     if content_type.is_empty() || content_type == "application/octet-stream" {
         return OTHER_TYPE_NAME.to_owned();
     }

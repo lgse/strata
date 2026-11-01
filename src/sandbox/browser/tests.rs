@@ -241,6 +241,54 @@ fn cancelled_admission_never_starts_a_worker_or_strands_a_waiter() {
 }
 
 #[test]
+fn a_request_an_operation_stops_reports_the_operation_not_a_cancel() {
+    use crate::services::file_activity;
+    let directory = tempfile::tempdir().expect("fixture");
+    let path = directory.path().join("clip.mp4");
+    std::fs::write(&path, b"clip").expect("clip");
+    let pool = Pool {
+        state: Mutex::default(),
+        changed: Condvar::new(),
+        limit: AtomicUsize::new(1),
+        idle_timeout: DEFAULT_WORKER_IDLE_TIMEOUT,
+        cache: Mutex::default(),
+    };
+    let key = FileKey::read(&path, &File::open(&path).expect("open")).expect("version");
+    let gate = cache_entry(&pool.cache, key, Operation::MediaMetadata);
+    let activity = file_activity::begin(file_activity::OperationScope::default());
+    for (row, stopped, error) in [
+        (
+            "stopped by a release",
+            true,
+            file_activity::HELD_FOR_OPERATION,
+        ),
+        (
+            "cancelled by its caller",
+            false,
+            "Browser request cancelled",
+        ),
+    ] {
+        let in_flight = gate.lock().expect("an in-flight duplicate");
+        let cancellation = Cancellation::default();
+        let outcome = std::thread::scope(|scope| {
+            let waiting =
+                scope.spawn(|| request(&pool, &path, Operation::MediaMetadata, &cancellation));
+            while Arc::strong_count(&gate) < 3 && !waiting.is_finished() {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            if stopped {
+                activity.fence([path.clone()]).stop_reads();
+            } else {
+                cancellation.cancel();
+            }
+            waiting.join().expect("request thread").err()
+        });
+        drop(in_flight);
+        assert_eq!(outcome.as_deref(), Some(error), "{row}");
+    }
+}
+
+#[test]
 fn resizing_preserves_busy_leases_and_wakes_waiters_for_new_capacity() {
     let pool = Pool {
         state: Mutex::new(PoolState {

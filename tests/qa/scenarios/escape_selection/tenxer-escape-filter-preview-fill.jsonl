@@ -1,0 +1,25 @@
+{"scenario":"tenxer-escape-filter-preview-fill","modes":["columns","icons","list"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false,"filter_include_subfolders":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.7,"icons":0.7,"list":0.7},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"10xer Esc ladder: filter clears while preview stays open, then preview, then selection; only test of this step"}}
+{"select":{"entry":"readme.md","dir":"$root"}}
+{"key":"f"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"type":"todo"}
+{"key":"Return"}
+{"wait":{"present":{"role":"label","name":"filter: todo"}},"message":"the filter to commit"}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'"}
+{"key":"i"}
+{"wait":{"preview":true},"message":"i to open the preview"}
+{"note":"panes","as":"panes"}
+{"key":"Escape"}
+{"wait":{"entries":["archive","documents","pictures","readme.md","todo.txt"],"dir":"$root"},"message":"Esc to clear the filter"}
+{"expect":{"absent":{"role":"label","name":"filter: todo"}}}
+{"expect":{"preview":true}}
+{"wait":{"selected":["readme.md"],"dir":"$root"},"message":"the selection to become ['readme.md']"}
+{"key":"Escape"}
+{"wait":{"preview":null},"message":"Esc to close the preview"}
+{"wait":{"selected":["readme.md"],"dir":"$root"},"message":"the selection to become ['readme.md']"}
+{"key":"Escape"}
+{"wait":{"selected":[],"dir":"$root"},"message":"the selection to become []"}
+{"key":"Escape"}
+{"wait":{"selected":[],"dir":"$root"},"message":"the selection to become []"}
+{"expect":{"panes":"$panes"}}
+{"expect":{"entries":["archive","documents","pictures","readme.md","todo.txt"],"dir":"$root"}}

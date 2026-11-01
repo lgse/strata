@@ -1,0 +1,43 @@
+{"scenario":"escape-dismisses-transient","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":3,"score":38,"note":"Escape dismisses menu, properties, location, filter, rename, preview, new folder before selection; new-file editor is in escape-preserves-name-remaining"}}
+{"select":{"entry":"readme.md","dir":"$root"}}
+{"click":{"entry":"readme.md","dir":"$root"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'readme.md'"}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"Escape to close the context menu"}
+{"wait":{"selected":["readme.md"],"dir":"$root"},"message":"closing the menu must keep ['readme.md'] selected"}
+{"wait":{"focused":"readme.md"},"message":"focus to return to 'readme.md' after the menu"}
+{"key":"alt+Return"}
+{"wait":{"dialog":true},"message":"Alt+Return to open the properties dialog"}
+{"key":"Escape"}
+{"wait":{"dialog":null},"message":"Escape to close the properties dialog"}
+{"wait":{"selected":["readme.md"],"dir":"$root"},"message":"closing properties must keep ['readme.md'] selected"}
+{"wait":{"focused":"readme.md"},"message":"focus to return to 'readme.md' after properties"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location field to take focus"}
+{"key":"Escape"}
+{"wait":{"focused":"readme.md"},"message":"Escape to return focus from the location field to 'readme.md'"}
+{"expect":{"selected":["readme.md"],"dir":"$root"},"message":"leaving the location field must keep ['readme.md'] selected"}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"the filter field to take focus"}
+{"key":"Escape"}
+{"wait":{"focused":"readme.md"},"message":"Escape to return focus from the filter field to 'readme.md'"}
+{"expect":{"selected":["readme.md"],"dir":"$root"},"message":"dismissing the filter must keep ['readme.md'] selected"}
+{"key":"F2"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus"}
+{"key":"Escape"}
+{"wait":{"focused":"readme.md"},"message":"Escape to return focus from the rename editor to 'readme.md'"}
+{"expect":{"selected":["readme.md"],"dir":"$root"},"message":"cancelling rename must keep ['readme.md'] selected"}
+{"key":"space"}
+{"wait":{"preview":true},"message":"Space to open the preview"}
+{"key":"Escape"}
+{"wait":{"preview":null},"message":"Escape to close the preview"}
+{"wait":{"selected":["readme.md"],"dir":"$root"},"message":"closing the preview must keep ['readme.md'] selected"}
+{"expect":{"panes":["$root"]},"message":"Escape on a file's transient surfaces must not navigate"}
+{"key":"ctrl+shift+n"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the new folder's name editor to take focus"}
+{"key":"Escape"}
+{"wait":{"selected":["new folder"],"dir":"$root"},"message":"Escape on the name editor to keep the new folder selected"}
+{"fs":{"path":"new folder","is":"dir"},"timeout_ms":0}
+{"key":"Escape"}
+{"wait":{"selected":[],"dir":"$root"},"message":"a second Escape to clear the selection"}
+{"expect":{"panes":["$root","new folder"]},"message":"clearing the selection must not close the new folder's column"}

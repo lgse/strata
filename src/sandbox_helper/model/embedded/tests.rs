@@ -56,9 +56,11 @@ fn one_usable_thumbnail_survives_corrupt_candidates_and_multipart_geometry() {
             width <= 256 && height <= 256,
             "thumbnail must fit the worker output budget"
         );
-        let quick = super::super::render_reporting(&path, "3mf:256x256:00ff00:101010", &|_| {})
-            .expect("embedded quick preview");
-        assert_eq!(image, quick);
+        let quick =
+            super::super::render_reporting(&path, "3mf:256x256:00ff00:101010:back-right", &|_| {})
+                .expect("embedded quick preview");
+        assert_eq!(image, quick.png);
+        assert_eq!(quick.mesh, None);
     }
 }
 

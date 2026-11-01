@@ -27,6 +27,7 @@ pub(crate) fn entry(location: crate::model::Location) -> crate::model::FileEntry
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_uri: None,
     }
 }
@@ -107,12 +108,17 @@ impl OperationProvider for HeldOperations {
     fn rename(&self, request: RenameRequest, callback: Callback) -> LoadHandle {
         self.hold(request.id, callback)
     }
+    fn place_entry(&self, request: PlaceEntryRequest, callback: Callback) -> LoadHandle {
+        self.hold(request.id, callback)
+    }
     unsupported!(create_directory, CreateDirectoryRequest);
     unsupported!(create_file, CreateFileRequest);
     unsupported!(undo_move, UndoMoveRequest);
     unsupported!(undo_rename, UndoRenameRequest);
     unsupported!(undo_copy, UndoCopyRequest);
-    unsupported!(undo_merge, UndoMergeRequest);
+    fn undo_merge(&self, request: UndoMergeRequest, callback: Callback) -> LoadHandle {
+        self.hold(request.id, callback)
+    }
     fn delete(&self, request: DeleteRequest, callback: Callback) -> LoadHandle {
         self.delete_requests.borrow_mut().push((
             request.id,
@@ -121,5 +127,10 @@ impl OperationProvider for HeldOperations {
         ));
         self.hold(request.id, callback)
     }
-    unsupported!(restore, RestoreRequest);
+    fn restore(&self, request: RestoreRequest, callback: Callback) -> LoadHandle {
+        self.hold(request.id, callback)
+    }
+    fn recover(&self, request: RecoverRequest, callback: Callback) -> LoadHandle {
+        self.hold(request.id, callback)
+    }
 }

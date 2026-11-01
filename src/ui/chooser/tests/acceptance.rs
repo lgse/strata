@@ -1718,6 +1718,100 @@ fn save_file_with_search_results_accepts_selected_folder_without_navigating_into
 }
 
 #[test]
+fn save_file_clicking_the_selected_row_refills_the_name_in_every_view() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::save_file_clicking_the_selected_row_refills_the_name_in_every_view",
+        || {
+            crate::ui::prepare_portal_ui();
+            for mode in [BrowserMode::List, BrowserMode::Columns, BrowserMode::Icons] {
+                PreferenceManager::shared().set_browser_mode(mode);
+                let root = tempfile::tempdir().expect("fixture");
+                std::fs::write(root.path().join("existing.txt"), "existing").expect("file");
+                let mut req = request(root.path().to_path_buf());
+                req.kind = ChooserKind::SaveFile {
+                    current_name: Some("suggested.txt".into()),
+                };
+                let state =
+                    build_chooser(req, Arc::new(AtomicBool::new(false)), |_| {}).expect("chooser");
+                let browser = state.view.browser();
+                let file_label = || {
+                    descendants(&state.view.widget())
+                        .into_iter()
+                        .find(|widget| {
+                            widget.is_mapped()
+                                && (widget
+                                    .downcast_ref::<gtk::Label>()
+                                    .is_some_and(|label| label.text() == "existing.txt")
+                                    || widget.downcast_ref::<gtk::Inscription>().is_some_and(
+                                        |label| label.text().as_deref() == Some("existing.txt"),
+                                    ))
+                        })
+                };
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading && column.count == 1)
+                        && file_label().is_some()
+                });
+                let filename = state.filename.as_ref().expect("filename");
+                assert_eq!(filename.text(), "suggested.txt", "{mode:?}");
+                assert!(browser.selection_is_load_cursor(), "{mode:?}");
+
+                let click_file = || {
+                    let surface = state.view.widget();
+                    let label = file_label().expect("file label");
+                    let file_point = || {
+                        label
+                            .compute_point(&surface, &gtk::graphene::Point::new(2.0, 2.0))
+                            .expect("file position")
+                    };
+                    wait_until(|| {
+                        let point = file_point();
+                        surface.pick(
+                            f64::from(point.x()),
+                            f64::from(point.y()),
+                            gtk::PickFlags::DEFAULT,
+                        ) == Some(label.clone())
+                    });
+                    let point = file_point();
+                    let controllers = surface.observe_controllers();
+                    for index in 0..controllers.n_items() {
+                        if let Some(click) =
+                            controllers.item(index).and_downcast::<gtk::GestureClick>()
+                            && matches!(click.button(), 0 | 1)
+                            && click.propagation_phase() == gtk::PropagationPhase::Capture
+                        {
+                            click.emit_by_name::<()>(
+                                "pressed",
+                                &[&1i32, &f64::from(point.x()), &f64::from(point.y())],
+                            );
+                        }
+                    }
+                };
+                click_file();
+                wait_until(|| filename.text() == "existing.txt");
+                assert!(!browser.selection_is_load_cursor(), "{mode:?}");
+                filename.set_text("edited.txt");
+                browser.set_selection(0, &[0], Some(0));
+                while glib::MainContext::default().pending() {
+                    glib::MainContext::default().iteration(false);
+                }
+                assert_eq!(
+                    filename.text(),
+                    "edited.txt",
+                    "focus echoes must not refill: {mode:?}"
+                );
+                click_file();
+                wait_until(|| filename.text() == "existing.txt");
+                assert!(state.completion.borrow().is_some(), "{mode:?}");
+                assert!(visible_modal_layer(&state.window).is_none(), "{mode:?}");
+                state.window.close();
+            }
+        },
+    );
+}
+
+#[test]
 fn save_file_with_selected_file_saves_to_active_folder() {
     crate::test_support::gtk_test(
         "ui::chooser::tests::acceptance::save_file_with_selected_file_saves_to_active_folder",

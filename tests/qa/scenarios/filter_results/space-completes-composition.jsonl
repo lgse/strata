@@ -1,0 +1,17 @@
+{"scenario":"space-completes-composition","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"tree":{"match-note.txt":"root decoy\n","alpha":{"match-note.txt":"alpha source\n"},"beta":{"match-note.txt":"beta source\n","only-match.txt":"beta source\n"},"match-note-other.md":"other match\n","destination":{},"thumb.txt":"thumbnail search companion"},"images":{"beta/thumb.png":{"width":64,"height":64,"rgb":[230,40,60]}},"cost":{"columns":1.0},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Space commits a pending AltGr tone mark in the filter entry instead of previewing; only filter-entry Space route, rename Escape is tone-mark-escape-before-rename"}}
+{"select":{"entry":"match-note.txt"}}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"filter"}
+{"type":"match-note"}
+{"wait":{"matches":{"count":4}},"message":"all recursive matches"}
+{"wait":{"present":{"result":"beta/match-note.txt"}},"message":"the beta result"}
+{"click":{"result":"beta/match-note.txt"},"mods":["ctrl"]}
+{"click":{"field":"filter"}}
+{"key":"End"}
+{"layout":"cn-altgr-pinyin"}
+{"key":"altgr+1"}
+{"key":"space"}
+{"wait":{"field":{"of":"filter","text":"match-note¯"}},"message":"Space to complete the tone mark"}
+{"layout":"us"}
+{"expect":{"preview":null}}

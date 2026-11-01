@@ -5,15 +5,12 @@ use std::cell::Cell;
 use gtk::{glib, graphene, gsk, prelude::*, subclass::prelude::*};
 
 use super::artwork::ASPECT;
+use crate::ui::preview::components::{CONTROLS_GAP, GAP, PADDING, PANEL_MIN};
 
-const PADDING: i32 = 16;
-const GAP: i32 = 12;
-const CONTROLS_GAP: i32 = 4;
 const ART_MIN: i32 = 96;
 const ART_MAX: i32 = 520;
 const SPECTRUM_MIN: i32 = 44;
 const SPECTRUM_MAX: i32 = 200;
-const PANEL_MIN: i32 = 200;
 const PANEL_MAX: i32 = 620;
 /// Share of the stacked layout's free height the art may take before the spectrum.
 const ART_SHARE: f32 = 0.62;

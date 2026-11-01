@@ -325,7 +325,7 @@ fn deleted_targets_are_spliced_out_of_the_recent_view() {
     ]);
     events.borrow_mut().clear();
 
-    browser.remove_deleted_locations(&[Location::local("/fixture/stale")]);
+    browser.remove_deleted_locations(&[Location::local("/fixture/stale")], &[]);
 
     assert_eq!(column_names(&browser, 0), ["kept"]);
     assert!(events.borrow().iter().any(|event| matches!(
@@ -446,22 +446,63 @@ fn completed_move_without_open_parent_retires_recent_target() {
 }
 
 #[test]
-fn large_deletions_reload_an_open_recent_view() {
+fn large_removals_reload_an_open_recent_view_once() {
     let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .expect("the async test lock should not be poisoned");
-    let (browser, events, _) = load_recent(vec![recent_entry("stale", EntryKind::File, 20, 1)]);
-    events.borrow_mut().clear();
+    let rows = [
+        ("deleted", false, false),
+        ("deleted while it rescanned", false, true),
+        ("restored while it rescanned", true, true),
+    ];
+    for (row, restoring, rescanned) in rows {
+        let (browser, events, _) = load_recent(vec![recent_entry("stale", EntryKind::File, 20, 1)]);
+        let request_id = browser.begin_operation();
+        browser.deletion_operation.set(!restoring);
+        browser.restoration_operation.set(restoring);
+        let emit = browser.operation_callback(request_id, false, HashSet::new());
+        if rescanned {
+            browser.handle_directory_change(
+                0,
+                &Location::uri("recent:///"),
+                DirectoryChange::Rescan,
+            );
+        }
+        events.borrow_mut().clear();
 
-    let deleted: Vec<_> = (0..=MAX_INCREMENTAL_OPERATION_UPDATES)
-        .map(|index| Location::local(format!("/bulk/{index}")))
-        .collect();
-    browser.remove_deleted_locations(&deleted);
+        let locations: Vec<_> = (0..=MAX_INCREMENTAL_OPERATION_UPDATES)
+            .map(|index| Location::local(format!("/bulk/{index}")))
+            .collect();
+        emit(if restoring {
+            OperationEvent::Restored {
+                request_id,
+                locations,
+                restored: Vec::new(),
+            }
+        } else {
+            OperationEvent::Deleted {
+                request_id,
+                locations,
+            }
+        });
 
-    assert!(
-        events
-            .borrow()
-            .iter()
-            .any(|event| matches!(event, BrowserEvent::ColumnReloaded { depth: 0 }))
-    );
+        let reloads = |matches: fn(&BrowserEvent) -> bool| {
+            events
+                .borrow()
+                .iter()
+                .filter(|event| matches(event))
+                .count()
+        };
+        assert_eq!(
+            (
+                reloads(|event| matches!(event, BrowserEvent::ColumnReloaded { depth: 0 })),
+                reloads(|event| matches!(
+                    event,
+                    BrowserEvent::OperationRefreshRequired { depths } if depths == &[0]
+                )),
+            ),
+            if rescanned { (0, 1) } else { (1, 0) },
+            "{row}"
+        );
+    }
 }

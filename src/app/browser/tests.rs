@@ -8,6 +8,7 @@ use std::{
 
 use super::*;
 
+mod administrator;
 mod archive_activation;
 mod background_operations;
 mod camera_photos;
@@ -16,7 +17,9 @@ mod deferred;
 #[path = "directory_changes/tests.rs"]
 mod directory_changes;
 mod events;
+mod folder_counts;
 mod folder_sorts;
+mod leftovers;
 mod location_input;
 mod metadata;
 mod monitor;
@@ -37,8 +40,9 @@ mod undo_refresh;
 use crate::{
     model::{EntryKind, MetadataValue},
     services::{
-        CancelledOperation, CompressRequest, DirectoryEvent, ExtractRequest, LoadHandle,
-        MetadataOutcome, MetadataRequest, MetadataUpdate, UndoCopyRequest, UndoMoveRequest,
+        CancelledOperation, CompressRequest, DirectoryEvent, Evidence, ExtractRequest,
+        IdentityTraits, InodeNumbers, LoadHandle, MetadataOutcome, MetadataRequest, MetadataUpdate,
+        MountToken, StampAnswer, UndoCopyRequest, UndoMoveRequest, Watching,
     },
 };
 
@@ -87,33 +91,58 @@ type WatchCallback = Rc<dyn Fn(DirectoryChange)>;
 
 /// Identities of fake folders, so a source can find a folder after a rename.
 #[derive(Default)]
-struct FolderIdentities(RefCell<HashMap<Location, LocationIdentity>>);
+struct FolderIdentities(RefCell<HashMap<Location, ItemIdentity>>);
+
+fn trash_undo(locations: Vec<Location>) -> UndoEntry {
+    UndoEntry::Trash {
+        locations,
+        originals: HashMap::new(),
+    }
+}
+
+fn folder_identity(inode: u64, born: i64) -> ItemIdentity {
+    ItemIdentity {
+        evidence: Evidence {
+            device: 1,
+            inode,
+            kind: rustix::fs::FileType::Directory,
+            birth: Some((born, 0)),
+            handle: None,
+            attributes: None,
+        },
+        traits: IdentityTraits {
+            numbers: InodeNumbers::Kept,
+            folder_births: true,
+            made_up_births: false,
+        },
+    }
+}
+
+fn identified_stamp(identity: ItemIdentity) -> DirectoryStamp {
+    DirectoryStamp {
+        modified: (0, 0),
+        changed: Some((0, 0)),
+        identity: Some(identity),
+        mount: Some(MountToken::Native(1)),
+        outside_writers: false,
+        coarse_window: None,
+        daemon_cache: None,
+        read_at: std::time::UNIX_EPOCH,
+    }
+}
 
 impl FolderIdentities {
     fn identify(&self, location: &Location) {
         let mut identities = self.0.borrow_mut();
         let born = identities.len() as u64 + 1;
-        identities.insert(
-            location.clone(),
-            LocationIdentity {
-                device: 1,
-                inode: born,
-                created: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(born)),
-            },
-        );
+        identities.insert(location.clone(), folder_identity(born, born as i64));
     }
 
     /// A new folder at `to` that the filesystem gave the deleted `from` folder's inode.
     fn reuse_inode(&self, from: &Location, to: &Location) {
         let mut identities = self.0.borrow_mut();
         let deleted = identities.remove(from).expect("an identified folder");
-        identities.insert(
-            to.clone(),
-            LocationIdentity {
-                created: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000)),
-                ..deleted
-            },
-        );
+        identities.insert(to.clone(), folder_identity(deleted.evidence.inode, 1_000));
     }
 
     fn rename(&self, from: &Location, to: &Location) {
@@ -122,16 +151,21 @@ impl FolderIdentities {
         identities.insert(to.clone(), identity);
     }
 
-    fn identity(&self, location: &Location) -> Option<LocationIdentity> {
-        self.0.borrow().get(location).copied()
+    fn stamp(&self, request: &DirectoryRequest, emit: &Rc<dyn Fn(DirectoryEvent)>) {
+        if let Some(identity) = self.0.borrow().get(&request.location).copied() {
+            emit(DirectoryEvent::Stamp {
+                request_id: request.id,
+                stamp: Box::new(identified_stamp(identity)),
+            });
+        }
     }
 
-    fn find(&self, parent: &Location, identity: LocationIdentity) -> Option<Location> {
+    fn find(&self, parent: &Location, identity: ItemIdentity) -> Option<Location> {
         self.0
             .borrow()
             .iter()
             .find(|(location, candidate)| {
-                identity.matches(candidate) && location.parent().as_ref() == Some(parent)
+                identity.same(candidate) && location.parent().as_ref() == Some(parent)
             })
             .map(|(location, _)| location.clone())
     }
@@ -163,6 +197,7 @@ impl FileSource for WatchingFileSource {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
                 recent_uri: None,
             }],
         });
@@ -228,6 +263,8 @@ impl FileSource for RetryFileSource {
             emit(DirectoryEvent::Failed {
                 request_id: request.id,
                 message: "temporarily unavailable".into(),
+                refused: false,
+                denied: false,
             });
         } else {
             emit(DirectoryEvent::Batch {
@@ -246,6 +283,7 @@ impl FileSource for RetryFileSource {
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
                     recent_uri: None,
                 }],
             });
@@ -310,6 +348,7 @@ impl FileSource for FilePreviewSource {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
                 recent_uri: None,
             }],
         });
@@ -348,6 +387,7 @@ impl FileSource for ArchiveFileSource {
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
                     recent_uri: None,
                 },
                 FileEntry {
@@ -364,6 +404,7 @@ impl FileSource for ArchiveFileSource {
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
                     recent_uri: None,
                 },
                 FileEntry {
@@ -380,6 +421,7 @@ impl FileSource for ArchiveFileSource {
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
                     recent_uri: None,
                 },
                 FileEntry {
@@ -396,6 +438,7 @@ impl FileSource for ArchiveFileSource {
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
                     recent_uri: None,
                 },
             ],
@@ -432,6 +475,7 @@ impl FileSource for OpenChildBesideFileSource {
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
                     recent_uri: None,
                 },
                 FileEntry {
@@ -448,6 +492,7 @@ impl FileSource for OpenChildBesideFileSource {
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
                     recent_uri: None,
                 },
             ]
@@ -488,6 +533,7 @@ impl FileSource for RestoredSortingSource {
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
+            listable: MetadataValue::Unknown,
             recent_uri: None,
         };
         emit(DirectoryEvent::Batch {
@@ -526,6 +572,7 @@ impl FileSource for FakeFileSource {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
                 recent_uri: None,
             }],
         });
@@ -563,6 +610,7 @@ impl FileSource for TrashFileSource {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
                 recent_uri: None,
             }],
         });
@@ -600,17 +648,21 @@ impl FileSource for CountingFileSource {
 type UndoMergeRecord = (
     Vec<Location>,
     Vec<Location>,
-    HashMap<Location, TrashedOriginal>,
+    HashMap<Location, ItemIdentity>,
+    HashMap<Location, crate::services::PlacedSnapshot>,
 );
 
 thread_local! {
     static UNDO_MOVE_REQUESTS: RefCell<Vec<Vec<MoveRecord>>> = const { RefCell::new(Vec::new()) };
     static UNDO_MOVE_CLEANUPS: RefCell<Vec<Vec<Location>>> = const { RefCell::new(Vec::new()) };
+    static UNDO_MOVE_NAMES: RefCell<Vec<NameMode>> = const { RefCell::new(Vec::new()) };
     static UNDO_COPY_REQUESTS: RefCell<Vec<Vec<Location>>> = const { RefCell::new(Vec::new()) };
     static UNDO_MERGE_REQUESTS: RefCell<Vec<UndoMergeRecord>> =
         const { RefCell::new(Vec::new()) };
     static UNDO_RENAME_REQUESTS: RefCell<Vec<(Location, Location)>> = const { RefCell::new(Vec::new()) };
+    static TRASHED_IDENTITIES: RefCell<HashMap<Location, ItemIdentity>> = RefCell::default();
     static FORWARD_RENAME_OUTCOME: Cell<Option<ForwardRenameOutcome>> = const { Cell::new(None) };
+    static SWEPT_PROBES: RefCell<Vec<(Location, Vec<OsString>)>> = const { RefCell::new(Vec::new()) };
 }
 
 #[derive(Clone, Copy)]
@@ -620,6 +672,23 @@ enum ForwardRenameOutcome {
 }
 
 struct ImmediateOperationProvider;
+
+fn report_trashed(
+    request_id: OperationRequestId,
+    locations: &[Location],
+    emit: &Rc<dyn Fn(OperationEvent)>,
+) {
+    for location in locations {
+        let identity = TRASHED_IDENTITIES.with(|trashed| trashed.borrow().get(location).copied());
+        if let Some(identity) = identity {
+            emit(OperationEvent::ItemTrashed {
+                request_id,
+                location: location.clone(),
+                identity,
+            });
+        }
+    }
+}
 
 impl OperationProvider for ImmediateOperationProvider {
     fn rename(&self, request: RenameRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
@@ -637,6 +706,29 @@ impl OperationProvider for ImmediateOperationProvider {
                 request_id: request.id,
             }),
         }
+        LoadHandle::new(|| {})
+    }
+
+    fn place_entry(
+        &self,
+        request: PlaceEntryRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        let mut folder = request.entry.location.parent().expect("new entry parent");
+        let placed = request
+            .path
+            .folders
+            .iter()
+            .chain([&request.path.name])
+            .map(|name| {
+                folder = folder.child(OsStr::new(name)).expect("placed location");
+                folder.clone()
+            })
+            .collect();
+        emit(OperationEvent::EntryPlaced {
+            request_id: request.id,
+            placed,
+        });
         LoadHandle::new(|| {})
     }
 
@@ -714,6 +806,7 @@ impl OperationProvider for ImmediateOperationProvider {
     }
 
     fn undo_move(&self, request: UndoMoveRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        UNDO_MOVE_NAMES.with(|names| names.borrow_mut().push(request.names));
         UNDO_MOVE_CLEANUPS.with(|requests| {
             requests
                 .borrow_mut()
@@ -765,6 +858,7 @@ impl OperationProvider for ImmediateOperationProvider {
 
     fn undo_copy(&self, request: UndoCopyRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         UNDO_COPY_REQUESTS.with(|requests| requests.borrow_mut().push(request.locations.clone()));
+        report_trashed(request.id, &request.locations, &emit);
         emit(OperationEvent::Deleted {
             request_id: request.id,
             locations: request.locations,
@@ -782,6 +876,7 @@ impl OperationProvider for ImmediateOperationProvider {
                 request.created.clone(),
                 request.overwritten.clone(),
                 request.originals.clone(),
+                request.placed.clone(),
             ));
         });
         emit(OperationEvent::Restored {
@@ -793,13 +888,15 @@ impl OperationProvider for ImmediateOperationProvider {
     }
 
     fn delete(&self, request: DeleteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        let locations: Vec<_> = request
+            .entries
+            .into_iter()
+            .map(|entry| entry.location)
+            .collect();
+        report_trashed(request.id, &locations, &emit);
         emit(OperationEvent::Deleted {
             request_id: request.id,
-            locations: request
-                .entries
-                .into_iter()
-                .map(|entry| entry.location)
-                .collect(),
+            locations,
         });
         LoadHandle::new(|| {})
     }
@@ -810,7 +907,7 @@ impl OperationProvider for ImmediateOperationProvider {
                 .iter()
                 .map(|item| Location::local(item.destination.clone()))
                 .collect(),
-            RestoreSource::OriginalLocations(locations) => locations.clone(),
+            RestoreSource::OriginalLocations { locations, .. } => locations.clone(),
         };
         emit(OperationEvent::Restored {
             request_id: request.id,
@@ -818,6 +915,23 @@ impl OperationProvider for ImmediateOperationProvider {
             restored,
         });
         LoadHandle::new(|| {})
+    }
+
+    fn recover(
+        &self,
+        request: crate::services::RecoverRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        emit(OperationEvent::Restored {
+            request_id: request.id,
+            locations: vec![request.container],
+            restored: Vec::new(),
+        });
+        LoadHandle::new(|| {})
+    }
+
+    fn sweep_probes(&self, folder: &Location, names: &[OsString]) {
+        SWEPT_PROBES.with_borrow_mut(|swept| swept.push((folder.clone(), names.to_vec())));
     }
 
     fn compress(&self, request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
@@ -830,6 +944,7 @@ impl OperationProvider for ImmediateOperationProvider {
             archive_name: request.archive_name,
             archive,
             original: None,
+            placed: None,
         });
         LoadHandle::new(|| {})
     }
@@ -855,6 +970,14 @@ struct HeldExtractProvider {
 impl OperationProvider for HeldExtractProvider {
     fn rename(&self, request: RenameRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         ImmediateOperationProvider.rename(request, emit)
+    }
+
+    fn place_entry(
+        &self,
+        request: PlaceEntryRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        ImmediateOperationProvider.place_entry(request, emit)
     }
 
     fn create_directory(
@@ -909,6 +1032,14 @@ impl OperationProvider for HeldExtractProvider {
         ImmediateOperationProvider.restore(request, emit)
     }
 
+    fn recover(
+        &self,
+        request: crate::services::RecoverRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        ImmediateOperationProvider.recover(request, emit)
+    }
+
     fn compress(&self, request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         ImmediateOperationProvider.compress(request, emit)
     }
@@ -938,6 +1069,7 @@ fn fixture_entry(path: &str) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_uri: None,
     }
 }
@@ -983,6 +1115,7 @@ fn batch_entry(name: &str) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_uri: None,
     }
 }
@@ -993,6 +1126,7 @@ fn trash_entry(name: &str) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         ..batch_entry(name)
     }
 }
@@ -1041,6 +1175,7 @@ impl FileSource for SortFillSource {
                         image_dimensions: MetadataValue::Unknown,
                         child_count: MetadataValue::Unknown,
                         duration_seconds: MetadataValue::Unknown,
+                        listable: MetadataValue::Unknown,
                     }
                 })
                 .collect(),
@@ -1091,6 +1226,7 @@ struct ScriptedSource {
     missing: RefCell<HashSet<Location>>,
     unreachable: RefCell<HashSet<Location>>,
     identities: FolderIdentities,
+    watched: bool,
 }
 
 impl ScriptedSource {
@@ -1106,6 +1242,7 @@ impl ScriptedSource {
             missing: RefCell::new(HashSet::new()),
             unreachable: RefCell::new(HashSet::new()),
             identities: FolderIdentities::default(),
+            watched: false,
         }
     }
 
@@ -1142,6 +1279,7 @@ impl ScriptedSource {
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
+            listable: MetadataValue::Unknown,
             recent_uri: None,
         }
     }
@@ -1167,6 +1305,7 @@ impl ScriptedSource {
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
                 })
                 .collect(),
         };
@@ -1201,19 +1340,10 @@ impl ScriptedSource {
 }
 
 impl FileSource for ScriptedSource {
-    fn query_location_identity(
-        &self,
-        location: Location,
-        emit: Rc<dyn Fn(Option<LocationIdentity>)>,
-    ) -> LoadHandle {
-        emit(self.identities.identity(&location));
-        LoadHandle::new(|| {})
-    }
-
     fn find_by_identity(
         &self,
         parent: Location,
-        identity: LocationIdentity,
+        identity: ItemIdentity,
         emit: Rc<dyn Fn(Option<Location>)>,
     ) -> LoadHandle {
         emit(self.identities.find(&parent, identity));
@@ -1238,6 +1368,7 @@ impl FileSource for ScriptedSource {
             self.enumerate_calls.borrow_mut().push((request.id, emit));
             return LoadHandle::new(|| {});
         }
+        self.identities.stamp(&request, &emit);
         emit(DirectoryEvent::Batch {
             request_id: request.id,
             entries: self
@@ -1295,7 +1426,7 @@ impl FileSource for ScriptedSource {
         _include_hidden: bool,
         _notify: Rc<dyn Fn(DirectoryChange)>,
     ) -> Option<LoadHandle> {
-        None
+        self.watched.then(|| LoadHandle::new(|| {}))
     }
 }
 
@@ -1323,9 +1454,9 @@ enum LocationChange {
     },
     Removed {
         location: Location,
-        trash_identity: Option<TrashedOriginal>,
+        trash_identity: Option<ItemIdentity>,
     },
-    Restored(Location),
+    Restored(Location, Option<ItemIdentity>),
 }
 
 fn location_changes(events: &[BrowserEvent]) -> Vec<LocationChange> {
@@ -1344,8 +1475,8 @@ fn location_changes(events: &[BrowserEvent]) -> Vec<LocationChange> {
                 location: location.clone(),
                 trash_identity: *trash_identity,
             }),
-            BrowserEvent::ItemRestored { location } => {
-                Some(LocationChange::Restored(location.clone()))
+            BrowserEvent::ItemRestored { location, identity } => {
+                Some(LocationChange::Restored(location.clone(), *identity))
             }
             _ => None,
         })
@@ -1441,6 +1572,7 @@ impl FileSource for MixedPeekFileSource {
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
                     recent_uri: None,
                 },
                 FileEntry {
@@ -1457,6 +1589,7 @@ impl FileSource for MixedPeekFileSource {
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
                     recent_uri: None,
                 },
             ],

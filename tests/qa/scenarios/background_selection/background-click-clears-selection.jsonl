@@ -1,0 +1,7 @@
+{"scenario":"background-click-clears-selection","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.7,"icons":0.7,"list":0.7},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Plain background click clears selection in Icons and List; beside-last-column-clears (Columns, outside pane) and background-press-clears-before-drag (press-then-drag) overlap the rest; src/ui/marquee/tests.rs does not pin the GUI click"}}
+{"select":{"entry":"readme.md","dir":"$root"}}
+{"click":{"entry":"todo.txt","dir":"$root"},"mods":["ctrl"]}
+{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the selection to become ['readme.md', 'todo.txt']"}
+{"click":{"pane":"$root"},"at":["50%",-60]}
+{"wait":{"all_selected":[]},"message":"empty space to deselect every file"}
+{"expect":{"pane":"$root"}}

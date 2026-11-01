@@ -72,8 +72,8 @@ impl BrowserView {
         );
         self.bind_view_preference(
             manager,
-            PreferenceManager::auto_refresh_interval,
-            Self::set_auto_refresh_interval,
+            PreferenceManager::watch_network_folders,
+            Self::set_watch_network_folders,
         );
         self.bind_view_preference(
             manager,

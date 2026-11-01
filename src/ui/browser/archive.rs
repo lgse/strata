@@ -14,7 +14,7 @@
 //! - [`ViewState::show_extract_to_dialog`]
 //! - [`ViewState::show_extract_password_dialog`]
 
-use crate::adapters::gio_file_for_location;
+use crate::adapters::probes::{self, Presence};
 use crate::model::{FileEntry, Location};
 use crate::services::{ArchiveFormat, PasswordFailure, TransferConflict, validate_basename};
 use crate::ui::browser::ViewState;
@@ -37,6 +37,7 @@ use crate::ui::modal::{
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::Cell;
+use std::ffi::OsStr;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -56,13 +57,16 @@ fn normalized_archive_name(name: &str, format: ArchiveFormat) -> String {
         .to_owned()
 }
 
-/// Whether `destination` already contains a child named `archive_name`.
-///
-/// Collision checks use the final filename, including the format extension.
-fn archive_has_collision(destination: &Location, archive_name: &str) -> bool {
-    gio_file_for_location(destination)
-        .child(archive_name)
-        .query_exists(None::<&gio::Cancellable>)
+async fn archive_name_taken(destination: &Location, archive_name: &str) -> bool {
+    let Some(archive) = destination.child(OsStr::new(archive_name)) else {
+        return false;
+    };
+    matches!(
+        probes::presence(&[archive], &gio::Cancellable::new())
+            .await
+            .as_slice(),
+        [Presence::Present]
+    )
 }
 
 impl ViewState {
@@ -123,8 +127,8 @@ impl ViewState {
 
     /// Starts compression, offering replacement or a numbered copy on collision.
     ///
-    /// Uses [`TransferConflict::FailIfExists`] when the name is free. On a
-    /// collision, shows a conflict prompt instead of overwriting. If that
+    /// Uses [`TransferConflict::FailIfExists`] when the name is free or could not be checked. On
+    /// a collision, shows a conflict prompt instead of overwriting. If that
     /// prompt cannot be hosted, the operation is not started.
     ///
     /// # Arguments
@@ -144,11 +148,21 @@ impl ViewState {
         password: Option<String>,
     ) {
         self.extract_destination.take();
-        let final_name = format!("{archive_name}.{}", format.extension());
-        if !archive_has_collision(&destination, &final_name) {
-            self.pending_archive_destination
+        let state = Rc::downgrade(self);
+        glib::MainContext::default().spawn_local(async move {
+            let final_name = format!("{archive_name}.{}", format.extension());
+            let taken = archive_name_taken(&destination, &final_name).await;
+            let Some(state) = state.upgrade() else {
+                return;
+            };
+            if taken {
+                state.ask_to_replace_archive(entries, destination, archive_name, format, password);
+                return;
+            }
+            state
+                .pending_archive_destination
                 .replace(Some(destination.clone()));
-            self.browser.compress(
+            state.browser.compress(
                 entries,
                 destination,
                 archive_name,
@@ -156,8 +170,18 @@ impl ViewState {
                 format,
                 password,
             );
-            return;
-        }
+        });
+    }
+
+    fn ask_to_replace_archive(
+        self: &Rc<Self>,
+        entries: Vec<FileEntry>,
+        destination: Location,
+        archive_name: String,
+        format: ArchiveFormat,
+        password: Option<String>,
+    ) {
+        let final_name = format!("{archive_name}.{}", format.extension());
         let Some(ModalHost {
             overlay: window_overlay,
             blurred_root,
@@ -316,6 +340,7 @@ impl ViewState {
         );
 
         let name_label = form_label(&crate::i18n::tr("Archive name"));
+        crate::ui::accessibility::set_labelled_by(&name_entry, &[name_label.upcast_ref()]);
         body.append(&name_label);
         body.append(&name_entry);
 
@@ -334,6 +359,8 @@ impl ViewState {
 
         let password_label = form_label(&crate::i18n::tr("Password"));
         let confirm_label = form_label(&crate::i18n::tr("Confirm password"));
+        crate::ui::accessibility::set_labelled_by(&password_entry, &[password_label.upcast_ref()]);
+        crate::ui::accessibility::set_labelled_by(&confirm_entry, &[confirm_label.upcast_ref()]);
         let password_fields = gtk::Box::new(gtk::Orientation::Vertical, 6);
         password_fields.append(&password_label);
         password_fields.append(&password_entry);
@@ -500,13 +527,7 @@ impl ViewState {
                 initial_directory: base,
                 root_limit: None,
                 allow_create: true,
-                validate: Rc::new(|path| {
-                    if path.is_dir() {
-                        Ok(path.to_path_buf())
-                    } else {
-                        Err(crate::i18n::tr("Choose an existing folder."))
-                    }
-                }),
+                validate: Rc::new(crate::ui::browser::destination::existing_folder),
             },
             move |path| {
                 let destination = Location::local(path);

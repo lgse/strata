@@ -62,25 +62,26 @@ impl FileProgressState {
         } else {
             compact.info.set_text(&self.task_description.borrow());
         }
-        let count = self
+        let counted = self
             .transfer_progress
             .get()
             .filter(|_| transferring)
             .map(|snapshot| {
-                let (completed, total) = if let Some(total) = snapshot.total_files {
-                    (snapshot.completed_files, total)
-                } else {
-                    (
-                        snapshot.completed_items,
-                        self.file_operation_progress.get().1,
-                    )
-                };
-                format!(
-                    "{}/{}",
-                    crate::i18n::integer(completed as u64),
-                    crate::i18n::integer(total as u64)
+                super::transfer_count(
+                    snapshot.completed_items,
+                    self.file_operation_progress.get().1,
+                    snapshot.completed_files,
+                    snapshot.total_files,
                 )
             });
+        let preparing = matches!(counted, Some(None));
+        let count = counted.flatten().map(|(completed, total, _)| {
+            format!(
+                "{}/{}",
+                crate::i18n::integer(completed as u64),
+                crate::i18n::integer(total as u64)
+            )
+        });
         compact.count.set_text(count.as_deref().unwrap_or_default());
         compact.count.set_visible(count.is_some());
         let destination = self.destination_description.borrow();
@@ -90,10 +91,12 @@ impl FileProgressState {
             .set_text(if destination.is_empty() { "" } else { &label });
         crate::ui::accessibility::set_description(&compact.destination, Some(&destination));
         compact.destination.set_visible(!destination.is_empty());
-        let meta = if transferring {
-            view.transfer_rate.text()
+        let meta = if preparing {
+            crate::i18n::tr("Preparing items…")
+        } else if transferring {
+            view.transfer_rate.text().into()
         } else {
-            view.status.text()
+            view.status.text().into()
         };
         let show_meta = transferring
             || meta != crate::i18n::percent((view.progress.fraction() * 100.0) as usize);

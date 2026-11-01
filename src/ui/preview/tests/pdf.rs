@@ -91,3 +91,65 @@ fn pdf_text_keys_select_and_copy_only_on_their_exact_chords() {
         },
     );
 }
+
+fn labelled_button(root: &gtk::Widget, label: &str) -> Option<gtk::Button> {
+    if let Some(button) = root.downcast_ref::<gtk::Button>()
+        && button.label().is_some_and(|text| text == label)
+    {
+        return Some(button.clone());
+    }
+    let mut child = root.first_child();
+    while let Some(widget) = child {
+        if let Some(found) = labelled_button(&widget, label) {
+            return Some(found);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
+#[test]
+fn password_protected_pdf_failures_offer_external_opening_only_where_allowed() {
+    crate::test_support::gtk_test(
+        "ui::preview::tests::pdf::password_protected_pdf_failures_offer_external_opening_only_where_allowed",
+        || {
+            for (allow_external_open, message, offers_open) in [
+                (true, crate::sandbox::PDF_PASSWORD_PROTECTED, true),
+                (false, crate::sandbox::PDF_PASSWORD_PROTECTED, false),
+                (true, "The sandboxed preview renderer failed", false),
+            ] {
+                let provider = Rc::new(Provider::default());
+                let drawer = PreviewDrawer::new(provider.clone(), allow_external_open);
+                let opened = Rc::new(Cell::new(0));
+                let count = opened.clone();
+                drawer
+                    .state
+                    .open
+                    .connect_clicked(move |_| count.set(count.get() + 1));
+                drawer.show(entry("locked.pdf"), None);
+                {
+                    let pending = provider.0.borrow();
+                    (pending[0].emit)(PreviewEvent::Failed {
+                        request_id: pending[0].request.id,
+                        entry: pending[0].request.entry.clone(),
+                        message: message.into(),
+                    });
+                }
+                let open = labelled_button(drawer.state.content.upcast_ref(), "Open");
+                assert_eq!(
+                    open.is_some(),
+                    offers_open,
+                    "external open {allow_external_open}: {message}"
+                );
+                if let Some(open) = open {
+                    open.emit_clicked();
+                    assert_eq!(
+                        opened.get(),
+                        1,
+                        "the Open button hands off like the header action"
+                    );
+                }
+            }
+        },
+    );
+}

@@ -1,0 +1,14 @@
+{"scenario":"tenxer-keeps-location-edit","modes":["columns"],"prefs":{"tenxer_mode":true,"type_to_search":true},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"10xer Ctrl+L then typing q goes to the location field, Ctrl+F stays closed; typed-path and icons-edges scenarios cover each half alone"}}
+{"select":{"entry":"readme.md"}}
+{"note":"entries","as":"names"}
+{"key":"ctrl+f"}
+{"wait":{"absent":{"field":true}},"message":"Ctrl+F does not open a filter while 10xer is on"}
+{"expect":{"entries":"$names"}}
+{"expect":{"pref":{"key":"tenxer_mode","value":true}}}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"location"}
+{"key":"q"}
+{"wait":{"field":{"of":"location","text":{"lowercase_contains":"q"}}},"message":"q is typed into the location field"}
+{"expect":{"pref":{"key":"tenxer_mode","value":true}}}
+{"expect":{"entries":"$names"}}

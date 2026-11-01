@@ -1,0 +1,20 @@
+{"scenario":"permission-bits-expose-state","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.8},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":4,"score":42,"note":"Properties permission toggles match disk bits and Owner execute click writes mode; only QA check, no unit test pins the editor"}}
+{"select":{"entry":"todo.txt"}}
+{"key":"alt+Return"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"wait":{"present":{"role":"toggle button","name":"Owner read","states":["sensitive"],"within":{"dialog":true}}},"message":"the Owner read bit"}
+{"expect":{"any":[{"all":[{"file":{"path":"$fixture/todo.txt","mode_bits":{"mask":"400","set":true}}},{"state":{"target":{"role":"toggle button","name":"Owner read","states":["sensitive"],"within":{"dialog":true}},"pressed":true}}]},{"all":[{"file":{"path":"$fixture/todo.txt","mode_bits":{"mask":"400","set":false}}},{"state":{"target":{"role":"toggle button","name":"Owner read","states":["sensitive"],"within":{"dialog":true}},"pressed":false}}]}]},"message":"Owner read"}
+{"wait":{"present":{"role":"toggle button","name":"Owner write","states":["sensitive"],"within":{"dialog":true}}},"message":"the Owner write bit"}
+{"expect":{"any":[{"all":[{"file":{"path":"$fixture/todo.txt","mode_bits":{"mask":"200","set":true}}},{"state":{"target":{"role":"toggle button","name":"Owner write","states":["sensitive"],"within":{"dialog":true}},"pressed":true}}]},{"all":[{"file":{"path":"$fixture/todo.txt","mode_bits":{"mask":"200","set":false}}},{"state":{"target":{"role":"toggle button","name":"Owner write","states":["sensitive"],"within":{"dialog":true}},"pressed":false}}]}]},"message":"Owner write"}
+{"wait":{"present":{"role":"toggle button","name":"Owner execute","states":["sensitive"],"within":{"dialog":true}}},"message":"the Owner execute bit"}
+{"expect":{"any":[{"all":[{"file":{"path":"$fixture/todo.txt","mode_bits":{"mask":"100","set":true}}},{"state":{"target":{"role":"toggle button","name":"Owner execute","states":["sensitive"],"within":{"dialog":true}},"pressed":true}}]},{"all":[{"file":{"path":"$fixture/todo.txt","mode_bits":{"mask":"100","set":false}}},{"state":{"target":{"role":"toggle button","name":"Owner execute","states":["sensitive"],"within":{"dialog":true}},"pressed":false}}]}]},"message":"Owner execute"}
+{"wait":{"present":{"role":"toggle button","name":"Others write","states":["sensitive"],"within":{"dialog":true}}},"message":"the Others write bit"}
+{"expect":{"any":[{"all":[{"file":{"path":"$fixture/todo.txt","mode_bits":{"mask":"002","set":true}}},{"state":{"target":{"role":"toggle button","name":"Others write","states":["sensitive"],"within":{"dialog":true}},"pressed":true}}]},{"all":[{"file":{"path":"$fixture/todo.txt","mode_bits":{"mask":"002","set":false}}},{"state":{"target":{"role":"toggle button","name":"Others write","states":["sensitive"],"within":{"dialog":true}},"pressed":false}}]}]},"message":"Others write"}
+{"wait":{"present":{"role":"toggle button","name":"Owner execute","states":["sensitive"],"within":{"dialog":true}}},"message":"the Owner execute bit"}
+{"click":{"role":"toggle button","name":"Owner execute","states":["sensitive"],"within":{"dialog":true}}}
+{"wait":{"file":{"path":"$fixture/todo.txt","mode_bits":{"mask":"100","set":true}}},"message":"owner execute to be set on disk"}
+{"wait":{"state":{"target":{"role":"toggle button","name":"Owner execute","states":["sensitive"],"within":{"dialog":true}},"pressed":true}},"message":"the Owner execute bit to report pressed"}
+{"wait":{"present":{"role":"toggle button","name":"Owner execute","states":["sensitive"],"within":{"dialog":true}}},"message":"the Owner execute bit"}
+{"click":{"role":"toggle button","name":"Owner execute","states":["sensitive"],"within":{"dialog":true}}}
+{"wait":{"file":{"path":"$fixture/todo.txt","mode_bits":{"mask":"100","set":false}}},"message":"owner execute to be cleared on disk"}
+{"wait":{"state":{"target":{"role":"toggle button","name":"Owner execute","states":["sensitive"],"within":{"dialog":true}},"pressed":false}},"message":"the Owner execute bit to report not pressed"}

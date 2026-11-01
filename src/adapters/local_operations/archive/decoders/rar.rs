@@ -10,6 +10,7 @@ use super::{dos_local_time, filetime, member_mode};
 use crate::{
     rar_extraction::{Failure, FailureKind, WireMetadata, WireTime},
     sandbox::archive::{Member, stream_rar},
+    services::TransferReport,
 };
 use std::{
     io::Read,
@@ -30,8 +31,9 @@ pub(in crate::adapters::local_operations::archive) fn extract_rar(
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
+    report: &mut TransferReport,
 ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
-    let mut session = ExtractionSession::open(dest_dir, archive_name, progress, cancelled)?;
+    let mut session = ExtractionSession::open(dest_dir, archive_name, progress, cancelled, report)?;
     // The stream's callback errors carry only text; retain the structured kind separately.
     let mut member_error = None;
     let outcome = stream_rar(

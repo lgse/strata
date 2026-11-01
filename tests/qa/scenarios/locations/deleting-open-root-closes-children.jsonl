@@ -1,0 +1,20 @@
+{"scenario":"deleting-open-root-closes-children","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.6},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"deleting open root collapses its child columns to the root; deleting-open-folder-returns-to-parent columns-root-delete covers root removal without child columns"}}
+{"fs":{"path":"documents/drafts","mkdir":true}}
+{"fs":{"path":"documents/drafts/draft.txt","write":"draft\n"}}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"key":"ctrl+a"}
+{"type":"$fixture/documents"}
+{"wait":{"field":{"of":"field","text":"$fixture/documents"}},"message":"typed location"}
+{"key":"Return"}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"expect":{"panes":["documents"]}}
+{"select":{"entry":"drafts"}}
+{"wait":{"directory":"drafts"},"message":"the browser to be working in 'drafts'"}
+{"settle":{"pane":"drafts"}}
+{"wait":{"entry":"draft.txt"},"message":"the entry 'draft.txt' to appear"}
+{"fs":{"path":"documents","remove":true}}
+{"wait":{"panes":["$root"]},"message":"the path to collapse to the fixture root"}
+{"wait":{"entry":"pictures"},"message":"the entry 'pictures' to appear"}

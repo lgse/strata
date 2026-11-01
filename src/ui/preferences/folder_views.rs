@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::{BTreeMap, HashSet},
-    fs, io,
+    collections::{BTreeMap, HashMap},
+    io,
     path::{Component, Components, Path, PathBuf},
 };
 
@@ -13,9 +13,9 @@ use crate::model::{SortDirection, SortKey, rebase_path};
 use super::super::icons_cell::{MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE};
 
 mod keys;
+pub(in crate::ui) use keys::key_for_location;
 #[cfg(test)]
 pub(in crate::ui) use keys::key_for_path;
-pub(in crate::ui) use keys::{holds_mount_points, key_for_location};
 
 pub(in crate::ui) const FOLDER_VIEWS_LIMIT: usize = 5_000;
 const VERSION: i64 = 1;
@@ -118,15 +118,16 @@ impl TakenViews {
 
 /// Per-folder values that differ from the defaults, with a logical use clock
 /// for evicting the least recently used folders.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(in crate::ui) struct FolderViews {
     entries: BTreeMap<FolderKey, Entry>,
     clock: u64,
     /// Unsaved changes, kept so a save can merge them over what another Strata
     /// process (such as the portal chooser) wrote in the meantime.
-    changed: HashSet<FolderKey>,
-    touched: HashSet<FolderKey>,
-    cleared: bool,
+    changed: HashMap<FolderKey, u64>,
+    touched: HashMap<FolderKey, u64>,
+    cleared: Option<u64>,
+    edits: u64,
 }
 
 impl FolderViews {
@@ -153,6 +154,12 @@ impl FolderViews {
             .is_some_and(|(key, _)| root.contains(key))
     }
 
+    pub(in crate::ui) fn may_forget(&self, root: &FolderKey) -> bool {
+        let drive_root =
+            matches!(root, FolderKey::Volume { relative, .. } if relative.as_os_str().is_empty());
+        !drive_root && self.has_within(root)
+    }
+
     fn keys_within(&self, root: &FolderKey) -> Vec<FolderKey> {
         self.entries
             .range(root..)
@@ -167,6 +174,15 @@ impl FolderViews {
         self.clock
     }
 
+    fn note_changed(&mut self, key: FolderKey) {
+        self.edits += 1;
+        self.changed.insert(key, self.edits);
+    }
+
+    pub(in crate::ui) fn edits(&self) -> u64 {
+        self.edits
+    }
+
     pub(in crate::ui) fn touch(&mut self, key: &FolderKey) -> bool {
         if !self.entries.contains_key(key) {
             return false;
@@ -175,7 +191,8 @@ impl FolderViews {
         if let Some(entry) = self.entries.get_mut(key) {
             entry.used = used;
         }
-        self.touched.insert(key.clone());
+        self.edits += 1;
+        self.touched.insert(key.clone(), self.edits);
         true
     }
 
@@ -190,7 +207,7 @@ impl FolderViews {
         if view == previous {
             return false;
         }
-        self.changed.insert(key.clone());
+        self.note_changed(key.clone());
         if view.is_empty() {
             self.entries.remove(key);
         } else {
@@ -228,7 +245,9 @@ impl FolderViews {
             !entry.view.is_empty()
         });
         let any = !changed.is_empty();
-        self.changed.extend(changed);
+        for key in changed {
+            self.note_changed(key);
+        }
         any
     }
 
@@ -237,7 +256,8 @@ impl FolderViews {
         self.entries.clear();
         self.changed.clear();
         self.touched.clear();
-        self.cleared = true;
+        self.edits += 1;
+        self.cleared = Some(self.edits);
         changed
     }
 
@@ -262,7 +282,7 @@ impl FolderViews {
             for stale in self.keys_within(to) {
                 if !from.contains(&stale) {
                     self.entries.remove(&stale);
-                    self.changed.insert(stale);
+                    self.note_changed(stale);
                 }
             }
         }
@@ -274,11 +294,12 @@ impl FolderViews {
             let new = to
                 .filter(|_| !(merged && old == *from))
                 .and_then(|to| old.rebased(from, to));
-            self.changed.insert(old);
+            self.note_changed(old);
             moved.extend(new.map(|new| (new, entry)));
         }
-        self.changed
-            .extend(moved.iter().map(|(key, _)| key.clone()));
+        for (key, _) in &moved {
+            self.note_changed(key.clone());
+        }
         self.entries.extend(moved);
         true
     }
@@ -289,7 +310,7 @@ impl FolderViews {
             .into_iter()
             .filter_map(|key| {
                 let entry = self.entries.remove(&key)?;
-                self.changed.insert(key.clone());
+                self.note_changed(key.clone());
                 Some((key, entry))
             })
             .collect();
@@ -304,7 +325,7 @@ impl FolderViews {
         taken.0.sort_unstable_by_key(|(_, entry)| entry.used);
         for (key, mut entry) in taken.0 {
             entry.used = self.tick();
-            self.changed.insert(key.clone());
+            self.note_changed(key.clone());
             self.entries.insert(key, entry);
         }
         self.evict_to(FOLDER_VIEWS_LIMIT);
@@ -316,8 +337,12 @@ impl FolderViews {
     /// used, since the other process's clock may have run ahead of this one's,
     /// and the changes stay unsaved until a write succeeds.
     pub(in crate::ui) fn merged_over(&self, saved: Self) -> Self {
-        let mut merged = if self.cleared { Self::default() } else { saved };
-        for key in &self.changed {
+        let mut merged = if self.cleared.is_some() {
+            Self::default()
+        } else {
+            saved
+        };
+        for key in self.changed.keys() {
             match self.entries.get(key) {
                 Some(entry) => {
                     merged.entries.insert(key.clone(), *entry);
@@ -330,7 +355,12 @@ impl FolderViews {
         merged.clock = merged.clock.max(self.clock);
         let mut used_here: Vec<(u64, &FolderKey)> = self
             .changed
-            .union(&self.touched)
+            .keys()
+            .chain(
+                self.touched
+                    .keys()
+                    .filter(|key| !self.changed.contains_key(*key)),
+            )
             .filter_map(|key| Some((self.entries.get(key)?.used, key)))
             .collect();
         used_here.sort_unstable();
@@ -343,18 +373,19 @@ impl FolderViews {
         merged.changed.clone_from(&self.changed);
         merged.touched.clone_from(&self.touched);
         merged.cleared = self.cleared;
+        merged.edits = merged.edits.max(self.edits);
         merged.evict_to(FOLDER_VIEWS_LIMIT);
         merged
     }
 
     pub(in crate::ui) fn has_unsaved(&self) -> bool {
-        self.cleared || !self.changed.is_empty() || !self.touched.is_empty()
+        self.cleared.is_some() || !self.changed.is_empty() || !self.touched.is_empty()
     }
 
-    pub(in crate::ui) fn mark_saved(&mut self) {
-        self.changed.clear();
-        self.touched.clear();
-        self.cleared = false;
+    pub(in crate::ui) fn mark_saved_through(&mut self, edits: u64) {
+        self.changed.retain(|_, edit| *edit > edits);
+        self.touched.retain(|_, edit| *edit > edits);
+        self.cleared = self.cleared.filter(|edit| *edit > edits);
     }
 
     pub(in crate::ui) fn same_views(&self, other: &Self) -> bool {
@@ -379,7 +410,7 @@ impl FolderViews {
         by_use.sort_unstable();
         for (_, key) in by_use.into_iter().take(self.entries.len() - limit) {
             self.entries.remove(&key);
-            self.changed.insert(key);
+            self.note_changed(key);
         }
     }
 
@@ -546,26 +577,6 @@ fn parse_entry(value: &toml::Value) -> Option<(FolderKey, Entry, bool)> {
         return None;
     }
     Some((key, Entry { view, used }, clean))
-}
-
-/// Only a folder missing from a parent that still holds other entries and no
-/// mount points counts as deleted. Folders of an unmounted drive instead vanish
-/// from an empty mount point, or together with the mount point from a directory
-/// of them such as /run/media/$USER, and keep their values.
-pub(in crate::ui) fn folder_was_deleted(
-    path: &Path,
-    key: &FolderKey,
-    holds_mount_points: impl Fn(&Path) -> bool,
-) -> bool {
-    if matches!(key, FolderKey::Volume { relative, .. } if relative.as_os_str().is_empty()) {
-        return false;
-    }
-    let Some(parent) = path.parent() else {
-        return false;
-    };
-    fs::symlink_metadata(path).is_err_and(|error| error.kind() == io::ErrorKind::NotFound)
-        && fs::read_dir(parent).is_ok_and(|mut entries| entries.next().is_some())
-        && !holds_mount_points(parent)
 }
 
 #[cfg(test)]

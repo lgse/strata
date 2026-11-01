@@ -1,0 +1,15 @@
+{"scenario":"replace-without-trash-keeps-row","modes":["list"],"tree":{"note.txt":"replacement\n"},"setup":[{"fs":{"path":"no-trash","volume":"/dev/shm","prefix":"strata-no-trash-","with":{"note.txt":"original\n"}}}],"cost":{"list":1.4}}
+{"fs":{"path":"no-trash/note.txt","can_trash":false},"timeout_ms":0,"message":"precondition: the destination filesystem must not support Trash"}
+{"wait":{"entries":{"contains":["no-trash","note.txt"]}},"message":"the source and no-Trash destination to be listed"}
+{"select":{"entry":"note.txt"}}
+{"wait":{"selected":["note.txt"]},"message":"the source file to be selected"}
+{"key":"ctrl+c"}
+{"click":{"entry":"no-trash"},"count":2}
+{"wait":{"entries":["note.txt"],"dir":"no-trash"},"message":"the destination file to be visible before replacement"}
+{"key":"ctrl+v"}
+{"wait":{"dialog":"File already exists"},"message":"the paste to ask how to resolve the existing file"}
+{"click":{"dialog_button":"Replace"}}
+{"fs":{"path":"no-trash/note.txt","text":"replacement\n"},"message":"Replace to publish the source contents without Trash"}
+{"fs":{"path":"note.txt","text":"replacement\n"},"timeout_ms":0,"message":"replacing a copy must keep the source unchanged"}
+{"wait":{"dialog":null},"message":"the replacement dialog to close"}
+{"during":{"entries":["note.txt"],"dir":"no-trash"},"ms":1800,"every_ms":50,"message":"the replaced file must stay listed without F5 when the monitor changes arrive"}

@@ -10,6 +10,7 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 use tempfile::NamedTempFile;
 
+use crate::adapters::gio_close::CancelOnDrop;
 use crate::model::{FileEntry, MetadataValue};
 
 const MAX_REMOTE_PREVIEW_BYTES: u64 = 64 * 1024 * 1024;
@@ -45,14 +46,6 @@ impl StagingPermit {
 impl Drop for StagingPermit {
     fn drop(&mut self) {
         STAGED_PREVIEWS.fetch_sub(1, Ordering::AcqRel);
-    }
-}
-
-struct CancelOnDrop(gio::Cancellable);
-
-impl Drop for CancelOnDrop {
-    fn drop(&mut self) {
-        self.0.cancel();
     }
 }
 

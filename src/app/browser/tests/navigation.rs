@@ -55,6 +55,76 @@ fn navigation_boundary_blocks_trusted_routes_without_loading_outside_locations()
     assert_eq!(browser.active_location(), Some(root));
 }
 
+type Validation = (Location, Rc<dyn Fn(Result<(), LocationValidationError>)>);
+
+#[derive(Default)]
+struct WorkerValidation {
+    pending: RefCell<Vec<Validation>>,
+}
+
+impl WorkerValidation {
+    fn answer(&self, location: &Location, result: Result<(), LocationValidationError>) {
+        let pending = self.pending.take();
+        let (_, emit) = pending
+            .into_iter()
+            .find(|(validated, _)| validated == location)
+            .expect("a pending validation");
+        emit(result);
+    }
+}
+
+impl FileSource for WorkerValidation {
+    fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
+        panic!("{location:?} was validated on the caller's thread")
+    }
+
+    fn validate_location_async(
+        &self,
+        location: Location,
+        emit: Rc<dyn Fn(Result<(), LocationValidationError>)>,
+    ) -> LoadHandle {
+        self.pending.borrow_mut().push((location, emit));
+        LoadHandle::new(|| {})
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        emit(DirectoryEvent::Finished {
+            request_id: request.id,
+            truncated: false,
+            can_trash: None,
+            can_delete: None,
+        });
+        LoadHandle::new(|| {})
+    }
+}
+
+#[test]
+fn local_folders_are_validated_off_the_caller_and_a_shown_child_is_not_validated() {
+    let source = Rc::new(WorkerValidation::default());
+    let browser = Browser::new(source.clone());
+    let (root, child, shown) = (
+        Location::local("/fixture"),
+        Location::local("/fixture/child"),
+        Location::local("/fixture/child/shown"),
+    );
+    browser.navigate(root.clone());
+
+    browser.descend(0, child.clone());
+    assert_eq!(browser.location_at(1), None, "waits for the answer");
+    source.answer(&child, Ok(()));
+    assert_eq!(browser.location_at(1), Some(child.clone()));
+
+    browser.show_child(1, shown.clone());
+    assert!(source.pending.borrow().is_empty());
+    assert_eq!(browser.location_at(2), Some(shown));
+
+    let typed = Location::local("/elsewhere");
+    assert_eq!(browser.navigate_input("/elsewhere"), Ok(()));
+    assert_eq!(browser.active_location(), Some(child));
+    source.answer(&typed, Ok(()));
+    assert_eq!(browser.active_location(), Some(typed));
+}
+
 #[test]
 fn column_snapshots_preserve_load_errors() {
     let browser = Browser::new(Rc::new(RetryFileSource {

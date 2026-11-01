@@ -8,13 +8,16 @@ pub(crate) mod udiskie;
 
 use std::{
     env, fs, io,
-    io::Write as _,
+    io::{Read as _, Write as _},
     os::unix::{
         ffi::OsStrExt as _,
         fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
+        process::CommandExt as _,
     },
     path::{Path, PathBuf},
-    process::Stdio,
+    process::{Command, Output, Stdio},
+    thread,
+    time::{Duration, Instant},
 };
 
 use serde::{Deserialize, Serialize};
@@ -35,7 +38,20 @@ const FILE_MANAGER_STATE_DIRECTORY: &str = "strata/file-manager-install";
 const FILE_MANAGER_STATE_FILE: &str = "state.toml";
 const INODE_DIRECTORY: &str = "inode/directory";
 
+pub(crate) const PACKAGE_PROVIDED: &str = "The package that installed this build provides its desktop integrations. Configure them in your system configuration instead.";
+
+/// A `STRATA_INTEGRATIONS=package` build never writes, removes, or refreshes the
+/// files its package ships.
+fn require_runtime_integrations() -> Result<(), String> {
+    if crate::build_info::runtime_integrations_enabled() {
+        Ok(())
+    } else {
+        Err(crate::i18n::tr(PACKAGE_PROVIDED))
+    }
+}
+
 pub(crate) fn install() -> Result<String, String> {
+    require_runtime_integrations()?;
     let executable = crate::services::installed_executable().map_err(|error| {
         rust_i18n::t!(
             "Could not locate the Strata executable: %{error}",
@@ -55,6 +71,7 @@ pub(crate) fn install() -> Result<String, String> {
 }
 
 pub(crate) fn uninstall() -> Result<String, String> {
+    require_runtime_integrations()?;
     let context = SetupContext::from_environment()?;
     let preserved_edits = uninstall_at(&context)?;
     dismiss_prompt_at(&context)?;
@@ -70,6 +87,7 @@ pub(crate) fn uninstall() -> Result<String, String> {
 }
 
 pub(crate) fn install_file_manager() -> Result<String, String> {
+    require_runtime_integrations()?;
     let executable = crate::services::installed_executable().map_err(|error| {
         rust_i18n::t!(
             "Could not locate the Strata executable: %{error}",
@@ -87,6 +105,7 @@ pub(crate) fn install_file_manager() -> Result<String, String> {
 }
 
 pub(crate) fn uninstall_file_manager() -> Result<String, String> {
+    require_runtime_integrations()?;
     let context = SetupContext::from_environment()?;
     let restored = restore_file_manager_at(&context, |previous| {
         let restored = restore_folder_handler(
@@ -303,11 +322,12 @@ fn find_file_manager_conflict(service_directory: &Path) -> Result<Option<String>
 }
 
 fn query_default_file_manager() -> Option<String> {
-    crate::trusted_command::command("xdg-mime")
-        .ok()?
+    let mut command = crate::trusted_command::command("xdg-mime").ok()?;
+    command
         .args(["query", "default", INODE_DIRECTORY])
-        .output()
-        .ok()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    output_within(&mut command, SESSION_COMMAND_DEADLINE)
         .filter(|output| output.status.success())
         .and_then(|output| String::from_utf8(output.stdout).ok())
         .map(|output| output.trim().to_owned())
@@ -315,12 +335,10 @@ fn query_default_file_manager() -> Option<String> {
 }
 
 fn set_default_file_manager() -> Result<(), String> {
-    let status = crate::trusted_command::command("xdg-mime")
-        .map_err(default_file_manager_error)?
-        .args(["default", DESKTOP_ID, INODE_DIRECTORY])
-        .status()
-        .map_err(default_file_manager_error)?;
-    if !status.success() {
+    let mut command =
+        crate::trusted_command::command("xdg-mime").map_err(default_file_manager_error)?;
+    command.args(["default", DESKTOP_ID, INODE_DIRECTORY]);
+    if !succeeds_within(&mut command) {
         return Err(crate::i18n::tr("The folder association did not change"));
     }
     let current = query_default_file_manager();
@@ -335,12 +353,10 @@ fn set_default_file_manager() -> Result<(), String> {
 }
 
 fn restore_default_file_manager(previous: &str) -> Result<(), String> {
-    let status = crate::trusted_command::command("xdg-mime")
-        .map_err(restore_file_manager_error)?
-        .args(["default", previous, INODE_DIRECTORY])
-        .status()
-        .map_err(restore_file_manager_error)?;
-    if !status.success() || query_default_file_manager().as_deref() != Some(previous) {
+    let mut command =
+        crate::trusted_command::command("xdg-mime").map_err(restore_file_manager_error)?;
+    command.args(["default", previous, INODE_DIRECTORY]);
+    if !succeeds_within(&mut command) || query_default_file_manager().as_deref() != Some(previous) {
         return Err(crate::i18n::tr(
             "Could not restore the previous file manager",
         ));
@@ -365,11 +381,17 @@ fn restore_file_manager_error(error: impl std::fmt::Display) -> String {
 }
 
 fn reload_dbus() {
-    let _ = run_trusted(
+    let _ = reload_dbus_config();
+}
+
+fn reload_dbus_config() -> bool {
+    run_trusted(
         "gdbus",
         &[
             "call",
             "--session",
+            "--timeout",
+            "5",
             "--dest",
             "org.freedesktop.DBus",
             "--object-path",
@@ -377,7 +399,51 @@ fn reload_dbus() {
             "--method",
             "org.freedesktop.DBus.ReloadConfig",
         ],
-    );
+    )
+}
+
+/// A session bus that accepts the connection but never answers the handshake blocks
+/// gdbus, systemctl and xdg-mime's dbus-send before their own timeouts start.
+const SESSION_COMMAND_DEADLINE: Duration = Duration::from_secs(5);
+
+fn succeeds_within(command: &mut Command) -> bool {
+    command.stdout(Stdio::null()).stderr(Stdio::null());
+    output_within(command, SESSION_COMMAND_DEADLINE).is_some_and(|output| output.status.success())
+}
+
+/// Runs the command in its own process group so a stuck helper started by a wrapper
+/// script is killed along with it.
+fn output_within(command: &mut Command, limit: Duration) -> Option<Output> {
+    use rustix::process::{Pid, Signal, WaitId, WaitIdOptions, kill_process_group, waitid};
+
+    let mut child = command.process_group(0).spawn().ok()?;
+    let group = Pid::from_child(&child);
+    let deadline = Instant::now() + limit;
+    let exited = loop {
+        match waitid(
+            WaitId::Pid(group),
+            WaitIdOptions::EXITED | WaitIdOptions::NOWAIT | WaitIdOptions::NOHANG,
+        ) {
+            Ok(Some(_)) => break true,
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(20)),
+            _ => break false,
+        }
+    };
+    // The leader is not reaped yet, so its group id cannot have been reused.
+    let _ = kill_process_group(group, Signal::KILL);
+    let status = child.wait().ok()?;
+    if !exited {
+        return None;
+    }
+    let mut stdout = Vec::new();
+    if let Some(mut pipe) = child.stdout.take() {
+        let _ = pipe.read_to_end(&mut stdout);
+    }
+    Some(Output {
+        status,
+        stdout,
+        stderr: Vec::new(),
+    })
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -441,11 +507,17 @@ pub(crate) fn status() -> Result<PortalStatus, String> {
 }
 
 pub(crate) fn refresh_after_in_place_update() -> Result<(), String> {
+    if !crate::build_info::runtime_integrations_enabled() {
+        return Ok(());
+    }
     let context = SetupContext::from_environment()?;
     refresh_configured_portal_at(&context, refresh_portals)
 }
 
 pub(crate) fn refresh_stale_portal() -> Result<(), String> {
+    if !crate::build_info::runtime_integrations_enabled() {
+        return Ok(());
+    }
     let context = SetupContext::from_environment()?;
     let executable = crate::services::installed_executable().map_err(|error| {
         rust_i18n::t!(
@@ -572,6 +644,7 @@ fn status_at(context: &SetupContext) -> Result<PortalStatus, String> {
 }
 
 pub(crate) fn dismiss_prompt() -> Result<String, String> {
+    require_runtime_integrations()?;
     dismiss_prompt_at(&SetupContext::from_environment()?)?;
     Ok("File chooser offer dismissed. You can enable it later in Settings → General → System file manager.".into())
 }
@@ -782,10 +855,18 @@ fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, Stri
 }
 
 fn secure_executable(path: &Path) -> Result<PathBuf, String> {
-    secure_executable_for_user(path, rustix::process::geteuid().as_raw())
+    let user = rustix::process::geteuid().as_raw();
+    secure_executable_for_user(path, user, &|group| {
+        let read = |file| fs::read_to_string(file).unwrap_or_default();
+        group_is_private(user, group, &read("/etc/passwd"), &read("/etc/group"))
+    })
 }
 
-fn secure_executable_for_user(path: &Path, effective_user: u32) -> Result<PathBuf, String> {
+fn secure_executable_for_user(
+    path: &Path,
+    effective_user: u32,
+    private_group: &dyn Fn(u32) -> bool,
+) -> Result<PathBuf, String> {
     let path = fs::canonicalize(path)
         .map_err(|error| path_error("resolve the Strata executable", path, error))?;
     for (index, component) in path.ancestors().enumerate() {
@@ -807,13 +888,56 @@ fn secure_executable_for_user(path: &Path, effective_user: u32) -> Result<PathBu
                 "The Strata executable path must be owned by the current user or root",
             ));
         }
-        if metadata.permissions().mode() & 0o022 != 0 {
+        let mode = metadata.permissions().mode();
+        if mode & 0o002 != 0 || (mode & 0o020 != 0 && !private_group(metadata.gid())) {
             return Err(crate::i18n::tr(
                 "The Strata executable path must not be writable by other users",
             ));
         }
     }
     Ok(path)
+}
+
+/// Distributions that give each user a private group and a umask of 002 leave the user's own
+/// folders group-writable. A group the databases do not describe counts as shared.
+fn group_is_private(user: u32, group: u32, passwd: &str, groups: &str) -> bool {
+    let mut name = None;
+    for fields in passwd
+        .lines()
+        .map(|line| line.split(':').collect::<Vec<_>>())
+    {
+        let [login, _, uid, primary, ..] = fields[..] else {
+            continue;
+        };
+        if uid.parse() == Ok(user) {
+            name = Some(login);
+        } else if primary.parse() == Ok(group) {
+            return false;
+        }
+    }
+    let Some(name) = name else {
+        return false;
+    };
+    let mut listed = false;
+    for fields in groups
+        .lines()
+        .map(|line| line.split(':').collect::<Vec<_>>())
+    {
+        let [_, _, id, members] = fields[..] else {
+            continue;
+        };
+        if id.parse() != Ok(group) {
+            continue;
+        }
+        listed = true;
+        if members
+            .split(',')
+            .any(|member| !member.is_empty() && member != name)
+        {
+            return false;
+        }
+    }
+    listed
 }
 
 fn trusted_owner(owner: u32, effective_user: u32) -> bool {
@@ -1137,19 +1261,7 @@ fn path_error(action: &str, path: &Path, error: io::Error) -> String {
 
 fn refresh_portals() -> &'static str {
     let backend_stopped = run_trusted("systemctl", &["--user", "stop", PORTAL_BACKEND_UNIT]);
-    let dbus_reloaded = run_trusted(
-        "gdbus",
-        &[
-            "call",
-            "--session",
-            "--dest",
-            "org.freedesktop.DBus",
-            "--object-path",
-            "/org/freedesktop/DBus",
-            "--method",
-            "org.freedesktop.DBus.ReloadConfig",
-        ],
-    );
+    let dbus_reloaded = reload_dbus_config();
     let portal_restarted = run_trusted(
         "systemctl",
         &["--user", "restart", "xdg-desktop-portal.service"],
@@ -1162,15 +1274,8 @@ fn refresh_portals() -> &'static str {
 }
 
 fn run_trusted(name: &str, args: &[&str]) -> bool {
-    crate::trusted_command::command(name)
-        .ok()
-        .and_then(|mut command| {
-            command
-                .args(args)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .ok()
-        })
-        .is_some_and(|status| status.success())
+    crate::trusted_command::command(name).is_ok_and(|mut command| {
+        command.args(args);
+        succeeds_within(&mut command)
+    })
 }

@@ -1,0 +1,23 @@
+{"scenario":"strip-edge-scrolls-columns-in","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.8},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"Parked drag at the strip edge scrolls the root column into view and release drops there; sole GUI guard of strip-level edge-scroll (listing edge-scroll is column-edge-scrolls-listing, a different axis); narrow fixture shared with drop-on-partially-visible-column"}}
+{"fs":{"path":"documents/deep/deeper","mkdir":true,"parents":true}}
+{"fs":{"path":"documents/deep/deeper/cargo.txt","write":"cargo\n"}}
+{"resize":{"width":640,"height":360}}
+{"wait":{"window_width":640},"message":"a narrow window"}
+{"wait":{"view_mode":"Columns"},"message":"the browser to switch to the Columns view"}
+{"select":{"entry":"documents"}}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"select":{"entry":"deep","dir":"documents"}}
+{"wait":{"directory":"deep"},"message":"the browser to be working in 'deep'"}
+{"settle":{"pane":"deep"}}
+{"select":{"entry":"deeper","dir":"deep"}}
+{"wait":{"directory":"deeper"},"message":"the browser to be working in 'deeper'"}
+{"settle":{"pane":"deeper"}}
+{"settle":{"pane":"deeper"}}
+{"remember":{"point":[{"of":{"ancestor":"scroll pane","of":{"pane":"deeper"}},"at":6},{"of":{"ancestor":"scroll pane","of":{"container":"deeper"}},"at":-4}]},"as":"edge"}
+{"drag":{"from":{"entry":"cargo.txt","dir":"deeper"},"to":{"kept":"edge"}},"release":false}
+{"wait":{"contains_point":{"target":{"pane":"$root"},"point":{"kept":"edge"},"axis":"x"}},"message":"the parked drag to edge-scroll the root column under the pointer"}
+{"move":{"kept":"edge"},"at":[0,-4]}
+{"button_up":1}
+{"fs":{"path":"cargo.txt","exists":true},"message":"the release to drop the file into the revealed root column"}
+{"fs":{"path":"documents/deep/deeper/cargo.txt","exists":false},"timeout_ms":0}

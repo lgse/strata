@@ -108,7 +108,7 @@ pub(super) fn about_page() -> gtk::Widget {
     scrollable_page(&content, None)
 }
 
-fn toolkit_version() -> String {
+pub(super) fn toolkit_version() -> String {
     format!(
         "GTK {}.{}.{}",
         gtk::major_version(),
@@ -122,10 +122,15 @@ fn version_info() -> String {
 }
 
 fn append_about_detail(container: &gtk::Box, label: &str, value: &str) {
+    append_detail(container, &crate::i18n::tr(label), value);
+}
+
+/// A translated label with a selectable value at the row's end.
+pub(super) fn append_detail(container: &gtk::Box, label: &str, value: &str) {
     let row = super::wrap::WrapRow::new(16);
     row.set_end_align(true);
     row.add_css_class("about-detail-row");
-    let label = gtk::Label::new(Some(&crate::i18n::tr(label)));
+    let label = gtk::Label::new(Some(label));
     label.add_css_class("about-detail-label");
     label.add_css_class("settings-control-label");
     label.set_xalign(0.0);

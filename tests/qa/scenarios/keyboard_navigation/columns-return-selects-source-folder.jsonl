@@ -1,0 +1,27 @@
+{"scenario":"columns-return-selects-source-folder","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.1},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Breadcrumb jump then Backspace selects nested source folder in Columns; breadcrumb-returns-to-parent is depth 1, alt-up uses alt+Up"}}
+{"fs":{"path":"documents/aaa","mkdir":true}}
+{"fs":{"path":"documents/aaa/leaf.txt","write":"leaf\n"}}
+{"fs":{"path":"documents/deep","mkdir":true}}
+{"fs":{"path":"documents/deep/leaf.txt","write":"leaf\n"}}
+{"key":"F5"}
+{"select":{"entry":"documents"}}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"select":{"entry":"deep","dir":"documents"}}
+{"wait":{"directory":"deep"},"message":"the browser to be working in 'deep'"}
+{"settle":{"pane":"deep"}}
+{"wait":{"directory":"deep"},"message":"the browser to be working in 'deep'"}
+{"settle":{"pane":"deep"}}
+{"wait":{"present":{"role":"button","name":"documents"}},"message":"the documents breadcrumb"}
+{"click":{"role":"button","name":"documents"}}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"wait":{"selected":["deep"],"dir":"documents"},"message":"the selection to become ['deep']"}
+{"wait":{"focused":"deep"},"message":"keyboard focus to reach 'deep'"}
+{"expect":{"panes":{"excludes":["deep"]}},"message":"the child column stays closed"}
+{"key":"BackSpace"}
+{"wait":{"directory":"$root"},"message":"the browser to be working in '$root'"}
+{"settle":{"pane":"$root"}}
+{"wait":{"selected":["documents"],"dir":"$root"},"message":"the selection to become ['documents']"}
+{"wait":{"focused":"documents"},"message":"keyboard focus to reach 'documents'"}
+{"expect":{"panes":{"excludes":["documents"]}},"message":"the child column stays closed"}

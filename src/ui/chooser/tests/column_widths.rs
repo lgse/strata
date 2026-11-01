@@ -269,6 +269,7 @@ fn seed_settings(mode: &str, text_size: u32) {
 }
 
 fn persisted_settings() -> toml::Table {
+    crate::storage::writer::settle();
     let path = crate::ui::preferences::config_directory().join("settings.toml");
     toml::from_str(&std::fs::read_to_string(path).expect("persisted settings"))
         .expect("settings table")
@@ -532,7 +533,22 @@ fn list_column_customizations_update_live_across_windows() {
                 .compute_bounds(&headings_box)
                 .expect("mode heading bounds");
             let start_x = f64::from(mode_bounds.x() + 10.0);
-            drag(&drag_gesture, (start_x, 0.0), 180.0);
+            let original_order = preferences.list_column_order();
+            let original_settings = persisted_settings();
+            drag_gesture.emit_by_name::<()>("drag-begin", &[&start_x, &0.0f64]);
+            drag_gesture.emit_by_name::<()>("drag-update", &[&180.0f64, &0.0f64]);
+            settle();
+            assert_eq!(
+                preferences.list_column_order(),
+                original_order,
+                "hovering previews the destination without reordering any window"
+            );
+            assert_eq!(
+                persisted_settings(),
+                original_settings,
+                "hovering must not save"
+            );
+            drag_gesture.emit_by_name::<()>("drag-end", &[&180.0f64, &0.0f64]);
             settle();
 
             assert_eq!(
@@ -545,6 +561,44 @@ fn list_column_customizations_update_live_across_windows() {
                     ListColumnId::Modified,
                 ]
             );
+
+            let committed_order = preferences.list_column_order();
+            let committed_settings = persisted_settings();
+            for dismiss in ["cancel", "unmap", "outside"] {
+                let bounds = first_headings[1]
+                    .compute_bounds(&headings_box)
+                    .expect("reordered Mode heading");
+                let start_x = f64::from(bounds.x() + 10.0);
+                drag_gesture.emit_by_name::<()>("drag-begin", &[&start_x, &0.0f64]);
+                drag_gesture.emit_by_name::<()>("drag-update", &[&-start_x, &0.0f64]);
+                assert_eq!(
+                    preferences.list_column_order(),
+                    committed_order,
+                    "{dismiss}"
+                );
+                match dismiss {
+                    "cancel" => drag_gesture
+                        .emit_by_name::<()>("cancel", &[&None::<gtk::gdk::EventSequence>]),
+                    "unmap" => {
+                        headings_box.set_visible(false);
+                        settle();
+                        headings_box.set_visible(true);
+                        settle();
+                    }
+                    "outside" => drag_gesture.emit_by_name::<()>(
+                        "drag-end",
+                        &[&-start_x, &(f64::from(headings_box.height()) + 20.0)],
+                    ),
+                    _ => unreachable!(),
+                }
+                drag_gesture.emit_by_name::<()>("drag-end", &[&-start_x, &0.0f64]);
+                assert_eq!(
+                    preferences.list_column_order(),
+                    committed_order,
+                    "{dismiss}"
+                );
+                assert_eq!(persisted_settings(), committed_settings, "{dismiss}");
+            }
 
             first.close();
             second.close();

@@ -21,12 +21,13 @@ use crate::{
 };
 
 use super::{
-    DeviceIds, ReleaseKey, ReleaseKind, ReleasePhase, begin_pending, clear_release_dismissed,
-    complete_release_success, enter_releasing, is_pending, location_at_flush_for_test,
-    note_unmount_progress, pending_device_shell, present_release_overlay, release_body_text,
-    release_error_count, release_is_dismissed, release_is_pending, release_overlay_presented,
-    release_phase, release_shows_spinner, reset_releases, set_mounted_roots_for_test,
-    settle_pending_attempt, start_release, syncs_before_flush_for_test, unmatched_pending,
+    DeviceIds, RELEASE_ROW_TOOLTIP, ReleaseKey, ReleaseKind, ReleasePhase, begin_pending,
+    clear_release_dismissed, complete_release_success, enter_releasing, is_pending,
+    location_at_flush_for_test, note_unmount_progress, pending_device_shell,
+    present_release_overlay, release_body_text, release_error_count, release_is_dismissed,
+    release_is_pending, release_overlay_presented, release_phase, release_shows_spinner,
+    reset_releases, settle_pending_attempt, start_release, syncs_before_flush_for_test,
+    unmatched_pending,
 };
 
 fn key(unix_device: &str) -> ReleaseKey {
@@ -216,6 +217,34 @@ fn pending_row_shows_a_do_not_unplug_spinner() {
             assert!(spinner.tooltip_text().is_none());
             assert!(row.tooltip_text().is_none());
             assert!(!row.is_sensitive());
+        },
+    );
+}
+
+#[cfg(feature = "qa")]
+#[test]
+fn the_rail_names_plain_rows_while_railed_but_never_replaces_a_pending_label() {
+    crate::test_support::gtk_test(
+        "ui::window::device_release::tests::the_rail_names_plain_rows_while_railed_but_never_replaces_a_pending_label",
+        || {
+            let label = |row: &gtk::Button| {
+                crate::ui::accessibility::qa::naming(row).and_then(|naming| naming.label)
+            };
+            let plain = super::super::sidebar_button(crate::assets::icons::HOME, "Home");
+            let pending =
+                super::super::sidebar_button(crate::assets::icons::HARD_DRIVE, "USB Backup");
+            let _shell = pending_device_shell(&pending);
+            let busy = Some(crate::i18n::tr(RELEASE_ROW_TOOLTIP));
+            for rail in [true, false, true, false] {
+                super::super::sync_sidebar_button(&plain, rail);
+                super::super::sync_sidebar_button(&pending, rail);
+                assert_eq!(
+                    label(&plain),
+                    rail.then(|| "Home".to_owned()),
+                    "rail {rail}"
+                );
+                assert_eq!(label(&pending), busy, "rail {rail}");
+            }
         },
     );
 }
@@ -557,7 +586,19 @@ fn start_release_leaves_before_flush_and_restores_when_gio_fails_while_mounted()
             }));
             browser.navigate(Location::local(&mount));
             assert!(!dropped.load(Ordering::SeqCst));
-            set_mounted_roots_for_test(Some(vec![mount.clone()]));
+            let publish = |mounted: bool| {
+                let mut mountinfo = "1 0 8:1 / / rw - ext4 /dev/root rw\n".to_owned();
+                if mounted {
+                    mountinfo.push_str(&format!(
+                        "900 1 8:17 / {} rw - vfat /dev/sdb1 rw\n",
+                        mount.display()
+                    ));
+                }
+                crate::adapters::mount_watch::publish_for_isolated_test(Some(
+                    crate::adapters::MountTable::parse(mountinfo),
+                ));
+            };
+            publish(true);
             crate::adapters::install_sync_probe(None, true);
             let (overlay, window) = host();
             let calls = Rc::new(Cell::new(0u32));
@@ -599,7 +640,7 @@ fn start_release_leaves_before_flush_and_restores_when_gio_fails_while_mounted()
             crate::adapters::clear_sync_probe();
             reset_releases();
 
-            set_mounted_roots_for_test(Some(vec![mount.clone()]));
+            publish(true);
             crate::adapters::install_sync_probe(Some(std::io::ErrorKind::Other), false);
             let (overlay, window) = host();
             let calls = Rc::new(Cell::new(0u32));
@@ -630,7 +671,7 @@ fn start_release_leaves_before_flush_and_restores_when_gio_fails_while_mounted()
 
             dropped.store(false, Ordering::SeqCst);
             browser.navigate(Location::local(&mount));
-            set_mounted_roots_for_test(Some(vec![mount.clone()]));
+            publish(true);
             crate::adapters::install_sync_probe(None, true);
             let (overlay, window) = host();
             let settled = Rc::new(Cell::new(false));
@@ -660,7 +701,7 @@ fn start_release_leaves_before_flush_and_restores_when_gio_fails_while_mounted()
 
             dropped.store(false, Ordering::SeqCst);
             browser.navigate(Location::local(&mount));
-            set_mounted_roots_for_test(Some(Vec::new()));
+            publish(false);
             crate::adapters::install_sync_probe(None, false);
             let (overlay, window) = host();
             let settled = Rc::new(Cell::new(false));
@@ -685,7 +726,7 @@ fn start_release_leaves_before_flush_and_restores_when_gio_fails_while_mounted()
             );
             window.destroy();
             crate::adapters::clear_sync_probe();
-            set_mounted_roots_for_test(None);
+            crate::adapters::mount_watch::publish_for_isolated_test(None);
             reset_releases();
         },
     );
@@ -743,6 +784,69 @@ fn start_release_claims_unplug_only_when_the_drive_is_removable_or_ejectable() {
             let texts = run(ReleaseKind::Lock, true);
             assert!(texts.iter().all(|text| text != "Safe to remove"));
             assert!(texts.iter().all(|text| !text.contains("can be unplugged")));
+        },
+    );
+}
+
+#[test]
+fn start_release_ends_strata_s_reads_on_the_drive_before_unmounting_it() {
+    crate::test_support::gtk_test(
+        "ui::window::device_release::tests::start_release_ends_strata_s_reads_on_the_drive_before_unmounting_it",
+        || {
+            reset_releases();
+            let root = tempfile::tempdir().expect("mount root");
+            let mount = root.path().to_path_buf();
+            let song = mount.join("Music/song.ogg");
+            std::fs::create_dir_all(song.parent().expect("folder")).expect("music folder");
+            std::fs::write(&song, b"held").expect("song");
+            let file = std::fs::File::open(&song).expect("a preview opens the song");
+            let (stop, stopped) = std::sync::mpsc::channel();
+            let hold = crate::services::file_activity::hold([&song], move || {
+                let _ = stop.send(());
+            })
+            .expect("a preview outside any operation");
+            let read_ended = Arc::new(AtomicBool::new(false));
+            let ended = Arc::clone(&read_ended);
+            let reader = thread::spawn(move || {
+                let _ = stopped.recv_timeout(Duration::from_secs(10));
+                drop(file);
+                ended.store(true, Ordering::SeqCst);
+                drop(hold);
+            });
+            crate::adapters::install_sync_probe(None, false);
+            let (overlay, window) = host();
+            let settled = Rc::new(Cell::new(false));
+            let ended_at_unmount = Rc::new(Cell::new(None));
+            let settled_for_release = Rc::clone(&settled);
+            let seen = Rc::clone(&ended_at_unmount);
+            let ended = Arc::clone(&read_ended);
+            assert!(start_release(
+                overlay.upcast_ref(),
+                None,
+                None,
+                release_key("USB Backup", mount.clone()),
+                ReleaseKind::Unmount,
+                true,
+                Some(mount.clone()),
+                None,
+                move || settled_for_release.set(true),
+                move |_| {
+                    seen.set(Some(ended.load(Ordering::SeqCst)));
+                    async { Ok(()) }
+                },
+            ));
+            let settled_for_wait = Rc::clone(&settled);
+            wait_until(move || settled_for_wait.get());
+            reader.join().expect("the preview's worker");
+
+            assert_eq!(
+                ended_at_unmount.get(),
+                Some(true),
+                "the preview's read ended before the unmount began"
+            );
+            window.destroy();
+            crate::adapters::clear_sync_probe();
+            reset_releases();
         },
     );
 }

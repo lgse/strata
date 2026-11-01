@@ -30,6 +30,7 @@ use ashpd::{
 use futures_channel::oneshot;
 use gio::prelude::*;
 
+use crate::adapters::gio_close;
 use crate::model::{FileEntry, Location};
 
 const BACKEND_NAME: &str = "org.freedesktop.impl.portal.desktop.strata";
@@ -206,7 +207,7 @@ impl FileChooserBackend {
     }
 }
 
-pub(crate) fn run() -> glib::ExitCode {
+pub(crate) fn run(#[cfg(feature = "qa")] qa: Option<crate::qa::Session>) -> glib::ExitCode {
     glib::set_prgname(Some(CHOOSER_APPLICATION_ID));
     glib::set_application_name("Strata");
 
@@ -258,6 +259,7 @@ pub(crate) fn run() -> glib::ExitCode {
     }
     crate::metrics::initialize();
     crate::logging::initialize();
+    crate::util::ui_thread::stalls::start();
     tracing::info!(
         version = FILE_CHOOSER_VERSION,
         "starting Strata FileChooser portal backend"
@@ -273,8 +275,13 @@ pub(crate) fn run() -> glib::ExitCode {
     if service_failed.load(Ordering::SeqCst) {
         return glib::ExitCode::FAILURE;
     }
+    #[cfg(feature = "qa")]
+    if let Some(session) = qa {
+        session.start_portal(&main_loop);
+    }
     main_loop.run();
     crate::ui::preferences::flush_pending_folder_views();
+    crate::storage::writer::flush_at_exit();
     if service_failed.load(Ordering::SeqCst) {
         glib::ExitCode::FAILURE
     } else {
@@ -579,14 +586,14 @@ async fn accessible_folder(suggestion: Option<PathBuf>) -> ashpd::backend::Resul
 }
 
 async fn directory_is_accessible(path: &Path) -> bool {
-    gio::File::for_path(path)
-        .enumerate_children_future(
-            gio::FILE_ATTRIBUTE_STANDARD_TYPE,
-            gio::FileQueryInfoFlags::NONE,
-            glib::Priority::DEFAULT,
-        )
-        .await
-        .is_ok()
+    gio_close::enumerate_children(
+        &gio::File::for_path(path),
+        gio::FILE_ATTRIBUTE_STANDARD_TYPE,
+        gio::FileQueryInfoFlags::NONE,
+        None,
+    )
+    .await
+    .is_ok()
 }
 
 async fn save_file_suggestion(

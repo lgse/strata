@@ -1,0 +1,30 @@
+{"scenario":"background-customize-ancestor-column","modes":["columns"],"prefs":{"browser_mode":"columns"},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.8},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Customize from background targets a non-active ancestor column's folder, not the nested child; presented-folder scenario covers only the active pane"}}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"toggle button","name":"Preview panel"}},"message":"the preview panel toggle"}
+{"key":"Escape","when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":false}}}
+{"click":{"role":"toggle button","name":"Preview panel"},"when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":true}}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location editor to take focus"}
+{"key":"Escape"}
+{"wait":{"focused_pane":true},"message":"focus to return to the file listing"}
+{"fs":{"path":"documents/nested","mkdir":true}}
+{"fs":{"path":"documents/nested/child.txt","write":"child"}}
+{"select":{"entry":"documents"}}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"select":{"entry":"nested","dir":"documents"}}
+{"wait":{"directory":"nested"},"message":"the browser to be working in 'nested'"}
+{"settle":{"pane":"nested"}}
+{"click":{"background":true,"dir":"documents"},"button":3}
+{"wait":{"menu_items":{}},"message":"the ancestor pane context menu"}
+{"wait":{"present":{"menu_item":"Customize…"}},"message":"the menu item 'Customize…'"}
+{"settle":{"menu_item":"Customize…"}}
+{"click":{"menu_item":"Customize…"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"expect":{"mentions":{"target":{"dialog":true},"text":"Customize Folder"}}}
+{"expect":{"mentions":{"target":{"dialog":true},"text":"documents"}}}
+{"expect":{"not":{"mentions":{"target":{"dialog":true},"text":"nested"}}}}
+{"click":{"dialog_button":"Done"}}
+{"wait":{"dialog":null},"message":"the customize dialog to close"}

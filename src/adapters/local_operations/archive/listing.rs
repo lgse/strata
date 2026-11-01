@@ -177,9 +177,10 @@ fn list_zip(
             }
         }
         ensure_entry_budget(entries.len())?;
-        budget.check(member.name())?;
+        let name = member.name().map_err(zip_error)?;
+        budget.check(&name)?;
         entries.push(ArchiveFileEntry {
-            name: member.name().to_owned(),
+            name: name.into_owned(),
             directory: member.is_dir(),
             size: member.size(),
         });

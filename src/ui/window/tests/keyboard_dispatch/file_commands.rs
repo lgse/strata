@@ -296,7 +296,7 @@ fn tenxer_paste_focuses_the_preferred_conflict_choice() {
             enter_folder(&fixture, "dest");
             plain(&fixture, Key::p);
             wait_until(|| modal_visible(&fixture.overlay));
-            wait_focused_button(&fixture, "Replace");
+            wait_focused_button(&fixture, "Keep Both");
             close_modal(&fixture);
             assert!(directory.join("b.txt").exists(), "cancel keeps the source");
             assert_eq!(contents(&destination.join("b.txt")), "existing");
@@ -589,7 +589,7 @@ fn tenxer_create_prompt_makes_exact_files_and_folders() {
 
             for name in ["new.txt", "  spaced  ", "日本語 ✓"] {
                 submit(name);
-                assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
+                wait_until(|| fixture.shortcuts.open_prompt_kind().is_none());
                 wait_until(|| directory.join(name).is_file());
                 assert_eq!(contents(&directory.join(name)), "");
             }
@@ -599,14 +599,18 @@ fn tenxer_create_prompt_makes_exact_files_and_folders() {
             std::fs::write(directory.join("new.txt"), "keep").expect("existing contents");
             std::os::unix::fs::symlink(directory.join("missing"), directory.join("link"))
                 .expect("dangling link");
-            for name in ["new.txt", "folder/", "folder", "link", "link/"] {
+            let too_long = "x".repeat(300);
+            let refusals = ["new.txt", "folder/", "folder", "link", "link/"]
+                .map(|name| {
+                    let bare = name.trim_end_matches('/');
+                    (name, format!("\u{201c}{bare}\u{201d} already exists"))
+                })
+                .into_iter()
+                .chain([(too_long.as_str(), "The name is too long".to_owned())]);
+            for (name, hint) in refusals {
                 submit(name);
-                let bare = name.trim_end_matches('/');
+                wait_until(|| fixture.shortcuts.prompt_hint().as_ref() == Some(&hint));
                 assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(Prompt::Create));
-                assert_eq!(
-                    fixture.shortcuts.prompt_hint(),
-                    Some(format!("\u{201c}{bare}\u{201d} already exists"))
-                );
                 assert_eq!(
                     fixture.shortcuts.prompt_text(),
                     name,
@@ -647,8 +651,8 @@ fn tenxer_create_prompt_makes_exact_files_and_folders() {
                 assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
             }
             assert_eq!(
-                fixture.view.create_typed_entry("nul\0name"),
-                Err(CreateRefusal::Invalid(
+                fixture.view.prepare_typed_entry("nul\0name").err(),
+                Some(CreateRefusal::Invalid(
                     "Names cannot contain NUL characters"
                 ))
             );
@@ -1348,13 +1352,14 @@ impl crate::services::FileSource for TrashlessLocal {
         crate::adapters::LocalFileSource.fill_metadata(request, emit)
     }
 
-    fn watch(
+    fn start_watch(
         &self,
         location: Location,
         include_hidden: bool,
         notify: Rc<dyn Fn(crate::services::DirectoryChange)>,
-    ) -> Option<crate::services::LoadHandle> {
-        crate::adapters::LocalFileSource.watch(location, include_hidden, notify)
+        report: Rc<dyn Fn(crate::services::Watching)>,
+    ) -> crate::services::LoadHandle {
+        crate::adapters::LocalFileSource.start_watch(location, include_hidden, notify, report)
     }
 }
 
@@ -1487,6 +1492,119 @@ fn delete_without_trash_support_confirms_permanently_with_cancel_focused() {
                 );
                 wait_until(|| !modal_visible(&fixture.overlay));
             }
+        },
+    );
+}
+
+/// GIO reports Trash on most FUSE roots; a refusal the adapter recorded
+/// overrides that until the user reloads.
+#[test]
+fn a_mount_that_refused_trash_confirms_up_front_until_reload() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_commands::a_mount_that_refused_trash_confirms_up_front_until_reload",
+        || {
+            let held = Rc::new(crate::test_support::operations::HeldOperations::default());
+            let provider = held.clone();
+            let fixture = KeyboardFixture::with_parts(Rc::new(TextPreview), move || {
+                let view = BrowserView::new(
+                    Rc::new(crate::adapters::LocalFileSource),
+                    crate::ui::browser::PeekBehavior::default(),
+                );
+                view.set_operation_provider(provider);
+                view
+            });
+            let directory = fixture._directory.path().to_path_buf();
+            let browser = fixture.view.browser();
+            assert_eq!(
+                browser.can_trash_at(0),
+                Some(true),
+                "precondition: home Trash"
+            );
+
+            // The folder probe resolves symlinks before looking up the mount.
+            let mount_point = std::fs::canonicalize(&directory).expect("fixture");
+            let mount_point = mount_point.to_str().expect("UTF-8 fixture path");
+            crate::adapters::set_mountinfo_for_isolated_test(Some(format!(
+                "1 0 8:1 / / rw - ext4 /dev/root rw\n\
+                 900 1 0:90 / {mount_point} rw - fuse.sshfs remote:/share rw\n"
+            )));
+            let explains_this_mount = |fixture: &KeyboardFixture| {
+                (
+                    modal_text_contains(fixture, "Delete 1 item without Trash?"),
+                    modal_text_contains(fixture, "This location doesn't support Trash."),
+                    modal_text_contains(
+                        fixture,
+                        &format!("Trash isn't available on {mount_point} (fuse.sshfs)."),
+                    ),
+                    modal_text_contains(fixture, "depends on the storage provider"),
+                )
+            };
+
+            focus_files(&fixture);
+            move_to_named(&fixture, &browser, "a.txt");
+            plain(&fixture, Key::Delete);
+            wait_until(|| !held.delete_requests.borrow().is_empty());
+            let (id, permanent, _) = held.delete_requests.borrow()[0];
+            assert!(!permanent, "the first Delete tries Trash");
+            // The adapter records the refusal before it reports the failure.
+            crate::adapters::trash_support::record_unsupported(
+                crate::adapters::mount_watch::latest()
+                    .mount_for(&directory)
+                    .expect("fixture mount"),
+                crate::adapters::trash_support::UnsupportedReason::FuseRefused,
+            );
+            held.emit(
+                id,
+                crate::services::OperationEvent::CompletedWithErrors {
+                    request_id: id,
+                    deleted_locations: Vec::new(),
+                    retryable_locations: vec![Location::local(directory.join("a.txt"))],
+                    has_non_retryable_failures: false,
+                    message: "a.txt: This location doesn't support Trash.".into(),
+                },
+            );
+            wait_focused_button(&fixture, "Cancel");
+            assert_eq!(
+                explains_this_mount(&fixture),
+                (true, true, true, true),
+                "after the failed attempt: (no-Trash title, explanation, mount reason, provider reach)"
+            );
+            assert!(modal_key(&fixture, Key::Return));
+            wait_until(|| !modal_visible(&fixture.overlay));
+            wait_until(|| browser.can_trash_at(0) == Some(false));
+
+            focus_files(&fixture);
+            move_to_named(&fixture, &browser, "a.txt");
+            plain(&fixture, Key::Delete);
+            wait_focused_button(&fixture, "Cancel");
+            assert_eq!(
+                (
+                    held.delete_requests.borrow().len(),
+                    explains_this_mount(&fixture)
+                ),
+                (1, (true, true, true, true)),
+                "the next Delete confirms up front: (delete requests, explanation)"
+            );
+            assert!(modal_key(&fixture, Key::Return));
+            wait_until(|| !modal_visible(&fixture.overlay));
+            assert!(directory.join("a.txt").exists(), "Enter cancels");
+
+            focus_files(&fixture);
+            plain(&fixture, Key::F5);
+            wait_until(|| browser.can_trash_at(0) == Some(true));
+            assert!(
+                crate::adapters::trash_support::unsupported_reason_for(&directory).is_none(),
+                "Reload forgets the refusal"
+            );
+            move_to_named(&fixture, &browser, "a.txt");
+            plain(&fixture, Key::Delete);
+            wait_until(|| held.delete_requests.borrow().len() == 2);
+            let (_, permanent, count) = held.delete_requests.borrow()[1];
+            assert_eq!(
+                (permanent, count, modal_visible(&fixture.overlay)),
+                (false, 1, false),
+                "Delete tries Trash again after Reload"
+            );
         },
     );
 }

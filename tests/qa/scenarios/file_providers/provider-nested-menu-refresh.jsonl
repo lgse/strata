@@ -1,0 +1,48 @@
+{"scenario":"provider-nested-menu-refresh","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"$config/strata/providers/example","mkdir":true,"parents":true}},{"fs":{"path":"$config/strata/providers/example","chmod":"700"}},{"fs":{"path":"$config/strata/providers/example/state","write":"on-demand"}},{"fs":{"path":"$config/strata/providers/example/provider.py","write":"\nimport json,os,sys,threading,time\nfrom pathlib import Path\nroot,state,record=map(Path,sys.argv[1:])\n(state.parent/'pid').write_text(str(os.getpid()))\nlock=threading.RLock()\ngeneration=0\ndef emit(value):\n with lock:\n  print(json.dumps(value),flush=True)\ndef watch():\n global generation\n previous=None\n while True:\n  try: now=(state.read_text(), (state.parent/'event').read_text() if (state.parent/'event').exists() else '')\n  except OSError: now='offline'\n  if now!=previous or (state.parent/'storm').exists():\n   previous=now\n   with lock:\n    generation+=1\n    event={'version':1,'event':'invalidate'}\n    if not (state.parent/'legacy').exists(): event.update(revision=generation,paths=[str(root)])\n    emit(event)\n  time.sleep(.1)\nthreading.Thread(target=watch,daemon=True).start()\nfor line in sys.stdin:\n r=json.loads(line);paths=r['paths']\n if (state.parent/'delay').exists(): time.sleep(.3)\n with lock:\n  mode=state.read_text()\n  eligible=mode!='offline' and (r['method']=='query' or all(Path(p).is_relative_to(root) and Path(p).name!='local-only.txt' for p in paths))\n  result={'version':1,'id':r['id']}\n  if r['method']=='query': result['decorations']=[]\n  elif r['method']=='menu': result['actions']=[]\n  if eligible:\n   if r['method']=='query':\n    result['decorations']=[{'path':p,'badge':'badge' if mode=='kept' else None,'description':'Available offline' if mode=='kept' else '', 'priority':int((state.parent/'priority').read_text()) if (state.parent/'priority').exists() else 0} for p in paths if Path(p).is_relative_to(root) and Path(p).name!='local-only.txt']\n   elif r['method']=='menu':\n    result['actions']=[{'id':'release' if mode=='kept' else 'keep','label':'Release test pin' if mode=='kept' else 'Keep test pin','icon':'badge'}]\n    if (state.parent/'context').exists(): result['actions'][0]['context']=(state.parent/'context').read_text()\n    if (state.parent/'tree').exists():\n     result['actions']=[{'id':'inspect','label':'Inspect test state'}, {'id':'availability','label':'Offline availability','children':result['actions']+[{'id':'details','label':'Details','children':[{'id':'info','label':'Inspect nested state'}]}]}]\n     if (state.parent/'relabel').exists():\n      result['actions'][1]['label']='Local availability'\n      result['actions'][1]['children'][0]['label']='Release updated pin' if mode=='kept' else 'Keep test pin'\n     if (state.parent/'deep-relabel').exists():\n      result['actions'][1]['label']='Cloud availability'\n      result['actions'][1]['children'][1]['label']='Updated details'\n      result['actions'][1]['children'][1]['children'][0]['label']='Inspect refreshed state'\n     if (state.parent/'hide-inspect').exists(): result['actions'].pop(0)\n   elif r['method']=='activate':\n    record.write_text(json.dumps(r));state.write_text('kept');result['message']='Test pin accepted'\n    if (state.parent/'disconnect').exists(): sys.exit(0)\n    if (state.parent/'partial').exists():\n     result.update(message='One test pin accepted; another was rejected',outcome={'status':'partial','accepted':1,'total':len(paths),'job':'fixture-job-17'})\n  if r['method'] in ('query','menu') and (state.parent/'method-error').exists():\n   result={'version':1,'id':r['id'],'error':'not-available','message':'State unavailable'}\n  with lock:\n   if 'error' not in result and not (state.parent/'legacy').exists(): result['revision']=generation\n   emit(result)\n"}},{"fs":{"path":"$config/strata/providers/example/badge.png","base64":"iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAHUlEQVR4nGM0qnj2n4ECwESJ5lEDRg0YNWAwGQAAosYCrxCcv1sAAAAASUVORK5CYII="}},{"fs":{"path":"$config/strata/providers/example/provider.json","write":"{\"version\": 1, \"id\": \"example\", \"name\": \"Example Cloud\", \"icon\": \"badge\", \"command\": [\"$python\", \"$config/strata/providers/example/provider.py\", \"$fixture\", \"$config/strata/providers/example/state\", \"$config/strata/providers/example/record\"], \"icons\": {\"badge\": \"badge.png\"}}"}},{"fs":{"path":"local-only.txt","write":"unrelated"}}],"cost":{"columns":2.1},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"Open nested provider submenu survives branch refresh and activates only leaves; unit test pins model, not GUI submenu wiring"}}
+{"fs":{"path":"$config/strata/providers/example/tree","write":""}}
+{"click":{"entry":"todo.txt"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'todo.txt'"}
+{"wait":{"menu_items":{"contains":["Offline availability"]}},"message":"nested provider menu"}
+{"wait":{"present":{"role":"label","name":"Example Cloud"}},"message":"mixed provider group heading"}
+{"expect":{"menu_items":{"contains":["Inspect test state"]}}}
+{"wait":{"present":{"menu_item":"Offline availability"}},"message":"the menu item 'Offline availability'"}
+{"click":{"menu_item":"Offline availability"}}
+{"wait":{"menu_items":{"contains":["Keep test pin"]}},"message":"submenu opened"}
+{"fs":{"path":"$config/strata/providers/example/record","exists":false},"timeout_ms":0,"message":"submenu navigation dispatched an action"}
+{"fs":{"path":"$config/strata/providers/example/state","write":"kept"}}
+{"wait":{"menu_items":{"contains":["Release test pin"]}},"message":"open submenu refreshed"}
+{"expect":{"any":[{"menu_items":null},{"menu_items":{"excludes":["Keep test pin"]}}]}}
+{"fs":{"path":"$config/strata/providers/example/relabel","write":""}}
+{"fs":{"path":"$config/strata/providers/example/hide-inspect","write":""}}
+{"fs":{"path":"$config/strata/providers/example/event","write":"retained branch renamed and sibling withdrawn"}}
+{"wait":{"menu_items":{"contains":["Release updated pin"]}},"message":"navigation retained across branch and sibling changes"}
+{"wait":{"present":{"menu_item":"Details"}},"message":"the menu item 'Details'"}
+{"click":{"menu_item":"Details"}}
+{"wait":{"menu_items":{"contains":["Inspect nested state"]}},"message":"recursive submenu"}
+{"fs":{"path":"$config/strata/providers/example/event","write":"same tree"}}
+{"sleep":500}
+{"expect":{"menu_items":{"contains":["Inspect nested state"]}}}
+{"fs":{"path":"$config/strata/providers/example/deep-relabel","write":""}}
+{"fs":{"path":"$config/strata/providers/example/event","write":"two open branches renamed"}}
+{"wait":{"menu_items":{"contains":["Inspect refreshed state"]}},"message":"recursive navigation retained across ancestor changes"}
+{"fs":{"path":"$config/strata/providers/example/state","write":"offline"}}
+{"wait":{"absent":{"role":"menu item","name":"Inspect refreshed state"}},"message":"nested actions withdrawn"}
+{"fs":{"path":"$config/strata/providers/example/record","exists":false},"timeout_ms":0}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"fs":{"path":"$config/strata/providers/example/relabel","remove":true}}
+{"fs":{"path":"$config/strata/providers/example/hide-inspect","remove":true}}
+{"fs":{"path":"$config/strata/providers/example/deep-relabel","remove":true}}
+{"fs":{"path":"$config/strata/providers/example/state","write":"on-demand"}}
+{"click":{"entry":"todo.txt"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'todo.txt'"}
+{"wait":{"menu_items":{"contains":["Offline availability"]}},"message":"menu restored"}
+{"wait":{"present":{"menu_item":"Offline availability"}},"message":"the menu item 'Offline availability'"}
+{"click":{"menu_item":"Offline availability"}}
+{"wait":{"menu_items":{"contains":["Keep test pin"]}},"message":"leaf available"}
+{"wait":{"present":{"menu_item":"Keep test pin"}},"message":"the menu item 'Keep test pin'"}
+{"settle":{"menu_item":"Keep test pin"}}
+{"click":{"menu_item":"Keep test pin"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"fs":{"path":"$config/strata/providers/example/record","exists":true},"message":"leaf activated"}
+{"fs":{"path":"$config/strata/providers/example/record","json":{"action":"keep"}},"timeout_ms":0}

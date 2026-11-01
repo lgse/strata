@@ -2,8 +2,8 @@
 
 use std::{collections::BTreeSet, path::Path};
 
-const LOCALES: [&str; 11] = [
-    "en", "fr", "de", "es", "ja", "pt-BR", "ko", "vi", "it", "ru", "zh-CN",
+const LOCALES: [&str; 13] = [
+    "en", "fr", "hu", "de", "es", "ja", "pt-BR", "ko", "vi", "it", "ru", "zh-CN", "zh-TW",
 ];
 
 fn placeholders(text: &str) -> BTreeSet<&str> {
@@ -78,7 +78,7 @@ fn catalogs_cover_all_languages_and_preserve_interpolation() {
             }
         }
     }
-    for file in ["counts.json", "dates.json"] {
+    for file in ["counts.json", "dates.json", "installer.json"] {
         for (key, translations) in catalog(&root.join(file)) {
             if key == "_version" {
                 continue;

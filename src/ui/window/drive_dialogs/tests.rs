@@ -495,7 +495,7 @@ fn format_filesystem_selection_updates_label_limit_and_validity() {
             for (fs, expected_text) in [
                 (FilesystemType::Fat32, "abcdefghijk"),
                 (FilesystemType::Ntfs, "abcdefghijklmnop"),
-                (FilesystemType::Exfat, "abcdefghijklmnop"),
+                (FilesystemType::Exfat, "abcdefghijk"),
             ] {
                 let selector = format_filesystem_selector(&available, Some(fs.label()));
                 let selected = selector
@@ -504,15 +504,11 @@ fn format_filesystem_selection_updates_label_limit_and_validity() {
                     .expect("selected filesystem");
                 assert_eq!(selected.string(), format!("{} (current)", fs.label()));
                 let selected_fs = available.get(selector.selected() as usize).copied();
-                refresh_format_selection(selected_fs, true, &field.entry, &confirm);
+                refresh_format_selection(selected_fs, &field, &confirm);
                 field.entry.set_text("abcdefghijklmnop");
-                refresh_format_selection(selected_fs, true, &field.entry, &confirm);
+                refresh_format_selection(selected_fs, &field, &confirm);
                 assert_eq!(field.entry.text(), expected_text);
                 assert!(confirm.is_sensitive());
-
-                refresh_format_selection(selected_fs, false, &field.entry, &confirm);
-                assert!(!confirm.is_sensitive());
-                assert_eq!(field.entry.text(), expected_text);
             }
 
             let unsupported = format_filesystem_selector(&available, Some("ext4"));
@@ -526,16 +522,206 @@ fn format_filesystem_selection_updates_label_limit_and_validity() {
             );
             refresh_format_selection(
                 available.get(unsupported.selected() as usize).copied(),
-                true,
-                &field.entry,
+                &field,
                 &confirm,
             );
             assert_eq!(field.entry.text(), "abcdefghijk");
             assert!(confirm.is_sensitive());
 
             let empty_combo = gtk::DropDown::from_strings(&[]);
-            refresh_format_validity(&[], &empty_combo, &field.entry, &confirm);
+            refresh_format_validity(&[], &empty_combo, &field, &confirm);
             assert!(!confirm.is_sensitive());
+        },
+    );
+}
+
+#[test]
+fn label_entry_stops_at_the_backend_limit_in_its_own_units() {
+    crate::test_support::gtk_test(
+        "ui::window::drive_dialogs::tests::label_entry_stops_at_the_backend_limit_in_its_own_units",
+        || {
+            let field = FormTextField::with_character_limit(11);
+            let confirm = gtk::Button::new();
+            for (fs, typed, kept) in [
+                (FilesystemType::Exfat, "😀😀😀😀😀", "😀😀😀😀😀"),
+                (FilesystemType::Exfat, "😀😀😀😀😀😀", "😀😀😀😀😀"),
+                (FilesystemType::Fat32, "ÉTIQUETTE12", "ÉTIQUETTE1"),
+                (FilesystemType::Fat32, "VOLUME-ÉTÉ", "VOLUME-ÉT"),
+                (FilesystemType::Ntfs, "😀😀😀😀😀😀", "😀😀😀😀😀😀"),
+            ] {
+                field.entry.set_text("");
+                refresh_format_selection(Some(fs), &field, &confirm);
+                field.entry.set_text(typed);
+                assert_eq!(field.entry.text(), kept, "{} {typed}", fs.label());
+                assert!(confirm.is_sensitive(), "{} {typed}", fs.label());
+            }
+
+            refresh_format_selection(Some(FilesystemType::Fat32), &field, &confirm);
+            assert_eq!(field.entry.text(), "😀😀");
+            assert!(confirm.is_sensitive());
+        },
+    );
+}
+
+#[test]
+fn drive_properties_show_at_once_and_fill_in_facts_read_off_the_ui_thread() {
+    crate::test_support::gtk_test(
+        "ui::window::drive_dialogs::tests::drive_properties_show_at_once_and_fill_in_facts_read_off_the_ui_thread",
+        || {
+            static GATHERED_ON_UI_THREAD: std::sync::Mutex<Vec<bool>> =
+                std::sync::Mutex::new(Vec::new());
+            fn gather(request: DriveFactsRequest) -> DriveFacts {
+                GATHERED_ON_UI_THREAD
+                    .lock()
+                    .expect("gathered")
+                    .push(crate::util::ui_thread::is_current());
+                assert_eq!(
+                    request.device.as_deref(),
+                    Some(std::path::Path::new("/dev/fixture"))
+                );
+                DriveFacts {
+                    filesystem: Some("exFAT".to_owned()),
+                    total_bytes: Some(4096),
+                    ..DriveFacts::default()
+                }
+            }
+            let grid = drive_properties_grid(
+                "Fixture",
+                None,
+                Some(PathBuf::from("/dev/fixture")),
+                None,
+                gather,
+            );
+            assert!(has_label(grid.upcast_ref(), "—"));
+            assert!(!has_label(grid.upcast_ref(), "exFAT"));
+            wait_until(|| has_label(grid.upcast_ref(), "exFAT"));
+            assert!(has_label(grid.upcast_ref(), "Not mounted"));
+            assert!(!has_label(grid.upcast_ref(), "—"));
+            assert_eq!(*GATHERED_ON_UI_THREAD.lock().expect("gathered"), [false]);
+        },
+    );
+}
+
+#[test]
+fn format_dialog_reads_drive_facts_off_the_ui_thread_and_continue_waits_for_them() {
+    let bin = tempfile::tempdir().expect("isolated PATH");
+    crate::test_support::gtk_test_with_env(
+        "ui::window::drive_dialogs::tests::format_dialog_reads_drive_facts_off_the_ui_thread_and_continue_waits_for_them",
+        [("PATH", bin.path())],
+        || {
+            use std::os::unix::fs::PermissionsExt;
+            let bin = PathBuf::from(std::env::var_os("PATH").expect("isolated PATH"));
+            let lsblk =
+                "#!/bin/sh\ncase \"$*\" in\n*FSTYPE*) echo exfat ;;\n*SIZE*) echo 4096 ;;\nesac\n";
+            for (tool, script) in [
+                ("mkfs.fat", "#!/bin/sh\n"),
+                ("mkfs.ntfs", "#!/bin/sh\n"),
+                ("mkfs.exfat", "#!/bin/sh\n"),
+                ("lsblk", lsblk),
+            ] {
+                let path = bin.join(tool);
+                std::fs::write(&path, script).expect("tool stub");
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+                    .expect("executable tool stub");
+            }
+            fn missing_ntfs(_: DriveFactsRequest) -> FormatFacts {
+                crate::util::ui_thread::assert_off();
+                FormatFacts::MissingTools {
+                    tools: vec![FilesystemType::Ntfs],
+                    manager: Some(PackageManager::Pacman),
+                }
+            }
+            type Gather = fn(DriveFactsRequest) -> FormatFacts;
+            let rows: [(Gather, bool, bool); 4] = [
+                (gather_format_facts, true, false),
+                (missing_ntfs, false, false),
+                (gather_format_facts, true, true),
+                (missing_ntfs, false, true),
+            ];
+            for (gather, tools_installed, parent_removed) in rows {
+                let parent = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                sidebar.append(&parent);
+                let overlay = gtk::Overlay::new();
+                overlay.set_child(Some(&crate::ui::blur::BlurBin::new(&sidebar)));
+                let window = gtk::Window::builder().child(&overlay).build();
+                window.present();
+                let started = Rc::new(Cell::new(false));
+                let start = started.clone();
+                open_format_dialog(
+                    parent.upcast_ref(),
+                    FormatTarget {
+                        name: "Fixture".to_owned(),
+                        device: Some(PathBuf::from("/dev/fixture")),
+                        mount_root: None,
+                    },
+                    gather,
+                    move |_, _| {
+                        start.set(true);
+                        std::future::ready(Ok(()))
+                    },
+                );
+                let layer = super::super::visible_modal_layer(&window).expect("format dialog");
+                if parent_removed {
+                    sidebar.remove(&parent);
+                }
+                let button = |label: &str| {
+                    descendants(&layer)
+                        .into_iter()
+                        .find_map(|widget| {
+                            widget
+                                .downcast::<gtk::Button>()
+                                .ok()
+                                .filter(|button| button.label().as_deref() == Some(label))
+                        })
+                        .expect("format dialog action")
+                };
+                let selector = || {
+                    descendants(&layer)
+                        .into_iter()
+                        .find_map(|widget| widget.downcast::<gtk::DropDown>().ok())
+                };
+                assert!(selector().is_none(), "rows wait for the drive facts");
+                assert!(
+                    !button("Continue").is_sensitive(),
+                    "Continue waits for the drive facts"
+                );
+                if tools_installed {
+                    wait_until(|| selector().is_some());
+                    let selected = selector()
+                        .and_then(|selector| selector.selected_item())
+                        .and_downcast::<gtk::StringObject>()
+                        .expect("selected filesystem");
+                    assert_eq!(selected.string(), "exFAT (current)");
+                    let continue_button = button("Continue");
+                    assert!(continue_button.is_sensitive());
+                    continue_button.emit_clicked();
+                    let summary = format!(
+                        "Drive: Fixture (/dev/fixture, {})",
+                        crate::i18n::file_size(4096)
+                    );
+                    assert!(
+                        descendants(&layer).into_iter().any(|widget| {
+                            widget
+                                .downcast::<gtk::Label>()
+                                .is_ok_and(|label| label.text().starts_with(&summary))
+                        }),
+                        "{summary}"
+                    );
+                    assert!(!started.get(), "formatting needs a second confirmation");
+                    button("Format").emit_clicked();
+                    wait_until(|| started.get());
+                } else {
+                    wait_until(|| has_label(overlay.upcast_ref(), "Missing tools"));
+                    assert!(descendants(overlay.upcast_ref()).into_iter().any(|widget| {
+                        widget
+                            .downcast::<gtk::Entry>()
+                            .is_ok_and(|entry| entry.text() == "sudo pacman -S --needed ntfsprogs")
+                    }));
+                }
+                wait_until(|| layer.parent().is_none());
+                window.close();
+            }
         },
     );
 }

@@ -33,6 +33,7 @@ pub(super) fn show_missing_tools(
     parent: &impl IsA<gtk::Widget>,
     explanation: &str,
     tools: &[MissingTool<'_>],
+    manager: Option<PackageManager>,
 ) {
     let Some(host) = ModalHost::blurred_for(parent) else {
         return;
@@ -50,7 +51,7 @@ pub(super) fn show_missing_tools(
     let missing = message_dialog_description(&rust_i18n::t!("Missing: %{names}", names = names));
     missing.set_selectable(true);
     layout.body.append(&missing);
-    if let Some(command) = install_command(PackageManager::detect(), tools) {
+    if let Some(command) = install_command(manager, tools) {
         layout
             .body
             .append(&message_dialog_description(&crate::i18n::tr(

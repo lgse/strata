@@ -9,6 +9,8 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+pub(crate) mod writer;
+
 static NEXT_TEMP_FILE: AtomicU64 = AtomicU64::new(0);
 
 /// Longest chain of symlinks [`atomic_write_config`] follows before failing
@@ -154,6 +156,36 @@ pub(crate) fn state_directory() -> PathBuf {
     gtk::glib::user_state_dir().join("strata")
 }
 
+/// Tells this process's last write or read of a file apart from another
+/// process's later write.
+pub(crate) type FileStamp = (u64, i64, i64, u64);
+
+pub(crate) fn stamp_of(metadata: &fs::Metadata) -> FileStamp {
+    (
+        metadata.ino(),
+        metadata.mtime(),
+        metadata.mtime_nsec(),
+        metadata.len(),
+    )
+}
+
+pub(crate) fn file_stamp(path: &Path) -> Option<FileStamp> {
+    fs::metadata(path).ok().map(|metadata| stamp_of(&metadata))
+}
+
+pub(crate) fn atomic_write_config_unless_changed(
+    path: &Path,
+    contents: &[u8],
+    expected: Option<FileStamp>,
+) -> io::Result<bool> {
+    replace(
+        path,
+        LinkPolicy::FollowUserOwned,
+        |file| file.write_all(contents),
+        |destination| Ok(file_stamp(destination) == expected),
+    )
+}
+
 pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
     atomic_write_with(path, LinkPolicy::Reject, |file| file.write_all(contents))
 }
@@ -174,6 +206,16 @@ fn atomic_write_with(
     policy: LinkPolicy,
     write: impl FnOnce(&mut File) -> io::Result<()>,
 ) -> io::Result<()> {
+    replace(path, policy, write, |_| Ok(true)).map(|_| ())
+}
+
+fn replace(
+    path: &Path,
+    policy: LinkPolicy,
+    write: impl FnOnce(&mut File) -> io::Result<()>,
+    unchanged: impl FnOnce(&Path) -> io::Result<bool>,
+) -> io::Result<bool> {
+    crate::util::ui_thread::assert_off();
     let destination = resolve_destination(path, policy)?;
     let parent = destination
         .path
@@ -206,9 +248,13 @@ fn atomic_write_with(
         // `rename` never follows a link, so a target swapped for one after this
         // check is replaced itself rather than written through.
         validate_destination(&destination.path)?;
-        fs::rename(&temporary_path, &destination.path).map_err(at_target)
+        if !unchanged(&destination.path)? {
+            return Ok(false);
+        }
+        fs::rename(&temporary_path, &destination.path).map_err(at_target)?;
+        Ok(true)
     })();
-    if result.is_err() {
+    if !matches!(result, Ok(true)) {
         let _ = fs::remove_file(temporary_path);
     }
     result

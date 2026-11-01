@@ -1,0 +1,32 @@
+{"scenario":"merge-combines-folder-contents","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.2},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":3,"score":34,"note":"Merge button from a copy-paste conflict: shared names overwritten, undo restores originals; only GUI check of Merge, merge logic and undo unit-tested"}}
+{"fs":{"path":"folder","mkdir":true}}
+{"fs":{"path":"folder/incoming.txt","write":"from source\n"}}
+{"fs":{"path":"folder/shared.txt","write":"incoming\n"}}
+{"fs":{"path":"archive/folder","mkdir":true}}
+{"fs":{"path":"archive/folder/stays.txt","write":"kept\n"}}
+{"fs":{"path":"archive/folder/shared.txt","write":"original\n"}}
+{"click":{"entry":"folder"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'folder'"}
+{"wait":{"present":{"menu_item":"Copy"}},"message":"the menu item 'Copy'"}
+{"settle":{"menu_item":"Copy"}}
+{"click":{"menu_item":"Copy"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"select":{"entry":"archive"}}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
+{"settle":{"pane":"archive"}}
+{"move":{"pane":"archive"}}
+{"key":"ctrl+v"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"click":{"dialog_button":"Merge"}}
+{"fs":{"path":"archive/folder/incoming.txt","exists":true},"message":"the merged incoming files"}
+{"fs":{"path":"archive/folder/shared.txt","exists":true},"message":"the merged incoming files"}
+{"fs":{"path":"archive/folder/shared.txt","text":"incoming\n"},"message":"the incoming item to overwrite a same-named destination item"}
+{"fs":{"path":"archive/folder/stays.txt","text":"kept\n"},"timeout_ms":0,"message":"destination-only contents survive the merge"}
+{"fs":{"path":"folder/incoming.txt","exists":true},"timeout_ms":0,"message":"a copy merge keeps the source"}
+{"wait":{"dialog":null},"message":"the conflict dialog to finish dismissing"}
+{"key":"ctrl+z"}
+{"fs":{"path":"archive/folder/incoming.txt","exists":false},"message":"merge undo removes the created file"}
+{"fs":{"path":"archive/folder/shared.txt","text":"original\n"},"timeout_ms":0,"message":"merge undo restores the overwritten original from Trash"}
+{"fs":{"path":"archive/folder/stays.txt","text":"kept\n"},"timeout_ms":0,"message":"merge undo leaves destination-only contents alone"}
+{"fs":{"path":"archive/folder","is":"dir"},"timeout_ms":0,"message":"the destination folder survives undo"}
+{"fs":{"path":"folder/incoming.txt","exists":true},"timeout_ms":0,"message":"the source is still intact"}

@@ -10,11 +10,11 @@ import tempfile
 import textwrap
 import unittest
 
-from e2e_bundle import REPOSITORY, image_key
+from image_inputs import REPOSITORY, image_key
 
 
 class QualityRunnerTests(unittest.TestCase):
-    def run_runner(self, phase="all", key=None, engine_name="podman", extra_env=None):
+    def run_runner(self, phase="all", key=None, engine_name="podman", extra_env=None, options=()):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             log = root / "engine.jsonl"
@@ -27,11 +27,11 @@ class QualityRunnerTests(unittest.TestCase):
                 "bus=os.getenv('DBUS_SESSION_BUS_ADDRESS'))) + '\\n')\n"
                 "if sys.argv[1:3] == ['image', 'inspect']:\n"
                 f" print(json.dumps([{{'Id': 'sha256:'+'a'*64, 'Os': 'linux', 'Architecture': 'amd64', "
-                f"'Config': {{'Labels': {{'org.strata.e2e.inputs': {(image_key() if key is None else key)!r}}}, "
+                f"'Config': {{'Labels': {{'org.strata.test.inputs': {(image_key() if key is None else key)!r}}}, "
                 "'Env': ['RUSTUP_HOME=/opt/rustup']}}]))\n"
             )
             engine.chmod(0o755)
-            result = subprocess.run([str(REPOSITORY / "scripts/quality.sh"), phase],
+            result = subprocess.run([str(REPOSITORY / "scripts/quality.sh"), phase, *options],
                                     env={**os.environ, "STRATA_CONTAINER_ENGINE": str(engine),
                                          "STRATA_QUALITY_IMAGE": "fixture", "DISPLAY": ":0",
                                          "WAYLAND_DISPLAY": "wayland-0", "DBUS_SESSION_BUS_ADDRESS": "unix:path=/desktop",
@@ -49,8 +49,9 @@ class QualityRunnerTests(unittest.TestCase):
                 self.assertIn("sha256:" + "a" * 64, args)
                 self.assertEqual(args[-1], phase)
                 self.assertIn("--userns=keep-id", args)
+                self.assertIn("--pids-limit=-1", args)
                 self.assertIn("CARGO_TARGET_DIR=/workspace/target/quality-container/build", args)
-                self.assertNotIn("/workspace/target/e2e-container/build", " ".join(args))
+                self.assertNotIn("/workspace/target/qa-container/build", " ".join(args))
                 for call in calls:
                     self.assertIsNone(call["display"])
                     self.assertIsNone(call["wayland"])
@@ -64,6 +65,9 @@ class QualityRunnerTests(unittest.TestCase):
         self.assertIn("STRATA_QUALITY_TASK", args)
         self.assertIn("STRATA_QUALITY_SHARD", args)
         self.assertTrue(any(arg.startswith("STRATA_QUALITY_COMMIT=") for arg in args))
+        tmp = args[args.index("--tmpfs") + 1].split(":", 1)
+        self.assertEqual(tmp[0], "/tmp")
+        self.assertIn("exec", tmp[1].split(","))
         self.assertEqual(args[-1], "test")
 
     def test_workflow_matrix_and_required_gate_match_the_plan(self):
@@ -73,8 +77,9 @@ class QualityRunnerTests(unittest.TestCase):
         self.assertIn(f"shard: {list(range(SHARDS))}", shard)
         self.assertIn("fail-fast: false", shard)
         self.assertIn("STRATA_QUALITY_TASK: shard", shard)
+        self.assertIn("run: ./scripts/quality.sh test --jobs 3", shard)
         self.assertNotIn("cargo test", shard)
-        gate = workflow.split("\n  quality:\n", 1)[1].split("\n  e2e-build:", 1)[0]
+        gate = workflow.split("\n  quality:\n", 1)[1].split("\n  release-scripts:", 1)[0]
         self.assertIn("name: Format, lint, and test", gate)
         self.assertIn("needs: [quality-build, quality-shard]", gate)
         self.assertIn("always()", gate)
@@ -85,12 +90,10 @@ class QualityRunnerTests(unittest.TestCase):
         workflow = (REPOSITORY / ".github/workflows/ci.yml").read_text()
         jobs = dict(re.findall(r"^  ([\w-]+):\n(.*?)(?=^  [\w-]+:\n|\Z)",
                                workflow.split("\njobs:\n", 1)[1], re.M | re.S))
-        for name in ("quality-shard", "quality", "e2e-build", "e2e", "release-scripts"):
+        for name in ("quality-shard", "quality", "release-scripts"):
             with self.subTest(job=name):
                 condition = re.search(r"^    if: (.+)$", jobs[name], re.M).group(1)
                 self.assertIn("github.event_name != 'push'", condition)
-        self.assertIn("needs: e2e-build", jobs["e2e-shard"])
-        self.assertNotIn("always()", jobs["e2e-shard"])
         build = jobs["quality-build"]
         condition = re.search(r"^    if: (.+)$", build, re.M).group(1)
         self.assertNotIn("github.event_name != 'push'", condition)
@@ -104,6 +107,26 @@ class QualityRunnerTests(unittest.TestCase):
         result, calls = self.run_runner(key="wrong")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(len(calls), 1)
+
+    def test_test_options_reach_the_container_and_bad_ones_never_start_it(self):
+        for phase, options in (("test", ("--jobs", "3")), ("all", ("--refresh-timings", "--jobs", "12"))):
+            with self.subTest(phase=phase, options=options):
+                result, calls = self.run_runner(phase, options=options)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                forwarded = [arg.replace("--jobs", "--lanes") for arg in options]
+                self.assertEqual(calls[-1]["args"][-1 - len(options):], [phase, *forwarded])
+        result, calls = self.run_runner("test", options=("--jobs", "3"), extra_env={
+            "STRATA_QUALITY_TASK": "shard", "STRATA_QUALITY_SHARD": "0"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls[-1]["args"][-3:], ["test", "--lanes", "3"])
+        for phase, options, task in (("test", ("--jobs",), "test"), ("test", ("--jobs", "0"), "test"),
+                                     ("test", ("--jobs", "two"), "test"), ("fmt", ("--jobs", "2"), "test"),
+                                     ("clippy", ("--refresh-timings",), "test"), ("test", ("--filter", "ui::"), "test"),
+                                     ("test", ("--refresh-timings",), "shard"), ("test", ("--jobs", "3"), "build")):
+            with self.subTest(phase=phase, options=options, task=task):
+                result, calls = self.run_runner(phase, options=options, extra_env={"STRATA_QUALITY_TASK": task})
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(calls, [])
 
     def test_invalid_phase_is_rejected_before_engine_access(self):
         result, calls = self.run_runner("skip-tests")
@@ -128,7 +151,7 @@ class QualityRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             tools = {
-                "python3": 'case "$*" in *"e2e_images.py environment"*) [ "$PUBLISHED" = 1 ] || exit 1; echo environment_image=ghcr.io/example/build@sha256:abc;; *"e2e_base.py build"*) echo build >> "$CALL_LOG"; echo sha256:abc;; *) echo inputs;; esac\n',
+                "python3": 'case "$*" in *"image_registry.py environment"*) [ "$PUBLISHED" = 1 ] || exit 1; echo environment_image=ghcr.io/example/build@sha256:abc;; *"image_base.py build"*) echo build >> "$CALL_LOG"; echo sha256:abc;; *) echo inputs;; esac\n',
                 "docker": 'echo "$*" >> "$CALL_LOG"\n',
                 "git": 'case "$1" in cat-file) exit "$BASE_STATUS";; diff) exit "$DIFF_STATUS";; esac\n',
             }
@@ -153,8 +176,8 @@ class QualityRunnerTests(unittest.TestCase):
                         self.assertEqual(result.returncode, 0, result.stderr)
                         self.assertTrue(log.read_text().startswith(expected))
 
-    def test_real_inner_shell_propagates_failures_and_requires_private_gtk(self):
-        _, calls = self.run_runner()
+    def test_real_inner_shell_propagates_failures_and_forwards_test_options(self):
+        _, calls = self.run_runner(options=("--jobs", "5"))
         args = calls[-1]["args"]
         command = args[args.index("bash"):]
         with tempfile.TemporaryDirectory() as directory:
@@ -164,6 +187,7 @@ class QualityRunnerTests(unittest.TestCase):
                 "cargo": 'echo "$*" >> "$CALL_LOG"\ncase "$1" in "$FAIL_PHASE") exit 42;; esac\n',
                 "xvfb-run": 'echo "xvfb $*" >> "$CALL_LOG"\nwhile [ "$#" -gt 0 ]; do\ncase "$1" in -a) shift;; -s) shift 2;; *) break;; esac\ndone\nexec "$@"\n',
                 "dbus-run-session": 'echo "private-dbus $*" >> "$CALL_LOG"\nshift\nexec "$@"\n',
+                "python3": 'echo "python3 $*" >> "$CALL_LOG"\ncase "$FAIL_PHASE" in test) exit 42;; esac\n',
             }.items():
                 tool = root / name
                 tool.write_text("#!/bin/sh\n" + content)
@@ -178,12 +202,12 @@ class QualityRunnerTests(unittest.TestCase):
                 if failure == "fmt":
                     self.assertNotIn("clippy", text)
                 if failure in ("fmt", "clippy"):
-                    self.assertNotIn("xvfb", text)
+                    self.assertNotIn("python3", text)
                 else:
-                    self.assertIn("xvfb -a -s -screen 0 1280x1024x24 -nolisten tcp -noreset "
-                                  "dbus-run-session -- env -u WAYLAND_DISPLAY GDK_BACKEND=x11", text)
-                    self.assertIn("GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1", text)
-                    self.assertIn("test --locked --all-targets --all-features", text)
+                    # Local shards start their own private displays; see test_quality_ci.
+                    self.assertIn("python3 scripts/quality_ci.py local --lanes 5", text)
+                    self.assertNotIn("xvfb", text)
+                    self.assertNotIn("test --locked", text)
 
 
 if __name__ == "__main__":

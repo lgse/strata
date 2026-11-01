@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::{
+    adapters::gio_close::tests::closed_on_the_ui_thread_once_answered_and_let_go,
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::PreviewRequestId,
 };
@@ -23,6 +24,7 @@ fn request(path: &Path, name: &str) -> PreviewRequest {
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
+            listable: MetadataValue::Unknown,
             recent_uri: None,
         },
         text_byte_limit: 1024,
@@ -30,6 +32,7 @@ fn request(path: &Path, name: &str) -> PreviewRequest {
         pdf_page: 0,
         media_size: MediaPreviewSize::new(640, 800),
         model_palette: crate::services::ModelPalette::default(),
+        model_view: Default::default(),
         archive_password: None,
     }
 }
@@ -182,6 +185,7 @@ fn uri_images_stage_private_inputs_and_remove_them_after_rendering() {
                                     page: 0,
                                     pages: 2,
                                     text_layer: None,
+                                    model_mesh: None,
                                 })
                             }
                         },
@@ -338,4 +342,13 @@ fn unsupported_and_oversized_remote_inputs_fail_before_transfer_or_render() {
             }
         },
     );
+}
+
+#[test]
+fn a_remote_text_stream_answered_as_the_preview_lets_go_closes_on_a_worker() {
+    let closed_on_the_ui_thread =
+        closed_on_the_ui_thread_once_answered_and_let_go(|file| async move {
+            let _ = read_text(&file, None, 64).await;
+        });
+    assert!(!closed_on_the_ui_thread);
 }

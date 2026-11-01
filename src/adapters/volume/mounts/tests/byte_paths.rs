@@ -8,7 +8,7 @@ fn raw_non_utf8_mountinfo_preserves_all_mounts() {
     let table = MountTable::parse(b"1 0 8:1 / / rw - ext4 /dev/root rw\n2 1 0:2 / /media/disk-\xff rw - fuse.test source-\xfe rw\n3 1 0:3 / /tmp rw - tmpfs tmpfs rw\n");
     let mount = Path::new(OsStr::from_bytes(b"/media/disk-\xff"));
     assert_eq!(table.mount_point_for(&mount.join("report")), Some(mount));
-    assert!(table.is_remote_path(&mount.join("report")));
+    assert!(remote(&table, &mount.join("report")));
     assert_eq!(
         table.mount_point_for(Path::new("/tmp/report")),
         Some(Path::new("/tmp"))

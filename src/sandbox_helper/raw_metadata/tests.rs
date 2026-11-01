@@ -159,6 +159,30 @@ fn exif_dimensions_exclude_thumbnails_and_prefer_dng_crop_over_sensor_size() {
 }
 
 #[test]
+fn browser_probes_report_the_oriented_raw_size_instead_of_the_ifd0_thumbnail() {
+    let directory = tempfile::tempdir().expect("fixture directory");
+    let path = directory.path().join("portrait.dng");
+    let fields = vec![
+        (Tag::ImageWidth, Value::Long(vec![160])),
+        (Tag::ImageLength, Value::Long(vec![120])),
+        (NEW_SUBFILE_TYPE, Value::Long(vec![1])),
+        (DEFAULT_CROP_SIZE, rationals(&[(6016, 1), (4000, 1)])),
+        (Tag::Orientation, Value::Short(vec![8])),
+    ];
+    std::fs::write(&path, encode(fields, true)).expect("write RAW fixture");
+    let response = crate::sandbox_helper::browser_render(
+        &path,
+        crate::sandbox::browser::wire::Operation::RawMetadata,
+    );
+    assert_eq!(
+        RawMetadata::from_json(&response.metadata)
+            .expect("validate RAW metadata")
+            .dimensions,
+        Some((4000, 6016))
+    );
+}
+
+#[test]
 fn unreadable_raw_keeps_all_fields_unavailable() {
     let directory = tempfile::tempdir().expect("fixture directory");
     let path = directory.path().join("broken.nef");

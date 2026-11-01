@@ -26,7 +26,8 @@ fn normalize_package_with_limit(bytes: &[u8], limit: u64) -> Result<Vec<u8>, Str
     let mut output_remaining = limit;
     for index in 0..input.len() {
         let mut part = input.by_index(index).map_err(|e| e.to_string())?;
-        if !part.name().ends_with(".xml") && !part.name().ends_with(".rels") {
+        let name = part.name().map_err(|e| e.to_string())?.into_owned();
+        if !name.ends_with(".xml") && !name.ends_with(".rels") {
             output.raw_copy_file(part).map_err(|e| e.to_string())?;
             continue;
         }
@@ -44,7 +45,7 @@ fn normalize_package_with_limit(bytes: &[u8], limit: u64) -> Result<Vec<u8>, Str
             .checked_sub(normalized.len() as u64)
             .ok_or("Normalized document XML exceeds the preview limit")?;
         output
-            .start_file(part.name(), SimpleFileOptions::default())
+            .start_file(name, SimpleFileOptions::default())
             .map_err(|e| e.to_string())?;
         output.write_all(&normalized).map_err(|e| e.to_string())?;
     }

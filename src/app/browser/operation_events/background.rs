@@ -6,11 +6,14 @@ use std::{
     rc::Rc,
 };
 
-use crate::services::{LoadHandle, OperationEvent, OperationRequestId};
+use crate::services::{
+    LoadHandle, OperationEvent, OperationRequestId, ReplacedOriginal, TransferReport,
+};
 
 use super::super::push_background_undo;
 use super::{
     Browser, BrowserEvent, MergeUndoState, OperationCompletion, OperationContext, UndoEntry,
+    replaced_archive_undo,
 };
 
 pub(crate) struct BackgroundOperation {
@@ -24,6 +27,7 @@ pub(crate) struct BackgroundOperation {
     reveal: bool,
     created: RefCell<Vec<crate::model::Location>>,
     merged: RefCell<MergeUndoState>,
+    report: RefCell<TransferReport>,
 }
 
 impl Browser {
@@ -61,6 +65,7 @@ impl Browser {
             reveal: self.transfer_reveal.replace(true),
             created: RefCell::new(self.created_locations.take()),
             merged: RefCell::new(self.merged_undo.take()),
+            report: RefCell::new(self.transfer_report.take()),
         });
         self.background_operations
             .borrow_mut()
@@ -71,7 +76,7 @@ impl Browser {
         self.operation_description.borrow_mut().clear();
         self.operation_destination_description.borrow_mut().clear();
         let changes = self.deferred_file_operation_changes.take();
-        self.flush_deferred_file_operation_changes(changes, false);
+        self.flush_deferred_file_operation_changes(changes);
         true
     }
 
@@ -151,21 +156,30 @@ impl Browser {
             } => {
                 emit(BrowserEvent::DeletionProgress { completed, total });
             }
+            OperationEvent::DeleteEntriesRemoved { removed, .. } => {
+                emit(BrowserEvent::DeletionEntriesRemoved { removed });
+            }
             OperationEvent::Merged {
                 source,
                 created,
                 overwritten,
+                placed,
                 ..
-            } => {
-                let mut merged = job.merged.borrow_mut();
-                merged.sources.insert(source);
-                merged.created.extend(created);
-                merged.overwritten.extend(overwritten);
+            } => job
+                .merged
+                .borrow_mut()
+                .merged(source, created, overwritten, placed),
+            OperationEvent::ItemsReported { report, .. } => {
+                job.merged.borrow_mut().rename(&report.renamed);
+                job.report.borrow_mut().extend(report);
             }
             OperationEvent::FlushingToDevice { .. } => {
                 emit(BrowserEvent::FlushingToDevice);
             }
-            OperationEvent::ItemMoved { .. } | OperationEvent::ItemTrashed { .. } => {}
+            OperationEvent::ItemMoved { .. }
+            | OperationEvent::ItemTrashed { .. }
+            | OperationEvent::ItemRestored { .. }
+            | OperationEvent::ItemKept { .. } => {}
             OperationEvent::ArchiveStarted { total, .. } => {
                 emit(BrowserEvent::ArchiveStarted { total });
             }
@@ -185,32 +199,36 @@ impl Browser {
                     deleting: job.deleting,
                     deletion_permanent: job.deletion_permanent,
                     restoring: false,
+                    recovering: false,
                     archiving: !job.copying && !job.deleting,
                     destination: job.destination.clone(),
                     reveal: job.reveal,
-                    file_operation_refreshed: false,
                     undoing: false,
                     reveal_locations: job.created.borrow().clone(),
                 };
-                completion.record_trash_undo(&event, push_background_undo);
+                let trashed = context.location_changes.trashed.take();
+                completion.record_trash_undo(&event, &trashed, push_background_undo);
                 if job.copying {
                     completion.record_transfer_undo(
-                        &[],
+                        (&[], &HashMap::new(), &TransferReport::default()),
                         job.created.take(),
-                        job.merged.take(),
+                        (job.merged.take(), &trashed),
                         push_background_undo,
                     );
                     emit(BrowserEvent::TransferFinished {
                         moved_locations: Vec::new(),
                     });
                 }
-                self.refresh_unmonitored_operation_locations(context);
+                let mut report = job.report.take();
+                report.follow_renames();
                 match event {
                     OperationEvent::Pasted { .. } => {
-                        if self.last_started_operation() == Some(context.request_id)
-                            && self.can_reveal_completed_transfer(context, &completion)
-                            && let Some(destination) = completion.destination
-                        {
+                        let revealed = completion.destination.clone().filter(|_| {
+                            self.last_started_operation() == Some(context.request_id)
+                                && self.can_reveal_completed_transfer(context, &completion)
+                        });
+                        self.refresh_unmonitored_operation_locations(context, revealed.as_ref());
+                        if let Some(destination) = revealed {
                             emit(BrowserEvent::TransferReveal {
                                 destination,
                                 locations: completion.reveal_locations,
@@ -219,7 +237,8 @@ impl Browser {
                         emit(BrowserEvent::TransferCompleted);
                     }
                     OperationEvent::Deleted { locations, .. } => {
-                        self.remove_deleted_locations(&locations);
+                        self.refresh_unmonitored_operation_locations(context, None);
+                        self.remove_deleted_locations(&locations, &[]);
                         emit(BrowserEvent::DeletionFinished { succeeded: true });
                     }
                     OperationEvent::CompletedWithErrors {
@@ -229,28 +248,36 @@ impl Browser {
                         message,
                         ..
                     } => {
-                        self.remove_deleted_locations(&deleted_locations);
+                        self.refresh_unmonitored_operation_locations(context, None);
+                        self.remove_deleted_locations(&deleted_locations, &[]);
+                        let parents: std::collections::HashSet<_> = retryable_locations
+                            .iter()
+                            .filter_map(crate::model::Location::parent)
+                            .filter(|parent| parent.native_path().is_some())
+                            .collect();
+                        self.refresh_columns_at_many(&parents);
                         emit(BrowserEvent::OperationCompletedWithErrors {
                             retryable_locations,
                             has_non_retryable_failures,
                             message,
+                            report: std::mem::take(&mut report),
                         });
                     }
                     OperationEvent::Compressed {
                         archive_name,
                         archive,
                         original,
+                        placed,
                         ..
                     } => {
-                        push_background_undo(if let Some(original) = original {
-                            UndoEntry::Merge {
-                                created: Vec::new(),
-                                overwritten: vec![archive.clone()],
-                                originals: HashMap::from([(archive, original)]),
-                            }
-                        } else {
-                            UndoEntry::Copy(vec![archive])
-                        });
+                        self.refresh_unmonitored_operation_locations(context, None);
+                        match original {
+                            Some(ReplacedOriginal::Trashed(original)) => push_background_undo(
+                                replaced_archive_undo(archive, original, placed),
+                            ),
+                            Some(ReplacedOriginal::Deleted) => {}
+                            None => push_background_undo(UndoEntry::Copy(vec![archive])),
+                        }
                         let can_reveal = self.last_started_operation() == Some(context.request_id)
                             && self.validation_generation.get() == context.navigation_generation
                             && self.active_location() == context.origin;
@@ -266,13 +293,14 @@ impl Browser {
                         let mut affected_locations = context.refresh_locations.clone();
                         affected_locations.extend(result.affected_locations);
                         if job.deleting {
-                            self.remove_deleted_locations(&result.completed);
+                            self.remove_deleted_locations(&result.completed, &[]);
                         }
                         emit(BrowserEvent::OperationCancelled {
                             completed: result.completed.len(),
                             failed: result.failed.len(),
                             not_attempted: result.not_attempted.len(),
                             affected_locations,
+                            report: std::mem::take(&mut report),
                         });
                     }
                     OperationEvent::Failed {
@@ -280,24 +308,31 @@ impl Browser {
                         password_failure,
                         ..
                     } => {
-                        self.refresh_columns_at_many(&context.refresh_locations);
+                        self.refresh_columns_at_or_below(&context.refresh_locations);
                         emit(BrowserEvent::OperationFailed {
                             message,
                             password_failure,
+                            report: std::mem::take(&mut report),
                         });
                     }
                     OperationEvent::TransferFailed { message, .. } => {
-                        self.refresh_columns_at_many(&context.refresh_locations);
+                        self.refresh_columns_at_or_below(&context.refresh_locations);
                         emit(BrowserEvent::OperationFailed {
                             message,
                             password_failure: None,
+                            report: std::mem::take(&mut report),
                         });
                     }
                     _ => emit(BrowserEvent::OperationFailed {
-                        message: "The background operation returned an unexpected result."
-                            .to_owned(),
+                        message: crate::i18n::tr(
+                            "The background operation returned an unexpected result.",
+                        ),
                         password_failure: None,
+                        report: std::mem::take(&mut report),
                     }),
+                }
+                if !report.is_empty() {
+                    emit(BrowserEvent::ItemsReported { report });
                 }
                 let load = job.load.take();
                 drop(load);

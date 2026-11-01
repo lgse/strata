@@ -379,35 +379,28 @@ fn use_times_stop_at_the_largest_value_the_file_can_store() {
 }
 
 #[test]
-fn only_a_folder_missing_beside_other_entries_and_no_mounts_counts_as_deleted() {
-    let root = tempfile::tempdir().expect("root folder");
-    let parent = root.path().join("projects");
-    std::fs::create_dir_all(parent.join("kept")).expect("sibling folder");
-    let mount_point = root.path().join("data");
-    std::fs::create_dir(&mount_point).expect("empty mount point");
-    let key = |path: &Path| FolderKey::local(path).expect("valid local key");
-    let no_mounts = |_: &Path| false;
-    let deleted = parent.join("gone");
-
-    assert!(folder_was_deleted(&deleted, &key(&deleted), no_mounts));
-    let kept = parent.join("kept");
-    assert!(!folder_was_deleted(&kept, &key(&kept), no_mounts));
-    for unmounted in [mount_point.join("photos"), mount_point.join("photos/2024")] {
-        assert!(
-            !folder_was_deleted(&unmounted, &key(&unmounted), no_mounts),
-            "{} is on a drive that is not mounted",
-            unmounted.display()
+fn a_drive_root_is_never_taken_for_a_deleted_folder() {
+    let mut views = FolderViews::default();
+    let saved = [
+        volume("1234-ABCD", ""),
+        volume("1234-ABCD", "photos"),
+        local("/home/me/projects/gone"),
+    ];
+    for key in &saved {
+        set(
+            &mut views,
+            key,
+            sorted(SortKey::Size, SortDirection::Ascending),
         );
     }
-    assert!(
-        !folder_was_deleted(&deleted, &key(&deleted), |directory| directory == parent),
-        "a directory of mount points loses a drive's folder when it is unmounted"
-    );
-    assert!(!folder_was_deleted(
-        &deleted,
-        &volume("1234-ABCD", ""),
-        no_mounts
-    ));
+    for (key, forgettable) in [
+        (volume("1234-ABCD", ""), false),
+        (volume("1234-ABCD", "photos"), true),
+        (local("/home/me/projects/gone"), true),
+        (local("/home/me/projects/never-saved"), false),
+    ] {
+        assert_eq!(views.may_forget(&key), forgettable, "{key:?}");
+    }
 }
 
 #[test]
@@ -497,7 +490,21 @@ fn saving_merges_unsaved_changes_over_what_another_process_wrote() {
     let unsaved = merged.merged_over(written_later());
     assert_eq!(unsaved.view(&local("/new")), mine, "still unsaved");
     assert_eq!(unsaved.view(&local("/theirs")), FolderView::default());
-    merged.mark_saved();
+    let saving = merged.edits();
+    let after_snapshot = FolderView {
+        sort: None,
+        icons_size: Some(224),
+    };
+    assert!(merged.update(&local("/after"), |view| *view = after_snapshot));
+    merged.mark_saved_through(saving);
+    let remerged = merged.merged_over(written_later());
+    assert_eq!(
+        remerged.view(&local("/after")),
+        after_snapshot,
+        "a change made while a save ran stays unsaved"
+    );
+    assert_eq!(remerged.view(&local("/new")), FolderView::default());
+    merged.mark_saved_through(merged.edits());
     assert!(
         merged
             .merged_over(written_later())

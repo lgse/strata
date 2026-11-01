@@ -1,0 +1,78 @@
+{"scenario":"preview-find-navigates-content","modes":["columns"],"prefs":{"single_click_previews":false,"type_to_search":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"find.md":"alpha needle omega\n\nsecond NEEDLE line\n","find.py":["# alpha needle omega\n",{"repeat":"# padding line\n","from":1,"to":600},"# second NEEDLE line\n"],"find.txt":["alpha needle omega\n",{"repeat":"padding line\n","from":1,"to":600},"second NEEDLE line\n"]},"variants":[{"id":"default","prefs":{"tenxer_mode":false}},{"id":"tenxer","prefs":{"tenxer_mode":true}}],"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Find in preview over rendered, source-view, virtual and incremental documents via Ctrl+F, header button and 10xer /; no other QA find test"}}
+{"select_with_keyboard":"find.md","variants":["default"]}
+{"note":"entries","as":"entries_before","variants":["default"]}
+{"key":"space","variants":["default"]}
+{"wait":{"preview":"alpha needle omega"},"message":"the rendered Markdown preview","variants":["default"]}
+{"key":"Right","variants":["default"]}
+{"wait":{"focused":null},"message":"the preview to take the keyboard","variants":["default"]}
+{"key":"ctrl+f","variants":["default"]}
+{"wait":{"present":{"role":"text","name":"Find in preview","within":{"preview":true}}},"message":"Ctrl+F to open find in the preview","variants":["default"]}
+{"type":"needle","variants":["default"]}
+{"wait":{"preview":"Match 1 of 2"},"message":"both case-insensitive matches in the rendered document","variants":["default"]}
+{"key":"Return","variants":["default"]}
+{"wait":{"preview":"Match 2 of 2"},"message":"Enter to find the next match","variants":["default"]}
+{"key":"Return","variants":["default"]}
+{"wait":{"preview":"Match 1 of 2"},"message":"Enter on the last match to wrap to the first","variants":["default"]}
+{"key":"shift+Return","variants":["default"]}
+{"wait":{"preview":"Match 2 of 2"},"message":"Shift+Enter on the first match to wrap to the last","variants":["default"]}
+{"key":"Escape","variants":["default"]}
+{"wait":{"absent":{"role":"text","name":"Find in preview","within":{"preview":true}}},"message":"Escape to close find","variants":["default"]}
+{"key":"ctrl+c","variants":["default"]}
+{"clipboard":"NEEDLE","message":"the second match to stay selected in the rendered document","variants":["default"]}
+{"key":"ctrl+f","variants":["default"]}
+{"wait":{"present":{"role":"text","name":"Find in preview","within":{"preview":true}}},"message":"Ctrl+F to reopen find","variants":["default"]}
+{"activate":{"role":"button","name":"View source","within":{"preview":true}},"message":"the View source button","variants":["default"]}
+{"wait":{"preview":"Match 1 of 2"},"message":"the kept query to search the source view","variants":["default"]}
+{"key":"ctrl+f","variants":["default"]}
+{"wait":{"field":{"name":"Find in preview","selection":[0,6],"focused":true}},"message":"Ctrl+F to focus find with the query selected","variants":["default"]}
+{"type":"x","variants":["default"]}
+{"wait":{"preview":"No matches"},"message":"a query with no matches to report none","variants":["default"]}
+{"key":"Escape","variants":["default"]}
+{"wait":{"absent":{"role":"text","name":"Find in preview","within":{"preview":true}}},"message":"Escape to close find without closing the document","variants":["default"]}
+{"expect":{"preview":"second NEEDLE line"},"message":"the document must stay open after find closes","variants":["default"]}
+{"expect":{"entries":"$entries_before"},"message":"find in the preview must not filter the file list","variants":["default"]}
+{"click":{"role":"button","name":"Close preview (Space)","within":{"preview":true}},"variants":["default"]}
+{"wait":{"preview":null},"message":"the Markdown preview to close","variants":["default"]}
+{"select_with_keyboard":"find.txt","variants":["default"]}
+{"key":"space","variants":["default"]}
+{"wait":{"preview":"alpha needle omega"},"message":"the long plain-text preview","variants":["default"]}
+{"click":{"role":"button","name":"Find in preview (Ctrl+F)","within":{"preview":true}},"variants":["default"]}
+{"wait":{"field":{"name":"Find in preview","text":"","focused":true}},"message":"the header button to open an empty find in the next preview","variants":["default"]}
+{"type":"needle","variants":["default"]}
+{"wait":{"preview":"Match 1 of 2"},"message":"both matches in the virtual text document","variants":["default"]}
+{"key":"Return","variants":["default"]}
+{"wait":{"preview":"Match 2 of 2"},"message":"Enter to reach the match 600 lines below","variants":["default"]}
+{"key":"Escape","variants":["default"]}
+{"wait":{"absent":{"role":"text","name":"Find in preview","within":{"preview":true}}},"message":"Escape to close find in the virtual text document","variants":["default"]}
+{"key":"ctrl+c","variants":["default"]}
+{"clipboard":"NEEDLE","message":"the far match to be selected in the virtual text document","variants":["default"]}
+{"click":{"role":"button","name":"Close preview (Space)","within":{"preview":true}},"variants":["default"]}
+{"wait":{"preview":null},"message":"the text preview to close","variants":["default"]}
+{"select_with_keyboard":"find.py","variants":["default"]}
+{"key":"space","variants":["default"]}
+{"wait":{"preview":"alpha needle omega"},"message":"the incrementally loaded source preview","variants":["default"]}
+{"key":"Right","variants":["default"]}
+{"wait":{"focused":null},"message":"the source preview to take the keyboard","variants":["default"]}
+{"key":"ctrl+f","variants":["default"]}
+{"wait":{"present":{"role":"text","name":"Find in preview","within":{"preview":true}}},"message":"Ctrl+F to open find in the source preview","variants":["default"]}
+{"type":"needle","variants":["default"]}
+{"wait":{"preview":"Match 1 of 2"},"message":"both matches once the source finishes loading","variants":["default"]}
+{"key":"shift+Return","variants":["default"]}
+{"wait":{"preview":"Match 2 of 2"},"message":"Shift+Enter to wrap to the last source match","variants":["default"]}
+{"key":"Escape","variants":["default"]}
+{"wait":{"absent":{"role":"text","name":"Find in preview","within":{"preview":true}}},"message":"Escape to close find in the source preview","variants":["default"]}
+{"key":"ctrl+c","variants":["default"]}
+{"clipboard":"NEEDLE","message":"the last match to be selected in the source preview","variants":["default"]}
+{"select_with_keyboard":"find.md","variants":["tenxer"]}
+{"key":"l","variants":["tenxer"]}
+{"wait":{"preview":"alpha needle omega"},"message":"l to open the 10xer preview","variants":["tenxer"]}
+{"wait":{"focused":null},"message":"the 10xer preview to take the keyboard","variants":["tenxer"]}
+{"key":"slash","variants":["tenxer"]}
+{"wait":{"present":{"role":"text","name":"Find in preview","within":{"preview":true}}},"message":"/ to open find in the 10xer preview","variants":["tenxer"]}
+{"type":"needle","variants":["tenxer"]}
+{"wait":{"preview":"Match 1 of 2"},"message":"both matches in the 10xer preview","variants":["tenxer"]}
+{"key":"Return","variants":["tenxer"]}
+{"wait":{"preview":"Match 2 of 2"},"message":"Enter to find the next match in the 10xer preview","variants":["tenxer"]}
+{"key":"Escape","variants":["tenxer"]}
+{"wait":{"absent":{"role":"text","name":"Find in preview","within":{"preview":true}}},"message":"Escape to close find in the 10xer preview","variants":["tenxer"]}
+{"expect":{"preview":"second NEEDLE line"},"message":"the 10xer preview must stay open after find closes","variants":["tenxer"]}

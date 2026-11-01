@@ -1,0 +1,8 @@
+{"scenario":"delete-confirmation-baseline","modes":["list"],"prefs":{"browser_mode":"list"},"layout":"us","mutation":null,"known_bug":null,"fixture_root":"/tmp/strata-e2e-baseline","tree":{"documents":{"notes.txt":"notes\n","projects":{"release":{"summary.md":"# Release\n"}},"report.md":"# Report\n"},"pictures":{},"readme.md":"# Fixture\n","todo.txt":"todo\n"},"cost":{"list":0.7},"quality":{"impact":2,"coverage":2,"criticality":3,"diagnostic":1,"score":7,"note":"Visual capture of the shift+Delete confirmation in list mode; only pixel-diff assertion, dialog behaviour in permanent-delete-confirmation; theme churn"}}
+{"select_with_keyboard":"todo.txt"}
+{"key":"shift+Delete"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"move":{"point":[{"extent":{"window":true},"plus":-4},{"extent":{"window":true},"plus":-4}]}}
+{"wait":{"entries":["documents","pictures","readme.md","todo.txt"]},"message":"the fixture listing to be complete"}
+{"settle":{"pane":null}}
+{"baseline":"delete-confirmation"}

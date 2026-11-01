@@ -102,9 +102,13 @@ impl NavigationHistory {
         }
         age_entries(&mut entries);
         prune_entries(&mut entries, now);
-        if let Err(error) = save_entries(&self.path, &entries) {
-            tracing::warn!(%error, path = %self.path.display(), "folder history could not be saved");
-        }
+        let entries = entries.clone();
+        crate::storage::writer::save_produced(
+            self.path.clone(),
+            crate::storage::writer::Policy::State,
+            "folder history could not be saved",
+            move || stored_entries(&entries),
+        );
     }
 
     pub(crate) fn frecency_within(&self, root: &Path) -> Frecency {
@@ -307,10 +311,7 @@ fn load_entries(contents: &[u8]) -> Vec<HistoryEntry> {
     entries
 }
 
-fn save_entries(path: &Path, entries: &[HistoryEntry]) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
+fn stored_entries(entries: &[HistoryEntry]) -> std::io::Result<Vec<u8>> {
     let stored = StoredHistory {
         version: HISTORY_VERSION,
         entries: entries
@@ -322,8 +323,7 @@ fn save_entries(path: &Path, entries: &[HistoryEntry]) -> std::io::Result<()> {
             })
             .collect(),
     };
-    let contents = serde_json::to_vec(&stored).map_err(std::io::Error::other)?;
-    crate::storage::atomic_write(path, &contents)
+    serde_json::to_vec(&stored).map_err(std::io::Error::other)
 }
 
 #[cfg(test)]

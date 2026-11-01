@@ -1,0 +1,21 @@
+{"scenario":"tenxer-d-without-trash-confirms","modes":["list"],"prefs":{"browser_mode":"list","tenxer_mode":true,"type_to_search":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"list":1.3},"quality":{"impact":5,"coverage":3,"criticality":4,"diagnostic":4,"score":42,"note":"10x D on a no-Trash folder must not confirm permanent delete; dialog and Cancel overlap delete-without-trash-focuses-cancel, unique here is the D route"}}
+{"fs":{"path":"no-trash","volume":"/dev/shm","prefix":"strata-no-trash-","with":{"doomed.txt":"doomed"}}}
+{"fs":{"path":"no-trash/doomed.txt","can_trash":false},"timeout_ms":0,"message":"precondition: /dev/shm must not support Trash (GIO refuses system-internal mounts)"}
+{"wait":{"entry":"no-trash"},"message":"the entry 'no-trash' to appear"}
+{"select_with_keyboard":"no-trash"}
+{"key":"l"}
+{"wait":{"directory":"no-trash"},"message":"the browser to be working in 'no-trash'"}
+{"settle":{"pane":"no-trash"}}
+{"select_with_keyboard":"doomed.txt"}
+{"key":"d"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"expect":{"dialog":"Permanently delete 1 item?"},"message":"unexpected dialog"}
+{"wait":{"mentions":{"target":{"dialog":true},"words":"doesn't support Trash"}},"message":"the dialog to say Trash is unsupported"}
+{"wait":{"state":{"target":{"dialog_button":"Cancel"},"focused":true}},"message":"Cancel focused"}
+{"fs":{"path":"no-trash/doomed.txt","exists":true},"timeout_ms":0,"message":"d must wait for confirmation"}
+{"key":"d"}
+{"during":{"all":[{"dialog":true},{"file":{"path":"$fixture/no-trash/doomed.txt","exists":true}}]},"ms":1000,"every_ms":50,"message":"d never confirms it"}
+{"key":"Return"}
+{"wait":{"dialog":null},"message":"Enter on Cancel to close the dialog"}
+{"fs":{"path":"no-trash/doomed.txt","exists":true},"timeout_ms":0,"message":"Enter cancels"}
+{"fs":{"path":"no-trash","remove_volume":true}}
