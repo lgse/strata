@@ -52,105 +52,69 @@ pub(super) struct ChooserDropdown {
     pub(super) changed: Rc<RefCell<Option<SelectionChanged>>>,
 }
 
+/// Shared handles every option button of one dropdown updates when clicked.
+struct DropdownSelection {
+    selected: Rc<Cell<usize>>,
+    changed: Rc<RefCell<Option<SelectionChanged>>>,
+    checks: Rc<RefCell<Vec<gtk::Image>>>,
+    button: glib::WeakRef<gtk::MenuButton>,
+    current_label: glib::WeakRef<gtk::Label>,
+    popover: glib::WeakRef<gtk::Popover>,
+}
+
+impl DropdownSelection {
+    fn choose(&self, index: usize, label: &str) {
+        self.selected.set(index);
+        if let Some(current_label) = self.current_label.upgrade() {
+            current_label.set_label(label);
+        }
+        if let Some(button) = self.button.upgrade() {
+            crate::ui::accessibility::set_description(&button, Some(label));
+        }
+        for (check_index, check) in self.checks.borrow().iter().enumerate() {
+            check.set_visible(check_index == index);
+        }
+        if let Some(popover) = self.popover.upgrade() {
+            popover.popdown();
+        }
+        if let Some(changed) = self.changed.borrow().as_ref() {
+            changed(index);
+        }
+    }
+}
+
 impl ChooserDropdown {
     pub(super) fn new(labels: &[&str], selected: usize) -> Self {
         let selected = selected.min(labels.len().saturating_sub(1));
         let current = labels.get(selected).copied().unwrap_or_default();
         let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
         content.add_css_class("column-menu");
-        let scroll = gtk::ScrolledWindow::builder()
-            .child(&content)
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .propagate_natural_height(true)
-            .build();
-        scroll.add_css_class("context-menu-scroll");
-        let popover = gtk::Popover::builder()
-            .child(&scroll)
-            .has_arrow(false)
-            .position(gtk::PositionType::Bottom)
-            .build();
-        popover.add_css_class("column-popover");
-        let current_label = gtk::Label::new(Some(current));
-        current_label.set_xalign(0.0);
-        current_label.set_hexpand(true);
-        current_label.set_max_width_chars(24);
-        current_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        let button = gtk::MenuButton::builder()
-            .child(&current_label)
-            .always_show_arrow(true)
-            .popover(&popover)
-            .build();
-        crate::ui::accessibility::set_description(&button, Some(current));
-        button.add_css_class("form-control");
-        button.add_css_class("chooser-dropdown");
-        button.set_halign(gtk::Align::Start);
+        let (scroll, popover) = dropdown_popover(&content);
+        let (button, current_label) = dropdown_button(current, &popover);
+        place_popover_on_show(&popover, &scroll, &button);
 
-        let scroll_for_show = scroll.clone();
-        let button_for_show = button.downgrade();
-        popover.connect_show(move |popover| {
-            let (Some(root), Some(button)) = (popover.root(), button_for_show.upgrade()) else {
-                return;
-            };
-            let anchor_top = button
-                .compute_point(&root, &gtk::graphene::Point::new(0.0, 0.0))
-                .map_or(0, |point| point.y().round() as i32);
-            let (position, max_content_height) = dropdown_placement(
-                root.height(),
-                anchor_top,
-                anchor_top.saturating_add(button.height()),
-            );
-            popover.set_position(position);
-            scroll_for_show.set_max_content_height(max_content_height);
+        let selection = Rc::new(DropdownSelection {
+            selected: Rc::new(Cell::new(selected)),
+            changed: Rc::new(RefCell::new(None::<SelectionChanged>)),
+            checks: Rc::new(RefCell::new(Vec::<gtk::Image>::new())),
+            button: button.downgrade(),
+            current_label: current_label.downgrade(),
+            popover: popover.downgrade(),
         });
-
-        let selected = Rc::new(Cell::new(selected));
-        let changed = Rc::new(RefCell::new(None::<SelectionChanged>));
-        let checks = Rc::new(RefCell::new(Vec::<gtk::Image>::new()));
         for (index, label) in labels.iter().enumerate() {
-            let (option, check) = menu_option(label, index == selected.get());
-            if let Some(label_widget) = option
-                .child()
-                .and_then(|row| row.first_child())
-                .and_downcast::<gtk::Label>()
-            {
-                label_widget.set_max_width_chars(48);
-                label_widget.set_ellipsize(gtk::pango::EllipsizeMode::End);
-            }
-            checks.borrow_mut().push(check);
-            let selected = selected.clone();
-            let changed = changed.clone();
-            let checks = checks.clone();
-            let button = button.downgrade();
-            let current_label = current_label.downgrade();
-            let popover = popover.downgrade();
+            let (option, check) = dropdown_option(label, index == selected);
+            selection.checks.borrow_mut().push(check);
+            let selection = selection.clone();
             let label = (*label).to_owned();
-            option.connect_clicked(move |_| {
-                selected.set(index);
-                if let Some(current_label) = current_label.upgrade() {
-                    current_label.set_label(&label);
-                }
-                if let Some(button) = button.upgrade() {
-                    crate::ui::accessibility::set_description(&button, Some(&label));
-                }
-                for (check_index, check) in checks.borrow().iter().enumerate() {
-                    check.set_visible(check_index == index);
-                }
-                if let Some(popover) = popover.upgrade() {
-                    popover.popdown();
-                }
-                if let Some(changed) = changed.borrow().as_ref() {
-                    changed(index);
-                }
-            });
+            option.connect_clicked(move |_| selection.choose(index, &label));
             content.append(&option);
         }
 
         Self {
             button,
             popover,
-            selected,
-            changed,
+            selected: selection.selected.clone(),
+            changed: selection.changed.clone(),
         }
     }
 
@@ -169,6 +133,78 @@ impl ChooserDropdown {
         self.popover.popdown();
         true
     }
+}
+
+fn dropdown_popover(content: &gtk::Box) -> (gtk::ScrolledWindow, gtk::Popover) {
+    let scroll = gtk::ScrolledWindow::builder()
+        .child(content)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .propagate_natural_height(true)
+        .build();
+    scroll.add_css_class("context-menu-scroll");
+    let popover = gtk::Popover::builder()
+        .child(&scroll)
+        .has_arrow(false)
+        .position(gtk::PositionType::Bottom)
+        .build();
+    popover.add_css_class("column-popover");
+    (scroll, popover)
+}
+
+fn dropdown_button(current: &str, popover: &gtk::Popover) -> (gtk::MenuButton, gtk::Label) {
+    let current_label = gtk::Label::new(Some(current));
+    current_label.set_xalign(0.0);
+    current_label.set_hexpand(true);
+    current_label.set_max_width_chars(24);
+    current_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    let button = gtk::MenuButton::builder()
+        .child(&current_label)
+        .always_show_arrow(true)
+        .popover(popover)
+        .build();
+    crate::ui::accessibility::set_description(&button, Some(current));
+    button.add_css_class("form-control");
+    button.add_css_class("chooser-dropdown");
+    button.set_halign(gtk::Align::Start);
+    (button, current_label)
+}
+
+fn place_popover_on_show(
+    popover: &gtk::Popover,
+    scroll: &gtk::ScrolledWindow,
+    button: &gtk::MenuButton,
+) {
+    let scroll_for_show = scroll.clone();
+    let button_for_show = button.downgrade();
+    popover.connect_show(move |popover| {
+        let (Some(root), Some(button)) = (popover.root(), button_for_show.upgrade()) else {
+            return;
+        };
+        let anchor_top = button
+            .compute_point(&root, &gtk::graphene::Point::new(0.0, 0.0))
+            .map_or(0, |point| point.y().round() as i32);
+        let (position, max_content_height) = dropdown_placement(
+            root.height(),
+            anchor_top,
+            anchor_top.saturating_add(button.height()),
+        );
+        popover.set_position(position);
+        scroll_for_show.set_max_content_height(max_content_height);
+    });
+}
+
+fn dropdown_option(label: &str, selected: bool) -> (gtk::Button, gtk::Image) {
+    let (option, check) = menu_option(label, selected);
+    if let Some(label_widget) = option
+        .child()
+        .and_then(|row| row.first_child())
+        .and_downcast::<gtk::Label>()
+    {
+        label_widget.set_max_width_chars(48);
+        label_widget.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    }
+    (option, check)
 }
 
 impl ChoiceControl {

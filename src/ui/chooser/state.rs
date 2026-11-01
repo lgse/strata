@@ -132,58 +132,11 @@ impl ChooserState {
                 return glib::ControlFlow::Break;
             };
             // A retired attempt must not complete or clear a replacement download.
-            let current = || {
-                state
-                    .download_cancel
-                    .borrow()
-                    .as_ref()
-                    .is_some_and(|flag| Arc::ptr_eq(flag, &cancelled))
-            };
-            if !current() {
+            if !state.download_is_current(&cancelled) {
                 return glib::ControlFlow::Break;
             }
-            // Coalesce progress so terminal events cannot wait behind a backlog.
-            let mut latest_progress = None;
-            let flow = loop {
-                match receiver.try_recv() {
-                    Ok(RemoteDownload::Named(name)) => {
-                        if let Some(progress) = state.download_progress.borrow().as_ref() {
-                            progress.set_name(&name);
-                        }
-                    }
-                    Ok(RemoteDownload::Progress { downloaded, total }) => {
-                        latest_progress = Some((downloaded, total));
-                    }
-                    Ok(RemoteDownload::Finished(path)) => {
-                        state.dismiss_download_progress();
-                        state.download_cancel.borrow_mut().take();
-                        state
-                            .downloaded_file
-                            .replace(Some((url.clone(), path.clone())));
-                        state.complete_download(path);
-                        break glib::ControlFlow::Break;
-                    }
-                    Ok(RemoteDownload::Failed(message)) => {
-                        state.dismiss_download_progress();
-                        state.accept_button.set_sensitive(true);
-                        if state.download_cancel.borrow_mut().take().is_some() {
-                            state.show_error(&message);
-                        }
-                        break glib::ControlFlow::Break;
-                    }
-                    Err(TryRecvError::Empty) => break glib::ControlFlow::Continue,
-                    Err(TryRecvError::Disconnected) => {
-                        state.dismiss_download_progress();
-                        state.accept_button.set_sensitive(true);
-                        state.download_cancel.borrow_mut().take();
-                        state.show_error(&crate::i18n::tr(
-                            "The download stopped unexpectedly. Try again.",
-                        ));
-                        break glib::ControlFlow::Break;
-                    }
-                }
-            };
-            if current()
+            let (flow, latest_progress) = state.drain_download_events(&receiver, &url);
+            if state.download_is_current(&cancelled)
                 && let Some((downloaded, total)) = latest_progress
                 && let Some(progress) = state.download_progress.borrow().as_ref()
             {
@@ -191,6 +144,63 @@ impl ChooserState {
             }
             flow
         });
+    }
+
+    fn download_is_current(&self, cancelled: &Arc<AtomicBool>) -> bool {
+        self.download_cancel
+            .borrow()
+            .as_ref()
+            .is_some_and(|flag| Arc::ptr_eq(flag, cancelled))
+    }
+
+    /// Coalesces progress so terminal events cannot wait behind a backlog.
+    fn drain_download_events(
+        self: &Rc<Self>,
+        receiver: &std::sync::mpsc::Receiver<RemoteDownload>,
+        url: &str,
+    ) -> (glib::ControlFlow, Option<(u64, Option<u64>)>) {
+        let mut latest_progress = None;
+        loop {
+            match receiver.try_recv() {
+                Ok(RemoteDownload::Named(name)) => {
+                    if let Some(progress) = self.download_progress.borrow().as_ref() {
+                        progress.set_name(&name);
+                    }
+                }
+                Ok(RemoteDownload::Progress { downloaded, total }) => {
+                    latest_progress = Some((downloaded, total));
+                }
+                Ok(RemoteDownload::Finished(path)) => {
+                    self.dismiss_download_progress();
+                    self.download_cancel.borrow_mut().take();
+                    self.downloaded_file
+                        .replace(Some((url.to_owned(), path.clone())));
+                    self.complete_download(path);
+                    break;
+                }
+                Ok(RemoteDownload::Failed(message)) => {
+                    self.dismiss_download_progress();
+                    self.accept_button.set_sensitive(true);
+                    if self.download_cancel.borrow_mut().take().is_some() {
+                        self.show_error(&message);
+                    }
+                    break;
+                }
+                Err(TryRecvError::Empty) => {
+                    return (glib::ControlFlow::Continue, latest_progress);
+                }
+                Err(TryRecvError::Disconnected) => {
+                    self.dismiss_download_progress();
+                    self.accept_button.set_sensitive(true);
+                    self.download_cancel.borrow_mut().take();
+                    self.show_error(&crate::i18n::tr(
+                        "The download stopped unexpectedly. Try again.",
+                    ));
+                    break;
+                }
+            }
+        }
+        (glib::ControlFlow::Break, latest_progress)
     }
 
     pub(super) fn show_download_progress(&self, url: &str, on_cancel: Rc<dyn Fn()>) {
@@ -237,12 +247,7 @@ impl ChooserState {
             ));
             return;
         }
-        self.complete_paths(
-            vec![path],
-            self.read_only
-                .as_ref()
-                .map(|read_only| writable_from_read_only(read_only.is_active())),
-        );
+        self.complete_paths(vec![path], self.writable());
     }
 
     pub(super) fn finish(&self, result: ashpd::backend::Result<SelectedFiles>) {
@@ -368,16 +373,7 @@ impl ChooserState {
             let Some(picked) = surface.pick(x, y, gtk::PickFlags::DEFAULT) else {
                 return;
             };
-            if crate::ui::focus_navigation::editable(&picked)
-                || crate::ui::focus_navigation::in_popover(&picked)
-                || !std::iter::successors(Some(picked), gtk::Widget::parent)
-                    .take_while(|widget| *widget != surface)
-                    .any(|widget| {
-                        widget.has_css_class("file-row")
-                            || widget.has_css_class("list-row")
-                            || widget.has_css_class("icons-card")
-                    })
-            {
+            if !clicked_entry_row(&surface, picked) {
                 return;
             }
             let location = state.view.browser().active_location();
@@ -385,29 +381,28 @@ impl ChooserState {
             // Re-clicking a highlighted row emits no GTK selection change. Let the
             // row handlers finish before committing its cursor and refilling the name.
             glib::idle_add_local_once(move || {
-                let Some(state) = weak.upgrade() else {
-                    return;
-                };
-                let browser = state.view.browser();
-                if !state.window.is_visible() || browser.active_location() != location {
-                    return;
+                if let Some(state) = weak.upgrade() {
+                    state.refill_name_after_click(location);
                 }
-                if state.view.selected_search_results().is_none()
-                    && browser.selection_is_load_cursor()
-                    && let Some((depth, position, _)) = browser.focused_item()
-                {
-                    browser.commit_selection();
-                    browser.set_selection(
-                        depth,
-                        &browser.selected_positions(depth),
-                        Some(position),
-                    );
-                }
-                state.filename_selection.borrow_mut().clear();
-                state.update_selected_filename();
             });
         });
         self.view.widget().add_controller(click);
+    }
+
+    fn refill_name_after_click(&self, location: Option<Location>) {
+        let browser = self.view.browser();
+        if !self.window.is_visible() || browser.active_location() != location {
+            return;
+        }
+        if self.view.selected_search_results().is_none()
+            && browser.selection_is_load_cursor()
+            && let Some((depth, position, _)) = browser.focused_item()
+        {
+            browser.commit_selection();
+            browser.set_selection(depth, &browser.selected_positions(depth), Some(position));
+        }
+        self.filename_selection.borrow_mut().clear();
+        self.update_selected_filename();
     }
 
     pub(super) fn update_selected_filename(&self) {
@@ -426,38 +421,52 @@ impl ChooserState {
         if self.filename_selection.replace(selected.clone()) == selected {
             return;
         }
-        if let [entry] = entries.as_slice()
-            && !entry.is_directory()
-            && let Some(name) = entry.location.native_path().and_then(Path::file_name)
-            && safe_filename(name)
-        {
+        if let Some(name) = single_safe_file_name(&entries) {
             self.fill_filename(filename, name);
             self.filename_edited.set(false);
             filename.remove_css_class("error");
             crate::ui::accessibility::set_description(filename, None);
-        } else if matches!(
+        } else if self.opens_files() {
+            self.clear_filename(filename);
+        }
+    }
+
+    fn opens_files(&self) -> bool {
+        matches!(
             self.request.kind,
             ChooserKind::Open {
                 directory: false,
                 ..
             }
-        ) {
-            self.clear_filename(filename);
+        )
+    }
+
+    fn recent_entry_parent(&self) -> Option<PathBuf> {
+        let in_recent = self
+            .view
+            .browser()
+            .active_location()
+            .is_some_and(|location| location.is_recent_root());
+        if !in_recent {
+            return None;
         }
+        let entries = self.chosen_entries(false);
+        let [entry] = entries.as_slice() else {
+            return None;
+        };
+        entry
+            .location
+            .native_path()
+            .and_then(Path::parent)
+            .map(Path::to_path_buf)
     }
 
     pub(super) fn active_folder(&self) -> Result<PathBuf, &'static str> {
         if let Some(folder) = self.selected_folder() {
             return Ok(folder);
         }
-        let browser = self.view.browser();
-        if browser
-            .active_location()
-            .is_some_and(|location| location.is_recent_root())
-            && let [entry] = self.chosen_entries(false).as_slice()
-            && let Some(parent) = entry.location.native_path().and_then(Path::parent)
-        {
-            return Ok(parent.to_path_buf());
+        if let Some(parent) = self.recent_entry_parent() {
+            return Ok(parent);
         }
         self.view
             .browser()
@@ -514,11 +523,7 @@ impl ChooserState {
             self.cancel();
             return;
         }
-        if self.completion.borrow().is_none()
-            || self.destination_check.get()
-            || self.download_in_progress()
-            || visible_modal_layer(&self.window).is_some()
-        {
+        if self.accept_is_blocked() {
             return;
         }
         self.clear_error();
@@ -526,52 +531,63 @@ impl ChooserState {
             ChooserKind::Open {
                 directory,
                 multiple,
-            } => {
-                self.update_selected_filename();
-                if !directory
-                    && self.filename_edited.get()
-                    && let Some(filename) = self.filename.as_ref()
-                    && !filename.text().is_empty()
-                {
-                    self.accept_open_name(&filename.text());
-                    return;
-                }
-                let browser = self.view.browser();
-                let Some(current) = browser.active_location() else {
-                    self.show_error(&crate::i18n::tr("Choose an accessible local folder"));
-                    return;
-                };
-                let entries = self.chosen_entries(!*directory);
-                let entries = eligible_open_entries(entries, *directory)
-                    .into_iter()
-                    .filter(|entry| browser.allows_entry(entry))
-                    .collect::<Vec<_>>();
-                match (
-                    open_selection(&entries, &current, *directory, *multiple),
-                    self.destination_host.as_ref(),
-                ) {
-                    (Ok(paths), Some(host)) => self.accept_destination((host.validate)(&paths[0])),
-                    (Ok(paths), None) => self.complete_paths(
-                        paths,
-                        self.read_only
-                            .as_ref()
-                            .map(|read_only| writable_from_read_only(read_only.is_active())),
-                    ),
-                    (Err(message), _) => self.show_error(&crate::i18n::tr(message)),
-                }
-            }
+            } => self.accept_open(*directory, *multiple),
             ChooserKind::SaveFile { .. } => self.accept_save_file(),
-            ChooserKind::SaveFiles { names } => {
-                let folder = match self.active_folder() {
-                    Ok(folder) => folder,
-                    Err(message) => {
-                        self.show_error(&crate::i18n::tr(message));
-                        return;
-                    }
-                };
-                self.accept_destinations(folder, names.clone());
-            }
+            ChooserKind::SaveFiles { names } => match self.active_folder() {
+                Ok(folder) => self.accept_destinations(folder, names.clone()),
+                Err(message) => self.show_error(&crate::i18n::tr(message)),
+            },
         }
+    }
+
+    fn accept_is_blocked(&self) -> bool {
+        self.completion.borrow().is_none()
+            || self.destination_check.get()
+            || self.download_in_progress()
+            || visible_modal_layer(&self.window).is_some()
+    }
+
+    /// A typed name takes precedence over the selection when opening files.
+    fn edited_open_name(&self, directory: bool) -> Option<String> {
+        if directory || !self.filename_edited.get() {
+            return None;
+        }
+        self.filename
+            .as_ref()
+            .map(|filename| filename.text().to_string())
+            .filter(|text| !text.is_empty())
+    }
+
+    fn accept_open(self: &Rc<Self>, directory: bool, multiple: bool) {
+        self.update_selected_filename();
+        if let Some(name) = self.edited_open_name(directory) {
+            self.accept_open_name(&name);
+            return;
+        }
+        let browser = self.view.browser();
+        let Some(current) = browser.active_location() else {
+            self.show_error(&crate::i18n::tr("Choose an accessible local folder"));
+            return;
+        };
+        let entries = self.chosen_entries(!directory);
+        let entries = eligible_open_entries(entries, directory)
+            .into_iter()
+            .filter(|entry| browser.allows_entry(entry))
+            .collect::<Vec<_>>();
+        match (
+            open_selection(&entries, &current, directory, multiple),
+            self.destination_host.as_ref(),
+        ) {
+            (Ok(paths), Some(host)) => self.accept_destination((host.validate)(&paths[0])),
+            (Ok(paths), None) => self.complete_paths(paths, self.writable()),
+            (Err(message), _) => self.show_error(&crate::i18n::tr(message)),
+        }
+    }
+
+    fn writable(&self) -> Option<bool> {
+        self.read_only
+            .as_ref()
+            .map(|read_only| writable_from_read_only(read_only.is_active()))
     }
 
     pub(super) fn accept_destination(
@@ -633,26 +649,32 @@ impl ChooserState {
                 return;
             }
             state.accept_button.set_sensitive(true);
-            match result {
-                Ok(entry) if entry.is_directory() => {
-                    state.view.browser().navigate(entry.location);
-                    if let Some(filename) = state.filename.as_ref() {
-                        state.clear_filename(filename);
-                    }
-                }
-                Ok(entry) if state.view.browser().allows_entry(&entry) => {
-                    match entry.location.native_path() {
-                        Some(path) => state.finish_remote(path.to_path_buf()),
-                        None => state
-                            .show_error(&crate::i18n::tr("Choose an existing, accessible file")),
-                    }
-                }
-                Ok(_) => state.show_error(&crate::i18n::tr(
-                    "The file does not match the selected filter",
-                )),
-                Err(_) => state.show_error(&crate::i18n::tr("Choose an existing, accessible file")),
-            }
+            state.open_named_entry(result);
         });
+    }
+
+    fn open_named_entry(&self, result: Result<FileEntry, glib::Error>) {
+        let Ok(entry) = result else {
+            self.show_error(&crate::i18n::tr("Choose an existing, accessible file"));
+            return;
+        };
+        if entry.is_directory() {
+            self.view.browser().navigate(entry.location);
+            if let Some(filename) = self.filename.as_ref() {
+                self.clear_filename(filename);
+            }
+            return;
+        }
+        if !self.view.browser().allows_entry(&entry) {
+            self.show_error(&crate::i18n::tr(
+                "The file does not match the selected filter",
+            ));
+            return;
+        }
+        match entry.location.native_path() {
+            Some(path) => self.finish_remote(path.to_path_buf()),
+            None => self.show_error(&crate::i18n::tr("Choose an existing, accessible file")),
+        }
     }
 
     pub(super) fn accept_save_file(self: &Rc<Self>) {
@@ -827,12 +849,7 @@ impl ChooserState {
                     self.show_error(&crate::i18n::tr("Choose a local file"));
                     return;
                 };
-                self.complete_paths(
-                    vec![path.to_path_buf()],
-                    self.read_only
-                        .as_ref()
-                        .map(|read_only| writable_from_read_only(read_only.is_active())),
-                );
+                self.complete_paths(vec![path.to_path_buf()], self.writable());
             }
             ChooserKind::SaveFile { .. } => {
                 let Some((folder, name)) = location
@@ -851,6 +868,36 @@ impl ChooserState {
             _ => {}
         }
     }
+}
+
+/// Whether a pick landed on a file row rather than an editable or popover.
+fn clicked_entry_row(surface: &gtk::Widget, picked: gtk::Widget) -> bool {
+    if crate::ui::focus_navigation::editable(&picked)
+        || crate::ui::focus_navigation::in_popover(&picked)
+    {
+        return false;
+    }
+    std::iter::successors(Some(picked), gtk::Widget::parent)
+        .take_while(|widget| widget != surface)
+        .any(|widget| {
+            widget.has_css_class("file-row")
+                || widget.has_css_class("list-row")
+                || widget.has_css_class("icons-card")
+        })
+}
+
+fn single_safe_file_name(entries: &[FileEntry]) -> Option<&OsStr> {
+    let [entry] = entries else {
+        return None;
+    };
+    if entry.is_directory() {
+        return None;
+    }
+    entry
+        .location
+        .native_path()
+        .and_then(Path::file_name)
+        .filter(|name| safe_filename(name))
 }
 
 pub(super) fn select_name_stem(entry: &gtk::Entry) {
