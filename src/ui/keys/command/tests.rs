@@ -110,7 +110,8 @@ fn listed_commands_are_bound_in_the_maps_that_list_them() {
                 );
                 checked += 1;
             }
-            // Digit ranges stay fixed; a chord's range belongs to its trigger's group.
+            // Digit and letter ranges stay fixed; a chord's range belongs to
+            // its trigger's group.
             Entry::Digits(digits) => {
                 if let Some(prefix) = digits.prefix() {
                     assert!(
@@ -119,6 +120,12 @@ fn listed_commands_are_bound_in_the_maps_that_list_them() {
                     );
                 }
             }
+            Entry::Letters(letters) => assert!(
+                letters
+                    .prefix()
+                    .is_some_and(|prefix| block.iter().all(|map| is_trigger_key(prefix, *map))),
+                "{name} follows no chord trigger"
+            ),
             Entry::Binding(_) => assert!(
                 NOT_COMMANDS.iter().any(|(excluded, _)| *excluded == name),
                 "{name} is a fixed binding; make it a command or give it a reason"
@@ -151,6 +158,7 @@ fn unlisted_constants_are_commands_or_excluded() {
                 "{name} needs to be a command or have a reason on the exclusion list"
             ),
             Entry::Digits(_) => panic!("{name} is an unlisted digit range"),
+            Entry::Letters(_) => panic!("{name} is an unlisted letter range"),
         }
         checked += 1;
     }

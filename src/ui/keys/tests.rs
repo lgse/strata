@@ -1043,7 +1043,7 @@ fn catalog_bindings_use_the_canonical_key() {
                     .flat_map(|map| command.defaults(map).iter().copied())
                     .collect(),
             ),
-            Entry::Digits(_) => continue,
+            Entry::Digits(_) | Entry::Letters(_) => continue,
         };
         for binding in bindings {
             checked += 1;
@@ -1078,16 +1078,18 @@ fn every_listed_binding_has_its_own_row_in_its_maps() {
         use_keymap,
     };
     /// What a row shows for `constant` in `map`: its bindings, the chord key
-    /// they follow, or its digit range.
+    /// they follow, or its digit or letter range.
     #[derive(PartialEq)]
     enum Wanted {
         Keys(Vec<Binding>, Option<Binding>),
         Digits(Digits),
+        Letters(super::Letters),
     }
     fn wanted(constant: &Listed, map: Map) -> Wanted {
         match constant.entry {
             Entry::Binding(binding) => Wanted::Keys(vec![binding], None),
             Entry::Digits(digits) => Wanted::Digits(digits),
+            Entry::Letters(letters) => Wanted::Letters(letters),
             Entry::Command(command) => {
                 let after = match command.kind() {
                     Kind::Step(group) => {
@@ -1109,6 +1111,12 @@ fn every_listed_binding_has_its_own_row_in_its_maps() {
                 alternatives.iter().any(|keys| shows(keys, wanted, map))
             }
             (Keys::Digits(digits), Wanted::Digits(wanted)) => digits == wanted,
+            (Keys::Letters(letters), Wanted::Letters(wanted)) => letters == wanted,
+            // A letter range shows the trigger it follows.
+            (Keys::Letters(letters), Wanted::Keys(bindings, None)) => letters
+                .prefix()
+                .and_then(|prefix| primary(&prefix))
+                .is_some_and(|prefix| bindings.contains(&prefix)),
             (Keys::Chord(steps), Wanted::Keys(bindings, Some(first))) => {
                 let steps: Vec<Option<Binding>> = steps.iter().map(primary).collect();
                 bindings.iter().any(|binding| {

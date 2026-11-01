@@ -85,6 +85,8 @@ pub(crate) enum Chord {
     Sort,
     Action,
     Tabs,
+    BookmarkSet,
+    BookmarkGo,
 }
 
 impl Chord {
@@ -92,7 +94,7 @@ impl Chord {
     pub(crate) fn mark(self) -> String {
         use super::keys::{
             Keys,
-            bindings::{ACTIONS, COPY_AS, GO, SORT_BY, TAB_CHORD},
+            bindings::{ACTIONS, BOOKMARK_GO, BOOKMARK_SET, COPY_AS, GO, SORT_BY, TAB_CHORD},
         };
         let prefix = match self {
             Self::Go | Self::PreviewTop => GO,
@@ -100,13 +102,15 @@ impl Chord {
             Self::Sort => SORT_BY,
             Self::Action => ACTIONS,
             Self::Tabs => TAB_CHORD,
+            Self::BookmarkSet => BOOKMARK_SET,
+            Self::BookmarkGo => BOOKMARK_GO,
         };
         format!("{}-", super::keys::label(&Keys::One(prefix.shown())))
     }
 
     /// The second keys and their untranslated actions. The `;` panel lists
-    /// the matching actions itself, and a file chooser leaves out the steps
-    /// it refuses.
+    /// the matching actions itself, the `'` panel the saved bookmarks, and a
+    /// file chooser leaves out the steps it refuses.
     pub(crate) fn options(
         self,
         chooser: bool,
@@ -164,7 +168,11 @@ impl Chord {
                 (step(SORT_BY_TYPE), "Type"),
                 (Mention::Held(gtk::gdk::ModifierType::SHIFT_MASK), "Reverse"),
             ],
-            Self::Action => Vec::new(),
+            Self::Action | Self::BookmarkGo => Vec::new(),
+            Self::BookmarkSet => vec![(
+                Mention::Keys(Keys::Letters(BOOKMARK_SET_LETTERS.step())),
+                "Save bookmark",
+            )],
             Self::Tabs => vec![
                 (step(TAB_CHORD_NEW), "New tab"),
                 (step(TAB_CHORD_CLOSE), "Close tab"),

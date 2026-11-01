@@ -315,6 +315,8 @@ only its primary:
 - a chord: **g h**
 - a digit range with its modifiers or chord prefix: **Ctrl+Shift+1–9 / 0**,
   **t 1–9 / t 0**
+- the letter slots after a chord prefix: **m a–z**; `press.letter()` reads
+  the slot through the Latin fallback, and the range never rebinds
 - alternatives of different shapes: **g g / Home**
 
 ### Structural keys

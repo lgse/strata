@@ -29,7 +29,7 @@ pub(crate) use command::{
     Command, Group, Keymap, Kind as CommandKind, Map, Matcher, Rejected, registry,
 };
 pub(crate) use label::{
-    Digits, Keys, Shown, digit_label, label, label_in, label_in_map, modifiers_label,
+    Digits, Keys, Letters, Shown, digit_label, label, label_in, label_in_map, modifiers_label,
     modifiers_label_in, search_text, shown,
 };
 
@@ -313,6 +313,17 @@ impl KeyPress {
         self.digit.filter(|digit| {
             self.state & compared == digits.modifiers() & compared && digits.contains(*digit)
         })
+    }
+
+    /// The plain letter **a**–**z** pressed, read through the Latin fallback
+    /// as bindings are, for a [`Letters`] slot. Any held modifier, Shift
+    /// included, makes it no letter.
+    pub(crate) fn letter(&self) -> Option<char> {
+        let (key, modifiers) = self.physical_key();
+        let letter = key.to_unicode().filter(char::is_ascii_lowercase)?;
+        (modifiers & SHORTCUT_MODIFIERS)
+            .is_empty()
+            .then_some(letter)
     }
 
     /// The typed character, for typing consumers only. Nothing is typed while

@@ -24,6 +24,7 @@ mod footer_prompt;
 mod go_prompt;
 mod keymap_conflicts;
 mod keymap_overrides;
+mod letter_bookmarks;
 mod mode_exit;
 mod open_in_new;
 mod overlay_focus;

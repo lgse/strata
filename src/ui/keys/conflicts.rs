@@ -918,7 +918,9 @@ fn fixed_key(side: Side) -> Option<Fixed> {
                 Group::Go => PIN_NUMBERS,
                 Group::Actions => ACTIONS_NUMBERS,
                 Group::Tabs => TAB_CHORD_NUMBERS,
-                Group::CopyAs | Group::Sort => return None,
+                Group::CopyAs | Group::Sort | Group::BookmarkSet | Group::BookmarkGo => {
+                    return None;
+                }
             };
             in_digits(binding, digits).then_some(Fixed::Digits(digits))
         }

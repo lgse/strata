@@ -18,6 +18,8 @@ These keys stay fixed:
 
 - digit ranges: tab numbers (**Ctrl+Shift+1–9 / 0**) and the digits after the
   Go, Action and Tabs chords, which follow their chord's trigger;
+- the letters **a–z** after the two bookmark chords, which name the bookmark
+  rather than bind an action and follow their chord's trigger;
 - **Backspace**, which goes to the parent folder and deletes text;
 - the keys GTK handles in file lists: **Ctrl+Space** toggles the selection, and
   Shift with an arrow, Home, End, Page Up or Page Down extends it;
@@ -65,10 +67,12 @@ actions that match the selection instead.
 
 ## Chord groups
 
-10xer mode has five chords: Go (**g**), Copy (**c**), Sort (**,**), Action
-(**;**) and Tabs (**t**). Each has a trigger and steps, rebound separately:
-the steps, and the digits after Go, Action and Tabs, follow whatever key the
-trigger has. A step works only while its trigger waits for the next key, so a
+10xer mode has seven chords: Go (**g**), Copy (**c**), Sort (**,**), Action
+(**;**), Tabs (**t**), and the letter bookmark chords, save (**m**, id
+`bookmark_set`) and go (**'**, id `bookmark_go`). Each has a trigger and
+steps, rebound separately: the steps, and the digits after Go, Action and Tabs
+and the letters after the bookmark chords, follow whatever key the trigger
+has. The bookmark chords have no steps to rebind; their letters are fixed. A step works only while its trigger waits for the next key, so a
 step key never collides with a top-level one; a top-level key equal to a
 trigger is an error. Settings shows a step with its trigger's key in front. No
 other chord groups can be made.

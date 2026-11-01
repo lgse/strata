@@ -1,4 +1,12 @@
 {
+  "Save bookmark": "Könyvjelző mentése",
+  "Save current folder under a letter": "Az aktuális mappa mentése egy betű alá",
+  "Jump to a bookmarked folder by letter": "Ugrás egy könyvjelzőzött mappára betűvel",
+  "Only local folders can be bookmarked": "Csak helyi mappák menthetők könyvjelzőként",
+  "Saved bookmark %{key}": "A(z) %{key} könyvjelző mentve",
+  "Bookmark %{key} is unavailable": "A(z) %{key} könyvjelző nem érhető el",
+  "No bookmark %{key}": "Nincs %{key} könyvjelző",
+  "Could not access bookmarks: %{error}": "Nem sikerült elérni a könyvjelzőket: %{error}",
   " (%{size} known; size incomplete)": " (%{size} ismert; a méret nem teljes)",
   " (size unavailable)": " (nem érhető el a méret)",
   "%{changes} · published %{date}": "%{changes} · közzétéve: %{date}",

@@ -1285,6 +1285,8 @@ const NAMES: &[(Command, &str)] = &[
     (GO_RECENT, "Recent"),
     (GO_PIN, "Pin a folder (go chord)"),
     (GO_UNPIN, "Unpin a folder"),
+    (BOOKMARK_SET, "Save current folder under a letter"),
+    (BOOKMARK_GO, "Jump to a bookmarked folder by letter"),
     (SORT_BY, "Sort chord"),
     (SORT_BY_NAME, "Sort by name"),
     (SORT_BY_MODIFIED, "Sort by modified date"),

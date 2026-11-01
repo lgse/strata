@@ -1,0 +1,11 @@
+{"scenario":"letter-bookmark-failed-jump-keeps-folder","modes":["list"],"prefs":{"tenxer_mode":true,"type_to_search":false},"setup":[{"fs":{"path":"bookmark-parent/target","mkdir":true,"parents":true}},{"fs":{"path":"$data/strata","mkdir":true,"parents":true}},{"fs":{"path":"$data/strata/letter-bookmarks.json","write":"{\"entries\":{\"a\":\"file://$fixture_quoted/bookmark-parent/target\"}}"}}],"variants":[{"id":"only-child","vars":{"removed":"bookmark-parent/target"}},{"id":"parent","vars":{"removed":"bookmark-parent"}}]}
+{"select":{"entry":"readme.md","dir":"$root"}}
+{"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
+{"fs":{"path":"$removed","remove":true}}
+{"wait":{"entry_gone":"bookmark-parent"},"variants":["parent"],"message":"the removed parent to leave the listing"}
+{"key":"apostrophe"}
+{"wait":{"present":{"role":"label","name":"$fixture/bookmark-parent/target"}},"message":"the ' menu to list the saved bookmark"}
+{"key":"a"}
+{"wait":{"present":{"role":"label","name":"Bookmark a is unavailable"}},"message":"' a to report the missing folder"}
+{"expect":{"directory":"$root"},"message":"a failed jump must not navigate"}
+{"expect":{"selected":["readme.md"],"dir":"$root"},"message":"a failed jump must keep the selection"}

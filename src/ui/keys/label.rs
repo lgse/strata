@@ -74,6 +74,8 @@ pub(crate) enum Keys {
     Chord(&'static [Shown]),
     /// A digit range: **Ctrl+Shift+1–9 / 0**, **t 1–9 / t 0**.
     Digits(Digits),
+    /// The letter slots after a chord prefix: **m a–z**.
+    Letters(Letters),
     /// Alternatives that mix the shapes above: **g g / Home**.
     Mixed(&'static [Keys]),
 }
@@ -99,6 +101,11 @@ impl Keys {
                 shown.iter().filter_map(|shown| shown.command()).collect()
             }
             Self::Digits(digits) => digits.prefix.and_then(Shown::command).into_iter().collect(),
+            Self::Letters(letters) => letters
+                .prefix
+                .and_then(Shown::command)
+                .into_iter()
+                .collect(),
             Self::Mixed(keys) => keys.iter().flat_map(Self::commands).collect(),
         }
     }
@@ -108,6 +115,10 @@ impl Keys {
             Self::One(shown) => shown.bindings(map),
             Self::Any(shown) | Self::Chord(shown) => expanded(shown, map),
             Self::Digits(digits) => digits
+                .prefix
+                .map(|prefix| prefix.bindings(map))
+                .unwrap_or_default(),
+            Self::Letters(letters) => letters
                 .prefix
                 .map(|prefix| prefix.bindings(map))
                 .unwrap_or_default(),
@@ -178,6 +189,31 @@ impl Digits {
     }
 }
 
+/// The plain letters **a** to **z** after a chord prefix. Each letter names a
+/// slot rather than binding an action, so the range never rebinds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Letters {
+    prefix: Option<Shown>,
+}
+
+impl Letters {
+    pub(crate) const fn after(prefix: Shown) -> Self {
+        Self {
+            prefix: Some(prefix),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn prefix(self) -> Option<Shown> {
+        self.prefix
+    }
+
+    /// The letters alone, as a panel lists them while the prefix is pending.
+    pub(crate) const fn step(self) -> Self {
+        Self { prefix: None }
+    }
+}
+
 pub(crate) fn label(keys: &Keys) -> String {
     label_in(&rust_i18n::locale(), keys)
 }
@@ -211,7 +247,9 @@ fn written_out(locale: &str, keys: &Keys, map: Map) -> String {
             .iter()
             .map(|keys| written_out(locale, keys, map))
             .collect(),
-        Keys::Chord(_) | Keys::Digits(_) => return label_in_map(locale, keys, map),
+        Keys::Chord(_) | Keys::Digits(_) | Keys::Letters(_) => {
+            return label_in_map(locale, keys, map);
+        }
     };
     alternatives.join(" / ")
 }
@@ -267,6 +305,7 @@ pub(crate) fn label_in_map(locale: &str, keys: &Keys, map: Map) -> String {
             .map(|steps| steps.join(" "))
             .unwrap_or_default(),
         Keys::Digits(digits) => digits_label(locale, digits, map).unwrap_or_default(),
+        Keys::Letters(letters) => letters_label(locale, letters, map).unwrap_or_default(),
         Keys::Mixed(keys) => keys
             .iter()
             .map(|keys| label_in_map(locale, keys, map))
@@ -326,6 +365,14 @@ fn digits_label(locale: &str, digits: &Digits, map: Map) -> Option<String> {
             };
             with_modifiers(locale, digits.modifiers, &keys)
         }
+    })
+}
+
+fn letters_label(locale: &str, letters: &Letters, map: Map) -> Option<String> {
+    let range = "a\u{2013}z";
+    Some(match letters.prefix {
+        Some(prefix) => format!("{} {range}", primary_label(locale, prefix, map)?),
+        None => range.to_owned(),
     })
 }
 

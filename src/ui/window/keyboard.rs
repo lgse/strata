@@ -89,8 +89,13 @@ pub(super) fn install_on(
         if !key_root
             .upgrade()
             .is_some_and(|root| root.is_mapped() && root.can_target())
-            || (tab_scoped && super::composition::is_tab_shortcut(press))
         {
+            return Propagation::Proceed;
+        }
+        if dispatcher.cancel_pending_bookmark(press) {
+            return Propagation::Stop;
+        }
+        if tab_scoped && super::composition::is_tab_shortcut(press) {
             return Propagation::Proceed;
         }
         let Some(browser) = weak_browser.upgrade() else {
@@ -299,9 +304,18 @@ fn bind_footer_filter(dispatcher: &Dispatcher) {
     // GTK may land that focus after the selection change has been reported. In
     // Columns the footer also follows the focused column.
     let shortcuts = dispatcher.shortcuts.clone();
-    let handler = dispatcher
-        .window
-        .connect_focus_widget_notify(move |_| shortcuts.schedule_filter_refresh());
+    let pending = dispatcher.bookmark_pending.clone();
+    let view = dispatcher.view.downgrade();
+    let handler = dispatcher.window.connect_focus_widget_notify(move |_| {
+        if pending.get()
+            && view
+                .upgrade()
+                .is_none_or(|view| !view.item_view_has_focus())
+        {
+            shortcuts.cancel_chord();
+        }
+        shortcuts.schedule_filter_refresh();
+    });
     // A closed tab's view unrealizes while its window lives on.
     let window = dispatcher.window.downgrade();
     let handler = Cell::new(Some(handler));
@@ -403,6 +417,7 @@ fn clear_find_on_mode_exit(
     let shortcuts = dispatcher.shortcuts.clone();
     let open_with = dispatcher.open_with.clone();
     let armed_actions = dispatcher.armed_actions.clone();
+    let bookmark_pending = dispatcher.bookmark_pending.clone();
     let browser = browser.clone();
     let primed = Cell::new(false);
     crate::ui::preferences::PreferenceManager::shared().bind_preference(
@@ -415,6 +430,9 @@ fn clear_find_on_mode_exit(
                 return;
             }
             open_with.invalidate();
+            if bookmark_pending.get() {
+                shortcuts.cancel_chord();
+            }
             armed_actions.take();
             shortcuts.refresh_filter();
             let focus = window.root().and_then(|root| root.focus());
@@ -571,6 +589,8 @@ struct Dispatcher {
     destinations: crate::ui::folder_picker::FolderPicker,
     armed_actions: Rc<RefCell<Option<files::ArmedActions>>>,
     open_with: files::OpenWithLookup,
+    bookmark_revision: Rc<Cell<u64>>,
+    bookmark_pending: Rc<Cell<bool>>,
     chooser: Option<ChooserPolicy>,
 }
 
@@ -628,6 +648,8 @@ impl Dispatcher {
             destinations: crate::ui::folder_picker::FolderPicker::default(),
             armed_actions: Rc::default(),
             open_with: files::OpenWithLookup::default(),
+            bookmark_revision: Rc::default(),
+            bookmark_pending: Rc::default(),
             sidebar: SidebarFocus {
                 state: sidebar.state.clone(),
                 widget: sidebar.widget.clone(),
@@ -637,18 +659,40 @@ impl Dispatcher {
         };
         dispatcher.preview.bind_keyboard_view(&dispatcher.view);
         let keycaps = Rc::downgrade(&sidebar.state);
+        let pending = dispatcher.bookmark_pending.clone();
+        let revision = dispatcher.bookmark_revision.clone();
         dispatcher.shortcuts.connect_chord_changed(move |chord| {
+            if chord != Some(crate::ui::tenxer_mode::Chord::BookmarkGo) && pending.replace(false) {
+                revision.set(revision.get().wrapping_add(1));
+            }
             if let Some(sidebar) = keycaps.upgrade() {
                 sidebar.show_place_keycaps(chord == Some(crate::ui::tenxer_mode::Chord::Go));
+            }
+        });
+        let pending = dispatcher.bookmark_pending.clone();
+        let shortcuts = dispatcher.shortcuts.clone();
+        dispatcher.view.browser().observe(move |event| {
+            if pending.get()
+                && matches!(
+                    event,
+                    crate::app::BrowserEvent::NavigationStarting { .. }
+                        | crate::app::BrowserEvent::FocusChanged { .. }
+                        | crate::app::BrowserEvent::SelectionSetChanged { .. }
+                        | crate::app::BrowserEvent::SelectionSynced { .. }
+                )
+            {
+                shortcuts.cancel_chord();
             }
         });
         let cancel_on_destroy = dispatcher.shortcuts.clone();
         let destinations_on_destroy = dispatcher.destinations.clone();
         let open_with_on_destroy = dispatcher.open_with.clone();
+        let bookmark_revision_on_destroy = dispatcher.bookmark_revision.clone();
         dispatcher.view.widget().connect_unrealize(move |_| {
             cancel_on_destroy.cancel_chord();
             destinations_on_destroy.cancel();
             open_with_on_destroy.invalidate();
+            bookmark_revision_on_destroy.set(bookmark_revision_on_destroy.get().wrapping_add(1));
         });
         let rename_target = dispatcher.rename_target.clone();
         let typed_name_revision = dispatcher.typed_name_revision.clone();
@@ -702,6 +746,8 @@ impl Dispatcher {
     fn handle_key(&self, browser: &Rc<Browser>, press: &KeyPress) -> Propagation {
         if !press.is_modifier() {
             self.open_with.invalidate();
+            self.bookmark_revision
+                .set(self.bookmark_revision.get().wrapping_add(1));
         }
         if let Some(result) = self.rename_tab(press) {
             return result;

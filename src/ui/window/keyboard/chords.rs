@@ -137,12 +137,164 @@ impl Dispatcher {
             Chord::Copy => self.complete_copy(press),
             Chord::Action => self.complete_action(press),
             Chord::Tabs => self.complete_tab(press),
+            Chord::BookmarkSet | Chord::BookmarkGo => self.complete_bookmark(browser, chord, press),
         };
         if !completed {
             self.shortcuts
                 .show_feedback(&crate::i18n::tr("Unknown chord"));
         }
         Some(Propagation::Stop)
+    }
+
+    pub(super) fn cancel_pending_bookmark(&self, press: &KeyPress) -> bool {
+        if self.bookmark_pending.get() && !press.is_modifier() {
+            self.shortcuts.cancel_chord();
+            return true;
+        }
+        false
+    }
+
+    pub(super) fn arm_bookmark_go(&self) {
+        self.shortcuts.arm_chord(Chord::BookmarkGo);
+        let shortcuts = self.shortcuts.clone();
+        let revision = self.bookmark_revision.clone();
+        let expected = revision.get();
+        let preferences = self.type_to_search.preferences.clone();
+        let view = self.view.clone();
+        let generation = view.browser().navigation_generation();
+        glib::MainContext::default().spawn_local(async move {
+            let result = crate::services::letter_bookmarks::list().await;
+            if revision.get() != expected
+                || shortcuts.armed_chord() != Some(Chord::BookmarkGo)
+                || !preferences.tenxer_mode()
+                || !view.item_view_has_focus()
+                || view.browser().navigation_generation() != generation
+            {
+                return;
+            }
+            match result {
+                Ok(entries) => {
+                    let rows = entries
+                        .into_iter()
+                        .map(|(letter, path)| (letter.to_string(), path.display().to_string()))
+                        .collect();
+                    shortcuts.arm_chord_with(Chord::BookmarkGo, rows);
+                }
+                Err(error) => {
+                    shortcuts.cancel_chord();
+                    shortcuts.show_feedback(&rust_i18n::t!(
+                        "Could not access bookmarks: %{error}",
+                        error = crate::services::io_error_detail(&error)
+                    ));
+                }
+            }
+        });
+    }
+
+    fn complete_bookmark(&self, browser: &Rc<Browser>, chord: Chord, press: &KeyPress) -> bool {
+        let Some(letter) = press.letter() else {
+            return false;
+        };
+        if self.chooser.is_some() {
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr(super::chooser::UNAVAILABLE));
+        } else if chord == Chord::BookmarkSet {
+            self.save_bookmark(browser, letter);
+        } else {
+            self.jump_to_bookmark(browser, letter);
+        }
+        true
+    }
+
+    /// A save is never canceled, so its result always shows, whatever keys
+    /// or navigation followed while the storage worker wrote it.
+    fn save_bookmark(&self, browser: &Rc<Browser>, letter: char) {
+        let Some(directory) = self.view.keyboard_bookmark_folder() else {
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Only local folders can be bookmarked"));
+            return;
+        };
+        let weak_browser = Rc::downgrade(browser);
+        let shortcuts = self.shortcuts.clone();
+        glib::MainContext::default().spawn_local(async move {
+            let result = crate::services::letter_bookmarks::set(letter, directory).await;
+            if weak_browser.upgrade().is_none() {
+                return;
+            }
+            let key = letter.to_string();
+            match result {
+                Ok(()) => {
+                    shortcuts.show_feedback(&rust_i18n::t!("Saved bookmark %{key}", key = key));
+                }
+                Err(error) => shortcuts.show_feedback(&rust_i18n::t!(
+                    "Could not access bookmarks: %{error}",
+                    error = crate::services::io_error_detail(&error)
+                )),
+            }
+        });
+    }
+
+    /// The jump stays pending while its folder is checked; any key, focus or
+    /// selection change, or mode exit cancels it before it navigates.
+    fn jump_to_bookmark(&self, browser: &Rc<Browser>, letter: char) {
+        let weak_browser = Rc::downgrade(browser);
+        let generation = browser.navigation_generation();
+        let view = self.view.clone();
+        let origin = view.keyboard_bookmark_folder();
+        let revision = self.bookmark_revision.clone();
+        let pending = self.bookmark_pending.clone();
+        self.shortcuts.arm_chord_with(Chord::BookmarkGo, Vec::new());
+        pending.set(true);
+        let expected = revision.get();
+        let shortcuts = self.shortcuts.clone();
+        let preferences = self.type_to_search.preferences.clone();
+        glib::MainContext::default().spawn_local(async move {
+            let result = crate::services::letter_bookmarks::get(letter).await;
+            let unavailable = if let Ok(Some(path)) = &result {
+                !matches!(
+                    glib::future_with_timeout(
+                        crate::adapters::mount_lanes::STALLED_AFTER,
+                        crate::adapters::probes::folder(path),
+                    )
+                    .await,
+                    Ok(Ok(()))
+                )
+            } else {
+                false
+            };
+            let Some(browser) = weak_browser.upgrade() else {
+                return;
+            };
+            if revision.get() != expected || !pending.replace(false) {
+                return;
+            }
+            shortcuts.cancel_chord();
+            if browser.navigation_generation() != generation
+                || !preferences.tenxer_mode()
+                || !view.item_view_has_focus()
+                || view.keyboard_bookmark_folder() != origin
+            {
+                return;
+            }
+            let key = letter.to_string();
+            match result {
+                Ok(Some(_)) if unavailable => shortcuts
+                    .show_feedback(&rust_i18n::t!("Bookmark %{key} is unavailable", key = key)),
+                Err(error) if error.kind() == std::io::ErrorKind::InvalidData => shortcuts
+                    .show_feedback(&rust_i18n::t!("Bookmark %{key} is unavailable", key = key)),
+                Ok(Some(path)) => {
+                    view.keyboard_navigation();
+                    browser.navigate_location(Location::local(path), true);
+                }
+                Ok(None) => {
+                    shortcuts.show_feedback(&rust_i18n::t!("No bookmark %{key}", key = key))
+                }
+                Err(error) => shortcuts.show_feedback(&rust_i18n::t!(
+                    "Could not access bookmarks: %{error}",
+                    error = crate::services::io_error_detail(&error)
+                )),
+            }
+        });
     }
 
     fn complete_tab(&self, press: &KeyPress) -> bool {

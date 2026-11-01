@@ -338,7 +338,7 @@ pub(crate) fn menu_accelerator(keys: Keys) -> Option<Binding> {
     match keys {
         One(shown) => shown.primary(),
         Any(shown) => shown.first().and_then(|shown| shown.primary()),
-        Chord(_) | Keys::Digits(_) | Mixed(_) => None,
+        Chord(_) | Keys::Digits(_) | Keys::Letters(_) | Mixed(_) => None,
     }
 }
 
@@ -727,6 +727,14 @@ fn tenxer_places(chooser: bool) -> Vec<Shortcut> {
             row(
                 Mixed(&[Chord(shown![GO, GO_PIN]), Chord(shown![GO, GO_UNPIN])]),
                 "Pin / unpin a folder",
+            ),
+            row(
+                Keys::Letters(BOOKMARK_SET_LETTERS),
+                "Save current folder under a letter",
+            ),
+            row(
+                Keys::Letters(BOOKMARK_GO_LETTERS),
+                "Jump to a bookmarked folder by letter",
             ),
         ]);
     }
