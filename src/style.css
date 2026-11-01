@@ -2627,11 +2627,6 @@ scrollbar.horizontal > range > trough > slider {
 
 .sidebar-heading-toggle image {
   -gtk-icon-filter: opacity(0.65);
-  transition: transform 150ms ease-out;
-}
-
-.sidebar-heading-toggle.expanded image {
-  transform: rotate(90deg);
 }
 
 /* Sized from the theme like .sidebar-device-action; the margin matches the device row's

@@ -1227,6 +1227,7 @@ impl CollapsibleSection {
 
 struct SectionHeader {
     toggle: gtk::Button,
+    chevron: gtk::Image,
     badge: gtk::Label,
     item_count: Cell<usize>,
 }
@@ -1247,6 +1248,14 @@ impl SectionHeader {
         } else {
             self.toggle.add_css_class("expanded");
         }
+        // Swapped rather than rotated: a CSS-rotated icon is not pixel-snapped,
+        // so it drifts off the eject column under GL and fractional scaling.
+        let icon = if collapsed {
+            crate::assets::icons::CHEVRON_RIGHT
+        } else {
+            crate::assets::icons::CHEVRON_DOWN
+        };
+        crate::assets::set_primary_icon(&self.chevron, icon);
         self.badge
             .set_visible(collapsed && self.item_count.get() > 0);
         self.toggle
@@ -2589,6 +2598,7 @@ impl SidebarState {
         self.widget.append(&toggle);
         SectionHeader {
             toggle,
+            chevron,
             badge,
             item_count: Cell::new(0),
         }
