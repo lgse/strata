@@ -67,7 +67,7 @@ fn namespaces_restricted() -> Result<bool, String> {
             Some(PROBE_RESTRICTED) => Ok(true),
             _ => Err("Job namespace probe failed".into()),
         },
-        None => rustix::runtime::exit_group(probe_status(&process::namespaces())),
+        None => process::exit_with_status(probe_status(&process::namespaces())),
     }
 }
 
