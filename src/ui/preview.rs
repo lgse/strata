@@ -47,6 +47,7 @@ mod layout;
 mod lifecycle;
 mod loading;
 mod media_controls;
+mod media_render;
 mod media_session;
 mod pdf;
 mod render;
@@ -54,10 +55,12 @@ mod source_view;
 pub(super) use document::document_notice;
 use document::{DocumentPreview, DocumentView};
 pub(in crate::ui) use layout::{separator, separator_width};
-use media_controls::{VolumeControls, media_last_frame, snapped_volume};
+use media_controls::{MediaControls, VolumeControls, media_last_frame, snapped_volume};
+use media_render::SandboxedPreview;
 pub(super) use media_session::ListingPosition;
 use media_session::{
-    AudioPreview, MediaFamily, PlaybackContinuation, VideoPreview, entry_family, media_family,
+    AudioPreview, MediaFamily, MediaTrack, PlaybackContinuation, VideoPreview, entry_family,
+    media_family,
 };
 #[cfg(test)]
 use pdf::{pdf_apply_ranges, pdf_desired_ranges, pdf_drop_unselected_layer, pdf_selected_text};

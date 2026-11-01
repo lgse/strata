@@ -18,31 +18,19 @@ impl PreviewState {
                     .flatten(),
             );
         }
-        match preview.content {
-            PreviewContent::Text { content, truncated } => {
-                self.wrap.set_visible(true);
-                let (view, virtualized) = self.source_preview.show(
-                    &preview.entry,
-                    &preview.content_type,
-                    &content,
-                    truncated,
-                );
-                self.content.append(&view);
-                self.text_view
-                    .replace(Some(self.source_preview.view.clone()));
-                self.text_scroll
-                    .replace(self.source_preview.scroll.borrow().clone());
-                self.wrap.set_active(
-                    super::super::preferences::PreferenceManager::shared().preview_text_wrap(),
-                );
-                if truncated && !virtualized {
-                    let notice = gtk::Label::new(Some(&crate::i18n::tr(
-                        "Preview limited to the first 1 MB",
-                    )));
-                    notice.add_css_class("preview-note");
-                    self.content.append(&notice);
-                }
-            }
+        let Preview {
+            request_id,
+            entry,
+            content_type,
+            content,
+        } = preview;
+        match content {
+            PreviewContent::Text { content, truncated } => self.render_text(PendingSourcePreview {
+                entry,
+                content_type,
+                content,
+                truncated,
+            }),
             PreviewContent::Document {
                 source,
                 document,
@@ -50,14 +38,11 @@ impl PreviewState {
                 warnings,
                 truncated,
             } => {
-                self.wrap.set_visible(true);
-                self.wrap.set_active(
-                    super::super::preferences::PreferenceManager::shared().preview_text_wrap(),
-                );
+                self.show_wrap_toggle();
                 self.render_document_preview(
                     PendingSourcePreview {
-                        entry: preview.entry,
-                        content_type: preview.content_type,
+                        entry,
+                        content_type,
                         content: source,
                         truncated,
                     },
@@ -67,153 +52,22 @@ impl PreviewState {
                 );
             }
             PreviewContent::Rendered { document, warnings } => {
-                let word_processor = crate::sandbox::DocumentFormat::for_file(
-                    &preview.content_type,
-                    &preview.entry.native_name,
-                )
-                .is_some();
-                let (view, state) = super::super::virtual_preview::rendered_document(
-                    document,
-                    warnings,
-                    word_processor,
-                    None,
-                );
-                self.rendered_text.replace(Some(state));
-                self.content.append(&view);
+                let word_processor =
+                    crate::sandbox::DocumentFormat::for_file(&content_type, &entry.native_name)
+                        .is_some();
+                self.render_rendered(document, warnings, word_processor);
             }
             PreviewContent::Route { preview } => self.render_route(preview),
             PreviewContent::Model { png, mesh } => self.render_model(png, mesh),
-            PreviewContent::Rasterized { png } => {
-                let model = crate::services::is_model(&preview.entry);
-                let cover =
-                    crate::sandbox::CoverFormat::for_name(&preview.entry.native_name).is_some();
-                let bytes = glib::Bytes::from_owned(png);
-                match gtk::gdk::Texture::from_bytes(&bytes) {
-                    Ok(texture) => {
-                        let picture = gtk::Picture::for_paintable(&texture);
-                        if model {
-                            super::super::accessibility::set_label(
-                                &picture,
-                                &crate::i18n::tr("Model preview"),
-                            );
-                        } else if cover {
-                            super::super::accessibility::set_label(
-                                &picture,
-                                &crate::i18n::tr("Cover preview"),
-                            );
-                        }
-                        picture.add_css_class("preview-image");
-                        picture.set_can_shrink(true);
-                        picture.set_content_fit(gtk::ContentFit::Contain);
-                        picture.set_hexpand(true);
-                        picture.set_vexpand(true);
-                        picture.set_cursor_from_name(Some("grab"));
-                        install_preview_drag(&picture, self);
-                        self.content
-                            .append(&media_layout::section(&picture, &texture));
-                    }
-                    Err(error) => self
-                        .show_message(&crate::i18n::tr("Preview unavailable"), &error.to_string()),
-                }
-            }
-            PreviewContent::SandboxedMedia { media: mut source } => {
-                let is_gif = preview.content_type == "image/gif";
-                let family = media_family(&preview.content_type);
-                let handed_off = self.handed_off.borrow().as_ref() == Some(&preview.entry.location);
-                source.audio_only = family == Some(MediaFamily::Audio);
-                let media = super::super::media::DecodedMedia::new(source.clone())
-                    .upcast::<gtk::MediaStream>();
-                self.media.replace(Some(media.clone()));
-                let weak = Rc::downgrade(self);
-                media.connect_playing_notify(move |media| {
-                    if media.is_playing()
-                        && let Some(state) = weak.upgrade()
-                    {
-                        state.handed_off.take();
-                    }
-                });
-                let weak = Rc::downgrade(self);
-                media.connect_error_notify(move |media| {
-                    let Some(error) = media.error() else {
-                        return;
-                    };
-                    if let Some(state) = weak.upgrade() {
-                        state.show_media_error(&error);
-                    }
-                });
-
-                let preferences = super::super::preferences::PreferenceManager::shared();
-                if is_gif {
-                    media.set_loop(true);
-                } else {
-                    let muted = preferences.preview_muted();
-                    media.set_volume(if muted {
-                        0.0
-                    } else {
-                        preferences.preview_volume()
-                    });
-                    media.set_muted(muted);
-                }
-                let center_play = match family {
-                    Some(MediaFamily::Audio) => {
-                        self.render_audio(preview.entry, source, &media, &preferences);
-                        let weak = Rc::downgrade(self);
-                        let handler = media.connect_prepared_notify(move |media| {
-                            if media.is_prepared()
-                                && media.has_video()
-                                && let Some(state) = weak.upgrade()
-                            {
-                                state.replace_audio_with_video(media);
-                            }
-                        });
-                        self.media_signals.borrow_mut().push(handler);
-                        None
-                    }
-                    Some(MediaFamily::Video) => {
-                        self.render_video(preview.entry, source, &media, &preferences);
-                        None
-                    }
-                    None | Some(MediaFamily::Route) => {
-                        let (overlay, center_play) = self.build_media_view(&media);
-                        let section = media_layout::section(&overlay, &media);
-                        self.content.append(&section);
-                        self.append_media_controls(
-                            &media,
-                            &preferences,
-                            &section,
-                            &center_play,
-                            is_gif,
-                        );
-                        Some(center_play)
-                    }
-                };
-                if !handed_off
-                    && (preferences.preview_autoplay() || (continue_playback && family.is_some()))
-                {
-                    if preferences.preview_autoplay() && !continue_playback {
-                        match family {
-                            Some(MediaFamily::Video) => {
-                                if let Some(video) = self.video.borrow().as_ref() {
-                                    video.view.start_silently();
-                                }
-                            }
-                            Some(MediaFamily::Audio) => {
-                                if let Some(audio) = self.audio.borrow().as_ref() {
-                                    audio.view.start_silently();
-                                }
-                            }
-                            None | Some(MediaFamily::Route) => {}
-                        }
-                    }
-                    self.sizing.play_or_defer(&media);
-                } else if let Some(center_play) = center_play {
-                    center_play.set_visible(true);
-                }
-
-                if let Some(error) = media.error() {
-                    self.show_media_error(&error);
-                }
-            }
+            PreviewContent::Rasterized { png } => self.render_rasterized(&entry, png),
+            PreviewContent::SandboxedMedia { media } => self.render_sandboxed_media(
+                SandboxedPreview {
+                    entry,
+                    content_type,
+                    continue_playback,
+                },
+                media,
+            ),
             PreviewContent::Image | PreviewContent::Media => {
                 self.show_message(
                     &crate::i18n::tr("Preview unavailable"),
@@ -227,7 +81,7 @@ impl PreviewState {
                 text_layer,
             } => {
                 self.render_pdf_viewer(
-                    preview.entry,
+                    entry,
                     pdf::PdfFirstPage {
                         png,
                         page,
@@ -237,7 +91,7 @@ impl PreviewState {
                 );
             }
             PreviewContent::Archive { tree } => {
-                let focus = self.focus_archive_request.get() == Some(preview.request_id);
+                let focus = self.focus_archive_request.get() == Some(request_id);
                 self.focus_archive_request.set(None);
                 self.render_archive(tree, focus);
             }
@@ -250,6 +104,75 @@ impl PreviewState {
         }
         self.refresh_find();
         self.hand_keys_to_document();
+    }
+
+    fn show_wrap_toggle(&self) {
+        self.wrap.set_visible(true);
+        self.wrap
+            .set_active(super::super::preferences::PreferenceManager::shared().preview_text_wrap());
+    }
+
+    fn render_text(&self, source: PendingSourcePreview) {
+        self.wrap.set_visible(true);
+        let (view, virtualized) = self.source_preview.show(
+            &source.entry,
+            &source.content_type,
+            &source.content,
+            source.truncated,
+        );
+        self.content.append(&view);
+        self.text_view
+            .replace(Some(self.source_preview.view.clone()));
+        self.text_scroll
+            .replace(self.source_preview.scroll.borrow().clone());
+        self.wrap
+            .set_active(super::super::preferences::PreferenceManager::shared().preview_text_wrap());
+        if source.truncated && !virtualized {
+            let notice =
+                gtk::Label::new(Some(&crate::i18n::tr("Preview limited to the first 1 MB")));
+            notice.add_css_class("preview-note");
+            self.content.append(&notice);
+        }
+    }
+
+    fn render_rendered(
+        &self,
+        document: DocumentLayout,
+        warnings: Vec<String>,
+        word_processor: bool,
+    ) {
+        let (view, state) = super::super::virtual_preview::rendered_document(
+            document,
+            warnings,
+            word_processor,
+            None,
+        );
+        self.rendered_text.replace(Some(state));
+        self.content.append(&view);
+    }
+
+    fn render_rasterized(self: &Rc<Self>, entry: &FileEntry, png: Vec<u8>) {
+        let bytes = glib::Bytes::from_owned(png);
+        match gtk::gdk::Texture::from_bytes(&bytes) {
+            Ok(texture) => {
+                let picture = gtk::Picture::for_paintable(&texture);
+                if let Some(label) = rasterized_label(entry) {
+                    super::super::accessibility::set_label(&picture, &label);
+                }
+                picture.add_css_class("preview-image");
+                picture.set_can_shrink(true);
+                picture.set_content_fit(gtk::ContentFit::Contain);
+                picture.set_hexpand(true);
+                picture.set_vexpand(true);
+                picture.set_cursor_from_name(Some("grab"));
+                install_preview_drag(&picture, self);
+                self.content
+                    .append(&media_layout::section(&picture, &texture));
+            }
+            Err(error) => {
+                self.show_message(&crate::i18n::tr("Preview unavailable"), &error.to_string())
+            }
+        }
     }
 
     pub(super) fn clear_password_entry(&self) {
@@ -308,5 +231,15 @@ impl PreviewState {
             _ => clear_box(&self.content),
         }
         self.keep_keys_in_content(owned);
+    }
+}
+
+fn rasterized_label(entry: &FileEntry) -> Option<String> {
+    if crate::services::is_model(entry) {
+        Some(crate::i18n::tr("Model preview"))
+    } else if crate::sandbox::CoverFormat::for_name(&entry.native_name).is_some() {
+        Some(crate::i18n::tr("Cover preview"))
+    } else {
+        None
     }
 }

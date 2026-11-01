@@ -47,13 +47,7 @@ impl PreviewState {
         overlay.add_overlay(&center_play);
 
         let media_for_center = media.clone();
-        center_play.connect_clicked(move |_| {
-            if media_for_center.is_playing() {
-                media_for_center.pause();
-            } else {
-                media_for_center.play();
-            }
-        });
+        center_play.connect_clicked(move |_| toggle_playing(&media_for_center));
 
         let media_for_click = media.clone();
         let overlay_for_focus = overlay.downgrade();
@@ -62,11 +56,7 @@ impl PreviewState {
             if let Some(overlay) = overlay_for_focus.upgrade() {
                 overlay.grab_focus();
             }
-            if media_for_click.is_playing() {
-                media_for_click.pause();
-            } else {
-                media_for_click.play();
-            }
+            toggle_playing(&media_for_click);
         });
         picture.add_controller(click);
 
@@ -76,14 +66,55 @@ impl PreviewState {
     pub(super) fn append_media_controls(
         self: &Rc<Self>,
         media: &gtk::MediaStream,
-        preferences: &Rc<super::super::preferences::PreferenceManager>,
-        section: &gtk::Box,
-        center_play: &gtk::Button,
-        is_gif: bool,
+        controls: MediaControls,
     ) {
         let bar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         bar.add_css_class("preview-media-bar");
+        self.append_play_toggle(media, &bar, controls.center_play);
 
+        if controls.is_gif {
+            controls.section.append(&bar);
+            return;
+        }
+
+        let time_label = gtk::Label::new(Some("0:00 / 0:00"));
+        time_label.add_css_class("preview-media-time");
+        time_label.set_xalign(0.5);
+        let seek = seek_scale();
+
+        let weak_media = media.downgrade();
+        let volume = VolumeControls::new(controls.preferences, move || weak_media.upgrade());
+
+        bar.append(&time_label);
+        bar.append(&seek);
+        bar.append(&volume.toggle);
+        bar.append(&volume.slider);
+        controls
+            .preferences
+            .bind_interface_scale(&bar, |widget, scale| {
+                widget
+                    .downcast_ref::<gtk::Box>()
+                    .expect("media controls")
+                    .set_orientation(if scale > 1.5 {
+                        gtk::Orientation::Vertical
+                    } else {
+                        gtk::Orientation::Horizontal
+                    });
+            });
+        controls.section.append(&bar);
+        self.adopt_volume_controls(&volume);
+
+        let seeking = Rc::new(Cell::new(false));
+        self.follow_media_time(media, &time_label, &seek, &seeking);
+        install_seek_input(media, &seek, seeking);
+    }
+
+    fn append_play_toggle(
+        &self,
+        media: &gtk::MediaStream,
+        bar: &gtk::Box,
+        center_play: &gtk::Button,
+    ) {
         let play_icon = crate::assets::primary_icon(crate::assets::icons::PLAY, 18);
         let pause_icon = crate::assets::primary_icon(crate::assets::icons::PAUSE, 18);
         let play_button = gtk::Button::new();
@@ -97,72 +128,27 @@ impl PreviewState {
             &play_icon
         }));
         let media_for_play = media.clone();
-        play_button.connect_clicked(move |_| {
-            if media_for_play.is_playing() {
-                media_for_play.pause();
-            } else {
-                media_for_play.play();
-            }
-        });
+        play_button.connect_clicked(move |_| toggle_playing(&media_for_play));
 
         bar.append(&play_button);
 
-        let play_button_for_notify = play_button.clone();
-        let play_icon_for_notify = play_icon.clone();
-        let pause_icon_for_notify = pause_icon.clone();
         let center_for_notify = center_play.clone();
         let media_for_playing = media.clone();
         let handler = media.connect_notify_local(Some("playing"), move |_, _| {
             let playing = media_for_playing.is_playing();
-            play_button_for_notify.set_child(Some(if playing {
-                &pause_icon_for_notify
-            } else {
-                &play_icon_for_notify
-            }));
+            play_button.set_child(Some(if playing { &pause_icon } else { &play_icon }));
             center_for_notify.set_visible(!playing);
         });
         self.media_signals.borrow_mut().push(handler);
+    }
 
-        if is_gif {
-            section.append(&bar);
-            return;
-        }
-
-        let time_label = gtk::Label::new(Some("0:00 / 0:00"));
-        time_label.add_css_class("preview-media-time");
-        time_label.set_xalign(0.5);
-
-        let seek = gtk::Scale::builder()
-            .orientation(gtk::Orientation::Horizontal)
-            .hexpand(true)
-            .draw_value(false)
-            .build();
-        seek.add_css_class("preview-media-seek");
-        seek.set_range(0.0, 0.0);
-        seek.set_increments(MEDIA_SEEK_STEP_US as f64, MEDIA_SEEK_PAGE_US as f64);
-        seek.set_sensitive(false);
-
-        let weak_media = media.downgrade();
-        let volume = VolumeControls::new(preferences, move || weak_media.upgrade());
-
-        bar.append(&time_label);
-        bar.append(&seek);
-        bar.append(&volume.toggle);
-        bar.append(&volume.slider);
-        preferences.bind_interface_scale(&bar, |widget, scale| {
-            widget
-                .downcast_ref::<gtk::Box>()
-                .expect("media controls")
-                .set_orientation(if scale > 1.5 {
-                    gtk::Orientation::Vertical
-                } else {
-                    gtk::Orientation::Horizontal
-                });
-        });
-        section.append(&bar);
-        self.adopt_volume_controls(&volume);
-
-        let seeking = Rc::new(Cell::new(false));
+    fn follow_media_time(
+        &self,
+        media: &gtk::MediaStream,
+        time_label: &gtk::Label,
+        seek: &gtk::Scale,
+        seeking: &Rc<Cell<bool>>,
+    ) {
         let update_time = {
             let media = media.clone();
             let time_label = time_label.clone();
@@ -171,47 +157,11 @@ impl PreviewState {
             move || sync_media_time(&media, &time_label, &seek, &seeking)
         };
         update_time();
-        let update_for_timestamp = update_time.clone();
-        let handler = media.connect_notify_local(Some("timestamp"), move |_, _| {
-            update_for_timestamp();
-        });
-        self.media_signals.borrow_mut().push(handler);
-        let update_for_duration = update_time.clone();
-        let handler = media.connect_notify_local(Some("duration"), move |_, _| {
-            update_for_duration();
-        });
-        self.media_signals.borrow_mut().push(handler);
-
-        let drag = gtk::GestureDrag::new();
-        let seeking_for_begin = seeking.clone();
-        drag.connect_drag_begin(move |_, _, _| {
-            seeking_for_begin.set(true);
-        });
-        let seeking_for_end = seeking.clone();
-        let media_for_drag_end = media.clone();
-        let seek_for_drag_end = seek.downgrade();
-        drag.connect_drag_end(move |_, _, _| {
-            seeking_for_end.set(false);
-            if let Some(seek) = seek_for_drag_end.upgrade() {
-                media_for_drag_end.seek(seek.value() as i64);
-            }
-        });
-        seek.add_controller(drag);
-        // A drag seeks once on release; keys, paging and the wheel seek now,
-        // and the knob follows the stream's position.
-        let media = media.clone();
-        seek.connect_change_value(move |_, scroll, value| {
-            if (scroll == gtk::ScrollType::Jump && seeking.get()) || !media.is_seekable() {
-                return glib::Propagation::Proceed;
-            }
-            let target = (value as i64).clamp(0, media_last_frame(media.duration()));
-            // Touchpad scrolling sends tiny jumps; one within the current frame
-            // would only restart the decoder.
-            if (target - media.timestamp()).abs() >= crate::media::timestamp(1) as i64 {
-                media.seek(target);
-            }
-            glib::Propagation::Stop
-        });
+        for property in ["timestamp", "duration"] {
+            let update = update_time.clone();
+            let handler = media.connect_notify_local(Some(property), move |_, _| update());
+            self.media_signals.borrow_mut().push(handler);
+        }
     }
 
     pub(super) fn adopt_volume_controls(&self, volume: &VolumeControls) {
@@ -220,6 +170,69 @@ impl PreviewState {
         self.media_toggle_mute
             .replace(Some(volume.toggle_mute.clone()));
     }
+}
+
+/// Where the plain media bar goes and how much of it the stream needs.
+pub(super) struct MediaControls<'a> {
+    pub(super) preferences: &'a Rc<super::super::preferences::PreferenceManager>,
+    pub(super) section: &'a gtk::Box,
+    pub(super) center_play: &'a gtk::Button,
+    pub(super) is_gif: bool,
+}
+
+fn toggle_playing(media: &gtk::MediaStream) {
+    if media.is_playing() {
+        media.pause();
+    } else {
+        media.play();
+    }
+}
+
+fn seek_scale() -> gtk::Scale {
+    let seek = gtk::Scale::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .hexpand(true)
+        .draw_value(false)
+        .build();
+    seek.add_css_class("preview-media-seek");
+    seek.set_range(0.0, 0.0);
+    seek.set_increments(MEDIA_SEEK_STEP_US as f64, MEDIA_SEEK_PAGE_US as f64);
+    seek.set_sensitive(false);
+    seek
+}
+
+/// A drag seeks once on release; keys, paging and the wheel seek now,
+/// and the knob follows the stream's position.
+fn install_seek_input(media: &gtk::MediaStream, seek: &gtk::Scale, seeking: Rc<Cell<bool>>) {
+    let drag = gtk::GestureDrag::new();
+    let seeking_for_begin = seeking.clone();
+    drag.connect_drag_begin(move |_, _, _| {
+        seeking_for_begin.set(true);
+    });
+    let seeking_for_end = seeking.clone();
+    let media_for_drag_end = media.clone();
+    let seek_for_drag_end = seek.downgrade();
+    drag.connect_drag_end(move |_, _, _| {
+        seeking_for_end.set(false);
+        if let Some(seek) = seek_for_drag_end.upgrade() {
+            media_for_drag_end.seek(seek.value() as i64);
+        }
+    });
+    seek.add_controller(drag);
+    let media = media.clone();
+    seek.connect_change_value(move |_, scroll, value| {
+        let dragging = scroll == gtk::ScrollType::Jump && seeking.get();
+        if dragging || !media.is_seekable() {
+            return glib::Propagation::Proceed;
+        }
+        let target = (value as i64).clamp(0, media_last_frame(media.duration()));
+        // Touchpad scrolling sends tiny jumps; one within the current frame
+        // would only restart the decoder.
+        if (target - media.timestamp()).abs() >= crate::media::timestamp(1) as i64 {
+            media.seek(target);
+        }
+        glib::Propagation::Stop
+    });
 }
 
 pub(super) struct VolumeControls {
@@ -240,25 +253,10 @@ impl VolumeControls {
         crate::ui::shortcut_reference::follow_tooltip(&toggle, "Mute/unmute (%{keys})", keys);
         crate::ui::shortcut_reference::follow_label(&toggle, "Mute/unmute (%{keys})", keys);
         let muted = preferences.preview_muted();
-        let icon = crate::assets::primary_icon(
-            if muted {
-                crate::assets::icons::VOLUME_X
-            } else {
-                crate::assets::icons::VOLUME_2
-            },
-            16,
-        );
+        let icon = crate::assets::primary_icon(volume_icon(muted), 16);
         toggle.set_child(Some(&icon));
 
-        let slider = gtk::Scale::builder()
-            .orientation(gtk::Orientation::Horizontal)
-            .draw_value(false)
-            .width_request(72)
-            .build();
-        slider.add_css_class("preview-media-volume");
-        slider.set_range(0.0, 1.0);
-        slider.set_increments(MEDIA_VOLUME_STEP, MEDIA_VOLUME_PAGE);
-        slider.set_value(if muted {
+        let slider = volume_slider(if muted {
             0.0
         } else {
             preferences.preview_volume()
@@ -281,14 +279,7 @@ impl VolumeControls {
                     media.set_muted(muted);
                 }
                 if let Some(icon) = weak_icon.upgrade() {
-                    crate::assets::set_primary_icon(
-                        &icon,
-                        if muted {
-                            crate::assets::icons::VOLUME_X
-                        } else {
-                            crate::assets::icons::VOLUME_2
-                        },
-                    );
+                    crate::assets::set_primary_icon(&icon, volume_icon(muted));
                 }
                 updating.set(previous);
             },
@@ -305,17 +296,6 @@ impl VolumeControls {
             toggle_for_click();
         });
 
-        // Keys and trough clicks step on the grid; a drag stays free.
-        slider.connect_change_value(|scale, scroll, value| {
-            if matches!(
-                scroll,
-                gtk::ScrollType::Jump | gtk::ScrollType::Start | gtk::ScrollType::End
-            ) {
-                return glib::Propagation::Proceed;
-            }
-            scale.set_value(snapped_volume(value));
-            glib::Propagation::Stop
-        });
         let preferences = preferences.clone();
         slider.connect_value_changed(move |scale| {
             if !updating_slider.get() {
@@ -372,4 +352,36 @@ pub(super) fn fmt_time(microseconds: i64) -> String {
     let minutes = total_seconds / 60;
     let seconds = total_seconds % 60;
     format!("{minutes}:{seconds:02}")
+}
+
+fn volume_icon(muted: bool) -> &'static str {
+    if muted {
+        crate::assets::icons::VOLUME_X
+    } else {
+        crate::assets::icons::VOLUME_2
+    }
+}
+
+fn volume_slider(value: f64) -> gtk::Scale {
+    let slider = gtk::Scale::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .draw_value(false)
+        .width_request(72)
+        .build();
+    slider.add_css_class("preview-media-volume");
+    slider.set_range(0.0, 1.0);
+    slider.set_increments(MEDIA_VOLUME_STEP, MEDIA_VOLUME_PAGE);
+    slider.set_value(value);
+    // Keys and trough clicks step on the grid; a drag stays free.
+    slider.connect_change_value(|scale, scroll, value| {
+        if matches!(
+            scroll,
+            gtk::ScrollType::Jump | gtk::ScrollType::Start | gtk::ScrollType::End
+        ) {
+            return glib::Propagation::Proceed;
+        }
+        scale.set_value(snapped_volume(value));
+        glib::Propagation::Stop
+    });
+    slider
 }

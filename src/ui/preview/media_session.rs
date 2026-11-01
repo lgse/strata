@@ -12,80 +12,85 @@ impl PreviewState {
             MediaCommand::Next => return self.step_media(1, true),
             _ => {}
         }
+        self.end_media_ease_in();
+        let has_volume = self.media_volume_slider.borrow().is_some();
+        if has_volume && self.volume_command(command) {
+            return true;
+        }
+        let Some(media) = self.media.borrow().clone() else {
+            return false;
+        };
+        playback_command(&media, command)
+    }
+
+    fn end_media_ease_in(&self) {
         if let Some(video) = self.video.borrow().as_ref() {
             video.view.end_ease_in();
         }
         if let Some(audio) = self.audio.borrow().as_ref() {
             audio.view.end_ease_in();
         }
-        if self.media_volume_slider.borrow().is_some() {
-            if let Some(delta) = command.volume_delta() {
-                keyboard::step_preview_volume(delta);
-                return true;
-            }
-            if command == MediaCommand::Mute
-                && let Some(toggle) = self.media_toggle_mute.borrow().as_ref()
-            {
-                toggle();
-                return true;
-            }
+    }
+
+    fn volume_command(&self, command: MediaCommand) -> bool {
+        if let Some(delta) = command.volume_delta() {
+            keyboard::step_preview_volume(delta);
+            return true;
         }
-        let Some(media) = self.media.borrow().clone() else {
-            return false;
-        };
-        match command {
-            MediaCommand::PlayPause => {
-                if media.is_playing() {
-                    media.pause();
-                } else {
-                    media.play();
-                }
-                true
-            }
-            MediaCommand::Seek(seek) if media.is_seekable() => {
-                media.seek(seek.target(media.timestamp(), media.duration()));
-                true
-            }
-            _ => false,
+        if command == MediaCommand::Mute
+            && let Some(toggle) = self.media_toggle_mute.borrow().as_ref()
+        {
+            toggle();
+            return true;
         }
+        false
+    }
+
+    /// A volume toggle and slider for a player, tracking whichever stream is current.
+    fn player_volume(
+        self: &Rc<Self>,
+        preferences: &Rc<super::super::preferences::PreferenceManager>,
+        css_class: &str,
+    ) -> (VolumeControls, gtk::Box) {
+        let weak = Rc::downgrade(self);
+        let volume = VolumeControls::new(preferences, move || {
+            weak.upgrade()
+                .and_then(|state| state.media.borrow().clone())
+        });
+        let volume_box = gtk::Box::new(gtk::Orientation::Horizontal, 2);
+        volume_box.add_css_class(css_class);
+        volume_box.append(&volume.toggle);
+        volume_box.append(&volume.slider);
+        (volume, volume_box)
+    }
+
+    fn step_media_handler(self: &Rc<Self>) -> Rc<dyn Fn(i32)> {
+        let weak = Rc::downgrade(self);
+        Rc::new(move |step| {
+            if let Some(state) = weak.upgrade() {
+                state.step_media(step, false);
+            }
+        })
     }
 
     pub(super) fn render_audio(
         self: &Rc<Self>,
-        entry: FileEntry,
-        source: crate::services::SandboxedMedia,
-        media: &gtk::MediaStream,
+        track: MediaTrack,
         preferences: &Rc<super::super::preferences::PreferenceManager>,
     ) {
         let existing = self.audio.borrow_mut().take();
         let audio = existing.unwrap_or_else(|| {
-            let weak = Rc::downgrade(self);
-            let volume = VolumeControls::new(preferences, move || {
-                weak.upgrade()
-                    .and_then(|state| state.media.borrow().clone())
-            });
-            let volume_box = gtk::Box::new(gtk::Orientation::Horizontal, 2);
-            volume_box.add_css_class("preview-audio-volume");
-            volume_box.append(&volume.toggle);
-            volume_box.append(&volume.slider);
-            let weak = Rc::downgrade(self);
-            let view = audio::AudioView::new(
-                volume_box.upcast_ref(),
-                Rc::new(move |step| {
-                    if let Some(state) = weak.upgrade() {
-                        state.step_media(step, false);
-                    }
-                }),
-            );
+            let (volume, volume_box) = self.player_volume(preferences, "preview-audio-volume");
+            let view = audio::AudioView::new(volume_box.upcast_ref(), self.step_media_handler());
             self.content.append(view.widget());
             AudioPreview { view, volume }
         });
         self.adopt_volume_controls(&audio.volume);
         let (folder, has_previous, has_next) = self.listing_position(MediaFamily::Audio);
         audio.view.show(audio::Track {
-            entry,
-            source,
-            media: media.clone(),
+            entry: track.entry,
+            source: track.source,
+            media: track.media,
             folder,
             has_previous,
             has_next,
@@ -95,28 +100,13 @@ impl PreviewState {
 
     pub(super) fn render_video(
         self: &Rc<Self>,
-        entry: FileEntry,
-        source: crate::services::SandboxedMedia,
-        media: &gtk::MediaStream,
+        track: MediaTrack,
         preferences: &Rc<super::super::preferences::PreferenceManager>,
     ) {
         let existing = self.video.borrow_mut().take();
         let video = existing.unwrap_or_else(|| {
-            let weak = Rc::downgrade(self);
-            let volume = VolumeControls::new(preferences, move || {
-                weak.upgrade()
-                    .and_then(|state| state.media.borrow().clone())
-            });
-            let volume_box = gtk::Box::new(gtk::Orientation::Horizontal, 2);
-            volume_box.add_css_class("preview-video-volume");
-            volume_box.append(&volume.toggle);
-            volume_box.append(&volume.slider);
-            let weak = Rc::downgrade(self);
-            let navigate = Rc::new(move |step| {
-                if let Some(state) = weak.upgrade() {
-                    state.step_media(step, false);
-                }
-            });
+            let (volume, volume_box) = self.player_volume(preferences, "preview-video-volume");
+            let navigate = self.step_media_handler();
             let weak = Rc::downgrade(self);
             let decode_size = Rc::new(move || {
                 weak.upgrade()
@@ -131,9 +121,9 @@ impl PreviewState {
         self.adopt_volume_controls(&video.volume);
         let (position, has_previous, has_next) = self.listing_position(MediaFamily::Video);
         video.view.show(video::Clip {
-            entry,
-            source,
-            media: media.clone(),
+            entry: track.entry,
+            source: track.source,
+            media: track.media,
             position,
             has_previous,
             has_next,
@@ -333,11 +323,38 @@ impl PreviewState {
             return;
         };
         self.render_video(
-            entry,
-            source,
-            media,
+            MediaTrack {
+                entry,
+                source,
+                media: media.clone(),
+            },
             &super::super::preferences::PreferenceManager::shared(),
         );
+    }
+}
+
+/// A sandboxed stream and the file it plays, for the audio and video players.
+pub(super) struct MediaTrack {
+    pub(super) entry: FileEntry,
+    pub(super) source: crate::services::SandboxedMedia,
+    pub(super) media: gtk::MediaStream,
+}
+
+fn playback_command(media: &gtk::MediaStream, command: MediaCommand) -> bool {
+    match command {
+        MediaCommand::PlayPause => {
+            if media.is_playing() {
+                media.pause();
+            } else {
+                media.play();
+            }
+            true
+        }
+        MediaCommand::Seek(seek) if media.is_seekable() => {
+            media.seek(seek.target(media.timestamp(), media.duration()));
+            true
+        }
+        _ => false,
     }
 }
 
