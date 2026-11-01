@@ -58,6 +58,7 @@ fn install_pump(service: &Rc<JobService>) {
     });
 }
 
+#[derive(Clone)]
 struct DashboardState {
     service: Rc<JobService>,
     expanded: Rc<RefCell<HashSet<JobId>>>,
@@ -65,6 +66,19 @@ struct DashboardState {
     featured: Rc<Cell<Option<JobId>>>,
     status_labels: StatusLabels,
     rows: Rc<RefCell<HashMap<JobId, RowWidgets>>>,
+}
+
+impl DashboardState {
+    fn new(service: Rc<JobService>) -> Self {
+        Self {
+            service,
+            expanded: Rc::new(RefCell::new(HashSet::new())),
+            dirty: Rc::new(RefCell::new(true)),
+            featured: Rc::new(Cell::new(None)),
+            status_labels: Rc::new(RefCell::new(Vec::new())),
+            rows: Rc::new(RefCell::new(HashMap::new())),
+        }
+    }
 }
 
 struct RowWidgets {
@@ -87,25 +101,10 @@ impl RowWidgets {
             label.set_text(&meta_label(snapshot));
         }
         if let Some(progress) = self.progress.as_ref().and_then(glib::WeakRef::upgrade) {
-            match snapshot.progress.fraction(snapshot.mode) {
-                Some(fraction) => progress.set_fraction(fraction),
-                None => progress.pulse(),
-            }
+            show_progress(&progress, snapshot);
         }
         if let Some(label) = self.log.upgrade() {
-            let log = details_text(snapshot);
-            label.set_text(&if log.is_empty() {
-                crate::i18n::tr("No output yet.")
-            } else {
-                log
-            });
-            crate::ui::accessibility::set_description(
-                &label,
-                snapshot
-                    .log_truncated
-                    .then(|| crate::i18n::tr("Older output was discarded to bound memory"))
-                    .as_deref(),
-            );
+            show_log(&label, snapshot);
         }
         if let Some(label) = self.created.upgrade() {
             label.set_visible(!snapshot.created.is_empty());
@@ -114,6 +113,33 @@ impl RowWidgets {
                 value1 = item_count(snapshot.created.len())
             ));
         }
+    }
+}
+
+fn show_progress(progress: &gtk::ProgressBar, snapshot: &JobSnapshot) {
+    match snapshot.progress.fraction(snapshot.mode) {
+        Some(fraction) => progress.set_fraction(fraction),
+        None => progress.pulse(),
+    }
+}
+
+fn show_log(label: &gtk::Label, snapshot: &JobSnapshot) {
+    label.set_text(&log_text(snapshot));
+    crate::ui::accessibility::set_description(
+        label,
+        snapshot
+            .log_truncated
+            .then(|| crate::i18n::tr("Older output was discarded to bound memory"))
+            .as_deref(),
+    );
+}
+
+fn log_text(snapshot: &JobSnapshot) -> String {
+    let log = details_text(snapshot);
+    if log.is_empty() {
+        crate::i18n::tr("No output yet.")
+    } else {
+        log
     }
 }
 
@@ -126,6 +152,49 @@ pub(crate) struct JobsIndicator {
     refresh_holder: RefreshHolder,
 }
 
+/// The dashboard's title row with its summaries and actions.
+struct DashboardHeader {
+    bar: gtk::Box,
+    running: gtk::Label,
+    finished: gtk::Label,
+    clear: gtk::Button,
+    minimize: gtk::Button,
+}
+
+impl DashboardHeader {
+    fn build() -> Self {
+        let bar = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        bar.add_css_class("jobs-header");
+        bar.append(&icon_bezel(crate::assets::icons::LIST_CHECKS));
+        let title = gtk::Label::builder()
+            .label(crate::i18n::tr("Jobs"))
+            .xalign(0.0)
+            .build();
+        title.add_css_class("jobs-title");
+        let minimize = job_button("Minimize", crate::assets::icons::MINUS);
+        bar.append(&title);
+        let running = gtk::Label::new(None);
+        running.add_css_class("jobs-running-summary");
+        bar.append(&running);
+        let finished = gtk::Label::builder().xalign(0.0).build();
+        finished.add_css_class("jobs-finished-summary");
+        bar.append(&finished);
+        let header_space = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        header_space.set_hexpand(true);
+        bar.append(&header_space);
+        let clear = clear_button();
+        bar.append(&clear);
+        bar.append(&minimize);
+        Self {
+            bar,
+            running,
+            finished,
+            clear,
+            minimize,
+        }
+    }
+}
+
 impl JobsIndicator {
     pub(crate) fn new() -> Self {
         let service = shared();
@@ -134,197 +203,29 @@ impl JobsIndicator {
     }
 
     fn with_service(service: Rc<JobService>) -> Self {
-        let state = DashboardState {
-            service,
-            expanded: Rc::new(RefCell::new(HashSet::new())),
-            dirty: Rc::new(RefCell::new(true)),
-            featured: Rc::new(Cell::new(None)),
-            status_labels: Rc::new(RefCell::new(Vec::new())),
-            rows: Rc::new(RefCell::new(HashMap::new())),
-        };
-
-        let root = gtk::MenuButton::new();
-        root.set_direction(gtk::ArrowType::Up);
-        root.add_css_class("shortcut-footer-button");
-        root.add_css_class("jobs-indicator");
-        crate::ui::accessibility::set_description(
-            &root,
-            Some(&crate::i18n::tr("Show background jobs")),
-        );
-        let label = gtk::Label::new(None);
-        label.add_css_class("jobs-indicator-label");
-        root.set_child(Some(&label));
-        root.set_visible(false);
-
-        let popover = gtk::Popover::builder()
-            .position(gtk::PositionType::Top)
-            .halign(gtk::Align::End)
-            .has_arrow(false)
-            .build();
-        popover.add_css_class("jobs-popover");
-        super::preferences::PreferenceManager::shared().bind_interface_scale(
-            &popover,
-            |widget, scale| {
-                if let Some(popover) = widget.downcast_ref::<gtk::Popover>() {
-                    popover.set_offset(0, -(12.0 * scale).round() as i32);
-                }
-            },
-        );
+        let state = DashboardState::new(service);
+        let (root, label) = indicator_button();
+        let popover = jobs_popover();
         let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
         body.set_overflow(gtk::Overflow::Hidden);
-        let header = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        header.add_css_class("jobs-header");
-        header.append(&icon_bezel(crate::assets::icons::LIST_CHECKS));
-        let title = gtk::Label::builder()
-            .label(crate::i18n::tr("Jobs"))
-            .xalign(0.0)
-            .build();
-        title.add_css_class("jobs-title");
-        let minimize = job_button("Minimize", crate::assets::icons::MINUS);
-        header.append(&title);
-        let running = gtk::Label::new(None);
-        running.add_css_class("jobs-running-summary");
-        header.append(&running);
-        let finished = gtk::Label::builder().xalign(0.0).build();
-        finished.add_css_class("jobs-finished-summary");
-        header.append(&finished);
-        let header_space = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        header_space.set_hexpand(true);
-        header.append(&header_space);
-        let clear = job_button("Clear finished", crate::assets::icons::TRASH);
-        let clear_content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        clear_content.append(&crate::assets::primary_icon(
-            crate::assets::icons::TRASH,
-            14,
-        ));
-        clear_content.append(&gtk::Label::new(Some(&crate::i18n::tr("Clear finished"))));
-        clear.set_child(Some(&clear_content));
-        clear.add_css_class("jobs-clear");
-        clear.set_visible(false);
-        header.append(&clear);
-        header.append(&minimize);
-        body.append(&header);
-        let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        list.add_css_class("jobs-list");
-        let scroll = gtk::ScrolledWindow::builder()
-            .child(&list)
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .propagate_natural_height(true)
-            .max_content_height(420)
-            .width_request(500)
-            .build();
+        let header = DashboardHeader::build();
+        body.append(&header.bar);
+        let (list, scroll) = jobs_list();
         body.append(&scroll);
         popover.set_child(Some(&body));
         root.set_popover(Some(&popover));
 
-        // Rows retain this callback; widget references must stay weak to avoid cycles.
         let refresh_holder: RefreshHolder = Rc::new(RefCell::new(None));
-        let weak_holder = Rc::downgrade(&refresh_holder);
-        let weak_list = list.downgrade();
-        let weak_clear = clear.downgrade();
-        let weak_running = running.downgrade();
-        let weak_finished = finished.downgrade();
-        let refresh_state = DashboardState {
-            service: state.service.clone(),
-            expanded: state.expanded.clone(),
-            dirty: state.dirty.clone(),
-            featured: state.featured.clone(),
-            status_labels: state.status_labels.clone(),
-            rows: state.rows.clone(),
-        };
-        let refresh: RefreshCallback = Rc::new(move || {
-            let Some(holder) = weak_holder.upgrade() else {
-                return;
-            };
-            let Some(callback) = holder.borrow().clone() else {
-                return;
-            };
-            let (Some(list), Some(clear)) = (weak_list.upgrade(), weak_clear.upgrade()) else {
-                return;
-            };
-            if let (Some(running), Some(finished)) =
-                (weak_running.upgrade(), weak_finished.upgrade())
-            {
-                let active = refresh_state.service.running_count();
-                let queued = refresh_state.service.queued_count();
-                let history = refresh_state.service.finished_count();
-                running.set_text(&dashboard_activity_label(active, queued));
-                running.set_visible(active + queued > 0);
-                finished.set_text(&format!(
-                    "{}{}",
-                    if active + queued > 0 { "· " } else { "" },
-                    rust_i18n::t!("%{count} finished", count = history)
-                ));
-                finished.set_visible(history > 0);
-            }
-            render_rows(&list, &clear, &refresh_state, &callback);
-        });
+        let refresh = dashboard_refresh(&refresh_holder, &list, &header, state.clone());
         refresh_holder.borrow_mut().replace(refresh.clone());
-        let root_weak = root.downgrade();
-        let service_weak = Rc::downgrade(&state.service);
-        let status_labels = state.status_labels.clone();
-        glib::timeout_add_local(Duration::from_secs(1), move || {
-            let (Some(root), Some(service)) = (root_weak.upgrade(), service_weak.upgrade()) else {
-                return glib::ControlFlow::Break;
-            };
-            if root.popover().is_some_and(|popover| popover.is_visible()) {
-                let snapshots = service.snapshot();
-                for (id, label) in status_labels.borrow().iter() {
-                    if let (Some(label), Some(snapshot)) = (
-                        label.upgrade(),
-                        snapshots.iter().find(|snapshot| snapshot.id == *id),
-                    ) {
-                        label.set_text(&status_label(snapshot));
-                    }
-                }
-            }
-            glib::ControlFlow::Continue
-        });
-
-        let weak_popover = popover.downgrade();
-        minimize.connect_clicked(move |_| {
-            if let Some(popover) = weak_popover.upgrade() {
-                popover.popdown();
-            }
-        });
-        let clear_service = state.service.clone();
-        let clear_refresh = refresh.clone();
-        clear.connect_clicked(move |_| {
-            if clear_service.clear_finished() {
-                clear_refresh();
-            }
-        });
-
-        let show_refresh = refresh.clone();
-        let show_state = DashboardState {
-            service: state.service.clone(),
-            expanded: state.expanded.clone(),
-            dirty: state.dirty.clone(),
-            featured: state.featured.clone(),
-            status_labels: state.status_labels.clone(),
-            rows: state.rows.clone(),
-        };
-        popover.connect_show(move |_| {
-            show_state.dirty.replace(true);
-            show_refresh();
-        });
-        let hide_dirty = state.dirty.clone();
-        popover.connect_closed(move |_| {
-            hide_dirty.replace(true);
-        });
-
-        let weak_popover = popover.downgrade();
-        close_on_escape(&body, move || {
-            if let Some(popover) = weak_popover.upgrade() {
-                popover.popdown();
-            }
-        });
+        follow_status_labels(&root, &state);
+        connect_header_actions(&popover, &header, &state, &refresh);
+        connect_popover(&popover, &body, &state, &refresh);
 
         let indicator = Self {
             root,
             label,
-            clear,
+            clear: header.clear,
             scroll,
             state,
             refresh_holder,
@@ -397,22 +298,13 @@ impl JobsIndicator {
         let callback: Rc<dyn Fn()> = Rc::new(move || {
             dirty.replace(true);
             if let Some(label) = weak_label.upgrade() {
-                let text = indicator_label(&service);
-                let visible = !text.is_empty();
-                label.set_text(&text);
-                if let Some(root) = weak_root.upgrade() {
-                    root.set_visible(visible);
-                }
+                show_indicator_label(&label, &weak_root, &service);
             }
             if let Some(clear) = weak_clear.upgrade() {
                 clear.set_visible(service.finished_count() > 0);
             }
-            if let Some(root) = weak_root.upgrade()
-                && root.popover().is_some_and(|popover| popover.is_visible())
-                && let Some(holder) = weak_refresh.upgrade()
-                && let Some(refresh) = holder.borrow().clone()
-            {
-                refresh();
+            if let Some(root) = weak_root.upgrade() {
+                refresh_open_dashboard(&root, &weak_refresh);
             }
         });
         let guard: ObserverHolder = Rc::new(RefCell::new(None));
@@ -436,6 +328,213 @@ impl JobsIndicator {
     }
 }
 
+fn show_indicator_label(
+    label: &gtk::Label,
+    root: &glib::WeakRef<gtk::MenuButton>,
+    service: &JobService,
+) {
+    let text = indicator_label(service);
+    let visible = !text.is_empty();
+    label.set_text(&text);
+    if let Some(root) = root.upgrade() {
+        root.set_visible(visible);
+    }
+}
+
+fn refresh_open_dashboard(
+    root: &gtk::MenuButton,
+    holder: &std::rc::Weak<RefCell<Option<RefreshCallback>>>,
+) {
+    if !root.popover().is_some_and(|popover| popover.is_visible()) {
+        return;
+    }
+    if let Some(holder) = holder.upgrade()
+        && let Some(refresh) = holder.borrow().clone()
+    {
+        refresh();
+    }
+}
+
+fn indicator_button() -> (gtk::MenuButton, gtk::Label) {
+    let root = gtk::MenuButton::new();
+    root.set_direction(gtk::ArrowType::Up);
+    root.add_css_class("shortcut-footer-button");
+    root.add_css_class("jobs-indicator");
+    crate::ui::accessibility::set_description(
+        &root,
+        Some(&crate::i18n::tr("Show background jobs")),
+    );
+    let label = gtk::Label::new(None);
+    label.add_css_class("jobs-indicator-label");
+    root.set_child(Some(&label));
+    root.set_visible(false);
+    (root, label)
+}
+
+fn jobs_popover() -> gtk::Popover {
+    let popover = gtk::Popover::builder()
+        .position(gtk::PositionType::Top)
+        .halign(gtk::Align::End)
+        .has_arrow(false)
+        .build();
+    popover.add_css_class("jobs-popover");
+    super::preferences::PreferenceManager::shared().bind_interface_scale(
+        &popover,
+        |widget, scale| {
+            if let Some(popover) = widget.downcast_ref::<gtk::Popover>() {
+                popover.set_offset(0, -(12.0 * scale).round() as i32);
+            }
+        },
+    );
+    popover
+}
+
+fn clear_button() -> gtk::Button {
+    let clear = job_button("Clear finished", crate::assets::icons::TRASH);
+    let clear_content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    clear_content.append(&crate::assets::primary_icon(
+        crate::assets::icons::TRASH,
+        14,
+    ));
+    clear_content.append(&gtk::Label::new(Some(&crate::i18n::tr("Clear finished"))));
+    clear.set_child(Some(&clear_content));
+    clear.add_css_class("jobs-clear");
+    clear.set_visible(false);
+    clear
+}
+
+fn jobs_list() -> (gtk::Box, gtk::ScrolledWindow) {
+    let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    list.add_css_class("jobs-list");
+    let scroll = gtk::ScrolledWindow::builder()
+        .child(&list)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .propagate_natural_height(true)
+        .max_content_height(420)
+        .width_request(500)
+        .build();
+    (list, scroll)
+}
+
+/// Rows retain this callback; widget references must stay weak to avoid cycles.
+fn dashboard_refresh(
+    holder: &RefreshHolder,
+    list: &gtk::Box,
+    header: &DashboardHeader,
+    state: DashboardState,
+) -> RefreshCallback {
+    let weak_holder = Rc::downgrade(holder);
+    let weak_list = list.downgrade();
+    let weak_clear = header.clear.downgrade();
+    let weak_running = header.running.downgrade();
+    let weak_finished = header.finished.downgrade();
+    Rc::new(move || {
+        let Some(holder) = weak_holder.upgrade() else {
+            return;
+        };
+        let Some(callback) = holder.borrow().clone() else {
+            return;
+        };
+        let (Some(list), Some(clear)) = (weak_list.upgrade(), weak_clear.upgrade()) else {
+            return;
+        };
+        if let (Some(running), Some(finished)) = (weak_running.upgrade(), weak_finished.upgrade())
+        {
+            show_activity_summary(&running, &finished, &state.service);
+        }
+        render_rows(&list, &clear, &state, &callback);
+    })
+}
+
+fn show_activity_summary(running: &gtk::Label, finished: &gtk::Label, service: &JobService) {
+    let active = service.running_count();
+    let queued = service.queued_count();
+    let history = service.finished_count();
+    running.set_text(&dashboard_activity_label(active, queued));
+    running.set_visible(active + queued > 0);
+    finished.set_text(&format!(
+        "{}{}",
+        if active + queued > 0 { "· " } else { "" },
+        rust_i18n::t!("%{count} finished", count = history)
+    ));
+    finished.set_visible(history > 0);
+}
+
+/// Keeps the elapsed time of active rows current while the dashboard is open.
+fn follow_status_labels(root: &gtk::MenuButton, state: &DashboardState) {
+    let root_weak = root.downgrade();
+    let service_weak = Rc::downgrade(&state.service);
+    let status_labels = state.status_labels.clone();
+    glib::timeout_add_local(Duration::from_secs(1), move || {
+        let (Some(root), Some(service)) = (root_weak.upgrade(), service_weak.upgrade()) else {
+            return glib::ControlFlow::Break;
+        };
+        if root.popover().is_some_and(|popover| popover.is_visible()) {
+            refresh_status_labels(&service, &status_labels);
+        }
+        glib::ControlFlow::Continue
+    });
+}
+
+fn refresh_status_labels(service: &JobService, status_labels: &StatusLabels) {
+    let snapshots = service.snapshot();
+    for (id, label) in status_labels.borrow().iter() {
+        if let (Some(label), Some(snapshot)) = (
+            label.upgrade(),
+            snapshots.iter().find(|snapshot| snapshot.id == *id),
+        ) {
+            label.set_text(&status_label(snapshot));
+        }
+    }
+}
+
+fn connect_header_actions(
+    popover: &gtk::Popover,
+    header: &DashboardHeader,
+    state: &DashboardState,
+    refresh: &RefreshCallback,
+) {
+    let weak_popover = popover.downgrade();
+    header.minimize.connect_clicked(move |_| {
+        if let Some(popover) = weak_popover.upgrade() {
+            popover.popdown();
+        }
+    });
+    let clear_service = state.service.clone();
+    let clear_refresh = refresh.clone();
+    header.clear.connect_clicked(move |_| {
+        if clear_service.clear_finished() {
+            clear_refresh();
+        }
+    });
+}
+
+fn connect_popover(
+    popover: &gtk::Popover,
+    body: &gtk::Box,
+    state: &DashboardState,
+    refresh: &RefreshCallback,
+) {
+    let show_refresh = refresh.clone();
+    let show_state = state.clone();
+    popover.connect_show(move |_| {
+        show_state.dirty.replace(true);
+        show_refresh();
+    });
+    let hide_dirty = state.dirty.clone();
+    popover.connect_closed(move |_| {
+        hide_dirty.replace(true);
+    });
+
+    let weak_popover = popover.downgrade();
+    close_on_escape(body, move || {
+        if let Some(popover) = weak_popover.upgrade() {
+            popover.popdown();
+        }
+    });
+}
+
 fn render_rows(
     list: &gtk::Box,
     clear: &gtk::Button,
@@ -447,33 +546,56 @@ fn render_rows(
     }
     state.status_labels.borrow_mut().clear();
     let snapshots = dashboard_snapshots(state);
+    let widgets = render_shown_rows(&snapshots, state, refresh);
+    remove_stale_rows(list, &widgets);
+    place_rows(list, &widgets);
+    clear.set_visible(state.service.finished_count() > 0);
+    append_list_note(list, snapshots.len());
+}
+
+fn render_shown_rows(
+    snapshots: &[JobSnapshot],
+    state: &DashboardState,
+    refresh: &RefreshCallback,
+) -> Vec<gtk::Box> {
     let shown: Vec<_> = snapshots.iter().take(MAX_ROWS).collect();
     let mut rows = state.rows.borrow_mut();
     rows.retain(|id, _| shown.iter().any(|snapshot| snapshot.id == *id));
-    let mut widgets = Vec::new();
-    for snapshot in &shown {
-        let expanded = state.expanded.borrow().contains(&snapshot.id);
-        let existing = rows
-            .get(&snapshot.id)
-            .filter(|row| row.status == snapshot.status && row.expanded == expanded)
-            .and_then(|row| row.root.upgrade());
-        let widget = if let Some(widget) = existing {
-            widget
-        } else {
-            let (widget, binding) = job_row(snapshot, state, refresh);
-            rows.insert(snapshot.id, binding);
-            widget
-        };
-        let binding = rows.get(&snapshot.id).expect("rendered job row");
-        binding.update(snapshot);
-        if snapshot.is_active() {
-            state
-                .status_labels
-                .borrow_mut()
-                .push((snapshot.id, binding.status_label.clone()));
-        }
-        widgets.push(widget);
+    shown
+        .iter()
+        .map(|snapshot| render_row(&mut rows, snapshot, state, refresh))
+        .collect()
+}
+
+/// Reuses a row whose status and expansion are unchanged, else builds a new one.
+fn render_row(
+    rows: &mut HashMap<JobId, RowWidgets>,
+    snapshot: &JobSnapshot,
+    state: &DashboardState,
+    refresh: &RefreshCallback,
+) -> gtk::Box {
+    let expanded = state.expanded.borrow().contains(&snapshot.id);
+    let existing = rows
+        .get(&snapshot.id)
+        .filter(|row| row.status == snapshot.status && row.expanded == expanded)
+        .and_then(|row| row.root.upgrade());
+    let widget = existing.unwrap_or_else(|| {
+        let (widget, binding) = job_row(snapshot, state, refresh);
+        rows.insert(snapshot.id, binding);
+        widget
+    });
+    let binding = rows.get(&snapshot.id).expect("rendered job row");
+    binding.update(snapshot);
+    if snapshot.is_active() {
+        state
+            .status_labels
+            .borrow_mut()
+            .push((snapshot.id, binding.status_label.clone()));
     }
+    widget
+}
+
+fn remove_stale_rows(list: &gtk::Box, widgets: &[gtk::Box]) {
     let mut child = list.first_child();
     while let Some(widget) = child {
         child = widget.next_sibling();
@@ -484,31 +606,37 @@ fn render_rows(
             list.remove(&widget);
         }
     }
+}
+
+fn place_rows(list: &gtk::Box, widgets: &[gtk::Box]) {
     let mut previous: Option<&gtk::Box> = None;
-    for widget in &widgets {
+    for widget in widgets {
         if widget.parent().is_none() {
             list.append(widget);
         }
         list.reorder_child_after(widget, previous);
         previous = Some(widget);
     }
-    clear.set_visible(state.service.finished_count() > 0);
-    if snapshots.is_empty() {
-        let empty = gtk::Label::new(Some(&crate::i18n::tr("No background jobs.")));
-        empty.add_css_class("jobs-empty");
-        empty.set_xalign(0.0);
-        list.append(&empty);
+}
+
+fn append_list_note(list: &gtk::Box, job_count: usize) {
+    if job_count == 0 {
+        append_note(list, &crate::i18n::tr("No background jobs."));
         return;
     }
-    if snapshots.len() > MAX_ROWS {
-        let more = gtk::Label::new(Some(&format!(
-            "{} older jobs are hidden",
-            snapshots.len() - MAX_ROWS
-        )));
-        more.add_css_class("jobs-empty");
-        more.set_xalign(0.0);
-        list.append(&more);
+    if job_count > MAX_ROWS {
+        append_note(
+            list,
+            &format!("{} older jobs are hidden", job_count - MAX_ROWS),
+        );
     }
+}
+
+fn append_note(list: &gtk::Box, text: &str) {
+    let note = gtk::Label::new(Some(text));
+    note.add_css_class("jobs-empty");
+    note.set_xalign(0.0);
+    list.append(&note);
 }
 
 fn dashboard_snapshots(state: &DashboardState) -> Vec<JobSnapshot> {
@@ -544,6 +672,41 @@ fn job_row(
     let content = gtk::Box::new(gtk::Orientation::Vertical, 7);
     content.set_hexpand(true);
     row.append(&content);
+    let status = job_row_header(&content, snapshot, state, refresh);
+
+    let meta = gtk::Label::builder()
+        .label(meta_label(snapshot))
+        .xalign(0.0)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .max_width_chars(52)
+        .build();
+    meta.add_css_class("job-meta");
+    content.append(&meta);
+
+    let progress = snapshot
+        .is_active()
+        .then(|| job_progress(&content, snapshot).downgrade());
+    let (log, created) = job_detail(&content, snapshot, state);
+    let widgets = RowWidgets {
+        root: row.downgrade(),
+        status: snapshot.status,
+        expanded: state.expanded.borrow().contains(&snapshot.id),
+        status_label: status.downgrade(),
+        meta: meta.downgrade(),
+        progress,
+        log: log.downgrade(),
+        created: created.downgrade(),
+    };
+    (row, widgets)
+}
+
+/// Appends the name, status and controls row, returning the status label.
+fn job_row_header(
+    content: &gtk::Box,
+    snapshot: &JobSnapshot,
+    state: &DashboardState,
+    refresh: &RefreshCallback,
+) -> gtk::Label {
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     header.set_valign(gtk::Align::Center);
     let name = gtk::Label::builder()
@@ -571,55 +734,27 @@ fn job_row(
         header.append(&button);
     }
     content.append(&header);
+    status
+}
 
-    let meta = gtk::Label::builder()
-        .label(meta_label(snapshot))
-        .xalign(0.0)
-        .ellipsize(gtk::pango::EllipsizeMode::End)
-        .max_width_chars(52)
-        .build();
-    meta.add_css_class("job-meta");
-    content.append(&meta);
+fn job_progress(content: &gtk::Box, snapshot: &JobSnapshot) -> gtk::ProgressBar {
+    let progress = gtk::ProgressBar::new();
+    progress.add_css_class("job-progress");
+    progress.set_show_text(false);
+    show_progress(&progress, snapshot);
+    content.append(&progress);
+    progress
+}
 
-    let progress = if snapshot.is_active() {
-        let progress = gtk::ProgressBar::new();
-        progress.add_css_class("job-progress");
-        progress.set_show_text(false);
-        match snapshot.progress.fraction(snapshot.mode) {
-            Some(fraction) => progress.set_fraction(fraction),
-            None => progress.pulse(),
-        }
-        content.append(&progress);
-        Some(progress.downgrade())
-    } else {
-        None
-    };
-
+/// Appends the expandable log, returning its label and the created-items label.
+fn job_detail(
+    content: &gtk::Box,
+    snapshot: &JobSnapshot,
+    state: &DashboardState,
+) -> (gtk::Label, gtk::Label) {
     let detail = gtk::Box::new(gtk::Orientation::Vertical, 4);
     detail.add_css_class("job-detail");
-    let log = details_text(snapshot);
-    let log_label = gtk::Label::builder()
-        .label(if log.is_empty() {
-            crate::i18n::tr("No output yet.")
-        } else {
-            log
-        })
-        .xalign(0.0)
-        .yalign(0.0)
-        .wrap(true)
-        .wrap_mode(gtk::pango::WrapMode::WordChar)
-        .selectable(true)
-        .max_width_chars(60)
-        .build();
-    log_label.add_css_class("job-log");
-    if snapshot.log_truncated {
-        crate::ui::accessibility::set_description(
-            &log_label,
-            Some(&crate::i18n::tr(
-                "Older output was discarded to bound memory",
-            )),
-        );
-    }
+    let log_label = job_log_label(snapshot);
     let scroll = gtk::ScrolledWindow::builder()
         .child(&log_label)
         .hscrollbar_policy(gtk::PolicyType::Never)
@@ -639,17 +774,29 @@ fn job_row(
         .reveal_child(state.expanded.borrow().contains(&snapshot.id))
         .build();
     content.append(&revealer);
-    let widgets = RowWidgets {
-        root: row.downgrade(),
-        status: snapshot.status,
-        expanded: state.expanded.borrow().contains(&snapshot.id),
-        status_label: status.downgrade(),
-        meta: meta.downgrade(),
-        progress,
-        log: log_label.downgrade(),
-        created: created.downgrade(),
-    };
-    (row, widgets)
+    (log_label, created)
+}
+
+fn job_log_label(snapshot: &JobSnapshot) -> gtk::Label {
+    let log_label = gtk::Label::builder()
+        .label(log_text(snapshot))
+        .xalign(0.0)
+        .yalign(0.0)
+        .wrap(true)
+        .wrap_mode(gtk::pango::WrapMode::WordChar)
+        .selectable(true)
+        .max_width_chars(60)
+        .build();
+    log_label.add_css_class("job-log");
+    if snapshot.log_truncated {
+        crate::ui::accessibility::set_description(
+            &log_label,
+            Some(&crate::i18n::tr(
+                "Older output was discarded to bound memory",
+            )),
+        );
+    }
+    log_label
 }
 
 fn follow_log_output(scroll: &gtk::ScrolledWindow) {
@@ -673,63 +820,83 @@ fn job_controls(
     refresh: &RefreshCallback,
 ) -> Vec<gtk::Button> {
     let mut buttons = Vec::new();
-    match snapshot.status {
-        JobStatus::Running | JobStatus::Queued => {
-            let label = if snapshot.status == JobStatus::Queued {
-                "Remove"
-            } else {
-                "Cancel"
-            };
-            let button = job_button(label, crate::assets::icons::X);
-            let service = state.service.clone();
-            let id = snapshot.id;
-            let refresh = refresh.clone();
-            button.connect_clicked(move |_| {
-                service.cancel(id);
-                refresh();
-            });
-            buttons.push(button);
-        }
-        JobStatus::Cancelling => {}
-        _ => {}
+    if matches!(snapshot.status, JobStatus::Running | JobStatus::Queued) {
+        buttons.push(cancel_button(snapshot, state, refresh));
     }
     if snapshot.status != JobStatus::Queued {
-        let expanded = state.expanded.borrow().contains(&snapshot.id);
-        let details = job_button(
-            if expanded { "Hide" } else { "Details" },
-            if expanded {
-                crate::assets::icons::EYE_OFF
-            } else {
-                crate::assets::icons::EYE
-            },
-        );
-        let id = snapshot.id;
-        let expanded_state = state.expanded.clone();
-        let details_refresh = refresh.clone();
-        let dirty = state.dirty.clone();
-        details.connect_clicked(move |_| {
-            let mut expanded = expanded_state.borrow_mut();
-            if !expanded.remove(&id) {
-                expanded.insert(id);
-            }
-            drop(expanded);
-            dirty.replace(true);
-            details_refresh();
-        });
-        buttons.push(details);
+        buttons.push(details_button(snapshot, state, refresh));
     }
     if snapshot.status.is_finished() {
-        let dismiss = job_button("Dismiss", crate::assets::icons::X);
-        let service = state.service.clone();
-        let id = snapshot.id;
-        let dismiss_refresh = refresh.clone();
-        dismiss.connect_clicked(move |_| {
-            service.dismiss(id);
-            dismiss_refresh();
-        });
-        buttons.push(dismiss);
+        buttons.push(dismiss_button(snapshot, state, refresh));
     }
     buttons
+}
+
+fn cancel_button(
+    snapshot: &JobSnapshot,
+    state: &DashboardState,
+    refresh: &RefreshCallback,
+) -> gtk::Button {
+    let label = if snapshot.status == JobStatus::Queued {
+        "Remove"
+    } else {
+        "Cancel"
+    };
+    let button = job_button(label, crate::assets::icons::X);
+    let service = state.service.clone();
+    let id = snapshot.id;
+    let refresh = refresh.clone();
+    button.connect_clicked(move |_| {
+        service.cancel(id);
+        refresh();
+    });
+    button
+}
+
+fn details_button(
+    snapshot: &JobSnapshot,
+    state: &DashboardState,
+    refresh: &RefreshCallback,
+) -> gtk::Button {
+    let expanded = state.expanded.borrow().contains(&snapshot.id);
+    let details = job_button(
+        if expanded { "Hide" } else { "Details" },
+        if expanded {
+            crate::assets::icons::EYE_OFF
+        } else {
+            crate::assets::icons::EYE
+        },
+    );
+    let id = snapshot.id;
+    let expanded_state = state.expanded.clone();
+    let details_refresh = refresh.clone();
+    let dirty = state.dirty.clone();
+    details.connect_clicked(move |_| {
+        let mut expanded = expanded_state.borrow_mut();
+        if !expanded.remove(&id) {
+            expanded.insert(id);
+        }
+        drop(expanded);
+        dirty.replace(true);
+        details_refresh();
+    });
+    details
+}
+
+fn dismiss_button(
+    snapshot: &JobSnapshot,
+    state: &DashboardState,
+    refresh: &RefreshCallback,
+) -> gtk::Button {
+    let dismiss = job_button("Dismiss", crate::assets::icons::X);
+    let service = state.service.clone();
+    let id = snapshot.id;
+    let dismiss_refresh = refresh.clone();
+    dismiss.connect_clicked(move |_| {
+        service.dismiss(id);
+        dismiss_refresh();
+    });
+    dismiss
 }
 
 fn job_button(label: &str, icon: &str) -> gtk::Button {
@@ -822,8 +989,11 @@ fn icon_bezel(icon: &str) -> gtk::Box {
 
 fn details_text(snapshot: &JobSnapshot) -> String {
     let log = strip_terminal_sequences(snapshot.log.trim_end());
-    if let Some(message) = snapshot.message.as_deref()
-        && snapshot.status != JobStatus::Succeeded
+    let message = snapshot
+        .message
+        .as_deref()
+        .filter(|_| snapshot.status != JobStatus::Succeeded);
+    if let Some(message) = message
         && !log.contains(message)
     {
         return format!("{message}\n{log}").trim_end().to_owned();
@@ -840,30 +1010,44 @@ fn strip_terminal_sequences(text: &str) -> String {
     let mut chars = text.chars();
     while let Some(character) = chars.next() {
         if character == '\x1b' {
-            match chars.next() {
-                Some('[') => {
-                    for character in chars.by_ref() {
-                        if ('@'..='~').contains(&character) {
-                            break;
-                        }
-                    }
-                }
-                Some(']') => {
-                    while let Some(character) = chars.next() {
-                        if character == '\x07'
-                            || (character == '\x1b' && chars.next() == Some('\\'))
-                        {
-                            break;
-                        }
-                    }
-                }
-                _ => {}
-            }
-        } else if !character.is_control() || character == '\n' || character == '\t' {
+            skip_escape_sequence(&mut chars);
+        } else if keeps_character(character) {
             clean.push(character);
         }
     }
     clean
+}
+
+fn keeps_character(character: char) -> bool {
+    !character.is_control() || matches!(character, '\n' | '\t')
+}
+
+fn skip_escape_sequence(chars: &mut std::str::Chars<'_>) {
+    match chars.next() {
+        Some('[') => skip_control_sequence(chars),
+        Some(']') => skip_operating_system_command(chars),
+        _ => {}
+    }
+}
+
+fn skip_control_sequence(chars: &mut std::str::Chars<'_>) {
+    for character in chars.by_ref() {
+        if ('@'..='~').contains(&character) {
+            break;
+        }
+    }
+}
+
+/// Skips to the BEL or ESC \ that ends the command.
+fn skip_operating_system_command(chars: &mut std::str::Chars<'_>) {
+    while let Some(character) = chars.next() {
+        if character == '\x07' {
+            break;
+        }
+        if character == '\x1b' && chars.next() == Some('\\') {
+            break;
+        }
+    }
 }
 
 fn meta_label(snapshot: &JobSnapshot) -> String {
