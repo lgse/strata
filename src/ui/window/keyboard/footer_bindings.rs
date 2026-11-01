@@ -2,7 +2,6 @@
 
 //! Footer prompt and filter wiring that follows the listing and the 10xer mode.
 
-/// Leaving 10xer mode ends preview key ownership but keeps the drawer open.
 use std::{cell::Cell, rc::Rc};
 
 use gtk::prelude::*;
@@ -11,6 +10,7 @@ use crate::{app::Browser, ui::preview::PreviewDrawer};
 
 use super::{Dispatcher, prompts};
 
+/// Leaving 10xer mode ends preview key ownership but keeps the drawer open.
 pub(super) fn release_preview_keys_on_mode_exit(
     window: &gtk::Widget,
     preview: &PreviewDrawer,
@@ -22,8 +22,10 @@ pub(super) fn release_preview_keys_on_mode_exit(
         window,
         crate::ui::preferences::PreferenceManager::tenxer_mode,
         move |window, enabled| {
-            if !enabled
-                && preview.owns_focus(window.root().and_then(|root| root.focus()).as_ref())
+            if enabled {
+                return;
+            }
+            if preview.owns_focus(window.root().and_then(|root| root.focus()).as_ref())
                 && let Some(browser) = browser.upgrade()
             {
                 browser.focus_active();
@@ -199,10 +201,12 @@ pub(super) fn clear_find_on_mode_exit(
             let focus = window.root().and_then(|root| root.focus());
             let prompt_focused = shortcuts.prompt_has_focus();
             shortcuts.dismiss_prompt();
-            if window.is_mapped()
-                && (prompt_focused || focus.is_none())
-                && let Some(browser) = browser.upgrade()
-            {
+            // Focus left with the prompt, or nowhere: give it back to the listing.
+            let focus_lost = prompt_focused || focus.is_none();
+            if !window.is_mapped() || !focus_lost {
+                return;
+            }
+            if let Some(browser) = browser.upgrade() {
                 browser.focus_active();
             }
         },

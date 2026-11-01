@@ -25,23 +25,57 @@ impl Dispatcher {
         if visible_modal_layer(&self.window).is_some() {
             return None;
         }
-        let preferences = &self.type_to_search.preferences;
-        if press.is(TENXER_MODE) {
-            preferences.set_tenxer_mode(!preferences.tenxer_mode());
+        if self.toggles_tenxer_mode(press) {
             return Some(Propagation::Stop);
         }
-        if !preferences.tenxer_mode() {
+        if !self.tenxer_reads_keys() {
             return None;
         }
-        if (self.text_focused() && !self.preview_document_focused()) || self.focus_in_popover() {
-            self.shortcuts.cancel_chord();
-            return None;
-        }
-        if let Some(result) = self.tenxer_chord(browser, press) {
+        if let Some(result) = self.tenxer_window_keys(browser, press) {
             return Some(result);
         }
+        let focus = gtk::prelude::RootExt::focus(&self.window);
+        if let Some(result) = self.tenxer_chrome_keys(browser, press, &focus) {
+            return Some(result);
+        }
+        if press.is(ESCAPE_ANY_SHIFT) && !self.inline_editing_active() {
+            return self.tenxer_escape(browser);
+        }
+        self.route_typing_to_listing(browser, press, &focus);
+        self.tenxer_listing_keys(browser, press)
+    }
+
+    fn toggles_tenxer_mode(&self, press: &KeyPress) -> bool {
+        if !press.is(TENXER_MODE) {
+            return false;
+        }
+        let preferences = &self.type_to_search.preferences;
+        preferences.set_tenxer_mode(!preferences.tenxer_mode());
+        true
+    }
+
+    fn tenxer_reads_keys(&self) -> bool {
+        if !self.type_to_search.preferences.tenxer_mode() {
+            return false;
+        }
+        if self.focus_keeps_typing() {
+            self.shortcuts.cancel_chord();
+            return false;
+        }
+        true
+    }
+
+    /// Text fields keep their typing, except a focused preview document, and so
+    /// do popovers.
+    fn focus_keeps_typing(&self) -> bool {
+        let typing = self.text_focused() && !self.preview_document_focused();
+        typing || self.focus_in_popover()
+    }
+
+    fn tenxer_window_keys(&self, browser: &Rc<Browser>, press: &KeyPress) -> KeyResult {
         if let Some(result) = self
-            .chooser_refusal(press)
+            .tenxer_chord(browser, press)
+            .or_else(|| self.chooser_refusal(press))
             .or_else(|| self.chooser_save(press))
         {
             return Some(result);
@@ -50,32 +84,46 @@ impl Dispatcher {
             self.window.close();
             return Some(Propagation::Stop);
         }
-        if let Some(result) = self.tenxer_preview(browser, press) {
-            return Some(result);
-        }
-        let focus = gtk::prelude::RootExt::focus(&self.window);
-        if self.sidebar.contains(&focus)
+        self.tenxer_preview(browser, press)
+    }
+
+    fn tenxer_chrome_keys(
+        &self,
+        browser: &Rc<Browser>,
+        press: &KeyPress,
+        focus: &Option<gtk::Widget>,
+    ) -> KeyResult {
+        if self.sidebar.contains(focus)
             && let Some(result) = self.tenxer_sidebar(browser, press)
         {
             return Some(result);
         }
-        if self.tenxer_header_focused(&focus)
-            && let Some(result) = self.tenxer_header(browser, press)
-        {
-            return Some(result);
+        if self.tenxer_header_focused(focus) {
+            return self.tenxer_header(browser, press);
         }
-        if press.is(ESCAPE_ANY_SHIFT) && !self.inline_editing_active() {
-            return self.tenxer_escape(browser);
-        }
-        // Unclaimed typing belongs to the listing in 10xer mode, even when
-        // compositor focus restoration selected a header or footer control.
-        // Text, menus, sidebar/header actions, and preview ownership run first.
-        if crate::ui::window::type_to_search_query(press).is_some()
-            && !self.view.item_view_has_focus()
-            && !self.preview.owns_focus(focus.as_ref())
+        None
+    }
+
+    /// Unclaimed typing belongs to the listing in 10xer mode, even when
+    /// compositor focus restoration selected a header or footer control.
+    /// Text, menus, sidebar/header actions, and preview ownership run first.
+    fn route_typing_to_listing(
+        &self,
+        browser: &Rc<Browser>,
+        press: &KeyPress,
+        focus: &Option<gtk::Widget>,
+    ) {
+        if crate::ui::window::type_to_search_query(press).is_none()
+            || self.view.item_view_has_focus()
         {
+            return;
+        }
+        if !self.preview.owns_focus(focus.as_ref()) {
             browser.focus_active();
         }
+    }
+
+    fn tenxer_listing_keys(&self, browser: &Rc<Browser>, press: &KeyPress) -> KeyResult {
         if let Some(result) = self
             .tenxer_prompt_keys(press)
             .or_else(|| self.tenxer_file_keys(press))
@@ -88,17 +136,17 @@ impl Dispatcher {
         } else {
             self.tenxer_listing(browser, press)
         };
-        if claimed {
-            return Some(Propagation::Stop);
+        (claimed || self.swallows_unclaimed(press)).then_some(Propagation::Stop)
+    }
+
+    fn swallows_unclaimed(&self, press: &KeyPress) -> bool {
+        if claims_unbound_command(press) {
+            return true;
         }
-        if claims_unbound_command(press)
-            || (self.view.item_view_has_focus()
-                && claims_file_list_typing(press)
-                && !self.runs_directly(press))
-        {
-            return Some(Propagation::Stop);
+        if !self.view.item_view_has_focus() {
+            return false;
         }
-        None
+        claims_file_list_typing(press) && !self.runs_directly(press)
     }
 
     pub(super) fn text_focused(&self) -> bool {

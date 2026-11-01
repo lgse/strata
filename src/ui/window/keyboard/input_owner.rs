@@ -17,43 +17,69 @@ use super::{Dispatcher, KeyResult};
 
 impl Dispatcher {
     pub(super) fn input_owner(&self, browser: &Browser, press: &KeyPress) -> KeyResult {
+        self.modal_owner()
+            .or_else(|| {
+                self.native_menu_owns_input()
+                    .then_some(Propagation::Proceed)
+            })
+            .or_else(|| self.chrome_owner(press))
+            .or_else(|| self.prompt_owner(browser, press))
+            .or_else(|| self.preview_and_footer_owner(browser, press))
+    }
+
+    fn modal_owner(&self) -> KeyResult {
         if let Some(layer) = topmost_modal_layer(&self.window, &is_closing_layer) {
-            let focus_is_inside = gtk::prelude::RootExt::focus(&self.window)
-                .is_some_and(|focus| focus == layer || focus.is_ancestor(&layer));
-            self.shortcuts.cancel_chord();
-            if !focus_is_inside {
-                layer.grab_focus();
-                return Some(Propagation::Stop);
-            }
-            return Some(Propagation::Proceed);
+            return Some(self.keep_focus_in_layer(&layer));
         }
-        if visible_modal_layer(&self.window).is_some() {
-            // A layer animating out has dropped focus; only window actions, whose
-            // guard skips closing layers, may act until focus is restored.
-            self.shortcuts.cancel_chord();
-            return Some(Propagation::Proceed);
+        visible_modal_layer(&self.window)?;
+        // A layer animating out has dropped focus; only window actions, whose
+        // guard skips closing layers, may act until focus is restored.
+        self.shortcuts.cancel_chord();
+        Some(Propagation::Proceed)
+    }
+
+    fn keep_focus_in_layer(&self, layer: &gtk::Widget) -> Propagation {
+        let focus_is_inside = gtk::prelude::RootExt::focus(&self.window)
+            .is_some_and(|focus| focus == *layer || focus.is_ancestor(layer));
+        self.shortcuts.cancel_chord();
+        if focus_is_inside {
+            return Propagation::Proceed;
         }
-        if self.native_menu_owns_input() {
-            return Some(Propagation::Proceed);
-        }
+        layer.grab_focus();
+        Propagation::Stop
+    }
+
+    fn chrome_owner(&self, press: &KeyPress) -> KeyResult {
         if press.is(ESCAPE_ANY) && self.view.cancel_column_drag() {
             self.shortcuts.cancel_chord();
             return Some(Propagation::Stop);
         }
-        let mut focused = gtk::prelude::RootExt::focus(&self.window);
-        while let Some(widget) = focused {
-            if widget.has_css_class("file-operation-card") {
-                self.shortcuts.cancel_chord();
-                return Some(Propagation::Proceed);
-            }
-            focused = widget.parent();
+        if self.operation_card_focused() {
+            self.shortcuts.cancel_chord();
+            return Some(Propagation::Proceed);
         }
-        if self.shortcuts.prompt_has_focus() {
-            if let Some(result) = self.footer_key(press) {
-                return Some(result);
-            }
-            return Some(self.prompt_key(browser, press));
+        None
+    }
+
+    fn operation_card_focused(&self) -> bool {
+        std::iter::successors(
+            gtk::prelude::RootExt::focus(&self.window),
+            gtk::Widget::parent,
+        )
+        .any(|widget| widget.has_css_class("file-operation-card"))
+    }
+
+    fn prompt_owner(&self, browser: &Browser, press: &KeyPress) -> KeyResult {
+        if !self.shortcuts.prompt_has_focus() {
+            return None;
         }
+        Some(
+            self.footer_key(press)
+                .unwrap_or_else(|| self.prompt_key(browser, press)),
+        )
+    }
+
+    fn preview_and_footer_owner(&self, browser: &Browser, press: &KeyPress) -> KeyResult {
         if self
             .preview
             .handle_find_key(press, self.type_to_search.preferences.tenxer_mode())

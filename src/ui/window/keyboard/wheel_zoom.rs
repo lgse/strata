@@ -2,23 +2,81 @@
 
 //! Ctrl+wheel zoom for interface text and Icons thumbnails.
 
+use std::{cell::Cell, rc::Rc};
+
+use gtk::{gdk::ModifierType as Modifiers, glib::Propagation, prelude::*};
+
+use crate::ui::{
+    browser::{BrowserView, WeakBrowserView},
+    browser_modes::{BrowserMode, ThumbnailResize},
+    preferences::PreferenceManager,
+};
+
+use super::accepts_input;
+
+/// Ctrl+wheel mirrors the Ctrl +/- text-size shortcut, and Ctrl+Shift+wheel
+/// the Ctrl+Alt +/- thumbnail one. Capture phase so scrolled windows cannot
+/// consume it first; the PDF preview's own zoom is left alone by passing
+/// through scrolls inside its scroll container. DISCRETE is avoided: it
+/// swallows sub-step smooth deltas before they reach descendant scrolled
+/// windows, killing touchpad scrolling.
+pub(super) fn zoom_controller(
+    root: &gtk::Widget,
+    preferences: Rc<PreferenceManager>,
+    view: WeakBrowserView,
+) -> gtk::EventControllerScroll {
+    let wheel = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::BOTH_AXES);
+    wheel.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let zoom = Rc::new(WheelZoom::default());
+    let wheel_root = root.downgrade();
+    wheel.connect_scroll(move |controller, dx, dy| {
+        if !accepts_input(&wheel_root) {
+            return Propagation::Proceed;
+        }
+        let Some(view) = view.upgrade() else {
+            return Propagation::Proceed;
+        };
+        let modifiers = controller.current_event_state();
+        zoom.handle(
+            &preferences,
+            &view,
+            modifiers,
+            controller.unit(),
+            pointer_target(controller, modifiers),
+            (dx, dy),
+        )
+    });
+    wheel
+}
+
+/// Scroll events carry no position, so ask the seat where the pointer is.
+fn pointer_target(
+    controller: &gtk::EventControllerScroll,
+    modifiers: Modifiers,
+) -> Option<gtk::Widget> {
+    controller
+        .current_event()
+        .filter(|_| modifiers.contains(Modifiers::CONTROL_MASK))
+        .and_then(|event| {
+            let surface = event.surface()?;
+            let device = event.seat()?.pointer()?;
+            let (x, y, _) = surface.device_position(&device)?;
+            let native = gtk::Native::for_surface(&surface)?;
+            let (dx, dy) = native.surface_transform();
+            native.pick(x - dx, y - dy, gtk::PickFlags::DEFAULT)
+        })
+}
+
 /// Accumulates fractional Ctrl+wheel deltas into whole steps so smooth devices
 /// zoom in the same increments as wheel clicks: interface text, or Icons
 /// thumbnails with Shift. Resets when the input reverses direction, changes
 /// units or target, or is not claimed for zooming.
-use std::cell::Cell;
-
-use gtk::gdk::ModifierType as Modifiers;
-use gtk::{glib::Propagation, prelude::*};
-
-use crate::ui::{browser::BrowserView, browser_modes::ThumbnailResize};
-
 #[derive(Default)]
-pub(in crate::ui) struct WheelZoom {
-    pub(super) pending: Cell<f64>,
-    pub(super) direction: Cell<i8>,
-    pub(super) unit: Cell<Option<gtk::gdk::ScrollUnit>>,
-    pub(super) thumbnails: Cell<bool>,
+pub(in crate::ui::window) struct WheelZoom {
+    pending: Cell<f64>,
+    direction: Cell<i8>,
+    unit: Cell<Option<gtk::gdk::ScrollUnit>>,
+    thumbnails: Cell<bool>,
 }
 
 impl WheelZoom {
@@ -26,12 +84,12 @@ impl WheelZoom {
     /// same mapping GTK's discrete conversion uses.
     const SURFACE_PIXELS_PER_STEP: f64 = 10.0;
 
-    pub(super) fn reset(&self) {
+    fn reset(&self) {
         self.pending.set(0.0);
         self.direction.set(0);
     }
 
-    pub(super) fn accumulate(&self, unit: gtk::gdk::ScrollUnit, dy: f64) -> i32 {
+    fn accumulate(&self, unit: gtk::gdk::ScrollUnit, dy: f64) -> i32 {
         let direction = dy.signum() as i8;
         let unit_changed = self.unit.replace(Some(unit)) != Some(unit);
         let direction_changed = direction != 0 && self.direction.replace(direction) != direction;
@@ -49,9 +107,9 @@ impl WheelZoom {
         steps
     }
 
-    pub(in crate::ui) fn handle(
+    pub(in crate::ui::window) fn handle(
         &self,
-        preferences: &crate::ui::preferences::PreferenceManager,
+        preferences: &PreferenceManager,
         view: &BrowserView,
         modifiers: Modifiers,
         unit: gtk::gdk::ScrollUnit,
@@ -64,11 +122,7 @@ impl WheelZoom {
         if delta == 0.0 {
             return Propagation::Proceed;
         }
-        if !modifiers.contains(Modifiers::CONTROL_MASK)
-            || modifiers.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
-            || target.as_ref().is_some_and(inside_pdf_scroll)
-            || (thumbnails && view.view_mode() != crate::ui::browser_modes::BrowserMode::Icons)
-        {
+        if !claims_zoom(view, modifiers, target.as_ref(), thumbnails) {
             self.reset();
             return Propagation::Proceed;
         }
@@ -77,23 +131,41 @@ impl WheelZoom {
         }
         let steps = self.accumulate(unit, delta);
         if steps != 0 {
-            if thumbnails {
-                view.resize_icons_thumbnails(ThumbnailResize::Step(-steps));
-            } else {
-                view.set_text_size(preferences.text_size().stepped(-steps));
-            }
+            zoom_by(preferences, view, thumbnails, -steps);
         }
         Propagation::Stop
     }
 }
 
-pub(super) fn inside_pdf_scroll(widget: &gtk::Widget) -> bool {
-    let mut current = Some(widget.clone());
-    while let Some(widget) = current {
-        if widget.has_css_class("preview-pdf-scroll") {
-            return true;
-        }
-        current = widget.parent();
+/// Only Ctrl alone (with Shift for thumbnails, in Icons) zooms, and never over
+/// the PDF preview, which zooms itself.
+fn claims_zoom(
+    view: &BrowserView,
+    modifiers: Modifiers,
+    target: Option<&gtk::Widget>,
+    thumbnails: bool,
+) -> bool {
+    if !modifiers.contains(Modifiers::CONTROL_MASK) {
+        return false;
     }
-    false
+    if modifiers.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK) {
+        return false;
+    }
+    if target.is_some_and(inside_pdf_scroll) {
+        return false;
+    }
+    !thumbnails || view.view_mode() == BrowserMode::Icons
+}
+
+fn zoom_by(preferences: &PreferenceManager, view: &BrowserView, thumbnails: bool, steps: i32) {
+    if thumbnails {
+        view.resize_icons_thumbnails(ThumbnailResize::Step(steps));
+    } else {
+        view.set_text_size(preferences.text_size().stepped(steps));
+    }
+}
+
+fn inside_pdf_scroll(widget: &gtk::Widget) -> bool {
+    std::iter::successors(Some(widget.clone()), gtk::Widget::parent)
+        .any(|widget| widget.has_css_class("preview-pdf-scroll"))
 }

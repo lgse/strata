@@ -14,14 +14,13 @@ use crate::{
         browser::BrowserView,
         browser_modes::ThumbnailResize,
         keys::{self, Command, KeyPress, Map, SHORTCUT_MODIFIERS, TEXT_EDITING, bindings::*},
-        modal::is_closing_layer,
         preview::PreviewDrawer,
         shortcut_footer::ShortcutFooter,
         top_bar_navigation::TopBarNavigation,
     },
 };
 
-use super::{SidebarState, SidebarView, TypeToSearch, topmost_modal_layer, visible_modal_layer};
+use super::{SidebarState, SidebarView, TypeToSearch};
 
 mod chooser;
 pub(super) mod chords;
@@ -43,6 +42,7 @@ use footer_bindings::{
     bind_candidate_prompts, bind_footer_filter, bind_prompt_hints, clear_find_on_mode_exit,
     release_preview_keys_on_mode_exit, submit_prompt_on_activate,
 };
+#[cfg(test)]
 pub(super) use wheel_zoom::WheelZoom;
 
 // None tries the next Strata stage; Some(Proceed) gives the event to GTK instead.
@@ -91,14 +91,34 @@ pub(super) fn install_on(
     let wheel_view = parts.view.downgrade();
     let dispatcher = Rc::new(Dispatcher::bind(window, sidebar, parts, None));
     submit_prompt_on_activate(&dispatcher, weak_browser.clone());
-    let key_root = root.as_ref().downgrade();
-    let tab_scoped = !root.as_ref().is::<gtk::Window>();
-    keys::on_press(&keys, move |_, press| {
-        if !key_root
-            .upgrade()
-            .is_some_and(|root| root.is_mapped() && root.can_target())
-            || (tab_scoped && super::composition::is_tab_shortcut(press))
-        {
+    connect_key_presses(&keys, root.as_ref(), dispatcher, weak_browser);
+    window.add_controller(keys.clone());
+    let wheel = wheel_zoom::zoom_controller(root.as_ref(), preferences, wheel_view);
+    window.add_controller(wheel.clone());
+    let controllers = vec![keys.upcast(), wheel.upcast()];
+    release_controllers_on_close(window, root, &controllers);
+    controllers
+}
+
+/// A hidden or untargetable root, such as a background tab, takes no input.
+pub(super) fn accepts_input(root: &glib::WeakRef<gtk::Widget>) -> bool {
+    root.upgrade()
+        .is_some_and(|root| root.is_mapped() && root.can_target())
+}
+
+fn connect_key_presses(
+    keys: &gtk::EventControllerKey,
+    root: &gtk::Widget,
+    dispatcher: Rc<Dispatcher>,
+    weak_browser: std::rc::Weak<Browser>,
+) {
+    let key_root = root.downgrade();
+    let tab_scoped = !root.is::<gtk::Window>();
+    keys::on_press(keys, move |_, press| {
+        if !accepts_input(&key_root) {
+            return Propagation::Proceed;
+        }
+        if tab_scoped && super::composition::is_tab_shortcut(press) {
             return Propagation::Proceed;
         }
         let Some(browser) = weak_browser.upgrade() else {
@@ -109,56 +129,7 @@ pub(super) fn install_on(
             handled => handled,
         }
     });
-    window.add_controller(keys.clone());
-
-    // Ctrl+wheel mirrors the Ctrl +/- text-size shortcut, and Ctrl+Shift+wheel
-    // the Ctrl+Alt +/- thumbnail one. Capture phase so scrolled windows cannot
-    // consume it first; the PDF preview's own zoom is left alone by passing
-    // through scrolls inside its scroll container. DISCRETE is avoided: it
-    // swallows sub-step smooth deltas before they reach descendant scrolled
-    // windows, killing touchpad scrolling.
-    let wheel = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::BOTH_AXES);
-    wheel.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let zoom = Rc::new(WheelZoom::default());
-    let wheel_root = root.as_ref().downgrade();
-    wheel.connect_scroll(move |controller, dx, dy| {
-        if !wheel_root
-            .upgrade()
-            .is_some_and(|root| root.is_mapped() && root.can_target())
-        {
-            return Propagation::Proceed;
-        }
-        let Some(view) = wheel_view.upgrade() else {
-            return Propagation::Proceed;
-        };
-        let modifiers = controller.current_event_state();
-        // Scroll events carry no position, so ask the seat where the pointer is.
-        let target = controller
-            .current_event()
-            .filter(|_| modifiers.contains(Modifiers::CONTROL_MASK))
-            .and_then(|event| {
-                let surface = event.surface()?;
-                let device = event.seat()?.pointer()?;
-                let (x, y, _) = surface.device_position(&device)?;
-                let native = gtk::Native::for_surface(&surface)?;
-                let (dx, dy) = native.surface_transform();
-                native.pick(x - dx, y - dy, gtk::PickFlags::DEFAULT)
-            });
-        zoom.handle(
-            &preferences,
-            &view,
-            modifiers,
-            controller.unit(),
-            target,
-            (dx, dy),
-        )
-    });
-    window.add_controller(wheel.clone());
-    let controllers = vec![keys.upcast(), wheel.upcast()];
-    release_controllers_on_close(window, root, &controllers);
-    controllers
 }
-
 /// GTK's own text bindings miss a key that only the layout fallback reads as an
 /// editing shortcut, so the focused text field runs the matching action itself.
 pub(in crate::ui) fn edit_focused_text(window: &gtk::Window, press: &KeyPress) -> Propagation {
@@ -371,10 +342,7 @@ impl Dispatcher {
         if !press.is_modifier() {
             self.open_with.invalidate();
         }
-        if self.text_focused()
-            && !self.shortcuts.prompt_has_focus()
-            && !self.preview_document_focused()
-        {
+        if self.chooser_text_focused() {
             // The open reference's search entry counts as focused text; its
             // keys, Escape included, must reach the reference, not the request.
             if press.is(REFERENCE.in_map(Map::Default).ignoring(SHORTCUT_MODIFIERS))
@@ -388,6 +356,14 @@ impl Dispatcher {
             .or_else(|| self.tenxer_keys(browser, press))
     }
 
+    /// Focused text outside the footer prompt and a preview document.
+    fn chooser_text_focused(&self) -> bool {
+        if !self.text_focused() || self.shortcuts.prompt_has_focus() {
+            return false;
+        }
+        !self.preview_document_focused()
+    }
+
     fn handle_key(&self, browser: &Rc<Browser>, press: &KeyPress) -> Propagation {
         if !press.is_modifier() {
             self.open_with.invalidate();
@@ -395,24 +371,8 @@ impl Dispatcher {
         if let Some(result) = self.rename_tab(press) {
             return result;
         }
-        let preferences = &self.type_to_search.preferences;
-        // Text-size shortcuts and a focused document's zoom reset run before
-        // the chord consumer. Drop the mark first, matching Ctrl+, opening
-        // Settings.
-        if self.preview.reset_pdf_zoom(press) {
-            self.shortcuts.cancel_chord();
-            return Propagation::Stop;
-        }
-        if let Some(size) = preferences.text_size().for_shortcut(press) {
-            self.shortcuts.cancel_chord();
-            self.view.set_text_size(size);
-            return Propagation::Stop;
-        }
-        if let Some(change) = ThumbnailResize::for_shortcut(press)
-            && self.view.resize_icons_thumbnails(change)
-        {
-            self.shortcuts.cancel_chord();
-            return Propagation::Stop;
+        if let Some(result) = self.zoom_shortcut(press) {
+            return result;
         }
         if let Some(result) = self.input_owner(browser, press) {
             return result;
@@ -434,38 +394,8 @@ impl Dispatcher {
             .or_else(|| self.sidebar_commands(browser, &event))
             .or_else(|| self.context_menu_command(&event))
             .or_else(|| self.properties_command(&event))
-            .or_else(|| {
-                // Search rows own navigation; directory commands must not act on hidden selections.
-                if self.view.selected_search_results().is_some()
-                    && !event.text_has_focus()
-                    && !event.press.is(MOVE_TO_TRASH
-                        .in_map(Map::Default)
-                        .ignoring(SHORTCUT_MODIFIERS))
-                {
-                    if event.press.is_any(&[COPY, CUT, PASTE, SELECT_ALL])
-                        && let Some(result) = self.clipboard_command(&event)
-                    {
-                        return Some(result);
-                    }
-                    if let Some(arrow) = event.vim_arrow() {
-                        crate::ui::focus_navigation::activate_native_arrow(&self.window, arrow);
-                        Some(Propagation::Stop)
-                    } else {
-                        Some(Propagation::Proceed)
-                    }
-                } else {
-                    None
-                }
-            })
-            .or_else(|| {
-                if event.press.is(ESCAPE_ANY_SHIFT)
-                    && self.preview.password_has_focus(event.focused.as_ref())
-                {
-                    self.dismiss_preview_or_selection(browser)
-                } else {
-                    None
-                }
-            })
+            .or_else(|| self.search_result_keys(&event))
+            .or_else(|| self.preview_password_escape(browser, &event))
             .or_else(|| self.text_input(&event))
             .or_else(|| self.file_commands(browser, &event))
             .or_else(|| self.preview_navigation(&event))
@@ -473,6 +403,63 @@ impl Dispatcher {
             .or_else(|| self.dismissal(browser, &event))
             .or_else(|| self.item_navigation(browser, &event))
             .unwrap_or(Propagation::Proceed)
+    }
+
+    /// Text-size shortcuts and a focused document's zoom reset run before the
+    /// chord consumer. Drop the mark first, matching Ctrl+, opening Settings.
+    fn zoom_shortcut(&self, press: &KeyPress) -> Option<Propagation> {
+        if self.preview.reset_pdf_zoom(press) {
+            self.shortcuts.cancel_chord();
+            return Some(Propagation::Stop);
+        }
+        if let Some(size) = self.type_to_search.preferences.text_size().for_shortcut(press) {
+            self.shortcuts.cancel_chord();
+            self.view.set_text_size(size);
+            return Some(Propagation::Stop);
+        }
+        if let Some(change) = ThumbnailResize::for_shortcut(press)
+            && self.view.resize_icons_thumbnails(change)
+        {
+            self.shortcuts.cancel_chord();
+            return Some(Propagation::Stop);
+        }
+        None
+    }
+
+    /// Search rows own navigation; directory commands must not act on hidden selections.
+    fn search_result_keys(&self, event: &KeyEvent) -> KeyResult {
+        if !self.search_rows_own_key(event) {
+            return None;
+        }
+        if event.press.is_any(&[COPY, CUT, PASTE, SELECT_ALL])
+            && let Some(result) = self.clipboard_command(event)
+        {
+            return Some(result);
+        }
+        let Some(arrow) = event.vim_arrow() else {
+            return Some(Propagation::Proceed);
+        };
+        crate::ui::focus_navigation::activate_native_arrow(&self.window, arrow);
+        Some(Propagation::Stop)
+    }
+
+    fn search_rows_own_key(&self, event: &KeyEvent) -> bool {
+        if self.view.selected_search_results().is_none() || event.text_has_focus() {
+            return false;
+        }
+        !event.press.is(MOVE_TO_TRASH
+            .in_map(Map::Default)
+            .ignoring(SHORTCUT_MODIFIERS))
+    }
+
+    fn preview_password_escape(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
+        if !event.press.is(ESCAPE_ANY_SHIFT) {
+            return None;
+        }
+        if !self.preview.password_has_focus(event.focused.as_ref()) {
+            return None;
+        }
+        self.dismiss_preview_or_selection(browser)
     }
 
     /// Where GTK's accelerators ran: window actions, then a focused text
