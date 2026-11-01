@@ -8,7 +8,14 @@ use gtk::prelude::*;
 
 use crate::model::Location;
 
-use super::{SidebarState, sidebar, sidebar_drop_feedback, places::STANDARD_PLACE_IDS, sidebar::PlaceNavigation, sidebar_rows::{customize_sidebar_folder_icon, sidebar_button}};
+use super::{
+    SidebarState,
+    places::STANDARD_PLACE_IDS,
+    sidebar,
+    sidebar::PlaceNavigation,
+    sidebar_drop_feedback,
+    sidebar_rows::{customize_sidebar_folder_icon, sidebar_button},
+};
 
 pub(super) const PINNED_DRAG_PREFIX: &str = "pinned:";
 
@@ -290,7 +297,12 @@ pub(super) fn sidebar_reorder_feedback(
     gtk::gdk::DragAction::MOVE
 }
 
-pub(super) fn reorder_places(order: &mut Vec<&'static str>, source: &str, target: &str, after: bool) -> bool {
+pub(super) fn reorder_places(
+    order: &mut Vec<&'static str>,
+    source: &str,
+    target: &str,
+    after: bool,
+) -> bool {
     if source == target {
         return false;
     }

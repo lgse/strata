@@ -2,7 +2,10 @@
 
 //! The sidebar handle a window holds, rebuilding and scroll preservation.
 
-use std::{cell::{Cell, RefCell}, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use gtk::prelude::*;
 

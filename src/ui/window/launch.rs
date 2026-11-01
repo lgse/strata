@@ -209,7 +209,11 @@ pub(crate) fn default_save_folder() -> PathBuf {
     glib::user_special_dir(glib::UserDirectory::Downloads).unwrap_or_else(home_directory)
 }
 
-pub(super) fn open_checked(browser: &Rc<Browser>, location: Location, absent: impl FnOnce() + 'static) {
+pub(super) fn open_checked(
+    browser: &Rc<Browser>,
+    location: Location,
+    absent: impl FnOnce() + 'static,
+) {
     let Some(path) = location.native_path().map(PathBuf::from) else {
         browser.navigate_location(location, true);
         return;

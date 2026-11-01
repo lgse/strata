@@ -8,7 +8,12 @@ use gtk::prelude::*;
 
 use crate::{adapters::location_for_file, ui::browser::BrowserView};
 
-use super::{drive_dialogs, drive_ops, sidebar, device_actions::{DeviceRowActions, media_release_label}, drive_dialogs::PropertiesTarget, sidebar_context_menu::sidebar_context_option};
+use super::{
+    device_actions::{DeviceRowActions, media_release_label},
+    drive_dialogs,
+    drive_ops, sidebar,
+    sidebar_context_menu::sidebar_context_option,
+};
 
 pub(super) fn attach_device_actions_menu(
     row: &gtk::Button,

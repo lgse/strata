@@ -102,7 +102,10 @@ pub(super) fn gio_drive_identity(drive: &gio::Drive) -> Option<String> {
     )
 }
 
-pub(super) fn orphaned_password_drives(volumes: &[gio::Volume], drives: &[gio::Drive]) -> Vec<gio::Drive> {
+pub(super) fn orphaned_password_drives(
+    volumes: &[gio::Volume],
+    drives: &[gio::Drive],
+) -> Vec<gio::Drive> {
     let identities: Vec<_> = volumes.iter().filter_map(gio_volume_identity).collect();
     drives
         .iter()

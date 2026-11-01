@@ -42,14 +42,15 @@ pub(super) fn is_standard_place_location(location: &Location) -> bool {
     .any(|standard| standard == path)
 }
 
-pub(super) fn should_show_standard_place(id: &str, path: &std::path::Path, home: &std::path::Path) -> bool {
+pub(super) fn should_show_standard_place(
+    id: &str,
+    path: &std::path::Path,
+    home: &std::path::Path,
+) -> bool {
     id != "desktop" || path != home
 }
 
-pub(super) fn sidebar_standard_place_visible(
-    manager: &PreferenceManager,
-    id: &str,
-) -> bool {
+pub(super) fn sidebar_standard_place_visible(manager: &PreferenceManager, id: &str) -> bool {
     match id {
         "desktop" => manager.sidebar_show_desktop(),
         "documents" => manager.sidebar_show_documents(),
@@ -83,7 +84,10 @@ fn insert_missing_place(order: &mut Vec<&'static str>, index: usize, id: &'stati
 }
 
 fn canonical_place_id(id: &str) -> Option<&'static str> {
-    STANDARD_PLACE_IDS.iter().copied().find(|known| *known == id)
+    STANDARD_PLACE_IDS
+        .iter()
+        .copied()
+        .find(|known| *known == id)
 }
 
 /// Preserve the old sidebar layout when upgrading orders without special places:
@@ -130,7 +134,9 @@ pub(super) fn standard_place_chord_key(id: &str) -> Option<crate::ui::keys::Comm
     }
 }
 
-pub(super) fn standard_place(id: &str) -> Option<(&'static str, &'static str, glib::UserDirectory)> {
+pub(super) fn standard_place(
+    id: &str,
+) -> Option<(&'static str, &'static str, glib::UserDirectory)> {
     match id {
         "desktop" => Some((
             crate::assets::icons::FOLDER,

@@ -156,7 +156,11 @@ pub(in crate::ui) fn build_appearance_menu(
 
 fn mode_options(current_mode: BrowserMode) -> [ModeOption; 3] {
     [
-        (crate::assets::icons::COLUMNS, "Columns", BrowserMode::Columns),
+        (
+            crate::assets::icons::COLUMNS,
+            "Columns",
+            BrowserMode::Columns,
+        ),
         (crate::assets::icons::ICONS, "Icons", BrowserMode::Icons),
         (crate::assets::icons::LIST, "List", BrowserMode::List),
     ]

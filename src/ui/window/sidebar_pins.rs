@@ -4,7 +4,10 @@
 
 use std::rc::Rc;
 
-use crate::{model::Location, ui::browser::{PinStatus, show_error_dialog}};
+use crate::{
+    model::Location,
+    ui::browser::{PinStatus, show_error_dialog},
+};
 
 use super::{SidebarState, places::is_standard_place_location};
 
@@ -120,7 +123,10 @@ pub(super) fn pin_status(places: &[(Location, String)], location: &Location) -> 
     }
 }
 
-pub(super) fn remove_pinned_place(places: &mut Vec<(Location, String)>, location: &Location) -> bool {
+pub(super) fn remove_pinned_place(
+    places: &mut Vec<(Location, String)>,
+    location: &Location,
+) -> bool {
     let original_len = places.len();
     places.retain(|(pinned, _)| pinned != location);
     places.len() != original_len
@@ -131,7 +137,10 @@ pub(super) type PinGap<'a> = (Option<&'a Location>, Option<&'a Location>);
 
 /// Resolves a gap against the latest bookmarks; `None` when both of a gap's
 /// neighbours were unpinned elsewhere, so a drop cannot land somewhere unrelated.
-pub(super) fn pin_gap_index(places: &[(Location, String)], (after, before): PinGap<'_>) -> Option<usize> {
+pub(super) fn pin_gap_index(
+    places: &[(Location, String)],
+    (after, before): PinGap<'_>,
+) -> Option<usize> {
     let position = |anchor: &Location| places.iter().position(|(location, _)| location == anchor);
     match (before.and_then(position), after.and_then(position)) {
         (Some(index), _) => Some(index),
@@ -142,7 +151,11 @@ pub(super) fn pin_gap_index(places: &[(Location, String)], (after, before): PinG
 }
 
 /// `index` is an insertion point in the list before `source` is removed.
-pub(super) fn move_pinned_place(places: &mut Vec<(Location, String)>, source: usize, index: usize) -> bool {
+pub(super) fn move_pinned_place(
+    places: &mut Vec<(Location, String)>,
+    source: usize,
+    index: usize,
+) -> bool {
     if source >= places.len() || index > places.len() || index == source || index == source + 1 {
         return false;
     }

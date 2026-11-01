@@ -2,15 +2,22 @@
 
 //! The Trash place: its contents probe, context menu rows and drop target.
 
-/// Rows of the Trash sidebar context menu that only make sense while Trash holds items.
 use std::rc::Rc;
 
 use gtk::prelude::*;
 
-use crate::{app::BrowserEvent, model::Location, ui::browser::{BrowserView, locations_from_file_list_value}};
+use crate::{
+    app::BrowserEvent,
+    model::Location,
+    ui::browser::{BrowserView, locations_from_file_list_value},
+};
 
-use super::{SidebarState, sidebar, sidebar_drop_feedback, sidebar::PlaceNavigation, sidebar_context_menu::sidebar_context_option, sidebar_rows::sidebar_button};
+use super::{
+    SidebarState, sidebar, sidebar::PlaceNavigation, sidebar_context_menu::sidebar_context_option,
+    sidebar_drop_feedback, sidebar_rows::sidebar_button,
+};
 
+/// Rows of the Trash sidebar context menu that only make sense while Trash holds items.
 pub(super) struct TrashMenuRows {
     pub(super) separator: gtk::Separator,
     pub(super) empty: gtk::Button,

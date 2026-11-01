@@ -6,7 +6,10 @@ use gtk::prelude::*;
 
 use crate::model::Location;
 
-use super::{SidebarState, sidebar_drop_feedback, places::place_keycap, sidebar_devices::sidebar_device_shell};
+use super::{
+    SidebarState, places::place_keycap, sidebar_devices::sidebar_device_shell,
+    sidebar_drop_feedback,
+};
 
 impl SidebarState {
     /// Keycaps name the second key of the **g** place chord while it is armed.
@@ -74,7 +77,11 @@ pub(super) fn sync_keycap(keycap: &gtk::Label, visible: bool) {
 
 /// Moves `widgets` into `container` in order, right after `anchor` or at the
 /// start, without dropping keyboard focus from a row that changes parent.
-pub(super) fn reparent_in_order(container: &gtk::Box, widgets: &[gtk::Widget], anchor: Option<&gtk::Widget>) {
+pub(super) fn reparent_in_order(
+    container: &gtk::Box,
+    widgets: &[gtk::Widget],
+    anchor: Option<&gtk::Widget>,
+) {
     let mut previous = anchor.cloned();
     for widget in widgets {
         if widget.parent().as_ref() == Some(container.upcast_ref()) {

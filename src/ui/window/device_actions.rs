@@ -2,18 +2,23 @@
 
 //! Ejecting, unmounting and safely removing sidebar devices.
 
-/// Safe-removal action for a sidebar device row. Eject is preferred whenever
-/// the drive reports it (USB sticks, optical discs); plain unmount covers
-/// mounts without ejectable media. `None` means fixed internal storage with
-/// no actionable release.
 use std::{cell::Cell, rc::Rc};
 
 use gtk::prelude::*;
 
-use crate::{adapters::{location_for_file, mount_can_unplug, volume_can_unplug}, app::Browser, model::Location, ui::browser::BrowserView};
+use crate::{
+    adapters::{location_for_file, mount_can_unplug, volume_can_unplug},
+    app::Browser,
+    model::Location,
+    ui::browser::BrowserView,
+};
 
-use super::{device_release, device_release::ReleaseKind, launch::home_directory};
+use super::{device_release, launch::home_directory};
 
+/// Safe-removal action for a sidebar device row. Eject is preferred whenever
+/// the drive reports it (USB sticks, optical discs); plain unmount covers
+/// mounts without ejectable media. `None` means fixed internal storage with
+/// no actionable release.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum MediaRelease {
     EjectVolume,

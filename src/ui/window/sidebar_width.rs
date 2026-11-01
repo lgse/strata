@@ -82,7 +82,8 @@ pub(in crate::ui) fn sidebar_fits_without_preview(content: &gtk::Paned) -> Optio
     let available = content
         .root()
         .map_or_else(|| content.width(), |root| root.width());
-    (available > 0).then(|| available > preferred_sidebar_width() + crate::ui::browser::COLUMN_WIDTH)
+    (available > 0)
+        .then(|| available > preferred_sidebar_width() + crate::ui::browser::COLUMN_WIDTH)
 }
 
 const SIDEBAR_TRANSITION: Duration = Duration::from_millis(300);

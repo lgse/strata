@@ -2,13 +2,29 @@
 
 //! Locking encrypted devices and forgetting their cached passwords.
 
-use std::{cell::{Cell, RefCell}, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use gtk::prelude::*;
 
-use crate::{app::Browser, ui::{browser::{BrowserView, show_error_dialog}, controls::{ModalTone, focus_button, message_dialog_description, message_dialog_layout}, modal::{ModalHost, close_on_escape, dismiss_modal_layer, modal_layer}}};
+use crate::{
+    app::Browser,
+    ui::{
+        browser::{BrowserView, show_error_dialog},
+        controls::{ModalTone, focus_button, message_dialog_description, message_dialog_layout},
+        modal::{ModalHost, close_on_escape, dismiss_modal_layer, modal_layer},
+    },
+};
 
-use super::{device_release, devices, drive_ops, volume_password, device_actions::{MediaRelease, begin_media_release, release_kind, release_unplug}, device_release::ReleaseKind, gio_devices::{gio_volume_is_locked, gio_volume_unix_device}};
+use super::{
+    device_actions::{MediaRelease, begin_media_release, release_kind, release_unplug},
+    device_release,
+    devices, drive_ops,
+    gio_devices::{gio_volume_is_locked, gio_volume_unix_device},
+    volume_password,
+};
 
 pub(super) fn lock_encrypted_volume(
     volume: &gio::Volume,

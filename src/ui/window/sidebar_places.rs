@@ -8,7 +8,17 @@ use gtk::prelude::*;
 
 use crate::{app::BrowserEvent, model::Location};
 
-use super::{SidebarState, network_location, pinned_drop, launch::home_directory, pinned_drop::FolderDragCache, places::{is_standard_place_location, pin_keycap, should_show_standard_place, sidebar_standard_place_visible, standard_place, standard_place_chord_key}, sidebar::PlaceNavigation, sidebar_rows::{set_sidebar_row_active, sidebar_button, sync_keycap}};
+use super::{
+    SidebarState,
+    launch::home_directory,
+    network_location, pinned_drop,
+    places::{
+        is_standard_place_location, pin_keycap, should_show_standard_place,
+        sidebar_standard_place_visible, standard_place, standard_place_chord_key,
+    },
+    sidebar::PlaceNavigation,
+    sidebar_rows::{set_sidebar_row_active, sidebar_button, sync_keycap},
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct RecentAvailability {
@@ -35,7 +45,10 @@ impl RecentAvailability {
     }
 }
 
-pub(super) fn should_show_recent_place(show_recent: bool, availability: RecentAvailability) -> bool {
+pub(super) fn should_show_recent_place(
+    show_recent: bool,
+    availability: RecentAvailability,
+) -> bool {
     show_recent && availability.is_available()
 }
 

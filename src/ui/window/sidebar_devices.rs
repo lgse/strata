@@ -8,7 +8,28 @@ use gtk::prelude::*;
 
 use crate::{adapters::location_for_file, model::Location, ui::browser::show_error_dialog};
 
-use super::{SidebarState, device_labels, device_release, drive_dialogs, sidebar, device_actions::{DeviceRowActions, EncryptedMediaAction, MediaRelease, device_row_actions, media_release_label, release_device_mount, release_device_volume}, device_lock::{eject_password_drive, lock_encrypted_mount, lock_encrypted_volume}, device_menu::attach_device_actions_menu, drive_dialogs::PropertiesTarget, gio_devices::{gio_mount_is_encrypted, gio_volume_is_encrypted, gio_volume_is_locked, gio_volume_unix_device, orphaned_password_drives}, launch::navigate_to_gio_file, sidebar::PlaceNavigation, sidebar_context_menu::sidebar_context_option, sidebar_file_drop::install_sidebar_file_drop, sidebar_rows::{select_sidebar_row, sidebar_button}, sidebar_sections::SidebarSection};
+use super::{
+    SidebarState,
+    device_actions::{
+        DeviceRowActions, EncryptedMediaAction, MediaRelease, device_row_actions,
+        media_release_label, release_device_mount, release_device_volume,
+    },
+    device_labels,
+    device_lock::{eject_password_drive, lock_encrypted_mount, lock_encrypted_volume},
+    device_menu::attach_device_actions_menu,
+    device_release, drive_dialogs,
+    gio_devices::{
+        gio_mount_is_encrypted, gio_volume_is_encrypted, gio_volume_is_locked,
+        gio_volume_unix_device, orphaned_password_drives,
+    },
+    launch::navigate_to_gio_file,
+    sidebar,
+    sidebar::PlaceNavigation,
+    sidebar_context_menu::sidebar_context_option,
+    sidebar_file_drop::install_sidebar_file_drop,
+    sidebar_rows::{select_sidebar_row, sidebar_button},
+    sidebar_sections::SidebarSection,
+};
 
 impl SidebarState {
     pub(super) fn append_devices(self: &Rc<Self>) {
@@ -150,7 +171,10 @@ impl SidebarState {
         Some(ids)
     }
 
-    pub(super) fn append_volume(self: &Rc<Self>, volume: gio::Volume) -> Option<device_release::DeviceIds> {
+    pub(super) fn append_volume(
+        self: &Rc<Self>,
+        volume: gio::Volume,
+    ) -> Option<device_release::DeviceIds> {
         let name = volume.name().to_string();
         let row = sidebar_button(crate::assets::icons::HARD_DRIVE, &name);
         if let Some(id) = drive_dialogs::PropertiesTarget::Volume(volume.clone()).label_id() {
@@ -272,7 +296,10 @@ impl SidebarState {
         self.append_sidebar_row(&device_release::pending_device_shell(&row));
     }
 
-    pub(super) fn append_password_drive(&self, drive: gio::Drive) -> Option<device_release::DeviceIds> {
+    pub(super) fn append_password_drive(
+        &self,
+        drive: gio::Drive,
+    ) -> Option<device_release::DeviceIds> {
         let ids = device_release::ids_for_drive(&drive);
         let name = drive.name().to_string();
         let row = sidebar_button(crate::assets::icons::HARD_DRIVE, &name);
@@ -314,7 +341,12 @@ impl SidebarState {
         Some(ids)
     }
 
-    pub(super) fn append_smb_mount(self: &Rc<Self>, name: &str, location: Location, mount: gio::Mount) {
+    pub(super) fn append_smb_mount(
+        self: &Rc<Self>,
+        name: &str,
+        location: Location,
+        mount: gio::Mount,
+    ) {
         let properties_location = location.clone();
         let row = self.append_place(crate::assets::icons::NETWORK, name, location);
         let menu = crate::ui::accessibility::menu_box();
@@ -507,7 +539,10 @@ pub(super) fn sidebar_device_row(
     shell
 }
 
-pub(super) fn sidebar_eject_button(action: MediaRelease, on_release: impl Fn() + 'static) -> gtk::Button {
+pub(super) fn sidebar_eject_button(
+    action: MediaRelease,
+    on_release: impl Fn() + 'static,
+) -> gtk::Button {
     let button = gtk::Button::new();
     crate::ui::accessibility::set_tooltip_and_label(
         &button,
@@ -528,7 +563,10 @@ pub(super) fn sidebar_eject_button(action: MediaRelease, on_release: impl Fn() +
     button
 }
 
-pub(super) fn sidebar_lock_button(action: EncryptedMediaAction, on_click: impl Fn() + 'static) -> gtk::Button {
+pub(super) fn sidebar_lock_button(
+    action: EncryptedMediaAction,
+    on_click: impl Fn() + 'static,
+) -> gtk::Button {
     let button = gtk::Button::new();
     crate::ui::accessibility::set_tooltip_and_label(&button, &crate::i18n::tr(action.label()));
     button.set_child(Some(&crate::assets::primary_icon(action.icon(), 14)));

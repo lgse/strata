@@ -6,7 +6,13 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 
-use super::{SidebarState, sidebar_width::{MIN_SIDEBAR_WIDTH, SidebarFit, preferred_sidebar_width, sidebar_minimum_width, sidebar_rail_button_size, sidebar_rail_width}};
+use super::{
+    SidebarState,
+    sidebar_width::{
+        MIN_SIDEBAR_WIDTH, SidebarFit, preferred_sidebar_width, sidebar_minimum_width,
+        sidebar_rail_button_size, sidebar_rail_width,
+    },
+};
 
 impl SidebarState {
     pub(in crate::ui) fn set_rail(&self, rail: bool) {
