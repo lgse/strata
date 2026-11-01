@@ -1,0 +1,22 @@
+{"scenario":"new-items-from-entry-menu","modes":["columns","icons","list"],"variants":[{"id":"file-file","vars":{"target":"readme.md","action":"New File","kind":"file"}},{"id":"file-folder","vars":{"target":"readme.md","action":"New Folder","kind":"dir"}},{"id":"folder-file","vars":{"target":"archive","action":"New File","kind":"file"}},{"id":"folder-folder","vars":{"target":"archive","action":"New Folder","kind":"dir"}},{"id":"multiple-file","vars":{"target":"readme.md","action":"New File","kind":"file"}},{"id":"multiple-folder","vars":{"target":"readme.md","action":"New Folder","kind":"dir"}}],"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":4,"score":42,"note":"Create siblings from entry menus in three views; only route checking pane destination and untouched selected files"},"cost":{"columns-file-file":0.9,"columns-file-folder":1.0,"columns-folder-file":0.9,"columns-folder-folder":1.0,"columns-multiple-file":1.1,"columns-multiple-folder":1.2,"icons-file-file":0.9,"icons-file-folder":0.9,"icons-folder-file":0.9,"icons-folder-folder":0.9,"icons-multiple-file":1.1,"icons-multiple-folder":1.1,"list-file-file":0.9,"list-file-folder":0.9,"list-folder-file":0.9,"list-folder-folder":0.9,"list-multiple-file":1.1,"list-multiple-folder":1.1}}
+{"wait":{"entry":"$target","dir":"$root"},"message":"the target entry to be listed"}
+{"select":{"entry":"readme.md","dir":"$root"},"variants":["multiple-file","multiple-folder"]}
+{"wait":{"selected":["readme.md"],"dir":"$root"},"message":"the first file to be selected","variants":["multiple-file","multiple-folder"]}
+{"click":{"entry":"todo.txt","dir":"$root"},"mods":["ctrl"],"variants":["multiple-file","multiple-folder"]}
+{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"both files to be selected","variants":["multiple-file","multiple-folder"]}
+{"click":{"entry":"$target","dir":"$root"},"button":3}
+{"wait":{"present":{"menu_item":"$action"}},"message":"the plain creation action in the entry context menu"}
+{"settle":{"menu_item":"$action"}}
+{"click":{"menu_item":"$action"}}
+{"wait":{"menu_items":null},"message":"the context menu to close"}
+{"wait":{"field":{}},"message":"the new entry editor to take focus"}
+{"remember":{"field":true},"as":"editor"}
+{"key":"ctrl+a"}
+{"type":"created-sibling"}
+{"wait":{"field":{"of":"editor","text":"created-sibling"}},"message":"the new name to appear in the editor"}
+{"key":"Return"}
+{"fs":{"path":"created-sibling","is":"$kind"},"message":"the new sibling to be created in the pane directory"}
+{"fs":{"path":"readme.md","is":"file"},"timeout_ms":0}
+{"fs":{"path":"todo.txt","is":"file"},"timeout_ms":0}
+{"fs":{"path":"archive/created-sibling","exists":false},"timeout_ms":0}
+{"fs":{"path":"created-sibling/readme.md","exists":false},"timeout_ms":0,"variants":["file-folder","folder-folder","multiple-folder"]}
