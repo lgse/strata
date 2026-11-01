@@ -464,6 +464,7 @@ impl ViewState {
                     update_empty_trash_sensitivity(column, count);
                 }
                 self.reveal_pending_transfer_at(*depth);
+                self.notify_filter_listing_loaded(*depth);
                 if archive_destination_loaded {
                     let names = self.pending_select.take();
                     if !names.is_empty() {
@@ -560,6 +561,7 @@ impl ViewState {
                     );
                     set_column_busy(column, false);
                 }
+                self.notify_filter_listing_loaded(*depth);
             }
             BrowserEvent::PeekStarted { location } => self.append_peek(location),
             BrowserEvent::PeekEntriesAdded { entries } => {

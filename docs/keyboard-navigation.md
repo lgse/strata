@@ -229,6 +229,15 @@ Clear the input, or press Escape in the input or on a focused result, to restore
 the directory listing with focus on its cursor. **Ctrl+K** global fuzzy search is
 unchanged.
 
+While the **Ctrl+F** input is focused, **/** enters the first displayed result if
+it is a folder, clears the query, and keeps the filter focused in that folder.
+This works in Columns, List, Icons, and the file chooser, including results from
+**Include subfolders**. Files, no matches, and empty queries leave the input and
+location unchanged. A pending query waits for a match or indexing to finish, and
+a folder that is still listing waits until a folder matches first or the listing
+ends; editing the query, leaving the input, or dismissing it cancels pending
+navigation. The normal filename matching rules stay the same.
+
 Results follow the watched folders live: the open folder, and in Columns every open
 column. A matching file that another program creates or renames there appears within
 about a second, and one that another computer adds to a network folder at its next
