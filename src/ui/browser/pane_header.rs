@@ -98,6 +98,9 @@ fn install_menu_keys(popover: &gtk::Popover) {
     popover.add_controller(keys);
 }
 
+/// Roughly eight two-line entries; longer histories scroll.
+const HISTORY_MENU_MAX_HEIGHT: i32 = 400;
+
 /// Right-click, long-press, or the context-menu key on Back lists the back
 /// history, most recent first, and jumps to a chosen entry in one step.
 pub(in crate::ui) fn attach_back_history(browser: &Rc<Browser>, back: &gtk::Button) {
@@ -150,7 +153,19 @@ pub(in crate::ui) fn attach_back_history(browser: &Rc<Browser>, back: &gtk::Butt
         });
         content.append(&option);
     }
-    popover.set_child(Some(&content));
+    let viewport = gtk::Viewport::builder()
+        .child(&content)
+        .scroll_to_focus(true)
+        .build();
+    let scroll = gtk::ScrolledWindow::builder()
+        .child(&viewport)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .propagate_natural_height(true)
+        .max_content_height(HISTORY_MENU_MAX_HEIGHT)
+        .build();
+    scroll.add_css_class("context-menu-scroll");
+    popover.set_child(Some(&scroll));
     install_menu_keys(&popover);
     popover.set_parent(back);
     // A plain button does not unparent an attached popover when it is disposed.
