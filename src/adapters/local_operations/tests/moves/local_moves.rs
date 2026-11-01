@@ -25,8 +25,11 @@ fn moving_a_directory_falls_back_to_a_safe_copy_when_the_move_needs_one()
 
     assert!(result.is_ok());
     assert!(!source.exists());
-    assert_eq!(fs::read(target.join("top.txt"))?, b"top");
-    assert_eq!(fs::read(target.join("nested/child.txt"))?, b"child");
+    assert_files(
+        &target,
+        &[("top.txt", "top"), ("nested/child.txt", "child")],
+        "",
+    )?;
     fs::remove_dir_all(root)?;
     Ok(())
 }
@@ -207,14 +210,11 @@ fn same_volume_move_on_a_flag_rejecting_filesystem_never_copies() -> Result<(), 
         move_native(&file, &destination.join("notes.txt"))?;
         move_native(&folder, &destination.join("folder"))?;
 
-        assert_eq!(
+        let inodes = (
             fs::metadata(destination.join("notes.txt"))?.ino(),
-            file_inode
-        );
-        assert_eq!(
             fs::metadata(destination.join("folder"))?.ino(),
-            folder_inode
         );
+        assert_eq!(inodes, (file_inode, folder_inode));
         assert_eq!(fs::read(destination.join("folder/inside.txt"))?, b"inside");
         assert!(!file.exists() && !folder.exists());
         assert_eq!(
@@ -285,8 +285,11 @@ fn items_without_noreplace_or_a_usable_link_are_renamed_without_copying()
 
         let case = format!("{case}, folder: {folder}");
         assert_eq!(fs::metadata(&moved)?.ino(), inode, "{case}");
-        assert_eq!(progress.completed_files.get(), 0, "{case}");
-        assert_eq!(progress.transferred_bytes.get(), 0, "{case}");
+        let progressed = (
+            progress.completed_files.get(),
+            progress.transferred_bytes.get(),
+        );
+        assert_eq!(progressed, (0, 0), "{case}");
         assert_eq!(names(root.path())?, [name], "{case}");
     }
     Ok(())
@@ -379,8 +382,11 @@ fn einval_from_every_rung_reports_an_invalid_name_and_keeps_the_source()
             ),
             "{kind}"
         );
-        assert!(fs::symlink_metadata(&source).is_ok(), "{kind}");
-        assert!(fs::symlink_metadata(&target).is_err(), "{kind}");
+        let present = (
+            fs::symlink_metadata(&source).is_ok(),
+            fs::symlink_metadata(&target).is_ok(),
+        );
+        assert_eq!(present, (true, false), "{kind}");
         assert_eq!(fs::read_dir(root.path())?.count(), 1, "{kind}");
     }
     Ok(())

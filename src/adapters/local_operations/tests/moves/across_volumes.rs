@@ -73,12 +73,11 @@ fn moving_across_volumes_deletes_every_entry_it_copied() -> Result<(), Box<dyn E
     Ok(())
 }
 
+/// The reads a rewrite comes before, and what the copy must hold.
+type Rereads = (Vec<Before>, &'static [u8]);
+
 /// The reads `row` rewrites `db` before, and what its copy must hold.
-fn rereads(
-    row: &str,
-    db: &Path,
-    tick: SystemTime,
-) -> Result<(Vec<Before>, &'static [u8]), Box<dyn Error>> {
+fn rereads(row: &str, db: &Path, tick: SystemTime) -> Result<Rereads, Box<dyn Error>> {
     if row == "same size" {
         let hour_before = tick.duration_since(SystemTime::UNIX_EPOCH)?.as_secs() - 3600;
         set_times(db, hour_before, 0)?;

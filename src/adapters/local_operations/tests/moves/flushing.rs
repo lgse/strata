@@ -2,6 +2,107 @@
 
 use super::*;
 
+/// The item a move with `conflict` selects, and the file it brings.
+fn incoming_for(conflict: TransferConflict) -> (&'static Path, &'static Path) {
+    if conflict == TransferConflict::Merge {
+        (Path::new("folder"), Path::new("folder/incoming.txt"))
+    } else {
+        (Path::new("notes.txt"), Path::new("notes.txt"))
+    }
+}
+
+/// Puts at `destination` what the item meets with `conflict`.
+fn meeting(conflict: TransferConflict, destination: &Path, item: &Path) -> io::Result<()> {
+    match conflict {
+        TransferConflict::ReplaceExisting => fs::write(destination.join(item), b"old")?,
+        TransferConflict::Merge => {
+            fs::create_dir(destination.join(item))?;
+            fs::write(destination.join("folder/stays.txt"), b"keep")?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Records whether `watched` still exists each time the destination is
+/// flushed.
+fn exists_at_flush(watched: PathBuf) -> (Arc<std::sync::Mutex<Vec<bool>>>, Racer) {
+    let during = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let record = during.clone();
+    let racer: Racer = Box::new(move || {
+        record
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push(watched.exists());
+    });
+    (during, racer)
+}
+
+fn check_flushed_move(
+    id: u64,
+    conflict: TransferConflict,
+    flushed: bool,
+) -> Result<(), Box<dyn Error>> {
+    let row = format!("{conflict:?}, flushed: {flushed}");
+    let root = tempfile::tempdir()?;
+    let source_dir = root.path().join("source");
+    let destination = root.path().join("usb");
+    let (item, incoming) = incoming_for(conflict);
+    fs::create_dir_all(source_dir.join(incoming).parent().ok_or("a parent")?)?;
+    fs::create_dir_all(&destination)?;
+    fs::write(source_dir.join(incoming), b"incoming")?;
+    meeting(conflict, &destination, item)?;
+    let source = source_dir.join(item);
+    let (during, racer) = exists_at_flush(source.clone());
+    let _source = FsQuirks::install(&source_dir, Quirks::default());
+    let _destination = FsQuirks::install(
+        &destination,
+        Quirks {
+            before: vec![(Op::SyncFs, "*", 0, racer)],
+            fail: if flushed {
+                Vec::new()
+            } else {
+                vec![(Op::SyncFs, "*", 0, Errno::IO)]
+            },
+            ..Quirks::ext4()
+        },
+    );
+
+    let (_operation, events) = paste_move(id, &destination, &source, conflict);
+    pump_until_transfer(&events);
+
+    assert_eq!(
+        *during.lock().unwrap_or_else(|error| error.into_inner()),
+        [true],
+        "{row}: one flush, before the source is deleted"
+    );
+    assert_eq!(fs::read(destination.join(incoming))?, b"incoming", "{row}");
+    if conflict == TransferConflict::Merge {
+        assert_eq!(fs::read(destination.join("folder/stays.txt"))?, b"keep");
+    }
+    let moved = events
+        .borrow()
+        .iter()
+        .any(|event| matches!(event, OperationEvent::ItemMoved { .. }));
+    if flushed {
+        assert_pasted(&events, &row);
+        assert!(!source.exists(), "{row}");
+        assert!(moved, "{row}");
+        return Ok(());
+    }
+    assert!(
+        matches!(terminal_transfer(&events.borrow()),
+            Some(OperationEvent::TransferFailed { message, completed_locations, .. })
+            if message.contains("writes may still be pending")
+                && completed_locations.is_empty()),
+        "{row}: {:?}",
+        events.borrow()
+    );
+    assert_eq!(fs::read(source_dir.join(incoming))?, b"incoming", "{row}");
+    assert!(!moved, "{row}");
+    Ok(())
+}
+
 #[test]
 fn moves_delete_their_sources_only_once_the_destination_is_flushed() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
@@ -12,88 +113,7 @@ fn moves_delete_their_sources_only_once_the_destination_is_flushed() -> Result<(
     ];
     for (id, conflict) in (90..).zip(conflicts) {
         for flushed in [true, false] {
-            let row = format!("{conflict:?}, flushed: {flushed}");
-            let root = tempfile::tempdir()?;
-            let source_dir = root.path().join("source");
-            let destination = root.path().join("usb");
-            let (item, incoming) = if conflict == TransferConflict::Merge {
-                (Path::new("folder"), Path::new("folder/incoming.txt"))
-            } else {
-                (Path::new("notes.txt"), Path::new("notes.txt"))
-            };
-            fs::create_dir_all(source_dir.join(incoming).parent().ok_or("a parent")?)?;
-            fs::create_dir_all(&destination)?;
-            fs::write(source_dir.join(incoming), b"incoming")?;
-            match conflict {
-                TransferConflict::ReplaceExisting => fs::write(destination.join(item), b"old")?,
-                TransferConflict::Merge => {
-                    fs::create_dir(destination.join(item))?;
-                    fs::write(destination.join("folder/stays.txt"), b"keep")?;
-                }
-                _ => {}
-            }
-            let source = source_dir.join(item);
-            let during = Arc::new(std::sync::Mutex::new(Vec::new()));
-            let (record, watched) = (during.clone(), source.clone());
-            let racer: super::super::fs_quirks::Racer = Box::new(move || {
-                record
-                    .lock()
-                    .unwrap_or_else(|error| error.into_inner())
-                    .push(watched.exists());
-            });
-            let _source = FsQuirks::install(&source_dir, Quirks::default());
-            let _destination = FsQuirks::install(
-                &destination,
-                Quirks {
-                    before: vec![(Op::SyncFs, "*", 0, racer)],
-                    fail: if flushed {
-                        Vec::new()
-                    } else {
-                        vec![(Op::SyncFs, "*", 0, Errno::IO)]
-                    },
-                    ..Quirks::ext4()
-                },
-            );
-
-            let (_operation, events) = paste_move(id, &destination, &source, conflict);
-            pump_until_transfer(&events);
-
-            assert_eq!(
-                *during.lock().unwrap_or_else(|error| error.into_inner()),
-                [true],
-                "{row}: one flush, before the source is deleted"
-            );
-            assert_eq!(fs::read(destination.join(incoming))?, b"incoming", "{row}");
-            if conflict == TransferConflict::Merge {
-                assert_eq!(fs::read(destination.join("folder/stays.txt"))?, b"keep");
-            }
-            let moved = events
-                .borrow()
-                .iter()
-                .any(|event| matches!(event, OperationEvent::ItemMoved { .. }));
-            if flushed {
-                assert!(
-                    matches!(
-                        terminal_transfer(&events.borrow()),
-                        Some(OperationEvent::Pasted { .. })
-                    ),
-                    "{row}: {:?}",
-                    events.borrow()
-                );
-                assert!(!source.exists(), "{row}");
-                assert!(moved, "{row}");
-            } else {
-                assert!(
-                    matches!(terminal_transfer(&events.borrow()),
-                        Some(OperationEvent::TransferFailed { message, completed_locations, .. })
-                        if message.contains("writes may still be pending")
-                            && completed_locations.is_empty()),
-                    "{row}: {:?}",
-                    events.borrow()
-                );
-                assert_eq!(fs::read(source_dir.join(incoming))?, b"incoming", "{row}");
-                assert!(!moved, "{row}");
-            }
+            check_flushed_move(id, conflict, flushed)?;
         }
     }
     Ok(())
@@ -185,7 +205,7 @@ fn keep_both_move_renumbers_when_its_name_is_taken_meanwhile() -> Result<(), Box
         fs::write(&source, b"incoming")?;
         fs::write(destination.join("report.txt"), b"existing")?;
         let taken = destination.join("report (1).txt");
-        let racer = |taken: PathBuf| -> super::super::fs_quirks::Racer {
+        let racer = |taken: PathBuf| -> Racer {
             Box::new(move || {
                 if fs::symlink_metadata(&taken).is_err() {
                     fs::write(&taken, b"taken meanwhile").expect("take the name");

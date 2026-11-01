@@ -15,13 +15,16 @@ use crate::services::{Holder, KeptCause, KeptItem, SpecialKind, TransferReport};
 mod across_volumes;
 mod changed;
 mod coarse_ticks;
+mod copy_gone;
 mod deletion;
 mod flushing;
 mod identity;
+mod inode_numbers;
 mod inodes;
 mod left_out;
 mod local_moves;
 mod renumbered;
+mod still_open;
 mod ticks;
 
 fn paste_move(
