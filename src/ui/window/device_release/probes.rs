@@ -2,22 +2,23 @@
 
 //! Registry probes and shortcuts the release tests drive.
 
-use std::cell::Cell;
+use std::{cell::Cell, path::PathBuf, rc::Rc};
+
+use crate::{app::Browser, ui::browser::BrowserView};
 
 use super::{
-    PendingRelease, RELEASES, ReleaseDecision, ReleaseKey, ReleaseKind, ReleasePhase, keys_match,
+    PendingRelease, RELEASES, ReleaseDecision, ReleaseKey, ReleaseKind, ReleasePhase,
+    inspect_release, keys_match,
     overlay::body_for_progress,
     remove_release,
-    run::{apply_decision, decide_flush, decide_gio},
-    with_releases,
+    run::{ReleaseRequest, ReleaseTarget, apply_decision, begin_release, decide_flush, decide_gio},
+    update_release, with_releases,
 };
 
-#[cfg(test)]
 pub(in crate::ui::window) fn reset_releases() {
     RELEASES.with(|releases| releases.borrow_mut().clear());
 }
 
-#[cfg(test)]
 pub(in crate::ui::window) fn begin_pending(key: ReleaseKey, kind: ReleaseKind) -> bool {
     with_releases(|releases| {
         if releases.iter().any(|entry| keys_match(&entry.key, &key)) {
@@ -40,18 +41,10 @@ pub(in crate::ui::window) fn begin_pending(key: ReleaseKey, kind: ReleaseKind) -
     })
 }
 
-#[cfg(test)]
 pub(in crate::ui::window) fn release_is_dismissed(key: &ReleaseKey) -> bool {
-    RELEASES.with(|releases| {
-        releases
-            .borrow()
-            .iter()
-            .find(|entry| keys_match(&entry.key, key))
-            .is_some_and(|entry| entry.dismissed)
-    })
+    inspect_release(key, |entry| entry.dismissed).unwrap_or(false)
 }
 
-#[cfg(test)]
 pub(in crate::ui::window) fn release_shows_spinner(key: &ReleaseKey) -> bool {
     RELEASES.with(|releases| {
         releases
@@ -61,114 +54,88 @@ pub(in crate::ui::window) fn release_shows_spinner(key: &ReleaseKey) -> bool {
     })
 }
 
-#[cfg(test)]
 pub(in crate::ui::window) fn release_phase(key: &ReleaseKey) -> Option<ReleasePhase> {
-    RELEASES.with(|releases| {
-        releases
-            .borrow()
-            .iter()
-            .find(|entry| keys_match(&entry.key, key))
-            .map(|entry| entry.phase)
-    })
+    inspect_release(key, |entry| entry.phase)
 }
 
-#[cfg(test)]
 pub(in crate::ui::window) fn release_error_count(key: &ReleaseKey) -> usize {
-    RELEASES.with(|releases| {
-        releases
-            .borrow()
-            .iter()
-            .find(|entry| keys_match(&entry.key, key))
-            .map(|entry| entry.error_count)
-            .unwrap_or(0)
-    })
+    inspect_release(key, |entry| entry.error_count).unwrap_or(0)
 }
 
-#[cfg(test)]
 pub(in crate::ui::window) fn release_body_text(key: &ReleaseKey) -> Option<String> {
-    RELEASES.with(|releases| {
-        releases
-            .borrow()
-            .iter()
-            .find(|entry| keys_match(&entry.key, key))
-            .map(|entry| body_for_progress(entry.progress_message.as_deref()))
+    inspect_release(key, |entry| {
+        body_for_progress(entry.progress_message.as_deref())
     })
 }
 
-#[cfg(test)]
 pub(in crate::ui::window) fn release_overlay_presented(key: &ReleaseKey) -> bool {
-    RELEASES.with(|releases| {
-        releases
-            .borrow()
-            .iter()
-            .find(|entry| keys_match(&entry.key, key))
-            .is_some_and(|entry| entry.overlay.is_some())
-    })
+    inspect_release(key, |entry| entry.overlay.is_some()).unwrap_or(false)
 }
 
-#[cfg(test)]
 pub(in crate::ui::window) fn clear_release_dismissed(key: &ReleaseKey) {
-    with_releases(|releases| {
-        if let Some(entry) = releases
-            .iter_mut()
-            .find(|entry| keys_match(&entry.key, key))
-        {
-            entry.dismissed = false;
-        }
-    });
+    update_release(key, |entry| entry.dismissed = false);
 }
 
-#[cfg(test)]
-pub(in crate::ui::window) fn run_release_attempt(
-    kind: ReleaseKind,
-    progress: Option<&str>,
-    flush: Result<(), String>,
-    unplug: bool,
-    gio_calls: &Cell<u32>,
-    gio: impl FnOnce() -> Result<(), glib::Error>,
-) -> ReleaseDecision {
-    let decision = decide_flush(kind, flush);
-    if !decision.call_gio {
-        return decision;
-    }
-    gio_calls.set(gio_calls.get().saturating_add(1));
-    decide_gio(kind, progress, gio(), unplug)
-}
-
-#[cfg(test)]
+/// Runs the flush and GIO decisions for a pending release without its I/O.
 pub(in crate::ui::window) fn settle_pending_attempt(
     key: &ReleaseKey,
     flush: Result<(), String>,
     gio_calls: &Cell<u32>,
     gio: impl FnOnce() -> Result<(), glib::Error>,
 ) -> ReleaseDecision {
-    let (kind, progress, unplug) = RELEASES.with(|releases| {
-        let releases = releases.borrow();
-        let entry = releases.iter().find(|entry| keys_match(&entry.key, key));
-        (
-            entry
-                .map(|entry| entry.kind)
-                .unwrap_or(ReleaseKind::Unmount),
-            entry.and_then(|entry| entry.progress_message.clone()),
-            entry.is_some_and(|entry| entry.unplug),
-        )
-    });
-    let decision = run_release_attempt(kind, progress.as_deref(), flush, unplug, gio_calls, gio);
+    let (kind, progress, unplug) = inspect_release(key, |entry| {
+        (entry.kind, entry.progress_message.clone(), entry.unplug)
+    })
+    .unwrap_or((ReleaseKind::Unmount, None, false));
+    let mut decision = decide_flush(kind, flush);
+    if decision.call_gio {
+        gio_calls.set(gio_calls.get().saturating_add(1));
+        decision = decide_gio(kind, progress.as_deref(), gio(), unplug);
+    }
     if decision.clear_pending {
         remove_release(key);
     }
     decision
 }
 
-#[cfg(test)]
 pub(in crate::ui::window) fn complete_release_success(key: &ReleaseKey) {
-    let (kind, unplug) = RELEASES.with(|releases| {
-        releases
-            .borrow()
-            .iter()
-            .find(|entry| keys_match(&entry.key, key))
-            .map(|entry| (entry.kind, entry.unplug))
-            .unwrap_or((ReleaseKind::Unmount, false))
-    });
+    let (kind, unplug) = inspect_release(key, |entry| (entry.kind, entry.unplug))
+        .unwrap_or((ReleaseKind::Unmount, false));
     apply_decision(key, decide_gio(kind, None, Ok(()), unplug));
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "keeps the positional form the release tests drive"
+)]
+pub(in crate::ui::window) fn start_release<F, Fut>(
+    parent: &gtk::Widget,
+    browser: Option<Rc<Browser>>,
+    view: Option<&BrowserView>,
+    key: ReleaseKey,
+    kind: ReleaseKind,
+    unplug: bool,
+    sync_root: Option<PathBuf>,
+    away_root: Option<gio::File>,
+    on_settled: impl FnOnce() + 'static,
+    run_gio: F,
+) -> bool
+where
+    F: FnOnce(gtk::MountOperation) -> Fut + 'static,
+    Fut: Future<Output = Result<(), glib::Error>> + 'static,
+{
+    let target = ReleaseTarget {
+        key,
+        kind,
+        unplug,
+        sync_root,
+        away_root,
+    };
+    let request = ReleaseRequest {
+        parent,
+        browser,
+        view,
+        target,
+    };
+    begin_release(request, on_settled, run_gio)
 }

@@ -12,7 +12,8 @@ use crate::ui::{
 };
 
 use super::{
-    RELEASE_BODY, RELEASE_ROW_TOOLTIP, ReleaseKey, ReleasePhase, keys_match, with_releases,
+    PendingRelease, RELEASE_BODY, RELEASE_ROW_TOOLTIP, ReleaseKey, ReleaseKind, ReleasePhase,
+    keys_match, with_releases,
 };
 
 pub(super) const RELEASE_PROGRESS_DELAY: Duration = Duration::from_millis(350);
@@ -117,33 +118,68 @@ pub(in crate::ui::window) fn hide_release(key: &ReleaseKey) {
 }
 
 pub(in crate::ui::window) fn present_release_overlay(parent: &gtk::Widget, key: &ReleaseKey) {
-    let snapshot = with_releases(|releases| {
-        let entry = releases
-            .iter_mut()
-            .find(|entry| keys_match(&entry.key, key))?;
-        entry.present_source = None;
-        if entry.dismissed || entry.overlay.is_some() || entry.phase == ReleasePhase::FinishedOk {
-            return None;
-        }
-        entry.parent = Some(parent.clone());
-        Some((
-            entry.kind,
-            entry.key.display_name.clone(),
-            entry.progress_message.clone(),
-        ))
-    });
-    let Some((kind, display_name, progress)) = snapshot else {
+    let Some(snapshot) = claim_overlay(parent, key) else {
         return;
     };
     let Some(host) = ModalHost::blurred_for(parent) else {
         return;
     };
-    let title = kind.title();
-    let layout = modal_layout(kind.icon(), &title, &display_name, &crate::i18n::tr("Hide"));
+    let overlay = build_overlay(&host, &snapshot, key);
+    if let Some(unclaimed) = store_overlay(key, overlay) {
+        dismiss_modal_layer(
+            &unclaimed.layer,
+            &unclaimed.host_overlay,
+            unclaimed.blurred_root.as_ref(),
+        );
+    }
+}
+
+/// What the overlay shows, read while the release is claimed for it.
+struct OverlaySnapshot {
+    kind: ReleaseKind,
+    display_name: String,
+    progress: Option<String>,
+}
+
+/// Claims the pending release for an overlay unless it was hidden, already
+/// shows one or has finished.
+fn claim_overlay(parent: &gtk::Widget, key: &ReleaseKey) -> Option<OverlaySnapshot> {
+    with_releases(|releases| {
+        let entry = releases
+            .iter_mut()
+            .find(|entry| keys_match(&entry.key, key))?;
+        entry.present_source = None;
+        if !wants_overlay(entry) {
+            return None;
+        }
+        entry.parent = Some(parent.clone());
+        Some(OverlaySnapshot {
+            kind: entry.kind,
+            display_name: entry.key.display_name.clone(),
+            progress: entry.progress_message.clone(),
+        })
+    })
+}
+
+fn wants_overlay(entry: &PendingRelease) -> bool {
+    if entry.dismissed || entry.overlay.is_some() {
+        return false;
+    }
+    entry.phase != ReleasePhase::FinishedOk
+}
+
+fn build_overlay(host: &ModalHost, snapshot: &OverlaySnapshot, key: &ReleaseKey) -> ReleaseOverlay {
+    let title = snapshot.kind.title();
+    let layout = modal_layout(
+        snapshot.kind.icon(),
+        &title,
+        &snapshot.display_name,
+        &crate::i18n::tr("Hide"),
+    );
     layout.content.add_css_class("compact");
     layout.set_loading(true, Some(&title));
     layout.cancel.set_visible(false);
-    let body = message_dialog_description(&body_for_progress(progress.as_deref()));
+    let body = message_dialog_description(&body_for_progress(snapshot.progress.as_deref()));
     layout.body.append(&body);
     let layer = modal_layer(
         &layout.content,
@@ -155,54 +191,63 @@ pub(in crate::ui::window) fn present_release_overlay(parent: &gtk::Widget, key: 
     host.overlay.add_overlay(&layer);
 
     let mode = Rc::new(Cell::new(OverlayMode::Hide));
-    let hide_key = key.clone();
-    let layer_for_hide = layer.clone();
-    let overlay_for_hide = host.overlay.clone();
-    let root_for_hide = host.blurred_root.clone();
-    let hide: Rc<dyn Fn()> = Rc::new({
-        let mode = mode.clone();
-        move || {
-            if mode.get() == OverlayMode::Hide {
-                hide_release(&hide_key);
-            } else {
-                dismiss_modal_layer(&layer_for_hide, &overlay_for_hide, root_for_hide.as_ref());
-            }
-        }
-    });
+    let hide = hide_action(key, &mode, &layer, host);
     let hide_clicked = hide.clone();
     layout.confirm.connect_clicked(move |_| hide_clicked());
     let hide_closed = hide.clone();
     layout.close.connect_clicked(move |_| hide_closed());
     close_on_escape(&layer, move || hide());
     layout.confirm.grab_focus();
+    ReleaseOverlay {
+        layer,
+        host_overlay: host.overlay.clone(),
+        blurred_root: host.blurred_root.clone(),
+        title: layout.title,
+        body,
+        confirm: layout.confirm,
+        loading: layout.loading,
+        mode,
+    }
+}
 
-    let stored = with_releases(|releases| {
+/// Hide keeps the release running in the background; once it is safe to
+/// remove, the same controls just close the overlay.
+fn hide_action(
+    key: &ReleaseKey,
+    mode: &Rc<Cell<OverlayMode>>,
+    layer: &gtk::Box,
+    host: &ModalHost,
+) -> Rc<dyn Fn()> {
+    let hide_key = key.clone();
+    let mode = mode.clone();
+    let layer = layer.clone();
+    let overlay = host.overlay.clone();
+    let root = host.blurred_root.clone();
+    Rc::new(move || {
+        if mode.get() == OverlayMode::Hide {
+            hide_release(&hide_key);
+        } else {
+            dismiss_modal_layer(&layer, &overlay, root.as_ref());
+        }
+    })
+}
+
+/// Hands the overlay back when the release was hidden or finished meanwhile.
+fn store_overlay(key: &ReleaseKey, overlay: ReleaseOverlay) -> Option<ReleaseOverlay> {
+    with_releases(|releases| {
         let Some(entry) = releases
             .iter_mut()
             .find(|entry| keys_match(&entry.key, key))
         else {
-            return false;
+            return Some(overlay);
         };
         if entry.dismissed {
-            return false;
+            return Some(overlay);
         }
-        entry.overlay = Some(ReleaseOverlay {
-            layer: layer.clone(),
-            host_overlay: host.overlay.clone(),
-            blurred_root: host.blurred_root.clone(),
-            title: layout.title,
-            body,
-            confirm: layout.confirm,
-            loading: layout.loading,
-            mode,
-        });
-        true
-    });
-    if !stored {
-        dismiss_modal_layer(&layer, &host.overlay, host.blurred_root.as_ref());
-    }
+        entry.overlay = Some(overlay);
+        None
+    })
 }
-
 pub(super) fn schedule_present(parent: gtk::Widget, key: ReleaseKey) {
     let present_key = key.clone();
     let source = glib::timeout_add_local_once(RELEASE_PROGRESS_DELAY, move || {

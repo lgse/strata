@@ -29,7 +29,9 @@ pub(super) use probes::{
 };
 pub(super) use run::{ReleaseRequest, ReleaseTarget, begin_release};
 #[cfg(test)]
-pub(super) use run::{location_at_flush_for_test, start_release, syncs_before_flush_for_test};
+pub(super) use probes::start_release;
+#[cfg(test)]
+pub(super) use run::{location_at_flush_for_test, syncs_before_flush_for_test};
 
 pub(super) const RELEASE_BODY: &str =
     "Writing data to the drive. Do not unplug it. You can hide this and keep working.";
@@ -234,15 +236,31 @@ pub(super) fn release_is_pending(key: &ReleaseKey) -> bool {
     })
 }
 
-pub(super) fn enter_releasing(key: &ReleaseKey) {
+/// Reads the pending release that matches `key`, if any.
+fn inspect_release<T>(key: &ReleaseKey, read: impl FnOnce(&PendingRelease) -> T) -> Option<T> {
+    RELEASES.with(|releases| {
+        releases
+            .borrow()
+            .iter()
+            .find(|entry| keys_match(&entry.key, key))
+            .map(read)
+    })
+}
+
+/// Changes the pending release that matches `key`, if any.
+fn update_release(key: &ReleaseKey, update: impl FnOnce(&mut PendingRelease)) {
     with_releases(|releases| {
         if let Some(entry) = releases
             .iter_mut()
             .find(|entry| keys_match(&entry.key, key))
         {
-            entry.phase = ReleasePhase::Releasing;
+            update(entry);
         }
     });
+}
+
+pub(super) fn enter_releasing(key: &ReleaseKey) {
+    update_release(key, |entry| entry.phase = ReleasePhase::Releasing);
 }
 
 fn remove_release(key: &ReleaseKey) -> Option<PendingRelease> {

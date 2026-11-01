@@ -4,15 +4,11 @@
 
 #[cfg(test)]
 use std::cell::{Cell, RefCell};
-use std::{
-    io,
-    path::{Path, PathBuf},
-    rc::Rc,
-    time::Duration,
-};
+use std::{io, path::PathBuf, rc::Rc, time::Duration};
 
 use crate::{
     app::Browser,
+    model::Location,
     ui::{
         browser::{BrowserView, show_error_dialog},
         modal::dismiss_modal_layer,
@@ -21,10 +17,10 @@ use crate::{
 
 use super::{
     super::device_actions::navigate_home_if_within,
-    PendingRelease, RELEASES, ReleaseDecision, ReleaseKey, ReleaseKind, ReleasePhase,
-    enter_releasing, keys_match,
-    overlay::{mount_operation, schedule_present, show_safe_to_remove},
-    refresh_sidebars, release_is_pending, remove_release, with_releases,
+    PendingRelease, ReleaseDecision, ReleaseKey, ReleaseKind, ReleasePhase, enter_releasing,
+    inspect_release, keys_match,
+    overlay::{ReleaseOverlay, mount_operation, schedule_present, show_safe_to_remove},
+    refresh_sidebars, release_is_pending, remove_release, update_release, with_releases,
 };
 
 pub(in crate::ui::window) fn decide_flush(
@@ -94,48 +90,10 @@ pub(super) fn release_error_is_quiet(error: &glib::Error) -> bool {
 }
 
 pub(super) fn apply_decision(key: &ReleaseKey, decision: ReleaseDecision) {
-    let taken = with_releases(|releases| {
-        let entry = releases
-            .iter_mut()
-            .find(|entry| keys_match(&entry.key, key))?;
-        if decision.safe_to_remove {
-            entry.phase = ReleasePhase::FinishedOk;
-        }
-        Some((
-            entry.dismissed,
-            entry.parent.clone(),
-            entry.overlay.take(),
-            entry.key.display_name.clone(),
-        ))
-    });
-    if let Some((dismissed, parent, overlay, display_name)) = taken {
-        if decision.safe_to_remove {
-            if !dismissed && let Some(overlay) = overlay {
-                show_safe_to_remove(&overlay, &display_name);
-            }
-        } else if let Some(overlay) = overlay {
-            dismiss_modal_layer(
-                &overlay.layer,
-                &overlay.host_overlay,
-                overlay.blurred_root.as_ref(),
-            );
-        }
-        if decision.clear_pending
-            && let (Some(parent), Some(title), Some(message)) = (
-                parent.as_ref(),
-                decision.dialog_title.as_deref(),
-                decision.dialog_message.as_deref(),
-            )
-        {
-            with_releases(|releases| {
-                if let Some(entry) = releases
-                    .iter_mut()
-                    .find(|entry| keys_match(&entry.key, key))
-                {
-                    entry.error_count = entry.error_count.saturating_add(1);
-                }
-            });
-            show_error_dialog(parent, &crate::i18n::tr(title), message);
+    if let Some(settling) = take_for_decision(key, decision.safe_to_remove) {
+        settling.settle_overlay(decision.safe_to_remove);
+        if decision.clear_pending {
+            report_failure(key, settling.parent.as_ref(), &decision);
         }
     }
     if decision.clear_pending {
@@ -144,6 +102,63 @@ pub(super) fn apply_decision(key: &ReleaseKey, decision: ReleaseDecision) {
     }
 }
 
+/// What a decided release still shows, taken out of the registry.
+struct Settling {
+    dismissed: bool,
+    parent: Option<gtk::Widget>,
+    overlay: Option<ReleaseOverlay>,
+    display_name: String,
+}
+
+impl Settling {
+    /// A safe release turns its overlay into the unplug notice unless the user
+    /// hid it; any other outcome closes the overlay.
+    fn settle_overlay(&self, safe_to_remove: bool) {
+        let Some(overlay) = self.overlay.as_ref() else {
+            return;
+        };
+        if !safe_to_remove {
+            dismiss_modal_layer(
+                &overlay.layer,
+                &overlay.host_overlay,
+                overlay.blurred_root.as_ref(),
+            );
+        } else if !self.dismissed {
+            show_safe_to_remove(overlay, &self.display_name);
+        }
+    }
+}
+
+fn take_for_decision(key: &ReleaseKey, safe_to_remove: bool) -> Option<Settling> {
+    with_releases(|releases| {
+        let entry = releases
+            .iter_mut()
+            .find(|entry| keys_match(&entry.key, key))?;
+        if safe_to_remove {
+            entry.phase = ReleasePhase::FinishedOk;
+        }
+        Some(Settling {
+            dismissed: entry.dismissed,
+            parent: entry.parent.clone(),
+            overlay: entry.overlay.take(),
+            display_name: entry.key.display_name.clone(),
+        })
+    })
+}
+
+fn report_failure(key: &ReleaseKey, parent: Option<&gtk::Widget>, decision: &ReleaseDecision) {
+    let (Some(parent), Some(title), Some(message)) = (
+        parent,
+        decision.dialog_title.as_deref(),
+        decision.dialog_message.as_deref(),
+    ) else {
+        return;
+    };
+    update_release(key, |entry| {
+        entry.error_count = entry.error_count.saturating_add(1)
+    });
+    show_error_dialog(parent, &crate::i18n::tr(title), message);
+}
 /// The device a release frees, how, and which folder it flushes and leaves.
 pub(in crate::ui::window) struct ReleaseTarget {
     pub(in crate::ui::window) key: ReleaseKey,
@@ -161,43 +176,6 @@ pub(in crate::ui::window) struct ReleaseRequest<'a> {
     pub(in crate::ui::window) target: ReleaseTarget,
 }
 
-#[cfg(test)]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "keeps the positional form the release tests drive"
-)]
-pub(in crate::ui::window) fn start_release<F, Fut>(
-    parent: &gtk::Widget,
-    browser: Option<Rc<Browser>>,
-    view: Option<&BrowserView>,
-    key: ReleaseKey,
-    kind: ReleaseKind,
-    unplug: bool,
-    sync_root: Option<PathBuf>,
-    away_root: Option<gio::File>,
-    on_settled: impl FnOnce() + 'static,
-    run_gio: F,
-) -> bool
-where
-    F: FnOnce(gtk::MountOperation) -> Fut + 'static,
-    Fut: Future<Output = Result<(), glib::Error>> + 'static,
-{
-    let target = ReleaseTarget {
-        key,
-        kind,
-        unplug,
-        sync_root,
-        away_root,
-    };
-    let request = ReleaseRequest {
-        parent,
-        browser,
-        view,
-        target,
-    };
-    begin_release(request, on_settled, run_gio)
-}
-
 pub(in crate::ui::window) fn begin_release<F, Fut>(
     request: ReleaseRequest<'_>,
     on_settled: impl FnOnce() + 'static,
@@ -211,129 +189,154 @@ where
         parent,
         browser,
         view,
-        target:
-            ReleaseTarget {
-                key,
-                kind,
-                unplug,
-                sync_root,
-                away_root,
-            },
+        target,
     } = request;
-    if release_is_pending(&key) {
+    if release_is_pending(&target.key) {
         return false;
     }
     let activity =
         view.map(|view| view.begin_global_activity(crate::i18n::tr("Writing to device…")));
-    let inserted = with_releases(|releases| {
-        if releases.iter().any(|entry| keys_match(&entry.key, &key)) {
-            return false;
-        }
-        releases.push(PendingRelease {
-            key: key.clone(),
-            kind,
-            phase: ReleasePhase::Flushing,
-            dismissed: false,
-            progress_message: None,
-            error_count: 0,
-            unplug,
-            parent: Some(parent.clone()),
-            overlay: None,
-            present_source: None,
-            activity,
-        });
-        true
-    });
-    if !inserted {
+    if !register_release(&target, parent, activity) {
         return false;
     }
-    let parent = parent.clone();
+    let run = ReleaseRun {
+        parent: parent.clone(),
+        browser,
+        target,
+    };
     glib::timeout_add_local_once(Duration::ZERO, move || {
         refresh_sidebars();
-        schedule_present(parent.clone(), key.clone());
+        schedule_present(run.parent.clone(), run.target.key.clone());
         glib::MainContext::default().spawn_local(async move {
             // Leave before flushing to drop directory monitors.
-            let previous = browser
-                .as_ref()
-                .and_then(|browser| browser.active_location());
-            if let (Some(browser), Some(root)) = (browser.as_ref(), away_root.as_ref()) {
-                navigate_home_if_within(browser, root);
-            }
-            let left_at = browser
-                .as_ref()
-                .and_then(|browser| browser.active_location());
+            let way_back = run.leave_device();
             #[cfg(test)]
-            note_release_before_flush(browser.as_ref());
-            let operation = crate::adapters::ActiveOperation::begin([]);
-            if let Some(root) = sync_root.clone() {
-                operation
-                    .release_lexically(vec![root], &gio::Cancellable::new())
-                    .await;
-            }
-            let flush_root = sync_root.clone();
-            let flush = flush_mount(sync_root).await;
-            let decision = match flush {
-                Err(error) => {
-                    restore_previous_if_mounted(
-                        browser.as_ref(),
-                        previous.as_ref(),
-                        left_at.as_ref(),
-                        flush_root.as_deref(),
-                    )
-                    .await;
-                    decide_flush(kind, Err(crate::services::io_error_message(&error)))
-                }
-                Ok(()) => {
-                    enter_releasing(&key);
-                    let operation = mount_operation(&parent, &key);
-                    let result = run_gio(operation).await;
-                    if result.is_err() {
-                        restore_previous_if_mounted(
-                            browser.as_ref(),
-                            previous.as_ref(),
-                            left_at.as_ref(),
-                            flush_root.as_deref(),
-                        )
-                        .await;
-                    }
-                    let (progress, unplug) = RELEASES.with(|releases| {
-                        let releases = releases.borrow();
-                        let entry = releases.iter().find(|entry| keys_match(&entry.key, &key));
-                        (
-                            entry.and_then(|entry| entry.progress_message.clone()),
-                            entry.is_some_and(|entry| entry.unplug),
-                        )
-                    });
-                    decide_gio(kind, progress.as_deref(), result, unplug)
-                }
-            };
-            apply_decision(&key, decision);
+            note_release_before_flush(run.browser.as_ref());
+            let _reads = release_reads(run.target.sync_root.clone()).await;
+            let decision = run.flush_and_release(&way_back, run_gio).await;
+            apply_decision(&run.target.key, decision);
             on_settled();
         });
     });
     true
 }
 
-pub(super) async fn restore_previous_if_mounted(
-    browser: Option<&Rc<Browser>>,
-    previous: Option<&crate::model::Location>,
-    left_at: Option<&crate::model::Location>,
-    root: Option<&Path>,
-) {
-    let Some(root) = root else {
-        return;
-    };
-    if crate::adapters::mount_watch::fresh()
-        .await
-        .is_mount_point(root)
-        && let (Some(browser), Some(previous)) = (browser, previous)
-        && browser.active_location().as_ref() == left_at
-        && left_at != Some(previous)
-    {
-        browser.navigate(previous.clone());
-    }
+fn register_release(
+    target: &ReleaseTarget,
+    parent: &gtk::Widget,
+    activity: Option<crate::ui::browser::GlobalActivity>,
+) -> bool {
+    with_releases(|releases| {
+        if releases
+            .iter()
+            .any(|entry| keys_match(&entry.key, &target.key))
+        {
+            return false;
+        }
+        releases.push(PendingRelease {
+            key: target.key.clone(),
+            kind: target.kind,
+            phase: ReleasePhase::Flushing,
+            dismissed: false,
+            progress_message: None,
+            error_count: 0,
+            unplug: target.unplug,
+            parent: Some(parent.clone()),
+            overlay: None,
+            present_source: None,
+            activity,
+        });
+        true
+    })
 }
 
+/// Ends Strata's own reads under the mount so the flush and unmount can proceed.
+async fn release_reads(sync_root: Option<PathBuf>) -> crate::adapters::ActiveOperation {
+    let operation = crate::adapters::ActiveOperation::begin([]);
+    if let Some(root) = sync_root {
+        operation
+            .release_lexically(vec![root], &gio::Cancellable::new())
+            .await;
+    }
+    operation
+}
+
+/// A started release, owned by its task until it settles.
+struct ReleaseRun {
+    parent: gtk::Widget,
+    browser: Option<Rc<Browser>>,
+    target: ReleaseTarget,
+}
+
+/// Where the browser was before a release moved it off the device.
+struct WayBack {
+    previous: Option<Location>,
+    left_at: Option<Location>,
+}
+
+impl ReleaseRun {
+    fn active_location(&self) -> Option<Location> {
+        self.browser
+            .as_ref()
+            .and_then(|browser| browser.active_location())
+    }
+
+    fn leave_device(&self) -> WayBack {
+        let previous = self.active_location();
+        if let (Some(browser), Some(root)) = (self.browser.as_ref(), self.target.away_root.as_ref())
+        {
+            navigate_home_if_within(browser, root);
+        }
+        WayBack {
+            previous,
+            left_at: self.active_location(),
+        }
+    }
+
+    async fn flush_and_release<F, Fut>(&self, way_back: &WayBack, run_gio: F) -> ReleaseDecision
+    where
+        F: FnOnce(gtk::MountOperation) -> Fut,
+        Fut: Future<Output = Result<(), glib::Error>>,
+    {
+        let kind = self.target.kind;
+        let key = &self.target.key;
+        if let Err(error) = flush_mount(self.target.sync_root.clone()).await {
+            self.restore_if_mounted(way_back).await;
+            return decide_flush(kind, Err(crate::services::io_error_message(&error)));
+        }
+        enter_releasing(key);
+        let result = run_gio(mount_operation(&self.parent, key)).await;
+        if result.is_err() {
+            self.restore_if_mounted(way_back).await;
+        }
+        let (progress, unplug) =
+            inspect_release(key, |entry| (entry.progress_message.clone(), entry.unplug))
+                .unwrap_or((None, false));
+        decide_gio(kind, progress.as_deref(), result, unplug)
+    }
+
+    /// A failed release that left the device mounted returns the browser to
+    /// where it was, unless the user has navigated since.
+    async fn restore_if_mounted(&self, way_back: &WayBack) {
+        let Some(root) = self.target.sync_root.as_deref() else {
+            return;
+        };
+        if !crate::adapters::mount_watch::fresh()
+            .await
+            .is_mount_point(root)
+        {
+            return;
+        }
+        let (Some(browser), Some(previous)) = (self.browser.as_ref(), way_back.previous.as_ref())
+        else {
+            return;
+        };
+        let unmoved = browser.active_location() == way_back.left_at;
+        if unmoved && way_back.left_at.as_ref() != Some(previous) {
+            browser.navigate(previous.clone());
+        }
+    }
+}
 pub(super) fn blocking_join_message(error: Box<dyn std::any::Any + Send>) -> String {
     error
         .downcast_ref::<String>()
@@ -368,7 +371,7 @@ pub(super) fn note_release_before_flush(browser: Option<&Rc<Browser>>) {
     LOCATION_AT_FLUSH.with(|slot| {
         *slot.borrow_mut() = browser
             .and_then(|browser| browser.active_location())
-            .and_then(|location| location.native_path().map(Path::to_path_buf));
+            .and_then(|location| location.native_path().map(std::path::Path::to_path_buf));
     });
     SYNCS_BEFORE_FLUSH.with(|slot| slot.set(crate::adapters::sync_probe_len()));
 }
