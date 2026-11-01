@@ -64,12 +64,12 @@ impl PreviewState {
     }
 
     pub(super) fn show(self: &Rc<Self>, entry: FileEntry, depth: Option<usize>) {
-        if self
+        let other_file = self
             .current
             .borrow()
             .as_ref()
-            .is_none_or(|current| current.location != entry.location)
-        {
+            .is_none_or(|current| current.location != entry.location);
+        if other_file {
             self.reset_find();
             self.model_view.set(Default::default());
             self.model.borrow_mut().take();
@@ -88,33 +88,43 @@ impl PreviewState {
         let was_open = (self.revealer.reveals_child() && !reopening) || self.sizing.is_suspended();
         let already_showing =
             self.current.borrow().as_ref() == Some(&entry) && self.current_request.get().is_some();
+        let reload = !was_open || !already_showing;
         let split = self.split.borrow().clone();
         if let Some(split) = split.as_ref()
             && (!self.can_show_in(split) || self.sizing.is_suspended())
         {
-            if !was_open || !already_showing {
-                self.current_request.set(None);
-                self.load.borrow_mut().take();
-                self.cancel_loading();
-                self.pdf_loads.borrow_mut().clear();
-                self.clear_raw_details();
-                self.clear_content();
-                self.sizing.defer_load();
-            }
-            self.current.replace(Some(entry));
-            self.sync_split(split);
+            self.defer_show(split, entry, reload);
             return;
         }
         if !was_open {
             self.current.replace(Some(entry.clone()));
-            if let Some(split) = split.as_ref() {
-                self.animate_reveal(split, true, |_| {});
-            } else {
-                self.show_panel();
-            }
+            self.open_drawer(split.as_ref());
         }
-        if !was_open || !already_showing {
+        if reload {
             self.load(entry, 0);
+        }
+    }
+
+    /// Keeps `entry` as the target until the split has room to show it.
+    fn defer_show(self: &Rc<Self>, split: &gtk::Paned, entry: FileEntry, reload: bool) {
+        if reload {
+            self.current_request.set(None);
+            self.load.borrow_mut().take();
+            self.cancel_loading();
+            self.pdf_loads.borrow_mut().clear();
+            self.clear_raw_details();
+            self.clear_content();
+            self.sizing.defer_load();
+        }
+        self.current.replace(Some(entry));
+        self.sync_split(split);
+    }
+
+    fn open_drawer(self: &Rc<Self>, split: Option<&gtk::Paned>) {
+        if let Some(split) = split {
+            self.animate_reveal(split, true, |_| {});
+        } else {
+            self.show_panel();
         }
     }
 
@@ -128,19 +138,7 @@ impl PreviewState {
     }
 
     pub(super) fn close(self: &Rc<Self>) {
-        let tree_focused = self
-            .archive_browser
-            .borrow()
-            .as_ref()
-            .is_some_and(|browser| {
-                self.pane
-                    .root()
-                    .and_then(|root| root.focus())
-                    .is_some_and(|focused| {
-                        browser.root().upcast_ref::<gtk::Widget>() == &focused
-                            || focused.is_ancestor(browser.root())
-                    })
-            });
+        let tree_focused = self.archive_tree_focused();
         // The preview closes now, so input such as the next Escape already
         // reaches the files; only the drawer's slide out waits.
         let restore_focus = tree_focused || self.hide_intent();
@@ -166,6 +164,21 @@ impl PreviewState {
         } else {
             self.finish_close();
         }
+    }
+
+    fn archive_tree_focused(&self) -> bool {
+        self.archive_browser
+            .borrow()
+            .as_ref()
+            .is_some_and(|browser| {
+                self.pane
+                    .root()
+                    .and_then(|root| root.focus())
+                    .is_some_and(|focused| {
+                        browser.root().upcast_ref::<gtk::Widget>() == &focused
+                            || focused.is_ancestor(browser.root())
+                    })
+            })
     }
 
     pub(super) fn finish_close(&self) {

@@ -94,38 +94,12 @@ impl PreviewState {
         }
         self.raw_metadata_load.borrow_mut().take();
         self.released_from.set(None);
-        if super::super::raw_details::supports(&entry) {
-            let load = self
-                .raw_details
-                .load(entry.local_thumbnail_path().map(ToOwned::to_owned));
-            self.raw_metadata_load.replace(Some(load));
-            self.raw_details_scroll.set_visible(true);
-        } else {
-            self.clear_raw_details();
-        }
-        self.metadata.set_visible(true);
-        self.icon.set_visible(true);
-        self.open.set_sensitive(true);
-        self.header_handle.set_cursor_from_name(Some("grab"));
-        self.current.replace(Some(entry.clone()));
-        crate::assets::set_primary_icon(&self.icon, super::super::browser::entry_icon(&entry));
-        self.title.set_text(&entry.display_name);
-        crate::ui::accessibility::set_description(
-            &self.title,
-            Some(&entry.location.display_path()),
-        );
-        self.size.set_text(&metadata_size(&entry));
-        crate::util::set_modified_date(&self.modified, Some(&entry), "—");
-        if self.model.borrow().is_none() {
-            self.content_type.set_text(file_extension(&entry));
-        }
+        self.load_raw_details(&entry);
+        self.show_identity(&entry);
         self.load.borrow_mut().take();
         self.pdf_loads.borrow_mut().clear();
 
-        let request_id = PreviewRequestId(self.next_request.get());
-        self.next_request
-            .set(self.next_request.get().saturating_add(1));
-        self.current_request.set(Some(request_id));
+        let request_id = self.begin_request();
         self.retain_pending_playback(&entry);
         if let Some(pending) = self.continue_playback.borrow_mut().as_mut() {
             pending.request = Some(request_id);
@@ -158,6 +132,46 @@ impl PreviewState {
         self.load.replace(Some(load));
     }
 
+    fn load_raw_details(&self, entry: &FileEntry) {
+        if super::super::raw_details::supports(entry) {
+            let load = self
+                .raw_details
+                .load(entry.local_thumbnail_path().map(ToOwned::to_owned));
+            self.raw_metadata_load.replace(Some(load));
+            self.raw_details_scroll.set_visible(true);
+        } else {
+            self.clear_raw_details();
+        }
+    }
+
+    /// Shows `entry` in the header and makes it the current file.
+    fn show_identity(&self, entry: &FileEntry) {
+        self.metadata.set_visible(true);
+        self.icon.set_visible(true);
+        self.open.set_sensitive(true);
+        self.header_handle.set_cursor_from_name(Some("grab"));
+        self.current.replace(Some(entry.clone()));
+        crate::assets::set_primary_icon(&self.icon, super::super::browser::entry_icon(entry));
+        self.title.set_text(&entry.display_name);
+        crate::ui::accessibility::set_description(
+            &self.title,
+            Some(&entry.location.display_path()),
+        );
+        self.size.set_text(&metadata_size(entry));
+        crate::util::set_modified_date(&self.modified, Some(entry), "—");
+        if self.model.borrow().is_none() {
+            self.content_type.set_text(file_extension(entry));
+        }
+    }
+
+    fn begin_request(&self) -> PreviewRequestId {
+        let request_id = PreviewRequestId(self.next_request.get());
+        self.next_request
+            .set(self.next_request.get().saturating_add(1));
+        self.current_request.set(Some(request_id));
+        request_id
+    }
+
     pub(super) fn handle_event(self: &Rc<Self>, expected: PreviewRequestId, event: PreviewEvent) {
         let response = match &event {
             PreviewEvent::Progress { request_id, .. } => *request_id,
@@ -182,48 +196,7 @@ impl PreviewState {
                 request_id,
                 entry,
                 message,
-            } if request_id == expected => {
-                self.continue_playback.take();
-                self.load.borrow_mut().take();
-                self.cancel_loading();
-                self.current_request.set(Some(expected));
-                self.title.set_text(&entry.display_name);
-                // Failures carry English source messages: known ones have catalog
-                // entries, and system error text passes through unchanged.
-                let detail = crate::i18n::tr(&message);
-                if let Some(model) = self
-                    .model
-                    .borrow()
-                    .as_ref()
-                    .filter(|model| model.picture.paintable().is_some())
-                {
-                    self.model_view.set(model.view());
-                    model.show_error(&detail);
-                    return;
-                }
-                if message == crate::services::INCORRECT_ARCHIVE_PASSWORD {
-                    self.render_archive_password_prompt(entry, Some(&detail));
-                } else if message == file_activity::HELD_FOR_OPERATION
-                    && !file_activity::is_releasing()
-                {
-                    self.current_request.set(None);
-                    self.show_after_focus_change(entry, self.current_depth.get());
-                } else {
-                    if message == file_activity::HELD_FOR_OPERATION {
-                        self.released_from.set(Some(self.current_depth.get()));
-                    }
-                    self.current_request.set(None);
-                    let title = crate::i18n::tr("Preview unavailable");
-                    if message == crate::sandbox::PDF_PASSWORD_PROTECTED && self.allow_external_open
-                    {
-                        self.show_message_with_external_open(&title, &detail);
-                    } else if !self.show_audio_error(&title, &detail, None)
-                        && !self.show_video_error(&title, &detail, None)
-                    {
-                        self.show_message(&title, &detail);
-                    }
-                }
-            }
+            } if request_id == expected => self.preview_failed(expected, entry, &message),
             PreviewEvent::NeedsPassword { request_id, entry } if request_id == expected => {
                 self.continue_playback.take();
                 self.load.borrow_mut().take();
@@ -237,6 +210,66 @@ impl PreviewState {
         }
     }
 
+    fn preview_failed(
+        self: &Rc<Self>,
+        expected: PreviewRequestId,
+        entry: FileEntry,
+        message: &str,
+    ) {
+        self.continue_playback.take();
+        self.load.borrow_mut().take();
+        self.cancel_loading();
+        self.current_request.set(Some(expected));
+        self.title.set_text(&entry.display_name);
+        // Failures carry English source messages: known ones have catalog
+        // entries, and system error text passes through unchanged.
+        let detail = crate::i18n::tr(message);
+        if self.show_model_failure(&detail) {
+            return;
+        }
+        let held = message == file_activity::HELD_FOR_OPERATION;
+        if message == crate::services::INCORRECT_ARCHIVE_PASSWORD {
+            self.render_archive_password_prompt(entry, Some(&detail));
+        } else if held && !file_activity::is_releasing() {
+            self.current_request.set(None);
+            self.show_after_focus_change(entry, self.current_depth.get());
+        } else {
+            if held {
+                self.released_from.set(Some(self.current_depth.get()));
+            }
+            self.current_request.set(None);
+            self.show_failure(message, &detail);
+        }
+    }
+
+    /// A model that already shows a picture keeps it under the error.
+    fn show_model_failure(&self, detail: &str) -> bool {
+        if let Some(model) = self
+            .model
+            .borrow()
+            .as_ref()
+            .filter(|model| model.picture.paintable().is_some())
+        {
+            self.model_view.set(model.view());
+            model.show_error(detail);
+            return true;
+        }
+        false
+    }
+
+    fn show_failure(&self, message: &str, detail: &str) {
+        let title = crate::i18n::tr("Preview unavailable");
+        let offers_open =
+            message == crate::sandbox::PDF_PASSWORD_PROTECTED && self.allow_external_open;
+        if offers_open {
+            self.show_message_with_external_open(&title, detail);
+        } else if !self.show_audio_error(&title, detail, None)
+            && !self.show_video_error(&title, detail, None)
+        {
+            self.show_message(&title, detail);
+        }
+    }
+
     pub(super) fn show_loading(self: &Rc<Self>, request_id: PreviewRequestId) {
         if let Some(model) = self.model.borrow().as_ref() {
             self.cancel_loading();
@@ -246,18 +279,7 @@ impl PreviewState {
         let family = self.current.borrow().as_ref().and_then(entry_family);
         self.reset_content(family);
         self.cancel_loading();
-        if let Some(audio) = self.audio.borrow().as_ref() {
-            let (folder, previous, next) = self.listing_position(MediaFamily::Audio);
-            if let Some(entry) = self.current.borrow().as_ref() {
-                audio.view.prepare(entry, folder, previous, next);
-            }
-            return;
-        }
-        if let Some(video) = self.video.borrow().as_ref() {
-            let (position, previous, next) = self.listing_position(MediaFamily::Video);
-            if let Some(entry) = self.current.borrow().as_ref() {
-                video.view.prepare(entry, position, previous, next);
-            }
+        if self.prepare_player() {
             return;
         }
         if self.show_model_loading() {
@@ -281,6 +303,25 @@ impl PreviewState {
             state.content.append(&spinner);
         });
         self.loading_delay.replace(Some(source));
+    }
+
+    /// A retained audio or video player shows the next file while it loads.
+    fn prepare_player(&self) -> bool {
+        if let Some(audio) = self.audio.borrow().as_ref() {
+            let (folder, previous, next) = self.listing_position(MediaFamily::Audio);
+            if let Some(entry) = self.current.borrow().as_ref() {
+                audio.view.prepare(entry, folder, previous, next);
+            }
+            return true;
+        }
+        if let Some(video) = self.video.borrow().as_ref() {
+            let (position, previous, next) = self.listing_position(MediaFamily::Video);
+            if let Some(entry) = self.current.borrow().as_ref() {
+                video.view.prepare(entry, position, previous, next);
+            }
+            return true;
+        }
+        false
     }
 
     pub(super) fn cancel_loading(&self) {
