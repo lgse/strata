@@ -25,9 +25,9 @@ mod positions;
 mod tests;
 use audio::PcmOutput;
 use history::PcmHistory;
-pub(crate) use positions::resume_position;
 #[cfg(test)]
 use positions::recall_media_position;
+pub(crate) use positions::resume_position;
 use positions::{RESTORE_MIN_US, forget_media_position, remember_media_position};
 
 const PAUSED_IDLE: Duration = Duration::from_secs(30);

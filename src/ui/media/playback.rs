@@ -20,9 +20,8 @@ use super::{
 const MAX_STALL_RECOVERIES: u32 = 3;
 // PCM appsrc may hold: the lead the first record carries plus slack, so the
 // sink's own buffer fills before the playhead has to move.
-const AUDIO_LOOKAHEAD: Duration = Duration::from_micros(
-    (media::AUDIO_LEAD_TICKS as u64 + 6) * 1_000_000 / media::FPS as u64,
-);
+const AUDIO_LOOKAHEAD: Duration =
+    Duration::from_micros((media::AUDIO_LEAD_TICKS as u64 + 6) * 1_000_000 / media::FPS as u64);
 
 /// What the event pump does after handling one session event.
 enum Pump {
@@ -268,7 +267,12 @@ impl DecodedMedia {
     }
 
     // Blocks belong to successive audio ticks, running ahead of the frame.
-    fn push_audio(&self, audio: &PcmOutput, header: &Header, samples: Vec<u8>) -> Result<(), String> {
+    fn push_audio(
+        &self,
+        audio: &PcmOutput,
+        header: &Header,
+        samples: Vec<u8>,
+    ) -> Result<(), String> {
         let imp = self.imp();
         for block in samples.chunks(media::AUDIO_BYTES) {
             let chunk = imp.audio_chunks.get();
@@ -634,9 +638,10 @@ impl DecodedMedia {
             header.width as usize * 4,
         )
         .upcast::<gdk::Texture>();
-        let size_changed = imp.texture.borrow().as_ref().is_none_or(|old| {
-            old.width() != texture.width() || old.height() != texture.height()
-        });
+        let size_changed =
+            imp.texture.borrow().as_ref().is_none_or(|old| {
+                old.width() != texture.width() || old.height() != texture.height()
+            });
         imp.texture.replace(Some(texture));
         if size_changed {
             self.invalidate_size();

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
+use super::history::HISTORY_SAMPLES;
 use super::*;
 use gstreamer as gst;
-use super::history::HISTORY_SAMPLES;
 use std::{
     path::{Path, PathBuf},
     rc::Rc,
