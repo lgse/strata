@@ -412,7 +412,6 @@ fn a_later_change_time(path: &Path, than: &Path, seconds: u64) -> io::Result<boo
 /// as Samba does once the SMB client's deferred close of a file it wrote
 /// reaches it: only the change time moves.
 fn land_deferred_closes(root: &Path) -> io::Result<()> {
-    use std::os::unix::fs::MetadataExt;
     for entry in fs::read_dir(root)? {
         let path = entry?.path();
         let before = fs::symlink_metadata(&path)?;
