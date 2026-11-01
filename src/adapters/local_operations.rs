@@ -59,7 +59,6 @@ use replacement::merge_local;
 #[cfg(test)]
 use replacement::merge_local_with;
 use replacement::merge_owing;
-use replacement::{Merging, Replacing};
 use replacement::progress_merge_hooks;
 #[cfg(test)]
 use replacement::publish_staged_replacement;
@@ -70,6 +69,7 @@ use replacement::replace_local_with;
 use replacement::replace_owing;
 #[cfg(test)]
 use replacement::trash_stage_overwrite;
+use replacement::{Merging, Replacing};
 mod deletion;
 #[cfg(test)]
 use deletion::LocalDeleteJob;
