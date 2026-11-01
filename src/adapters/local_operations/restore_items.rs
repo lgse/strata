@@ -91,17 +91,18 @@ pub(super) fn restore(request: RestoreRequest, emit: Rc<dyn Fn(OperationEvent)>)
                     main_context.spawn_local(async move {
                         let mut affected = HashSet::new();
                         let result = match &entry {
-                            Ok(entry) => restore_trash_entry(
-                                entry,
-                                &context,
-                                &mut affected,
-                                &unlinks,
-                                &cancellable,
-                            )
-                            .await
-                            .map(|(report, identity)| {
-                                (report, identity, restored_destination(entry))
-                            }),
+                            Ok(entry) => {
+                                let restoring = restore::Restoring {
+                                    context: &context,
+                                    unlinks: &unlinks,
+                                    cancellable: &cancellable,
+                                };
+                                restore_trash_entry(entry, &restoring, &mut affected)
+                                    .await
+                                    .map(|(report, identity)| {
+                                        (report, identity, restored_destination(entry))
+                                    })
+                            }
                             Err((_, refused)) => Err(refused.clone()),
                         };
                         (entry, result, affected)
