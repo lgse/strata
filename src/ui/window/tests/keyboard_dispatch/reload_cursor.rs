@@ -65,6 +65,127 @@ fn report(failures: Vec<String>) {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
+#[test]
+fn grouped_publication_keeps_targets_across_listing_changes() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::reload_cursor::grouped_publication_keeps_targets_across_listing_changes",
+        || {
+            #[derive(Clone, Copy, Debug)]
+            enum Change {
+                Append,
+                Sort,
+                Ungroup,
+                Hidden,
+                Leave,
+            }
+            for change in [
+                Change::Append,
+                Change::Sort,
+                Change::Ungroup,
+                Change::Hidden,
+                Change::Leave,
+            ] {
+                let fixture = KeyboardFixture::new();
+                fixture.view.set_group_by_type(true);
+                fixture.view.set_view_mode(BrowserMode::List);
+                let directory = fixture._directory.path().join("mixed");
+                std::fs::create_dir(&directory).expect("mixed folder");
+                for index in 0..600 {
+                    let extension = ["png", "txt", "json", "csv"][index % 4];
+                    std::fs::write(
+                        directory.join(format!("file-{index:04}.{extension}")),
+                        b"fixture",
+                    )
+                    .expect("mixed file");
+                }
+                std::fs::write(directory.join(".hidden.csv"), b"hidden").expect("hidden file");
+                let browser = fixture.view.browser();
+                if browser.preferences().show_hidden {
+                    browser.toggle_hidden();
+                    wait_loaded(&browser, 0);
+                }
+                let first = Rc::new(Cell::new(false));
+                let finished = Rc::new(Cell::new(false));
+                let sorted = Rc::new(Cell::new(false));
+                let (seen, done, sorting) = (first.clone(), finished.clone(), sorted.clone());
+                browser.observe(move |event| match event {
+                    BrowserEvent::EntriesReplaced {
+                        depth: 0,
+                        count: 128,
+                    } => seen.set(true),
+                    BrowserEvent::LoadFinished { depth: 0, .. } => done.set(true),
+                    BrowserEvent::SortingFinished { depth: 0 } => sorting.set(true),
+                    _ => {}
+                });
+                browser.navigate(Location::local(&directory));
+                wait_until(|| first.get());
+                assert!(
+                    !finished.get(),
+                    "selection must happen before the idle tail"
+                );
+                let position = browser
+                    .with_entries(0, 0..601, |entries| {
+                        entries
+                            .iter()
+                            .position(|entry| entry.display_name == "file-0003.csv")
+                    })
+                    .flatten()
+                    .expect("target in first chunk");
+                browser.select(0, position);
+                assert_eq!(selected_names(&browser), ["file-0003.csv"]);
+                match change {
+                    Change::Append => {}
+                    Change::Sort => browser.set_sort(0, SortKey::Type, SortDirection::Descending),
+                    Change::Ungroup => fixture.view.set_group_by_type(false),
+                    Change::Hidden => browser.toggle_hidden(),
+                    Change::Leave => browser.navigate(Location::local(fixture._directory.path())),
+                }
+                if matches!(change, Change::Leave) {
+                    wait_loaded(&browser, 0);
+                    assert_eq!(
+                        browser.active_location(),
+                        Some(Location::local(fixture._directory.path()))
+                    );
+                    let names = list_display_names(&fixture.view.widget());
+                    assert!(names.contains(&"a.txt".to_owned()));
+                    assert!(names.contains(&"mixed".to_owned()));
+                    assert!(!names.iter().any(|name| name.starts_with("file-")));
+                    continue;
+                }
+                wait_until(|| finished.get());
+                if matches!(change, Change::Sort) {
+                    wait_until(|| sorted.get());
+                }
+                wait_loaded(&browser, 0);
+                assert_eq!(selected_names(&browser), ["file-0003.csv"], "{change:?}");
+                if matches!(change, Change::Hidden) {
+                    assert!(
+                        list_display_names(&fixture.view.widget())
+                            .contains(&".hidden.csv".to_owned())
+                    );
+                }
+                let list = widget_with_class(&fixture.view.widget(), "file-list-mode")
+                    .expect("grouped list")
+                    .downcast::<gtk::ListView>()
+                    .expect("list view");
+                let selection = list.model().expect("selection model");
+                let selected: Vec<_> = (0..selection.n_items())
+                    .filter(|position| selection.is_selected(*position))
+                    .map(|position| {
+                        let value = selection
+                            .item(position)
+                            .and_downcast::<gtk::StringObject>()
+                            .expect("selected item")
+                            .string();
+                        value.split_once('\t').expect("model value").1.to_owned()
+                    })
+                    .collect();
+                assert_eq!(selected, ["file-0003.csv"], "{change:?}");
+            }
+        },
+    );
+}
+
 /// `f00`..`f11`, then `bulk` files listed after them.
 fn twelve_files(fixture: &KeyboardFixture, bulk: usize) {
     for index in 0..12 {

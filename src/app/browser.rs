@@ -16,11 +16,11 @@ use crate::{
         DirectoryChange, DirectoryRequest, DirectoryStamp, ExtractRequest, FileSource,
         ItemIdentity, LoadHandle, LocationValidationError, MetadataOutcome, MetadataRequest,
         MoveRecord, NameMode, OperationEvent, OperationProvider, OperationRequestId,
-        PasswordFailure, PasteItem, PasteRequest, PlacedSnapshot, RenameRecord, RenameRequest,
-        RenamedItem, RequestId, Responsiveness, RestoreRequest, RestoreSource, RestoreTrashItem,
-        StampAnswer, TransferConflict, TransferReport, UndoCopyRequest, UndoMergeRequest,
-        UndoMoveItem, UndoMoveRequest, UndoRenameRequest, Watching, validate_basename,
-        validate_uri_credentials,
+        PasswordFailure, PasteItem, PasteRequest, PlaceEntryRequest, PlacedSnapshot, RenameRecord,
+        RenameRequest, RenamedItem, RequestId, Responsiveness, RestoreRequest, RestoreSource,
+        RestoreTrashItem, StampAnswer, TransferConflict, TransferReport, TypedPath,
+        UndoCopyRequest, UndoMergeRequest, UndoMoveItem, UndoMoveRequest, UndoRenameRequest,
+        Watching, validate_basename, validate_uri_credentials,
     },
 };
 
@@ -808,6 +808,23 @@ fn push_pending_undo(entry: UndoEntry) {
         pending.push_entry(false, entry);
         pending.fold_group_tail();
     });
+}
+
+/// Naming a new item with a path moves or replaces the item its creation
+/// recorded, so undoing that creation removes what the naming made instead.
+fn retarget_created_undo(created: &Location, placed: Location) {
+    let retargeted = PENDING_UNDO.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        let recorded = pending.history.iter_mut().rev().find(|undo| {
+            !undo.claimed
+                && matches!(&undo.entry, UndoEntry::Copy(locations)
+                    if locations.as_slice() == std::slice::from_ref(created))
+        });
+        recorded.map(|undo| undo.entry = UndoEntry::Copy(vec![placed.clone()]))
+    });
+    if retargeted.is_none() {
+        push_pending_undo(UndoEntry::Copy(vec![placed]));
+    }
 }
 
 fn push_background_undo(entry: UndoEntry) {
@@ -2734,6 +2751,114 @@ impl Browser {
         );
         self.install_operation_load(request_id, load);
         Some(request_id)
+    }
+
+    /// Moves an item to a typed relative path, which a rename cannot.
+    /// `new_item` is one just created for naming, whose creation undo then
+    /// covers the placement too.
+    pub fn place_entry(
+        self: &Rc<Self>,
+        entry: FileEntry,
+        path: TypedPath,
+        new_item: bool,
+    ) -> Option<OperationRequestId> {
+        let Some(provider) = self.operation_provider.borrow().clone() else {
+            self.emit(BrowserEvent::RenameFailed {
+                request_id: None,
+                message: crate::i18n::tr("File operations are unavailable"),
+            });
+            return None;
+        };
+        let request_id = self.try_begin_operation()?;
+        self.rename_operation.set(Some(request_id));
+        // The view selects what took the item's place, not the row beside it.
+        self.state
+            .borrow_mut()
+            .set_selectionless_removals([entry.location.clone()]);
+        let refresh_locations = entry.location.parent().into_iter().collect();
+        let emit = self.operation_callback(request_id, true, refresh_locations);
+        let original = entry.location.clone();
+        let weak = Rc::downgrade(self);
+        let publish = Rc::new(move |event: OperationEvent| {
+            let Some(browser) = weak.upgrade() else {
+                return emit(event);
+            };
+            match &event {
+                OperationEvent::EntryPlaced {
+                    request_id: id,
+                    placed,
+                } if *id == request_id => {
+                    browser.publish_placement(request_id, &original, placed, new_item);
+                }
+                _ => browser
+                    .state
+                    .borrow_mut()
+                    .retain_selectionless_removals(std::iter::empty()),
+            }
+            emit(event);
+        });
+        let load = provider.place_entry(
+            PlaceEntryRequest {
+                id: request_id,
+                entry,
+                path,
+                new_item,
+            },
+            publish,
+        );
+        self.install_operation_load(request_id, load);
+        Some(request_id)
+    }
+
+    fn publish_placement(
+        self: &Rc<Self>,
+        request_id: OperationRequestId,
+        original: &Location,
+        placed: &[Location],
+        new_item: bool,
+    ) {
+        let (Some(outermost), Some(current)) = (placed.first(), placed.last()) else {
+            return;
+        };
+        // As for a rename, a placement that another operation superseded
+        // still moved the item, but records no undo and leaves the view alone.
+        if !self.is_current_operation(request_id) {
+            if !new_item {
+                self.publish_relocation(original, current);
+            }
+            return;
+        }
+        // A placed folder's open columns close; the view then opens the
+        // outermost folder that took its row, as a fresh chain.
+        if let Some(depth) = (0..)
+            .map_while(|depth| self.location_at(depth))
+            .position(|location| location.is_within(original))
+        {
+            self.truncate_columns(depth, false);
+        }
+        if new_item {
+            retarget_created_undo(original, outermost.clone());
+            return;
+        }
+        let record = MoveRecord {
+            original: original.clone(),
+            current: current.clone(),
+            renamed: Vec::new(),
+        };
+        // Undoing what made folders also trashes them, as for a group folder.
+        push_pending_undo(if placed.len() > 1 {
+            UndoEntry::Group {
+                folder: outermost.clone(),
+                records: vec![record],
+            }
+        } else {
+            UndoEntry::Move(vec![record])
+        });
+        self.publish_relocation(original, current);
+        if let (Some(from), Some(to)) = (original.native_path(), current.native_path()) {
+            crate::services::refresh_search_indexes_for_rename(from, to);
+        }
+        self.retire_recent_target(original);
     }
 
     pub fn create_new_folder(self: &Rc<Self>, parent: Location) {

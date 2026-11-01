@@ -673,6 +673,9 @@ impl Dispatcher {
     }
 
     fn handle_chooser_key(&self, browser: &Rc<Browser>, press: &KeyPress) -> KeyResult {
+        if let Some(result) = self.rename_tab(press) {
+            return Some(result);
+        }
         if !self.type_to_search.preferences.tenxer_mode() {
             return self.tenxer_keys(browser, press);
         }
@@ -699,6 +702,9 @@ impl Dispatcher {
     fn handle_key(&self, browser: &Rc<Browser>, press: &KeyPress) -> Propagation {
         if !press.is_modifier() {
             self.open_with.invalidate();
+        }
+        if let Some(result) = self.rename_tab(press) {
+            return result;
         }
         let preferences = &self.type_to_search.preferences;
         // Text-size shortcuts and a focused document's zoom reset run before

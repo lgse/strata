@@ -567,8 +567,10 @@ pub(crate) fn check_step(step: &Value) -> Result<(), String> {
     if step.get("foreign").is_some() {
         let parsed: ForeignStep = serde_json::from_value(step.clone())
             .map_err(|error| format!("invalid foreign step: {error}"))?;
-        return if parsed.name.is_empty() || parsed.foreign.paths.is_empty() {
-            Err("foreign needs paths and a name in as for its button's box".to_owned())
+        return if parsed.name.is_empty()
+            || (parsed.foreign.paths.is_empty() && parsed.foreign.offers.is_empty())
+        {
+            Err("foreign needs paths or offers and a name in as for its button's box".to_owned())
         } else {
             Ok(())
         };

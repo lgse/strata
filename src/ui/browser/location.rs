@@ -2609,32 +2609,31 @@ impl ViewState {
                 drop.connect_leave(move |_| {
                     state_for_leave.cancel_spring_load_navigation();
                 });
+                let handler: super::DropHandler = {
+                    let weak = weak.clone();
+                    Rc::new(move |destination, request| {
+                        if let Some(state) = weak.upgrade() {
+                            state.commit_drop(destination, request);
+                        }
+                    })
+                };
+                let handler_for_drop = handler.clone();
+                let state_for_drop = drop_state.clone();
                 drop.connect_drop(move |target, value, _, _| {
-                    drop_state.cancel_spring_load_navigation();
-                    let Some(state) = weak.upgrade() else {
+                    state_for_drop.cancel_spring_load_navigation();
+                    let Some(destination) = state_for_drop.destination() else {
                         return false;
                     };
-                    let Some(destination) = drop_state.destination() else {
-                        return false;
-                    };
-                    let Some(sources) = super::locations_from_file_list_value(value) else {
-                        return false;
-                    };
-                    if sources.is_empty() {
-                        return false;
-                    }
-                    super::file_drop_commit(
+                    let handler = handler_for_drop.clone();
+                    super::commit_dropped_value(
                         target,
+                        value,
                         destination,
-                        sources,
-                        &drop_state,
-                        move |destination, sources, commit| {
-                            state.commit_file_drop(destination, sources, commit);
-                        },
-                    );
-                    true
+                        &state_for_drop,
+                        move |destination, request| handler(destination, request),
+                    )
                 });
-                button.add_controller(drop);
+                super::attach_drop_target(&button, &drop, &drop_state, handler);
                 self.breadcrumbs.append(&button);
             }
         }

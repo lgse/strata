@@ -3,8 +3,28 @@ set -euo pipefail
 
 unset DISPLAY WAYLAND_DISPLAY NOTIFY_SOCKET DBUS_SESSION_BUS_ADDRESS DBUS_STARTER_ADDRESS
 repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+usage='Usage: scripts/quality.sh [all|fmt|clippy|test] [--jobs N] [--refresh-timings]'
 phase="${1:-all}"
-case "$phase" in all|fmt|clippy|test) ;; *) echo 'Usage: scripts/quality.sh [all|fmt|clippy|test]' >&2; exit 2 ;; esac
+case "$phase" in all|fmt|clippy|test) ;; *) echo "$usage" >&2; exit 2 ;; esac
+shift $(($# > 0))
+# Options for the Rust test phase; they never select or skip tests.
+test_options=()
+# CI's build task runs no tests, and only a local run may rewrite the timings.
+task="${STRATA_QUALITY_TASK:-test}"
+while (($#)); do
+  case "$1" in
+    --jobs)
+      [[ "${2:-}" =~ ^[1-9][0-9]*$ && "$task" != build ]] || { echo "$usage" >&2; exit 2; }
+      test_options+=(--lanes "$2"); shift 2 ;;
+    --refresh-timings)
+      [[ "$task" == test ]] || { echo "$usage" >&2; exit 2; }
+      test_options+=(--refresh-timings); shift ;;
+    *) echo "$usage" >&2; exit 2 ;;
+  esac
+done
+if ((${#test_options[@]})) && [[ "$phase" != all && "$phase" != test ]]; then
+  echo "$usage" >&2; exit 2
+fi
 engine="${STRATA_CONTAINER_ENGINE:-}"
 if [[ -z "$engine" ]]; then
   if command -v podman >/dev/null 2>&1; then engine=podman; else engine=docker; fi
@@ -27,8 +47,10 @@ fi
 if [[ "$group_id" != 0 ]]; then
   printf 'strata-quality:x:%s:\n' "$group_id" >> "$accounts/group"
 fi
-# Tests need O_TMPFILE in their temporary folders, which an overlay /tmp may refuse.
-options=(--rm --platform=linux/amd64 --user "$user_id:$group_id" --shm-size=512m
+# Tests need O_TMPFILE in their temporary folders, which an overlay /tmp may refuse. Podman caps a
+# container at 2048 tasks by default; the lanes' libtest threads and GTK children exceed that and
+# then fail to spawn threads with EAGAIN.
+options=(--rm --platform=linux/amd64 --user "$user_id:$group_id" --shm-size=512m --pids-limit=-1
   --tmpfs /tmp:rw,exec,nosuid,nodev,size=2g,mode=1777)
 if [[ "$(basename "$engine")" == podman ]]; then
   options+=(--userns=keep-id --passwd=false)
@@ -57,18 +79,11 @@ exec "$engine" run "${options[@]}" \
     case "$1" in all|test)
       case "${STRATA_QUALITY_TASK:-test}" in
         build) python3 scripts/quality_ci.py build ;;
-        shard)
-          xvfb-run -a -s "-screen 0 1280x1024x24 -nolisten tcp -noreset" dbus-run-session -- env -u WAYLAND_DISPLAY GDK_BACKEND=x11 \
-            GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
-            STRATA_REQUIRE_DEVICE_TESTS=1 python3 scripts/quality_ci.py run
-          ;;
-        test)
-          xvfb-run -a -s "-screen 0 1280x1024x24 -nolisten tcp -noreset" dbus-run-session -- env -u WAYLAND_DISPLAY GDK_BACKEND=x11 \
-            GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
-            cargo test --locked --all-targets --all-features
-          ;;
+        # Each lane starts its own private Xvfb and D-Bus session.
+        shard) STRATA_REQUIRE_DEVICE_TESTS=1 python3 scripts/quality_ci.py run "${@:2}" ;;
+        test) python3 scripts/quality_ci.py local "${@:2}" ;;
         *) echo "Invalid STRATA_QUALITY_TASK" >&2; exit 2 ;;
       esac
       ;;
     esac
-  ' bash "$phase"
+  ' bash "$phase" "${test_options[@]}"

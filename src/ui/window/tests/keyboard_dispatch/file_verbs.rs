@@ -149,7 +149,12 @@ fn tenxer_footer_rename_changes_only_the_focused_item_on_enter() {
                 ("", "Enter a name"),
                 ("  ", "Enter a name"),
                 ("..", "That name is reserved"),
-                ("nested/name", "Names cannot contain /"),
+                ("b.txt/name", "\u{201c}b.txt\u{201d} is not a folder"),
+                (
+                    "renamed.txt/",
+                    "An existing file can\u{2019}t become a folder",
+                ),
+                ("nested//name", "Enter a name"),
                 ("b.txt", "\u{201c}b.txt\u{201d} already exists"),
                 (&too_long, "The name is too long"),
             ] {
@@ -203,6 +208,13 @@ fn tenxer_footer_rename_changes_only_the_focused_item_on_enter() {
                 assert!(!directory.join("denied.txt").exists());
             }
             std::fs::set_permissions(&directory, writable).expect("restore fixture");
+
+            move_to_named(&fixture, &browser, "b.txt");
+            submit_rename(&fixture, "nested/b.txt");
+            wait_until(|| directory.join("nested/b.txt").is_file());
+            assert!(!directory.join("b.txt").exists());
+            assert_eq!(contents(&directory.join("nested/b.txt")), "preview");
+            wait_until(|| focused_name(&browser) == "nested");
         },
     );
 }

@@ -906,6 +906,11 @@ const DEFAULT_FILES: &[Shortcut] = &[
     row(One(UNDO.shown()), "Undo the last file operation"),
     row(One(REDO.shown()), "Redo the last file operation"),
     row(One(RENAME.shown()), "Rename"),
+    within(
+        "%{keys} in a rename",
+        Any(shown![FOCUS_NEXT, FOCUS_PREVIOUS]),
+        "Rename the next / previous item",
+    ),
     row(One(NEW_FOLDER.shown()), "Create a folder"),
     row(
         One(NEW_FOLDER_WITH_SELECTION.shown()),

@@ -130,7 +130,9 @@ pub(super) fn install(state: &Rc<TabWindow>, widget: &gtk::Widget, append: bool)
         }
         let formats = drop.formats();
         let decoded = formats.clone().union_deserialize_types();
-        decoded.contains_type(String::static_type())
+        // Tab drags never leave Strata; foreign text belongs to the tab's file drop.
+        drop.drag().is_some()
+            && decoded.contains_type(String::static_type())
             && !decoded.contains_type(gdk::FileList::static_type())
             && !formats.contain_mime_type("text/uri-list")
     });

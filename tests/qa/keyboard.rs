@@ -8,7 +8,7 @@ use x11rb::{
 };
 
 use crate::{
-    DEFAULT_LAYOUT, Display,
+    DEFAULT_LAYOUT, Display, Server,
     fixture::{Layout, Manifest},
     process::spawn,
 };
@@ -40,8 +40,9 @@ impl Display {
     }
 
     fn lock(&self, group: u8, affect: u16, locks: u16) -> Result<(), String> {
+        let connection = self.x11()?;
         xkb::latch_lock_state(
-            &self.connection,
+            connection,
             xkb::ID::USE_CORE_KBD.into(),
             xproto::ModMask::from(affect),
             xproto::ModMask::from(locks),
@@ -52,7 +53,7 @@ impl Display {
             0,
         )
         .map_err(|error| error.to_string())?;
-        self.connection.sync().map_err(|error| error.to_string())
+        connection.sync().map_err(|error| error.to_string())
     }
 
     fn switch_layout(&self, layout: &Layout) -> Result<(), String> {
@@ -80,7 +81,7 @@ impl Display {
                 (key.trim() == name).then(|| value.trim().to_owned())
             })
         };
-        let state = xkb::get_state(&self.connection, xkb::ID::USE_CORE_KBD.into())
+        let state = xkb::get_state(self.x11()?, xkb::ID::USE_CORE_KBD.into())
             .map_err(|error| error.to_string())?
             .reply()
             .map_err(|error| error.to_string())?;
@@ -104,6 +105,14 @@ impl Display {
 }
 
 pub(crate) fn switch(manifest: &Manifest, display: &Display, name: &str) -> Result<(), String> {
+    // The Wayland injector's virtual keyboard keeps the US keymap it uploaded.
+    if matches!(display.kind, Server::Wayland(_)) {
+        return if name == DEFAULT_LAYOUT {
+            Ok(())
+        } else {
+            display.x11().map(|_| ())
+        };
+    }
     if name == DEFAULT_LAYOUT {
         return display.restore_layout();
     }

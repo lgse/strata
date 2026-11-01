@@ -103,6 +103,7 @@ enum RestartMode {
 }
 
 pub(crate) fn install() -> Result<String, String> {
+    super::require_runtime_integrations()?;
     let executable = crate::services::installed_executable().map_err(|error| {
         rust_i18n::t!(
             "Could not locate the Strata executable: %{error}",
@@ -121,6 +122,7 @@ pub(crate) fn install() -> Result<String, String> {
 }
 
 pub(crate) fn uninstall() -> Result<String, String> {
+    super::require_runtime_integrations()?;
     let context = SetupContext::from_environment()?;
     uninstall_at(&context)?;
     let restart_warning = restart_udiskie(RestartMode::ReloadIfRunning);

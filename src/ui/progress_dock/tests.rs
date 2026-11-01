@@ -12,7 +12,7 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let fixture = Self::unpresented();
-        fixture.window.present();
+        crate::test_support::present_window(&fixture.window);
         fixture
             .overlay
             .child()
