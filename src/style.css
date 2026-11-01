@@ -2634,6 +2634,12 @@ scrollbar.horizontal > range > trough > slider {
   transform: rotate(90deg);
 }
 
+/* Sized from the theme like .sidebar-device-action; the margin matches the device row's
+   right padding, so the chevron centres over the eject buttons. */
+.sidebar-heading-chevron {
+  margin-right: 2px;
+}
+
 /* Left padding comes from the theme so the title starts where the row icons do. */
 .sidebar-heading-toggle .sidebar-heading {
   padding-top: 0;
@@ -2645,7 +2651,6 @@ scrollbar.horizontal > range > trough > slider {
   color: @strata_dim_text;
   font-size: 0.78em;
   font-weight: 700;
-  margin-right: 2px;
 }
 
 paned > separator {

@@ -2564,6 +2564,7 @@ impl SidebarState {
         let badge = gtk::Label::new(None);
         badge.add_css_class("sidebar-heading-count");
         let chevron = crate::assets::primary_icon(crate::assets::icons::CHEVRON_RIGHT, 14);
+        chevron.add_css_class("sidebar-heading-chevron");
         let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         content.append(&label);
         content.append(&rule);
