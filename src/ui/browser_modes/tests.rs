@@ -3,6 +3,8 @@
 use super::*;
 use gtk::gdk;
 
+mod counting_model;
+
 fn item_name(item: &glib::Object) -> String {
     item.downcast_ref::<gtk::StringObject>()
         .map(|item| item.string().into())
@@ -49,6 +51,138 @@ fn view_positions_map_to_the_source_items_they_show() {
             assert_eq!(
                 shown(0..6),
                 ["delta", "charlie", "bravo", "alpha", ".hidden", ".cache"]
+            );
+            let removed = source.item(3).expect("bravo");
+            source.splice(3, 1, &["bravo.json"]);
+            assert_eq!(view_index.of_item(&removed), None);
+            assert_eq!(
+                shown(0..6),
+                [
+                    "delta",
+                    "charlie",
+                    "bravo.json",
+                    "alpha",
+                    ".hidden",
+                    ".cache"
+                ]
+            );
+            let ascending =
+                gtk::CustomSorter::new(|left, right| item_name(left).cmp(&item_name(right)).into());
+            view.downcast_ref::<gtk::SortListModel>()
+                .expect("sorted view")
+                .set_sorter(Some(&ascending));
+            assert_eq!(
+                shown(0..6),
+                [
+                    ".cache",
+                    ".hidden",
+                    "alpha",
+                    "bravo.json",
+                    "charlie",
+                    "delta"
+                ]
+            );
+            show_hidden.set(false);
+            filter.changed(gtk::FilterChange::MoreStrict);
+            assert_eq!(shown(0..4), ["alpha", "bravo.json", "charlie", "delta"]);
+            for position in 0..view.n_items() {
+                let item = view.item(position).expect("shown item");
+                assert_eq!(view_index.of_item(&item), Some(position as usize));
+            }
+            source.splice(0, source.n_items(), &[]);
+            assert_eq!(view.n_items(), 0);
+            source.append("fresh");
+            assert_eq!(shown(0..1), ["fresh"]);
+        },
+    );
+}
+
+#[test]
+fn index_does_not_keep_a_closed_model_alive_or_resolve_its_old_positions() {
+    crate::test_support::gtk_test(
+        "ui::browser_modes::tests::index_does_not_keep_a_closed_model_alive_or_resolve_its_old_positions",
+        || {
+            let model = gtk::StringList::new(&["old"]);
+            let item = model.item(0).expect("old item");
+            let weak = model.downgrade();
+            let index = SourceIndexMap::watch(&model);
+            assert_eq!(index.of_item(&item), Some(0));
+            drop(model);
+            assert!(weak.upgrade().is_none());
+            assert_eq!(index.of_item(&item), None);
+        },
+    );
+}
+
+#[test]
+fn chunked_type_groups_do_not_eagerly_read_replaced_ranges() {
+    crate::test_support::gtk_test(
+        "ui::browser_modes::tests::chunked_type_groups_do_not_eagerly_read_replaced_ranges",
+        || {
+            const TOTAL: usize = 4096;
+            let source = gtk::StringList::new(&[]);
+            let source_index = SourceIndexMap::watch(&source);
+            let sorter = TypeGroupSorter::new(|| Some(crate::model::ViewPreferences::default()));
+            let sorted = gtk::SortListModel::new(Some(source.clone()), Some(sorter.sorter.clone()));
+            sorted.set_section_sorter(Some(&sorter.sorter));
+            let counted = counting_model::CountingModel::new(&sorted);
+            let view = counted.clone().upcast::<gio::ListModel>();
+            let view_index = SourceIndexMap::watch(&view);
+            for start in (0..TOTAL).step_by(128) {
+                let values: Vec<_> = (start..start + 128)
+                    .map(|i| {
+                        let extension = ["png", "txt", "json", "csv"][i % 4];
+                        super::super::browser::entry_model_value(&typed_entry(
+                            &format!("{i:06}.{extension}"),
+                            crate::model::EntryKind::File,
+                        ))
+                    })
+                    .collect();
+                let values: Vec<_> = values.iter().map(String::as_str).collect();
+                source.splice(start as u32, 0, &values);
+            }
+            let mapped = view_index.sources_of(&source_index, &view, 0..TOTAL as u32);
+            assert!(mapped.iter().all(Option::is_some));
+            for (position, source_position) in mapped.into_iter().enumerate() {
+                assert_eq!(
+                    source.item(source_position.expect("mapped item") as u32),
+                    sorted.item(position as u32)
+                );
+            }
+            assert!(
+                counted.reads() <= TOTAL * 2,
+                "{TOTAL} published rows caused {} view reads",
+                counted.reads()
+            );
+        },
+    );
+}
+
+#[test]
+fn single_row_selection_does_not_scan_the_whole_view() {
+    crate::test_support::gtk_test(
+        "ui::browser_modes::tests::single_row_selection_does_not_scan_the_whole_view",
+        || {
+            let values: Vec<_> = (0..4096).map(|i| format!("{i:06}")).collect();
+            let values: Vec<_> = values.iter().map(String::as_str).collect();
+            let source = gtk::StringList::new(&values);
+            let source_index = SourceIndexMap::watch(&source);
+            let sorter =
+                gtk::CustomSorter::new(|left, right| item_name(right).cmp(&item_name(left)).into());
+            let sorted = gtk::SortListModel::new(Some(source.clone()), Some(sorter));
+            let counted = counting_model::CountingModel::new(&sorted);
+            let view = counted.clone().upcast::<gio::ListModel>();
+            let view_index = SourceIndexMap::watch(&view);
+            source.append("zz");
+            let before = counted.reads();
+            assert_eq!(
+                view_index.sources_of(&source_index, &view, std::iter::once(0)),
+                [Some(4096)]
+            );
+            assert!(
+                counted.reads() - before <= 2,
+                "one selected row caused {} view reads",
+                counted.reads() - before
             );
         },
     );
@@ -101,7 +235,7 @@ fn scroll_refresh_waits_for_scrolling_to_stop() {
     );
 }
 
-fn typed_entry(name: &str, kind: crate::model::EntryKind) -> FileEntry {
+pub(super) fn typed_entry(name: &str, kind: crate::model::EntryKind) -> FileEntry {
     FileEntry {
         location: Location::local(format!("/fixture/{name}")),
         thumbnail_path: None,

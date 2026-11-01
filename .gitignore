@@ -1,4 +1,6 @@
 /target
+/result
+/result-*
 /packaging/math-renderer/node_modules/
 *.swp
 *.swo

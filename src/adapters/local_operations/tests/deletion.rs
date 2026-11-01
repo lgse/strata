@@ -1812,6 +1812,87 @@ fn one_wait_for_open_files_covers_every_folder_of_a_delete_or_trash() -> Result<
     Ok(())
 }
 
+#[test]
+fn a_folder_kept_by_an_open_file_does_not_stop_the_rest_of_the_delete() -> Result<(), Box<dyn Error>>
+{
+    let _serial = serial()?;
+    let _clock = ClockGuard::set(SystemTime::UNIX_EPOCH + CLOCK_START);
+    let root = tempfile::tempdir()?;
+    let _scope = FsQuirks::install(root.path(), Quirks::nfs3());
+    let tree = root.path().join("tree");
+    let holds = Holds::default();
+    fs::create_dir(&tree)?;
+    folder_with_an_open_file(&tree.join("open"), &holds)?;
+    let rest = tree.join("rest");
+    fs::create_dir(&rest)?;
+    for index in 0..200 {
+        fs::write(rest.join(format!("{index}.txt")), b"deletable")?;
+    }
+
+    let events = delete_permanently(std::slice::from_ref(&tree));
+
+    let line = rust_i18n::t!(
+        "Could not delete “%{name}”: %{error}",
+        name = "open",
+        error = crate::i18n::tr(
+            "A file in it is still open in another program. Close it and try again."
+        )
+    );
+    assert!(
+        matches!(
+            events.last(),
+            Some(OperationEvent::CompletedWithErrors { message, .. }) if message.contains(&*line)
+        ),
+        "{events:?}"
+    );
+    assert!(
+        !rest.exists(),
+        "left behind: {:?}",
+        names(&rest).unwrap_or_default().len()
+    );
+    assert_eq!(names(&tree)?, ["open"]);
+    assert!(
+        names(&tree.join("open"))?
+            .iter()
+            .all(|name| foreign_leftover(OsStr::new(name)).is_some())
+    );
+    Ok(())
+}
+
+#[test]
+fn an_error_that_stops_a_delete_is_reported_over_an_earlier_open_folder()
+-> Result<(), Box<dyn Error>> {
+    let _serial = serial()?;
+    let _clock = ClockGuard::set(SystemTime::UNIX_EPOCH + CLOCK_START);
+    let root = tempfile::tempdir()?;
+    let _scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            fail: vec![(Op::Unlink, "broken", 0, rustix::io::Errno::IO)],
+            ..Quirks::nfs3()
+        },
+    );
+    let holds = Holds::default();
+    let open = root.path().join("open");
+    folder_with_an_open_file(&open, &holds)?;
+    let broken = root.path().join("broken");
+    fs::write(&broken, b"keep")?;
+
+    // One worker takes the newest job first, so the open folder is refused before the failure.
+    let error = parallel_delete_local_blocking_with_workers(
+        vec![delete_root(&broken)?, delete_root(&open)?],
+        Arc::new(AtomicBool::new(false)),
+        1,
+        &Deadline::default(),
+    )
+    .expect_err("the failed unlink");
+
+    assert!(error.contains("broken"), "{error}");
+    assert!(!error.contains("open"), "{error}");
+    assert!(broken.exists() && open.is_dir());
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug)]
 enum Hidden {
     Leftover { closed_after: Option<Op> },

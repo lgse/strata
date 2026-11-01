@@ -368,6 +368,28 @@ fn an_empty_pinned_section_shows_only_while_files_are_dragged_over_the_sidebar()
 }
 
 #[test]
+fn sidebar_trash_refuses_dropped_web_addresses() {
+    for (sources, accepted) in [
+        (vec![Location::local("/fixture/notes.txt")], true),
+        (vec![Location::uri("sftp://host.example/notes.txt")], true),
+        (vec![Location::uri("https://example.com/page")], false),
+        (
+            vec![
+                Location::local("/fixture/notes.txt"),
+                Location::uri("HTTP://example.com/image.png"),
+            ],
+            false,
+        ),
+    ] {
+        assert_eq!(
+            crate::ui::browser::BrowserView::can_trash_file_drop(&sources),
+            accepted,
+            "{sources:?}"
+        );
+    }
+}
+
+#[test]
 fn sidebar_reorders_only_distinct_rows_in_the_same_section() {
     for (source, target, accepts) in [
         ("trash", "home", true),

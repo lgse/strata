@@ -1413,7 +1413,10 @@ removed once its originals have gone back. One budget covers a whole Delete, a p
 after its items are placed (its sources and the originals it set aside), or a copy's cleanups, so a
 thousand held folders cost one wait. Each put back of set-aside originals has a budget of its own,
 so cancelling a merge or Replace whose original another program holds open can take that whole
-budget once more. A folder that empties goes at once and costs no wait.
+budget once more. A folder that empties goes at once and costs no wait. A folder still refused
+for its leftovers does not stop the rest of a Delete or cleanup: everything else is removed, the
+folder and the folders above it stay, and the error names it. Any other error stops the removal at
+once.
 
 ### Naming what holds it
 

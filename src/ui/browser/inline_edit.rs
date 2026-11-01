@@ -5,6 +5,7 @@ use crate::services::{OperationRequestId, RequestId, validate_basename};
 use crate::ui::browser::ViewState;
 use crate::ui::browser::paths::is_trash_location;
 use crate::ui::browser_modes::BrowserMode;
+use crate::ui::collection_edit::Naming;
 use gtk::prelude::*;
 use std::rc::Rc;
 
@@ -28,6 +29,8 @@ pub(super) struct PendingRename {
     new_location: Option<Location>,
     old_name: String,
     new_name: String,
+    /// The item went to a typed path, leaving its row for `new_location`.
+    placed: bool,
     generation: u64,
     monitor_reported_rename: bool,
     reveal_generation: u64,
@@ -130,6 +133,8 @@ pub(super) struct PendingEntryRename {
     reveal_generation: u64,
     move_sources: std::cell::RefCell<Vec<Location>>,
     created: std::cell::RefCell<Option<Location>>,
+    /// A group folder takes a single name while its selection moves in.
+    naming: Naming,
 }
 
 pub(in crate::ui) fn set_rename_label(label: &gtk::Widget, name: &str) {
@@ -373,11 +378,20 @@ impl ViewState {
             .map(|pending| pending.new_name.clone())
     }
 
-    fn start_pending_rename(&self, entry: &FileEntry, new_name: String) -> u64 {
-        let new_location = entry
-            .location
-            .parent()
-            .and_then(|parent| parent.child(std::ffi::OsStr::new(&new_name)));
+    /// `placed` is where the row's replacement appears when the item moves away.
+    fn start_pending_rename(
+        &self,
+        entry: &FileEntry,
+        new_name: String,
+        placed: Option<Option<Location>>,
+    ) -> u64 {
+        let new_location = placed.clone().unwrap_or_else(|| {
+            entry
+                .location
+                .parent()
+                .and_then(|parent| parent.child(std::ffi::OsStr::new(&new_name)))
+        });
+        let placed = placed.is_some();
         let generation = self.rename_generation.get().saturating_add(1);
         self.rename_generation.set(generation);
         self.pending_rename.replace(Some(PendingRename {
@@ -385,6 +399,7 @@ impl ViewState {
             new_location,
             old_name: entry.display_name.clone(),
             new_name,
+            placed,
             generation,
             monitor_reported_rename: false,
             reveal_generation: self.rename_reveal_generation.get(),
@@ -400,7 +415,11 @@ impl ViewState {
         generation
     }
 
-    fn queue_pending_rename(self: &Rc<Self>, entry: FileEntry, name: String, generation: u64) {
+    fn queue_pending_rename(
+        self: &Rc<Self>,
+        generation: u64,
+        start: impl FnOnce(&Rc<crate::app::Browser>) -> Option<OperationRequestId> + 'static,
+    ) {
         let browser = self.browser.clone();
         let operation_at_queue = browser.last_started_operation();
         let weak = Rc::downgrade(self);
@@ -426,7 +445,7 @@ impl ViewState {
                 .filter(|pending| pending.generation == generation)
                 .is_some_and(PendingRename::begin_dispatch);
             if dispatch {
-                let operation_id = state.browser.rename(entry, name);
+                let operation_id = start(&state.browser);
                 if let Some(operation_id) = operation_id
                     && let Some(pending) = state
                         .pending_rename
@@ -605,9 +624,19 @@ impl ViewState {
                 pending.old_location.clone(),
                 pending.new_location.clone(),
                 pending.new_name.clone(),
+                pending.placed,
             )
         };
-        let (old_location, new_location, new_name) = completed;
+        let (old_location, new_location, new_name, placed) = completed;
+        if placed {
+            let revealing = self.pending_rename.take().is_some_and(|pending| {
+                pending.reveal_generation == self.rename_reveal_generation.get()
+            });
+            if revealing && let Some(location) = new_location {
+                self.reveal_placed_entry(location);
+            }
+            return;
+        }
         self.update_rename_labels(&old_location, new_location.as_ref(), &new_name);
         if let Some(location) = new_location
             && self
@@ -756,6 +785,26 @@ impl ViewState {
             // Tick callbacks precede allocation; confirm visibility after GTK's anchor update.
             gtk::glib::ControlFlow::Continue
         });
+    }
+
+    pub(super) fn complete_typed_placement(self: &Rc<Self>, operation_id: OperationRequestId) {
+        let placement = self.typed_placement.take();
+        if let Some((id, target)) = placement
+            && id == operation_id
+        {
+            self.reveal_placed_entry(target);
+        }
+    }
+
+    /// The placed item's row leaves its folder, so select what took its place
+    /// there, as a rename keeps its row selected.
+    fn reveal_placed_entry(self: &Rc<Self>, target: Location) {
+        if let Some(parent) = target
+            .parent()
+            .filter(|parent| self.browser.open_depth(parent).is_some())
+        {
+            self.apply_transfer_reveal(parent, vec![target]);
+        }
     }
 
     pub(super) fn fail_pending_rename(&self) {
@@ -933,7 +982,7 @@ impl ViewState {
                         })
                         .unwrap_or(true)
                 }) && let Some(entry) = state.browser.entry_at(pending.depth, position)
-                    && state.begin_rename_item(pending.depth, position, entry)
+                    && state.begin_rename_item(pending.depth, position, entry, pending.naming)
                 {
                     state.pending_new_entry.take();
                     return gtk::glib::ControlFlow::Break;
@@ -1006,6 +1055,11 @@ impl ViewState {
                 depth,
                 parent: location.clone(),
                 reveal_generation: self.rename_reveal_generation.get(),
+                naming: if move_sources.is_empty() {
+                    Naming::NewItem
+                } else {
+                    Naming::Single
+                },
                 move_sources: std::cell::RefCell::new(move_sources),
                 created: std::cell::RefCell::new(None),
             })));
@@ -1026,6 +1080,8 @@ impl ViewState {
                 reveal_generation: self.rename_reveal_generation.get(),
                 move_sources: std::cell::RefCell::new(Vec::new()),
                 created: std::cell::RefCell::new(None),
+                // A recovered leftover may hold data, so it is not new.
+                naming: Naming::Path,
             })));
     }
 
@@ -1152,7 +1208,7 @@ impl ViewState {
         else {
             return false;
         };
-        self.activate_columns_rename(target, entry.clone());
+        self.activate_columns_rename(target, entry.clone(), Naming::Path);
         true
     }
 
@@ -1170,12 +1226,14 @@ impl ViewState {
             .pending_new_entry
             .borrow()
             .as_ref()
-            .is_some_and(|pending| pending.created.borrow().as_ref() == Some(&entry.location));
-        if !taking_over {
+            .filter(|pending| pending.created.borrow().as_ref() == Some(&entry.location))
+            .map(|pending| pending.naming);
+        if taking_over.is_none() {
             self.cancel_new_entry();
         }
-        let started = self.begin_rename_item(depth, source_position, entry);
-        if started && taking_over {
+        let naming = taking_over.unwrap_or_default();
+        let started = self.begin_rename_item(depth, source_position, entry, naming);
+        if started && taking_over.is_some() {
             self.pending_new_entry.take();
         }
         started
@@ -1186,6 +1244,7 @@ impl ViewState {
         depth: usize,
         source_position: usize,
         entry: FileEntry,
+        naming: Naming,
     ) -> bool {
         if is_trash_location(&entry.location) {
             return false;
@@ -1194,13 +1253,13 @@ impl ViewState {
             return self
                 .mode_views
                 .borrow()
-                .begin_rename(depth, source_position, &entry);
+                .begin_rename(depth, source_position, &entry, naming);
         }
         self.cancel_rename();
         let Some(target) = self.resolve_columns_rename_target(depth, source_position) else {
             return false;
         };
-        self.activate_columns_rename(target, entry);
+        self.activate_columns_rename(target, entry, naming);
         true
     }
 
@@ -1241,7 +1300,12 @@ impl ViewState {
         })
     }
 
-    fn activate_columns_rename(self: &Rc<Self>, target: ColumnsRenameTarget, entry: FileEntry) {
+    fn activate_columns_rename(
+        self: &Rc<Self>,
+        target: ColumnsRenameTarget,
+        entry: FileEntry,
+        naming: Naming,
+    ) {
         let ColumnsRenameTarget {
             row,
             edit,
@@ -1258,6 +1322,7 @@ impl ViewState {
         let weak = Rc::downgrade(self);
         let reveal_generation = self.rename_reveal_generation.get();
         let mut target = crate::ui::collection_edit::EditTarget::from(edit.clone());
+        target.naming = naming;
         let browser = Rc::downgrade(&self.browser);
         let location = entry.location.clone();
         target.cancelled = Some(Rc::new(move || {
@@ -1320,15 +1385,101 @@ impl ViewState {
         cancelled
     }
 
-    fn submit_rename_entry(self: &Rc<Self>, entry: FileEntry, name: String) {
+    /// Tab in a rename: commits the name, then opens the editor on the next item
+    /// (`direction` 1) or the previous one (-1). At the listing's edge it only commits.
+    pub(in crate::ui) fn advance_rename(self: &Rc<Self>, direction: i32) -> bool {
+        let field = self
+            .active_rename
+            .borrow()
+            .as_ref()
+            .map(|active| active.field.clone())
+            .or_else(|| self.mode_views.borrow().active_rename_field());
+        let Some(field) = field else {
+            return false;
+        };
+        let before = self
+            .browser
+            .rename_item()
+            .map(|(depth, position, _)| (depth, position));
+        self.submit_rename(&field);
+        // The committed row must not pull the cursor back once its rename lands.
+        self.yield_rename_reveal();
+        self.browser.move_selection(direction);
+        if let Some((depth, position, entry)) = self.browser.rename_item()
+            && before != Some((depth, position))
+        {
+            self.rename_when_shown(depth, position, entry);
+        }
+        true
+    }
+
+    fn rename_when_shown(self: &Rc<Self>, depth: usize, position: usize, entry: FileEntry) {
+        if self.begin_rename_item(depth, position, entry.clone(), Naming::Path) {
+            return;
+        }
+        let weak = Rc::downgrade(self);
+        let reveal_generation = self.rename_reveal_generation.get();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        // The neighbouring row is allocated a frame after the scroll that showed it.
+        self.overlay.add_tick_callback(move |_, _| {
+            let Some(state) = weak.upgrade() else {
+                return gtk::glib::ControlFlow::Break;
+            };
+            let current = state.browser.rename_item().is_some_and(
+                |(current_depth, current_position, current)| {
+                    (current_depth, current_position) == (depth, position)
+                        && current.location == entry.location
+                },
+            );
+            if !current
+                || std::time::Instant::now() >= deadline
+                || state.rename_reveal_generation.get() != reveal_generation
+            {
+                return gtk::glib::ControlFlow::Break;
+            }
+            if state.begin_rename_item(depth, position, entry.clone(), Naming::Path) {
+                gtk::glib::ControlFlow::Break
+            } else {
+                gtk::glib::ControlFlow::Continue
+            }
+        });
+    }
+
+    fn submit_rename_entry(self: &Rc<Self>, submission: crate::ui::collection_edit::Submission) {
+        let path = submission.path();
+        let new_item = submission.naming == Naming::NewItem;
+        let crate::ui::collection_edit::Submission { entry, name, .. } = submission;
+        let name = match path {
+            Some(path) if !path.is_rename_of(entry.is_directory()) => {
+                let first = path.first().to_owned();
+                let replacement = entry
+                    .location
+                    .parent()
+                    .and_then(|parent| path.start(&parent))
+                    .and_then(|start| start.child(std::ffi::OsStr::new(&first)));
+                let generation =
+                    self.start_pending_rename(&entry, first.clone(), Some(replacement));
+                // A row leaving for a folder above keeps its name until it goes.
+                if path.up == 0 {
+                    self.update_rename_labels(&entry.location, None, &first);
+                }
+                self.queue_pending_rename(generation, move |browser| {
+                    browser.place_entry(entry, path, new_item)
+                });
+                return;
+            }
+            // A folder typed with a trailing slash is still just named.
+            Some(path) => path.name,
+            None => name,
+        };
         let valid_change = name != entry.display_name && validate_basename(&name).is_ok();
         if !valid_change {
             self.browser.clear_group_folder();
             return;
         }
-        let generation = self.start_pending_rename(&entry, name.clone());
+        let generation = self.start_pending_rename(&entry, name.clone(), None);
         self.update_rename_labels(&entry.location, None, &name);
-        self.queue_pending_rename(entry, name, generation);
+        self.queue_pending_rename(generation, move |browser| browser.rename(entry, name));
     }
 
     pub(in crate::ui) fn submit_mode_rename(self: &Rc<Self>, field: &gtk::Entry) {
@@ -1337,10 +1488,10 @@ impl ViewState {
             .try_borrow_mut()
             .ok()
             .and_then(|mode_views| mode_views.take_active_rename(field));
-        let Some((entry, name)) = active_rename else {
+        let Some(submission) = active_rename else {
             return;
         };
-        self.submit_rename_entry(entry, name);
+        self.submit_rename_entry(submission);
     }
 
     pub(super) fn submit_rename(self: &Rc<Self>, field: &gtk::Entry) {
@@ -1355,11 +1506,11 @@ impl ViewState {
             self.submit_mode_rename(field);
             return;
         }
-        let Some((entry, name)) =
+        let Some(submission) =
             crate::ui::collection_edit::take_submission(&self.active_rename, field)
         else {
             return;
         };
-        self.submit_rename_entry(entry, name);
+        self.submit_rename_entry(submission);
     }
 }

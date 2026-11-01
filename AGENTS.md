@@ -89,7 +89,8 @@ pass before merge.
   `./scripts/qa.sh arrow-keys-move-focus/columns-arrows`; `qa.sh` rejects unknown
   names and fails a selection that runs no scenario. `scripts/qa.sh` is the
   canonical pinned-container GUI runner. `scripts/quality.sh` accepts only
-  `all`, `fmt`, `clippy`, or `test` and does not forward test filters.
+  `all`, `fmt`, `clippy`, or `test`, plus `--jobs N` and `--refresh-timings`
+  for the test phase, and does not forward test filters.
 - Use full pinned `./scripts/quality.sh` phases and a full `./scripts/qa.sh`
   run when impact is broad or uncertain. Escalate to both for shared infrastructure, dependencies,
   build/CI/harness code, cross-cutting behavior, or uncertain coverage.

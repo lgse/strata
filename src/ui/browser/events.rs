@@ -721,6 +721,7 @@ impl ViewState {
             }
             BrowserEvent::RenameCompleted { request_id } => {
                 self.complete_pending_rename(*request_id);
+                self.complete_typed_placement(*request_id);
                 if let Some(recovered) = self.take_recovered_item() {
                     self.rename_created_entry(&recovered);
                 }
@@ -1315,7 +1316,11 @@ impl ViewState {
         }
     }
 
-    fn apply_transfer_reveal(self: &Rc<Self>, destination: Location, mut locations: Vec<Location>) {
+    pub(super) fn apply_transfer_reveal(
+        self: &Rc<Self>,
+        destination: Location,
+        mut locations: Vec<Location>,
+    ) {
         if locations.len() > MAX_BULK_REVEAL_SELECTION {
             locations.truncate(1);
         }
