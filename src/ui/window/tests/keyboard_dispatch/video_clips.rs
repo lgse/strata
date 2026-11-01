@@ -169,6 +169,7 @@ fn enter_on_a_video_preview_opens_it_where_it_stopped() {
             preferences.set_tenxer_mode(true);
             preferences.set_group_by_type(false);
             preferences.set_preview_autoplay(false);
+            preferences.set_preview_video_start(0);
             let browser = fixture.view.browser();
             fixture.preview.observe_browser(&browser);
             fixture.view.refresh();

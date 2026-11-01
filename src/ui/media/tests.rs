@@ -89,7 +89,7 @@ fn resume_where_the_preview_closed() {
     assert_eq!(*calls.borrow(), vec![0]);
     assert!(media.imp().first_frame.get());
     media.close();
-    assert_eq!(recall_media_position(Path::new("/shortened")), None);
+    assert_eq!(recall_media_position(Path::new("/shortened")), Some(0));
 
     let (media, calls) = open_restoring("/ended", media::timestamp(900));
     drive_until(&media, &calls, 2);
@@ -98,13 +98,13 @@ fn resume_where_the_preview_closed() {
     }
     media.imp().position.set(TEST_DURATION_US);
     media.close();
-    assert_eq!(recall_media_position(Path::new("/ended")), None);
+    assert_eq!(recall_media_position(Path::new("/ended")), Some(0));
 
     let (media, calls) = open_restoring("/ended", media::timestamp(900));
     drive_until(&media, &calls, 2);
     media.imp().position.set(RESTORE_MIN_US);
     media.close();
-    assert_eq!(recall_media_position(Path::new("/ended")), None);
+    assert_eq!(recall_media_position(Path::new("/ended")), Some(0));
 
     remember_media_position("/movie.ogg".into(), media::timestamp(900));
     let media = DecodedMedia::new(SandboxedMedia {
@@ -146,6 +146,101 @@ fn resume_where_the_preview_closed() {
     media.imp().position.set(media::timestamp(600));
     media.close();
     assert_eq!(recall_media_position(Path::new("/song")), None);
+}
+
+fn open_starting(path: &str, percent: u32) -> (DecodedMedia, Rc<RefCell<Vec<u32>>>) {
+    let media = DecodedMedia::new(test_source(path));
+    media.set_start_percent(percent);
+    let calls = Rc::new(RefCell::new(Vec::new()));
+    media.imp().loader.replace(Some(fake_loader(&calls)));
+    media.upcast_ref::<gtk::MediaStream>().play();
+    (media, calls)
+}
+
+fn settle(media: &DecodedMedia) {
+    for _ in 0..20 {
+        media.tick().expect("tick succeeds");
+    }
+}
+
+#[test]
+fn first_video_preview_starts_at_the_configured_percent() {
+    crate::test_support::gtk_test(
+        "ui::media::tests::first_video_preview_starts_at_the_configured_percent",
+        start_at_the_configured_percent,
+    );
+}
+
+fn start_at_the_configured_percent() {
+    let start = media::seek_tick(TEST_DURATION_US / 5, TEST_DURATION_US);
+    let (media, calls) = open_starting("/fresh", 20);
+    drive_until(&media, &calls, 2);
+    settle(&media);
+    assert_eq!(*calls.borrow(), vec![0, start]);
+    media.close();
+
+    remember_media_position("/watched".into(), media::timestamp(900));
+    let (media, calls) = open_starting("/watched", 20);
+    drive_until(&media, &calls, 2);
+    settle(&media);
+    assert_eq!(
+        *calls.borrow(),
+        vec![0, 900],
+        "a remembered position wins over the configured start"
+    );
+    media.close();
+
+    for (path, closed_at) in [
+        ("/restarted", RESTORE_MIN_US),
+        ("/finished", TEST_DURATION_US),
+    ] {
+        let (media, calls) = open_starting(path, 20);
+        drive_until(&media, &calls, 2);
+        settle(&media);
+        media.imp().position.set(closed_at);
+        media.close();
+        let (media, calls) = open_starting(path, 20);
+        drive_until(&media, &calls, 1);
+        settle(&media);
+        assert_eq!(
+            *calls.borrow(),
+            vec![0],
+            "{path}: a video left in its first second or at its end reopens at 0:00"
+        );
+        media.close();
+    }
+
+    let (media, calls) = open_starting("/beginning", 0);
+    drive_until(&media, &calls, 1);
+    settle(&media);
+    assert_eq!(*calls.borrow(), vec![0]);
+    media.close();
+
+    let media = DecodedMedia::new(SandboxedMedia {
+        audio_only: true,
+        ..test_source("/track")
+    });
+    media.set_start_percent(20);
+    let calls = Rc::new(RefCell::new(Vec::new()));
+    let audio_calls = calls.clone();
+    media.imp().loader.replace(Some(Rc::new(move |_, tick| {
+        audio_calls.borrow_mut().push(tick);
+        crate::sandbox::media::tests::stream(Header {
+            width: 0,
+            height: 0,
+            audio: true,
+            ..test_header(tick)
+        })
+    })));
+    media.upcast_ref::<gtk::MediaStream>().play();
+    drive_until(&media, &calls, 1);
+    settle(&media);
+    assert_eq!(
+        *calls.borrow(),
+        vec![0],
+        "audio always starts at the beginning"
+    );
+    media.close();
 }
 
 fn pcm(values: impl IntoIterator<Item = i16>) -> Vec<u8> {

@@ -131,6 +131,7 @@ mod imp {
         pub(super) audio_anchored: Cell<bool>,
         pub(super) audio_chunks: Cell<u32>,
         pub(super) restore: Cell<Option<u64>>,
+        pub(super) start_percent: Cell<u32>,
         pub(super) history: RefCell<Option<PcmHistory>>,
         pub(super) edge_grid: Cell<Option<ambient::EdgeGrid>>,
         pub(super) edge_sampled: Cell<Option<Instant>>,
@@ -308,6 +309,22 @@ impl DecodedMedia {
         obj
     }
 
+    /// A video not previewed earlier this session opens this far into its
+    /// duration. One already previewed resumes, at 0:00 when it was left in its
+    /// first second or at its end.
+    pub(crate) fn set_start_percent(&self, percent: u32) {
+        let previewed = self
+            .imp()
+            .source
+            .borrow()
+            .as_ref()
+            .is_some_and(|source| recall_media_position(&source.path).is_some());
+        let percent = if previewed { 0 } else { percent };
+        self.imp()
+            .start_percent
+            .set(percent.min(crate::ui::preferences::MAX_PREVIEW_VIDEO_START));
+    }
+
     pub(crate) fn source(&self) -> Option<SandboxedMedia> {
         self.imp().source.borrow().clone()
     }
@@ -429,11 +446,11 @@ impl DecodedMedia {
         if let Some(source) = imp.source.borrow().as_ref() {
             let position = imp.position.get();
             let duration = self.duration().max(0) as u64;
-            if imp.header.get().is_some_and(|header| header.width > 0)
-                && position > RESTORE_MIN_US
-                && (duration == 0 || position < duration)
-            {
-                remember_media_position(source.path.clone(), position);
+            if imp.header.get().is_some_and(|header| header.width > 0) {
+                // A video closed in its first second or at its end reopens at
+                // 0:00, not at the configured start: remember it as previewed.
+                let resumable = position > RESTORE_MIN_US && (duration == 0 || position < duration);
+                remember_media_position(source.path.clone(), if resumable { position } else { 0 });
             } else {
                 forget_media_position(&source.path);
             }
@@ -732,6 +749,7 @@ impl DecodedMedia {
             let event = imp.session.borrow().as_ref().and_then(Session::receive);
             match event {
                 Some(Event::Prepared(header)) => {
+                    let start = imp.start_percent.take();
                     if let Some(saved) = imp.restore.take()
                         && header.width > 0
                         && saved < header.duration_us
@@ -740,6 +758,16 @@ impl DecodedMedia {
                         self.invalidate_size();
                         tracing::debug!(position_us = saved, "resuming media preview");
                         self.restart_at(saved);
+                        break;
+                    }
+                    let start = (header.width > 0 && header.duration_us != media::MAX_DURATION_US)
+                        .then(|| header.duration_us / 100 * u64::from(start))
+                        .filter(|&position| position > 0);
+                    if let Some(position) = start {
+                        imp.header.set(Some(header));
+                        self.invalidate_size();
+                        tracing::debug!(position_us = position, "starting video preview");
+                        self.restart_at(position);
                         break;
                     }
                     let audio = header.audio.then(|| self.pcm_output()).transpose()?;

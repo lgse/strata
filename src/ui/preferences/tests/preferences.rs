@@ -105,6 +105,7 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
     saved.remove("folder_peeking");
     saved.remove("columns_show_sizes");
     saved.remove("language");
+    saved.remove("preview_video_start");
     let restored: Preferences = saved.try_into().expect("backward-compatible preferences");
     assert_eq!(
         restored,
@@ -121,6 +122,7 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
             file_icon_colors: FileIconColors::Brand,
             folder_peeking: false,
             columns_show_sizes: true,
+            preview_video_start: 0,
             ..non_default_preferences()
         }
     );
@@ -912,6 +914,40 @@ fn unlisted_search_limits_round_up_on_load_and_set() {
 }
 
 #[test]
+fn video_starts_past_the_maximum_clamp_on_load_and_set() {
+    gtk_test(
+        "ui::preferences::tests::preferences::video_starts_past_the_maximum_clamp_on_load_and_set",
+        || {
+            for (stored, expected) in [(0, 0), (15, 15), (99, 99), (100, 99), (5_000, 99)] {
+                assert_recovered_preferences_survive_save(
+                    |saved| {
+                        saved.insert("preview_video_start".into(), i64::from(stored).into());
+                    },
+                    Preferences {
+                        preview_video_start: expected,
+                        ..non_default_preferences()
+                    },
+                );
+            }
+
+            seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
+            for (requested, expected) in [(25, 25), (u32::MAX, 99), (7, 7), (0, 0)] {
+                manager.set_preview_video_start(requested);
+                assert_eq!(manager.preview_video_start(), expected);
+                crate::storage::writer::settle();
+                assert_eq!(
+                    read_preferences()
+                        .expect("saved preferences")
+                        .preview_video_start,
+                    expected
+                );
+            }
+        },
+    );
+}
+
+#[test]
 fn fresh_preferences_select_tokyo_night_before_settings_opens() {
     gtk_test(
         "ui::preferences::tests::preferences::fresh_preferences_select_tokyo_night_before_settings_opens",
@@ -1119,6 +1155,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert!(manager.preview_text_wrap());
             assert_eq!(manager.unit_system(), UnitSystem::Imperial);
             assert!(manager.preview_autoplay());
+            assert_eq!(manager.preview_video_start(), 20);
             assert!(!manager.watch_network_folders());
             assert_eq!(manager.thumbnail_workers(), 6);
             assert!(!manager.show_thumbnails());
@@ -1582,6 +1619,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_preview_text_wrap(false),
                 |m| m.set_unit_system(UnitSystem::Metric),
                 |m| m.set_preview_autoplay(false),
+                |m| m.set_preview_video_start(0),
                 |m| m.set_watch_network_folders(true),
                 |m| m.set_thumbnail_workers(3),
                 |m| m.set_show_thumbnails(true),
