@@ -413,11 +413,13 @@ impl Plan {
         copy_new_with_ownership(
             item.source.clone(),
             item.target.clone(),
-            transfer.taken,
-            self.cancellable.clone(),
-            Some(self.progress.clone()),
-            self.names.clone(),
-            None,
+            NewCopy {
+                taken: transfer.taken,
+                cancellable: self.cancellable.clone(),
+                progress: Some(self.progress.clone()),
+                names: self.names.clone(),
+                left: None,
+            },
         )
         .await
         .map(|(target, ownership)| {
