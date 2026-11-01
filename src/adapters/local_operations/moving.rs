@@ -508,7 +508,7 @@ pub(super) fn attempt_move(progress: Option<Rc<TransferProgressTracker>>) -> Mov
                 .file_type()
                     == gio::FileType::Directory;
             let flags = gio::FileCopyFlags::ALL_METADATA | gio::FileCopyFlags::NOFOLLOW_SYMLINKS;
-            let moved = first_free_target(&target, taken, is_directory, &cancellable, |target| {
+            let moved = first_free_target(&target, (taken, is_directory), &cancellable, |target| {
                 let reporter = move_progress
                     .as_ref()
                     .and_then(FileTransferProgress::reporter);

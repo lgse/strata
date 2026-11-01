@@ -136,7 +136,7 @@ pub(super) async fn copy_new_remote_file_with(
         let cleanup = discard_incomplete_copy(stage).await;
         return Err(copy_failure_after_cleanup(error, cleanup));
     }
-    let committed = first_free_target(&target, taken, false, &cancellable, |target| {
+    let committed = first_free_target(&target, (taken, false), &cancellable, |target| {
         commit_stage(stage.clone(), target, cancellable.clone())
     })
     .await;
@@ -439,7 +439,7 @@ pub(super) async fn copy_new_with_ownership(
     }
 
     let left_out = left.clone().unwrap_or_default();
-    let copied = first_free_target(&target, taken, is_directory, &cancellable, |target| {
+    let copied = first_free_target(&target, (taken, is_directory), &cancellable, |target| {
         let (source, cancellable, progress) =
             (source.clone(), cancellable.clone(), progress.clone());
         let names = GioNames::new(names.clone(), left_out.clone());

@@ -19,14 +19,14 @@ async fn run(
     let Some((plan, state)) = prepare(request, emit, cancellable).await else {
         return;
     };
-    let parallel = parallel_copy_plans(
-        &plan.request,
-        &plan.sources,
-        &plan.destination,
-        &plan.planned,
-        &plan.sizes.kinds,
-        plan.profile.windows_disk(),
-    )
+    let parallel = parallel_copy_plans(PastePlan {
+        request: &plan.request,
+        sources: &plan.sources,
+        destination: &plan.destination,
+        planned: &plan.planned,
+        kinds: &plan.sizes.kinds,
+        windows_disk: plan.profile.windows_disk(),
+    })
     .await;
     match parallel {
         Some((plans, worker_count)) => run_parallel(&plan, state, &plans, worker_count).await,
@@ -100,8 +100,7 @@ async fn prepare(
         &request.items,
         &sources,
         &rules,
-        (&crossing, &duplicate),
-        &sizes.kinds,
+        (&crossing, &duplicate, &sizes.kinds),
     ) {
         Ok(planned) => planned,
         Err(error) => {
@@ -271,14 +270,19 @@ async fn run_parallel(
             .affected_locations
             .insert(copy.target_location.clone());
     }
-    let outcome = execute_parallel_copy_plans(
+    let outcome = ParallelCopy {
         plans,
-        (&plan.sizes.sizes, &plan.sizes.files),
-        (worker_count, plan.request.move_sources),
-        &plan.cancellable,
-        &plan.copying,
-        (&mut state.settling, &mut state.variants),
-    )
+        sizes: &plan.sizes,
+        worker_count,
+        transferring: Transferring {
+            moving: plan.request.move_sources,
+            cancellable: plan.cancellable.clone(),
+            copying: plan.copying.clone(),
+        },
+        settling: &mut state.settling,
+        variants: &mut state.variants,
+    }
+    .run()
     .await;
     state.settling.finish().await;
     let unfinished = !outcome.failed.is_empty() || outcome.next < plans.len();
