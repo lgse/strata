@@ -80,6 +80,7 @@ fn set_tags_foreground(table: &gtk::TextTagTable, value: &str, names: &[&str]) {
         }
     }
 }
+
 fn style_highlight_tags(table: &gtk::TextTagTable, mut color: gdk::RGBA) {
     color.set_alpha(0.36);
     if let Some(tag) = table.lookup("document-quote") {
