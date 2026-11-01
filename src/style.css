@@ -2586,13 +2586,19 @@ scrollbar.horizontal > range > trough > slider {
   padding-bottom: 2px;
 }
 
+/* Spans the sidebar like .sidebar-separator so the hover fill meets the divider lines. */
 .sidebar-heading-toggle {
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: 0;
   box-shadow: none;
-  min-height: 30px;
-  padding: 3px 8px;
+  margin: 0 -7px;
+  min-height: 24px;
+  padding: 0 15px;
+}
+
+.sidebar-separator + .sidebar-heading-toggle {
+  margin-top: -6px;
 }
 
 .sidebar-heading-toggle:hover {
@@ -2603,7 +2609,7 @@ scrollbar.horizontal > range > trough > slider {
   background: @strata_highlight;
 }
 
-.sidebar-heading-toggle:focus {
+.sidebar-heading-toggle:focus-visible {
   outline: 1px solid @strata_accent;
   outline-offset: -1px;
 }

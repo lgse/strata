@@ -2566,6 +2566,7 @@ impl SidebarState {
         let toggle = gtk::Button::builder()
             .child(&content)
             .has_frame(false)
+            .focus_on_click(false)
             .build();
         toggle.add_css_class("sidebar-heading-toggle");
         toggle.set_cursor_from_name(Some("pointer"));
