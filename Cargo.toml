@@ -45,7 +45,7 @@ gstreamer = { version = "0.25.3", features = ["v1_20"] }
 gstreamer-app = { version = "0.25.2", features = ["v1_20"] }
 gtk = { package = "gtk4", version = "0.11.4", features = ["v4_12"] }
 hex = "0.4.3"
-html5gum = { version = "0.8", default-features = false }
+html5gum = { version = "0.9", default-features = false }
 ignore = "0.4.23"
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
 kamadak-exif = "0.6.1"
