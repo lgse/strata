@@ -105,11 +105,12 @@ pub(in crate::ui) fn present_target(
             location,
             selection,
             properties,
+            preference_manager,
         };
         let idle_browser = browser.clone();
         glib::idle_add_local_once(move || {
             let started = std::time::Instant::now();
-            first_folder.open(&tabs, &idle_browser, &preference_manager, started);
+            first_folder.open(&tabs, &idle_browser, started);
             tracing::debug!(
                 elapsed_ms = started.elapsed().as_millis() as u64,
                 "present navigation started"
@@ -125,6 +126,7 @@ struct FirstFolder {
     location: Option<Location>,
     selection: Vec<Location>,
     properties: bool,
+    preference_manager: Rc<PreferenceManager>,
 }
 
 impl FirstFolder {
@@ -132,7 +134,6 @@ impl FirstFolder {
         self,
         tabs: &Rc<composition::TabWindow>,
         browser: &BrowserView,
-        preference_manager: &Rc<PreferenceManager>,
         started: std::time::Instant,
     ) {
         if self.restore && tabs.try_restore() {
@@ -147,7 +148,7 @@ impl FirstFolder {
                 browser.reveal_locations(location, self.selection, self.properties);
             }
             Some(location) => browser.navigate_location(location),
-            None => open_default_folder(&browser.browser(), preference_manager),
+            None => open_default_folder(&browser.browser(), &self.preference_manager),
         }
     }
 }
