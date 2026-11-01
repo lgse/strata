@@ -3,10 +3,13 @@
 use gtk::{gio, prelude::*};
 
 use super::{
-    BrowserMode, ModeViews, Pane, STATUS_PAGE,
+    BrowserMode, ModeViews,
+    focus::{pane_contains_focus, reload_focus_fell_back},
+    metadata::{update_bound_icons_metadata, update_bound_list_metadata},
     navigation::{FocusOwner, RestoreFocus},
-    pane_contains_focus, reconnect_pane_model, reload_focus_fell_back, replace_entries, select_all,
-    set_selections, show_count, update_bound_icons_metadata, update_bound_list_metadata,
+    pane::{Pane, STATUS_PAGE, reconnect_pane_model, replace_entries, show_count},
+    selection::{select_all, set_selections},
+    type_groups::{pane_type_group_sorter, type_group_header_factory},
 };
 use crate::{
     app::{Browser, BrowserEvent, EntryInsertion, EntrySplice, SelectionUpdate},
@@ -323,11 +326,11 @@ impl ModeViews {
         // after the complete camera snapshot is sorted. Keep the existing view,
         // selection model and both scrollers instead of resetting the viewport.
         list.set_header_factory(None::<&gtk::ListItemFactory>);
-        let sorter = grouped.then(|| super::pane_type_group_sorter(&self.browser, pane.depth));
+        let sorter = grouped.then(|| pane_type_group_sorter(&self.browser, pane.depth));
         model.set_sorter(sorter.as_ref().map(|sorter| &sorter.sorter));
         pane.type_group_sorter = sorter;
         if grouped {
-            list.set_header_factory(Some(&super::type_group_header_factory()));
+            list.set_header_factory(Some(&type_group_header_factory()));
         }
         pane.group_by_type = grouped;
         pane.section.syncing.set(was_syncing);

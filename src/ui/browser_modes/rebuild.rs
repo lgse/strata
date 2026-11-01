@@ -1,0 +1,243 @@
+// SPDX-License-Identifier: MIT
+
+//! Switching presentations, and building, reusing, or clearing the pane each shows.
+
+use std::{cell::Cell, rc::Rc};
+
+use gtk::prelude::*;
+
+use super::{
+    BrowserMode, ClickActivation, ModeViews,
+    icons_pane::{IconsOptions, build_icons_pane, configure_icons_density},
+    list_pane::build_list_pane,
+    pane::{
+        ModeClickOptions, Pane, PaneBuild, apply_snapshot, clear_box, deactivate_pane_models,
+        detach_pane_models, install_pane_surface,
+    },
+};
+use crate::{
+    app::BrowserColumnSnapshot, model::SortKey, ui::preferences::PreferenceManager,
+};
+
+impl ModeViews {
+    pub fn cancel_pending_restore(&mut self) {
+        self.cursor_focus_generation
+            .set(self.cursor_focus_generation.get().wrapping_add(1));
+        self.pane_navigation.borrow_mut().cancel();
+    }
+
+    pub fn prepare_mode(&mut self, mode: BrowserMode) {
+        if self.mode == mode {
+            return;
+        }
+        self.cancel_rename();
+        self.cancel_pending_restore();
+        self.mode = mode;
+        match mode {
+            BrowserMode::Columns => {}
+            BrowserMode::Icons => self.prepare_icons(),
+            BrowserMode::List => self.prepare_list(),
+        }
+    }
+
+    fn prepare_icons(&mut self) {
+        let Some(depth) = self.browser.active_depth() else {
+            self.clear_icons();
+            return;
+        };
+        let Some(snapshot) = self.browser.column_snapshot(depth) else {
+            return;
+        };
+        if let Some(pane) = self
+            .icons_panes
+            .first()
+            .filter(|pane| pane.shows(depth, &snapshot.location))
+        {
+            apply_snapshot(pane, &snapshot, &self.browser);
+            return;
+        }
+        self.rebuild_icons();
+    }
+
+    pub(super) fn grouping_for_snapshot(
+        &self,
+        depth: usize,
+        snapshot: &BrowserColumnSnapshot,
+    ) -> bool {
+        if snapshot.location.is_recent_root() {
+            return false;
+        }
+        // GTK 4.22 cannot safely section interleaved camera batches. Device order
+        // must also remain ungrouped after completion rather than reshuffling rows.
+        let device_order = self
+            .browser
+            .column_preferences(depth)
+            .is_some_and(|preferences| preferences.sort_key == SortKey::DeviceOrder);
+        let unsettled_camera =
+            snapshot.location.is_camera_photo_root() && (snapshot.loading || device_order);
+        self.group_by_type && !unsettled_camera
+    }
+
+    fn prepare_list(&mut self) {
+        let Some(depth) = self.browser.active_depth() else {
+            self.clear_list();
+            return;
+        };
+        let Some(snapshot) = self.browser.column_snapshot(depth) else {
+            return;
+        };
+        if let Some(pane) = self
+            .list_pane
+            .as_ref()
+            .filter(|pane| self.list_pane_is_current(pane, depth, &snapshot))
+        {
+            apply_snapshot(pane, &snapshot, &self.browser);
+            return;
+        }
+        self.rebuild_list();
+    }
+
+    /// The List pane already shows this folder with its grouping and sort.
+    fn list_pane_is_current(&self, pane: &Pane, depth: usize, snapshot: &BrowserColumnSnapshot) -> bool {
+        if !pane.shows(depth, &snapshot.location) {
+            return false;
+        }
+        if pane.group_by_type != self.grouping_for_snapshot(depth, snapshot) {
+            return false;
+        }
+        pane.sorting.as_ref().map(|sorting| sorting.get())
+            == self
+                .browser
+                .column_preferences(depth)
+                .map(|preferences| (preferences.sort_key, preferences.sort_direction))
+    }
+
+    pub fn show_mode(&self, mode: BrowserMode) {
+        self.stack.set_visible_child_name(match mode {
+            BrowserMode::Columns => "columns",
+            BrowserMode::Icons => "icons",
+            BrowserMode::List => "list",
+        });
+    }
+
+    pub fn clear_inactive_mode(&mut self, mode: BrowserMode) {
+        if self.mode == mode {
+            return;
+        }
+        match mode {
+            BrowserMode::Columns => {}
+            BrowserMode::Icons => self.icons_panes.iter().for_each(deactivate_pane_models),
+            BrowserMode::List => self.list_pane.iter().for_each(deactivate_pane_models),
+        }
+    }
+
+    pub(super) fn clear_icons(&mut self) {
+        self.pane_navigation.borrow_mut().cancel();
+        for pane in &self.icons_panes {
+            detach_pane_models(pane);
+        }
+        clear_box(&self.icons_root);
+        self.icons_panes.clear();
+    }
+
+    pub(super) fn clear_list(&mut self) {
+        self.pane_navigation.borrow_mut().cancel();
+        if let Some(pane) = self.list_pane.as_ref() {
+            detach_pane_models(pane);
+        }
+        clear_box(&self.list_root);
+        self.list_pane = None;
+    }
+
+    fn pane_build(
+        &self,
+        depth: usize,
+        title: String,
+        activation: &Rc<Cell<ClickActivation>>,
+    ) -> PaneBuild {
+        PaneBuild {
+            browser: self.browser.clone(),
+            depth,
+            title,
+            click: ModeClickOptions {
+                previews: self.single_click_previews.clone(),
+                activation: activation.clone(),
+                multiple_selection: self.multiple_selection.clone(),
+            },
+            transfer: self.transfer_handler.clone(),
+            marks: self.clipboard_marks.clone(),
+            state: self.context_state.borrow().clone(),
+            new_folder_state: self.new_folder_state.borrow().clone(),
+            search_selection_handlers: self.search_selection_handlers.clone(),
+            search_context_state: self.context_state.clone(),
+        }
+    }
+
+    pub(super) fn rebuild_icons(&mut self) {
+        let Some(depth) = self.browser.active_depth() else {
+            self.clear_icons();
+            return;
+        };
+        let Some(snapshot) = self.browser.column_snapshot(depth) else {
+            return;
+        };
+        self.clear_icons();
+        let size = PreferenceManager::shared().icons_size_for(Some(&snapshot.location));
+        self.icons_resolved_size.set(size);
+        self.icons_thumbnail_size.set(size);
+        let inputs = self.pane_build(
+            depth,
+            snapshot.location.display_name(),
+            &self.icons_click_activation,
+        );
+        let mut pane = build_icons_pane(
+            &inputs,
+            IconsOptions {
+                thumbnail_size: self.icons_thumbnail_size.clone(),
+                group_by_type: false,
+                density: self.density,
+            },
+        );
+        install_pane_surface(&pane, &self.browser, &snapshot.location.display_name());
+        configure_icons_density(&pane, self.density);
+        pane.folder_context_trigger = self.install_context_menu(&pane);
+        self.icons_root.append(&pane.shell);
+        apply_snapshot(&pane, &snapshot, &self.browser);
+        self.pane_navigation.borrow_mut().prepare(&pane, &snapshot);
+        self.icons_panes.push(pane);
+    }
+
+    pub(super) fn rebuild_list(&mut self) {
+        let Some(depth) = self.browser.active_depth() else {
+            self.clear_list();
+            return;
+        };
+        let Some(snapshot) = self.browser.column_snapshot(depth) else {
+            return;
+        };
+        self.clear_list();
+        let inputs = self.pane_build(
+            depth,
+            snapshot.location.display_name(),
+            &self.list_click_activation,
+        );
+        let mut pane = build_list_pane(&inputs, self.grouping_for_snapshot(depth, &snapshot));
+        install_pane_surface(&pane, &self.browser, &snapshot.location.display_name());
+        pane.folder_context_trigger = self.install_context_menu(&pane);
+        self.list_root.append(&pane.shell);
+        apply_snapshot(&pane, &snapshot, &self.browser);
+        self.pane_navigation.borrow_mut().prepare(&pane, &snapshot);
+        self.list_pane = Some(pane);
+    }
+
+    pub fn set_group_by_type(&mut self, enabled: bool) {
+        if self.group_by_type == enabled {
+            return;
+        }
+        self.cancel_rename();
+        self.group_by_type = enabled;
+        if self.mode.supports_type_grouping() {
+            self.rebuild_list();
+        }
+    }
+}
