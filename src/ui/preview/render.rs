@@ -226,7 +226,15 @@ impl PreviewState {
                 pages,
                 text_layer,
             } => {
-                self.render_pdf_viewer(preview.entry, png, page, pages, text_layer);
+                self.render_pdf_viewer(
+                    preview.entry,
+                    pdf::PdfFirstPage {
+                        png,
+                        page,
+                        text_layer,
+                    },
+                    pages,
+                );
             }
             PreviewContent::Archive { tree } => {
                 let focus = self.focus_archive_request.get() == Some(preview.request_id);
