@@ -35,7 +35,12 @@ impl Browser {
             self.root_identity.take();
         }
         self.monitors.borrow_mut().push(ColumnMonitor::default());
-        let handle = self.request_directory(depth, location, request_id, false);
+        let handle = self.request_directory(DirectoryLoad {
+            depth,
+            location,
+            request_id,
+            background: false,
+        });
         self.loads.borrow_mut().push(handle);
     }
 
@@ -79,15 +84,21 @@ impl Browser {
             }
         });
         let weak: Weak<Self> = Rc::downgrade(self);
-        let (reported, checked, baseline) = (state.clone(), location.clone(), baseline.cloned());
+        let gap = MonitorGap {
+            depth,
+            state: state.clone(),
+            gap_check,
+            location: location.clone(),
+        };
+        let baseline = baseline.cloned();
         let report = Rc::new(move |watching| {
             let browser = weak.upgrade();
             match (watching, &browser, &baseline) {
-                (Watching::Unavailable, ..) => reported.set(MonitorState::Unavailable),
+                (Watching::Unavailable, ..) => gap.state.set(MonitorState::Unavailable),
                 (Watching::Live, Some(browser), Some(baseline)) => {
-                    browser.check_monitor_gap(depth, &reported, &gap_check, &checked, baseline);
+                    browser.check_monitor_gap(&gap, baseline);
                 }
-                (Watching::Live, ..) => reported.set(MonitorState::Active),
+                (Watching::Live, ..) => gap.state.set(MonitorState::Active),
             }
             if let Some(browser) = browser {
                 browser.reschedule_freshness();
@@ -105,43 +116,41 @@ impl Browser {
         }
     }
 
-    pub(super) fn check_monitor_gap(
-        self: &Rc<Self>,
-        depth: usize,
-        state: &Rc<Cell<MonitorState>>,
-        gap_check: &Rc<RefCell<Option<LoadHandle>>>,
-        location: &Location,
-        baseline: &DirectoryStamp,
-    ) {
+    /// A monitor that went live after the listing may have missed changes in
+    /// between; a moved stamp reloads the column.
+    fn check_monitor_gap(self: &Rc<Self>, gap: &MonitorGap, baseline: &DirectoryStamp) {
         let weak: Weak<Self> = Rc::downgrade(self);
-        let (state, checked, baseline) = (state.clone(), location.clone(), baseline.clone());
+        let depth = gap.depth;
+        let (state, checked, baseline) =
+            (gap.state.clone(), gap.location.clone(), baseline.clone());
         let probe = self.source.probe_stamp(
-            location.clone(),
+            gap.location.clone(),
             Rc::new(move |answer| {
                 state.set(MonitorState::Active);
                 let Some(browser) = weak.upgrade() else {
                     return;
                 };
                 browser.reschedule_freshness();
-                let current = browser
-                    .monitors
-                    .borrow()
-                    .get(depth)
-                    .is_some_and(|monitor| Rc::ptr_eq(&monitor.state, &state))
-                    && browser.location_at(depth).as_ref() == Some(&checked);
-                let moved = match answer {
-                    StampAnswer::Stamp(stamp) => {
-                        stamp.moved_since(&baseline) || baseline.may_hide_changes()
-                    }
-                    StampAnswer::Missing => true,
-                    _ => false,
-                };
-                if current && moved {
+                let current = browser.monitor_still_watches(depth, &state, &checked);
+                if current && stamp_moved(&answer, &baseline) {
                     browser.refresh_column_preserving_entries(depth);
                 }
             }),
         );
-        gap_check.replace(Some(probe));
+        gap.gap_check.replace(Some(probe));
+    }
+
+    fn monitor_still_watches(
+        &self,
+        depth: usize,
+        state: &Rc<Cell<MonitorState>>,
+        location: &Location,
+    ) -> bool {
+        self.monitors
+            .borrow()
+            .get(depth)
+            .is_some_and(|monitor| Rc::ptr_eq(&monitor.state, state))
+            && self.location_at(depth).as_ref() == Some(location)
     }
 
     pub(super) fn apply_owned_batch(
@@ -219,13 +228,13 @@ impl Browser {
         }
     }
 
-    pub(super) fn request_directory(
-        self: &Rc<Self>,
-        depth: usize,
-        location: Location,
-        request_id: RequestId,
-        background: bool,
-    ) -> LoadHandle {
+    pub(super) fn request_directory(self: &Rc<Self>, load: DirectoryLoad) -> LoadHandle {
+        let DirectoryLoad {
+            depth,
+            location,
+            request_id,
+            background,
+        } = load;
         self.note_listing_started(depth, request_id, background);
         let weak: Weak<Self> = Rc::downgrade(self);
         let emit = Rc::new(move |event| {
@@ -264,5 +273,29 @@ impl Browser {
             },
             emit,
         )
+    }
+}
+
+/// One column listing to start.
+pub(super) struct DirectoryLoad {
+    pub(super) depth: usize,
+    pub(super) location: Location,
+    pub(super) request_id: RequestId,
+    pub(super) background: bool,
+}
+
+/// The monitor of one column, checked for changes it may have missed while starting.
+struct MonitorGap {
+    depth: usize,
+    state: Rc<Cell<MonitorState>>,
+    gap_check: Rc<RefCell<Option<LoadHandle>>>,
+    location: Location,
+}
+
+fn stamp_moved(answer: &StampAnswer, baseline: &DirectoryStamp) -> bool {
+    match answer {
+        StampAnswer::Stamp(stamp) => stamp.moved_since(baseline) || baseline.may_hide_changes(),
+        StampAnswer::Missing => true,
+        _ => false,
     }
 }

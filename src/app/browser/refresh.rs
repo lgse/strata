@@ -7,6 +7,7 @@ use std::{
 
 use crate::{model::Location, services::Responsiveness};
 
+use super::listing::DirectoryLoad;
 use super::{Browser, BrowserEvent, KeptListing, MAX_INCREMENTAL_OPERATION_UPDATES, MonitorState};
 
 impl Browser {
@@ -197,7 +198,12 @@ impl Browser {
             }
         };
         self.emit(BrowserEvent::ColumnRefreshing { depth });
-        let handle = self.request_directory(depth, location, request_id, background);
+        let handle = self.request_directory(DirectoryLoad {
+            depth,
+            location,
+            request_id,
+            background,
+        });
         if let Some(load) = self.loads.borrow_mut().get_mut(depth) {
             *load = handle;
         }
@@ -233,7 +239,12 @@ impl Browser {
         };
         Self::refresh_search_indexes_for(&location, None);
         self.emit(BrowserEvent::ColumnReloaded { depth });
-        let handle = self.request_directory(depth, location, request_id, false);
+        let handle = self.request_directory(DirectoryLoad {
+            depth,
+            location,
+            request_id,
+            background: false,
+        });
         if let Some(load) = self.loads.borrow_mut().get_mut(depth) {
             *load = handle;
         }
