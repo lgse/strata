@@ -23,50 +23,63 @@ pub(super) fn point_at(
         })
         .collect::<Vec<_>>();
     rows.sort_by_key(|(index, _, _)| *index);
-    let y = y as f32;
-    let (index, row, bounds) = rows
-        .iter()
+    let (index, row, bounds) = row_nearest(&rows, point.y())?;
+    let unit = state.units.get(*index)?;
+    let at = |offset| {
+        Some(SelectionPoint {
+            unit: *index,
+            offset,
+        })
+    };
+    if point.y() < bounds.y() || point.y() > bounds.y() + bounds.height() {
+        return at(if point.y() < bounds.y() {
+            0
+        } else {
+            unit.selection_len()
+        });
+    }
+    if row.table.upgrade().is_some() {
+        return at(usize::from(point.x() >= bounds.x() + bounds.width() / 2.0));
+    }
+    let Some(view) = row.view.upgrade() else {
+        return at(if point.y() >= bounds.y() + bounds.height() / 2.0 {
+            unit.selection_len()
+        } else {
+            0
+        });
+    };
+    at(text_offset_at(list, &view, &point, bounds).min(unit.selection_len()))
+}
+
+/// The row under `y`, or the closest one when `y` falls between rows.
+fn row_nearest<'a, T>(
+    rows: &'a [(usize, T, gtk::graphene::Rect)],
+    y: f32,
+) -> Option<&'a (usize, T, gtk::graphene::Rect)> {
+    rows.iter()
         .find(|(_, _, bounds)| bounds.y() <= y && y <= bounds.y() + bounds.height())
         .or_else(|| {
             rows.iter().min_by(|(_, _, left), (_, _, right)| {
                 vertical_distance(left, y).total_cmp(&vertical_distance(right, y))
             })
-        })?;
-    let unit = state.units.get(*index)?;
-    if y < bounds.y() || y > bounds.y() + bounds.height() {
-        return Some(SelectionPoint {
-            unit: *index,
-            offset: if y < bounds.y() {
-                0
-            } else {
-                unit.selection_len()
-            },
-        });
-    }
-    if row.table.upgrade().is_some() {
-        return Some(SelectionPoint {
-            unit: *index,
-            offset: usize::from(x as f32 >= bounds.x() + bounds.width() / 2.0),
-        });
-    }
-    let Some(view) = row.view.upgrade() else {
-        return Some(SelectionPoint {
-            unit: *index,
-            offset: if y >= bounds.y() + bounds.height() / 2.0 {
-                unit.selection_len()
-            } else {
-                0
-            },
-        });
-    };
-    let local = list.compute_point(&view, &point).unwrap_or_else(|| {
+        })
+}
+
+/// The character offset nearest `point`, a list coordinate inside the row `bounds`.
+fn text_offset_at(
+    list: &gtk::ListView,
+    view: &super::super::document_view::DocumentTextView,
+    point: &gtk::graphene::Point,
+    bounds: &gtk::graphene::Rect,
+) -> usize {
+    let local = list.compute_point(view, point).unwrap_or_else(|| {
         gtk::graphene::Point::new(
-            if x as f32 <= bounds.x() {
+            if point.x() <= bounds.x() {
                 0.0
             } else {
                 view.width() as f32
             },
-            (y - bounds.y()).clamp(0.0, view.height().saturating_sub(1) as f32),
+            (point.y() - bounds.y()).clamp(0.0, view.height().saturating_sub(1) as f32),
         )
     });
     let (buffer_x, buffer_y) = view.window_to_buffer_coords(
@@ -74,25 +87,18 @@ pub(super) fn point_at(
         local.x().round() as i32,
         local.y().round() as i32,
     );
-    let offset = view
-        .iter_at_position(buffer_x, buffer_y)
-        .map_or_else(
-            || {
-                let (mut iter, _) = view.line_at_y(buffer_y);
-                if buffer_x > view.iter_location(&iter).x() {
-                    view.forward_display_line_end(&mut iter);
-                }
-                iter.offset() as usize
-            },
-            |(iter, trailing)| {
-                usize::try_from(iter.offset().saturating_add(trailing)).unwrap_or(usize::MAX)
-            },
-        )
-        .min(unit.selection_len());
-    Some(SelectionPoint {
-        unit: *index,
-        offset,
-    })
+    view.iter_at_position(buffer_x, buffer_y).map_or_else(
+        || {
+            let (mut iter, _) = view.line_at_y(buffer_y);
+            if buffer_x > view.iter_location(&iter).x() {
+                view.forward_display_line_end(&mut iter);
+            }
+            iter.offset() as usize
+        },
+        |(iter, trailing)| {
+            usize::try_from(iter.offset().saturating_add(trailing)).unwrap_or(usize::MAX)
+        },
+    )
 }
 
 pub(super) fn vertical_distance(bounds: &gtk::graphene::Rect, y: f32) -> f32 {
@@ -131,14 +137,9 @@ pub(super) fn link_point_at(
 ) -> Option<SelectionPoint> {
     let point = gtk::graphene::Point::new(x as f32, y as f32);
     let bound = state.bound.borrow();
-    let (index, row, _) = bound.iter().find_map(|(index, row)| {
-        let root = row.mapped_root()?;
-        let bounds = root.compute_bounds(list)?;
-        (bounds.x() <= point.x()
-            && point.x() < bounds.x() + bounds.width()
-            && bounds.y() <= point.y()
-            && point.y() < bounds.y() + bounds.height())
-        .then_some((*index, row, bounds))
+    let (index, row) = bound.iter().find_map(|(index, row)| {
+        let bounds = row.mapped_root()?.compute_bounds(list)?;
+        rect_contains(&bounds, &point).then_some((*index, row))
     })?;
     let PreviewUnit::Document(unit) = state.units.get(index)? else {
         return None;
@@ -152,11 +153,7 @@ pub(super) fn link_point_at(
     }
     let view = row.view.upgrade()?;
     let local = list.compute_point(&view, &point)?;
-    if local.x() < 0.0
-        || local.x() >= view.width() as f32
-        || local.y() < 0.0
-        || local.y() >= view.height() as f32
-    {
+    if !within_widget(&local, &view) {
         return None;
     }
     let (buffer_x, buffer_y) = view.window_to_buffer_coords(
@@ -165,18 +162,29 @@ pub(super) fn link_point_at(
         local.y().round() as i32,
     );
     let (iter, _) = view.iter_at_position(buffer_x, buffer_y)?;
-    let glyph = view.iter_location(&iter);
-    if buffer_x < glyph.x()
-        || buffer_x >= glyph.x() + glyph.width().max(1)
-        || buffer_y < glyph.y()
-        || buffer_y >= glyph.y() + glyph.height()
-    {
+    if !glyph_contains(&view.iter_location(&iter), buffer_x, buffer_y) {
         return None;
     }
     Some(SelectionPoint {
         unit: index,
         offset: usize::try_from(iter.offset()).ok()?,
     })
+}
+
+/// Half-open on the far edges, unlike `graphene::Rect::contains_point`.
+fn rect_contains(rect: &gtk::graphene::Rect, point: &gtk::graphene::Point) -> bool {
+    let inside_x = rect.x() <= point.x() && point.x() < rect.x() + rect.width();
+    inside_x && rect.y() <= point.y() && point.y() < rect.y() + rect.height()
+}
+
+fn within_widget(local: &gtk::graphene::Point, widget: &impl IsA<gtk::Widget>) -> bool {
+    let inside_x = local.x() >= 0.0 && local.x() < widget.width() as f32;
+    inside_x && local.y() >= 0.0 && local.y() < widget.height() as f32
+}
+
+fn glyph_contains(glyph: &gtk::gdk::Rectangle, x: i32, y: i32) -> bool {
+    let inside_x = x >= glyph.x() && x < glyph.x() + glyph.width().max(1);
+    inside_x && y >= glyph.y() && y < glyph.y() + glyph.height()
 }
 
 pub(super) fn matching_link<'a>(
