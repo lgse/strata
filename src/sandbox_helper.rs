@@ -191,8 +191,7 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             model::thumbnail(
                 input,
                 crate::services::ModelFormat::from_argument(value).ok_or("Invalid model format")?,
-                256,
-                256,
+                (256, 256),
                 &|_| {},
             )?,
             None,
@@ -450,7 +449,7 @@ pub(crate) fn browser_render(
                 Operation::GcodeThumbnail => crate::services::ModelFormat::Gcode,
                 _ => crate::services::ModelFormat::FreeCad,
             };
-            response.png = model::thumbnail(input, format, 256, 256, &|_| {}).unwrap_or_default();
+            response.png = model::thumbnail(input, format, (256, 256), &|_| {}).unwrap_or_default();
         }
         Operation::ImageMetadata => {
             response.metadata = svg_source(input)
