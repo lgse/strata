@@ -68,7 +68,10 @@ catalog! {
         ACTIONS_COMPRESS: Command "actions.compress" step(Actions) = Binding::plain(Key::c);
         ACTIONS_EXTRACT: Command "actions.extract" step(Actions) = Binding::plain(Key::e);
         ACTIONS_EXTRACT_TO: Command "actions.extract_to" step(Actions) = Binding::shift(Key::e);
+        ACTIONS_FOLDER: Command "actions.folder" step(Actions) = Binding::plain(Key::period);
         ACTIONS_NUMBERS: Digits = Digits::after(ACTIONS.shown(), 9, true);
+        ACTIONS_FOLDER_NUMBERS: Digits =
+            Digits::after_chord(ACTIONS.shown(), ACTIONS_FOLDER.shown(), 9, true);
 
         TAB_CHORD: Command "tabs" trigger(Tabs) = Binding::plain(Key::t);
         TAB_CHORD_NEW: Command "tabs.new" step(Tabs) = Binding::plain(Key::n);

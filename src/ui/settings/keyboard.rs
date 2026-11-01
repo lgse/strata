@@ -1301,6 +1301,7 @@ const NAMES: &[(Command, &str)] = &[
     ),
     (ACTIONS_EXTRACT, "Extract here"),
     (ACTIONS_EXTRACT_TO, "Extract to a typed folder"),
+    (ACTIONS_FOLDER, "Actions for the focused folder"),
     (TAB_CHORD, "Tab chord"),
     (TAB_CHORD_NEW, "New tab (tab chord)"),
     (TAB_CHORD_CLOSE, "Close tab (tab chord)"),

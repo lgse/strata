@@ -479,11 +479,19 @@ fn tables_list_only_what_their_map_can_run() {
             assert!(!has(Map::Default, YANK), "a 10xer verb");
             assert!(!has(Map::Default, GO_HOME), "a chord step");
             assert!(
+                !has(Map::Default, ACTIONS_FOLDER),
+                "an Action step only the 10xer panel runs"
+            );
+            assert!(
                 has(Map::Default, SORT_BY_NAME) && has(Map::Default, SEARCH_SUBFOLDERS),
                 "the direct stage runs them"
             );
             assert!(!has(Map::Tenxer, FILTER_SLASH), "a default-map key");
-            assert!(has(Map::Tenxer, FIND) && has(Map::Tenxer, GO_HOME));
+            assert!(
+                has(Map::Tenxer, FIND)
+                    && has(Map::Tenxer, GO_HOME)
+                    && has(Map::Tenxer, ACTIONS_FOLDER)
+            );
             assert!(has(Map::Tenxer, DUPLICATE), "the direct stage runs it");
         },
     );

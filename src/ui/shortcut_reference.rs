@@ -987,6 +987,10 @@ const TENXER_FILES: &[Shortcut] = &[
         "Run one of the first ten matching custom actions",
     ),
     row(
+        Keys::Digits(ACTIONS_FOLDER_NUMBERS),
+        "Run one of the first ten custom actions for the focused folder",
+    ),
+    row(
         Chord(shown![ACTIONS, ACTIONS_TERMINAL]),
         "Open a terminal in the focused folder",
     ),

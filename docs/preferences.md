@@ -534,8 +534,8 @@ toggle_sidebar = ["<Control>n", "F9"]
   it. In `[keymap.default]` that is `open_with`, `move_to`, `copy_to`,
   `restore`, `invert_selection`, `search_subfolders`, `jump_visited`,
   `jump_recent`, `half_page_up`, `half_page_down`, and the `sort.*`,
-  `copy_as.*` and `actions.*` steps, which act as plain keys there, without a
-  trigger or Shift reversal, and the custom action slots `"custom_action.1"` to
+  `copy_as.*` and `actions.*` steps except `actions.folder`, which act as plain
+  keys there, without a trigger or Shift reversal, and the custom action slots `"custom_action.1"` to
   `"custom_action.10"`, which run the Nth action Settings → Actions lists; in
   `[keymap.tenxer]`, `duplicate`, `pin`,
   `jump_to_folder`, `arrow_scope` and, on a key that types nothing, `copy_path`. Any

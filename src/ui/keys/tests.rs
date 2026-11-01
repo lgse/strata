@@ -966,6 +966,12 @@ mod labels {
         ];
         const TAB_NUMBERS: Digits = Digits::new(CTRL.union(Modifiers::SHIFT_MASK), 9, true);
         const TAB_CHORD_NUMBERS: Digits = Digits::after(Binding::plain(Key::t).shown(), 9, true);
+        const FOLDER_NUMBERS: Digits = Digits::after_chord(
+            Binding::plain(Key::semicolon).shown(),
+            Binding::plain(Key::period).shown(),
+            9,
+            true,
+        );
         let cases = [
             (Keys::Any(RENAME), "F2 / Ctrl+R"),
             (Keys::Any(ARROWS), "Ctrl+Alt+← / →"),
@@ -980,12 +986,15 @@ mod labels {
                 Keys::Digits(Digits::after(Binding::plain(Key::g).shown(), 9, false)),
                 "g 1\u{2013}9",
             ),
+            (Keys::Digits(FOLDER_NUMBERS), "; . 1\u{2013}9 / ; . 0"),
+            (Keys::Digits(FOLDER_NUMBERS.step()), "1\u{2013}9 / 0"),
         ];
         for (keys, expected) in cases {
             assert_eq!(english(keys), expected);
         }
         // Neither label is translated, so the locale other tests set cannot change them.
         assert_eq!(digit_label(TAB_CHORD_NUMBERS, 0), "t 0");
+        assert_eq!(digit_label(FOLDER_NUMBERS, 3), "; . 3");
         assert_eq!(digit_label(TAB_NUMBERS.step(), 3), "3");
     }
 
@@ -1109,6 +1118,15 @@ fn every_listed_binding_has_its_own_row_in_its_maps() {
                 alternatives.iter().any(|keys| shows(keys, wanted, map))
             }
             (Keys::Digits(digits), Wanted::Digits(wanted)) => digits == wanted,
+            // The digits after a two-key chord show its second key too: ; . 1–9.
+            (Keys::Digits(digits), Wanted::Keys(bindings, Some(first))) => {
+                digits.prefix().as_ref().and_then(primary) == Some(*first)
+                    && digits
+                        .then()
+                        .as_ref()
+                        .and_then(primary)
+                        .is_some_and(|then| bindings.contains(&then))
+            }
             (Keys::Chord(steps), Wanted::Keys(bindings, Some(first))) => {
                 let steps: Vec<Option<Binding>> = steps.iter().map(primary).collect();
                 bindings.iter().any(|binding| {

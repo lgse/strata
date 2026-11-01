@@ -1,0 +1,9 @@
+{"scenario":"tenxer-folder-action-runs-on-focused-folder","modes":["columns"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"$config/strata/actions/record-folder","mkdir":true,"parents":true}},{"fs":{"path":"$config/strata/actions/record-folder/action.toml","write":"schema_version = 1\nid = \"record-folder\"\nname = \"Record folder\"\nmenu = \"top\"\n\n[when]\nkinds = [\"folder\"]\n\n[run]\nruntime = \"command\"\nprogram = \"/bin/sh\"\nargs = [\"-c\", \"printf '%s\\\\n' \\\"$$STRATA_ACTION_SOURCE\\\" \\\"$$@\\\" >> '$environment/folder-action'\", \"sh\", \"{paths}\"]\n"}}]}
+{"select_with_keyboard":"todo.txt"}
+{"key":";"}
+{"wait":{"present":{"role":"label","name":";-"}},"message":"the armed action chord"}
+{"key":"."}
+{"wait":{"present":{"role":"label","name":"; .-"}},"message":"the folder action chord"}
+{"key":"1"}
+{"wait":{"present":{"role":"label","name_matches":"Done in "}},"message":"Jobs to show the completed run"}
+{"fs":{"path":"$environment/folder-action","text":"background\n$fixture\n"},"timeout_ms":0}
