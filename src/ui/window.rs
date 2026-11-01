@@ -57,7 +57,9 @@ mod devices;
 mod drive_dialogs;
 mod drive_ops;
 mod gio_devices;
+mod key_routing;
 mod keyboard;
+mod launch;
 mod modal_layers;
 mod network_location;
 mod open_argument;
@@ -65,6 +67,7 @@ mod pinned_drop;
 mod places;
 mod sidebar;
 mod sidebar_drop_feedback;
+mod sidebar_width;
 mod unlock_argument;
 mod volume_password;
 
@@ -74,6 +77,27 @@ pub(super) use gio_devices::gio_volume_unix_device;
 use gio_devices::{gio_mount_is_encrypted, gio_volume_is_locked, orphaned_password_drives};
 pub(super) use modal_layers::{foreign_modal_visible, install_modal_focus_trap, visible_modal_layer};
 use modal_layers::topmost_modal_layer;
+pub(super) use key_routing::{
+    TypeToSearchQuery, apply_browser_mode, browser_mode_for_digit, chooser_keys,
+    is_browser_navigation_key, type_to_search_query,
+};
+use key_routing::{
+    MouseHistoryAction, SinglePaneArrow, TypeToSearch, mouse_history_action,
+    sidebar_focus_direction, single_pane_arrow_action,
+};
+pub(in crate::ui) use sidebar_width::{RailPolicy, SidebarFit, sidebar_fits_without_preview};
+pub(super) use sidebar_width::{
+    MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH, bind_sidebar_text_size, preferred_sidebar_width,
+    sidebar_rail_button_size, sidebar_rail_width,
+};
+use sidebar_width::{animate_sidebar, scaled_sidebar_width, sidebar_animation_target, sidebar_minimum_width};
+pub(crate) use launch::{default_save_folder, home_directory};
+pub(super) use launch::present_target;
+pub use launch::{present, present_reveal};
+use launch::{
+    bind_update_notice_preferences, browser_for_window, navigate_to_gio_file, open_checked,
+    open_default_folder, schedule_after_first_paint,
+};
 use places::{
     STANDARD_PLACE_IDS, is_standard_place_location, pin_keycap, place_keycap, resolve_place_order,
     should_show_standard_place, sidebar_standard_place_visible, standard_place,
@@ -94,72 +118,6 @@ pub use unlock_argument::{UnlockTarget, present_unlock};
 use sidebar::PlaceNavigation;
 pub(super) use sidebar::build_sidebar;
 
-pub(super) const SIDEBAR_WIDTH: i32 = 201;
-pub(super) const MIN_SIDEBAR_WIDTH: i32 = 169;
-pub(super) fn sidebar_rail_button_size() -> i32 {
-    // Match the compact header toggle; the rail supplies its own side gutters.
-    (24.0 * PreferenceManager::shared().interface_scale()).round() as i32
-}
-
-pub(super) fn sidebar_rail_width() -> i32 {
-    sidebar_rail_button_size() + 10
-}
-
-/// Whether the full sidebar fits beside the content, and whether a preview
-/// took part in that judgement.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::ui) struct SidebarFit {
-    pub(in crate::ui) fits: bool,
-    pub(in crate::ui) preview: bool,
-}
-
-/// Decides when the sidebar shows as an icon rail. The user's explicit choice
-/// wins; a change in available space compacts an expanded sidebar once, and
-/// space releases only what it compacted.
-#[derive(Default)]
-pub(in crate::ui) struct RailPolicy {
-    compact: Cell<bool>,
-    automatic: Cell<bool>,
-    fit: Cell<Option<SidebarFit>>,
-}
-
-impl RailPolicy {
-    pub(in crate::ui) fn rail(&self) -> bool {
-        self.compact.get() || self.automatic.get()
-    }
-
-    /// Returns the new rail state when the choice changes what is shown.
-    pub(in crate::ui) fn set_compact(&self, compact: bool) -> Option<bool> {
-        let before = self.rail();
-        self.compact.set(compact);
-        self.automatic.set(false);
-        (self.rail() != before).then(|| self.rail())
-    }
-
-    /// Returns the new rail state when a changed fit changes what is shown.
-    pub(in crate::ui) fn observe(&self, fit: SidebarFit) -> Option<bool> {
-        if self.fit.replace(Some(fit)) == Some(fit) {
-            return None;
-        }
-        let before = self.rail();
-        if fit.fits {
-            self.automatic.set(false);
-        } else if !self.compact.get() {
-            self.automatic.set(true);
-        }
-        (self.rail() != before).then(|| self.rail())
-    }
-}
-
-/// The fit rule while no preview takes part: the full sidebar beside one column.
-/// `None` until the window has a width.
-pub(in crate::ui) fn sidebar_fits_without_preview(content: &gtk::Paned) -> Option<bool> {
-    let available = content
-        .root()
-        .map_or_else(|| content.width(), |root| root.width());
-    (available > 0).then(|| available > preferred_sidebar_width() + super::browser::COLUMN_WIDTH)
-}
-const SIDEBAR_TRANSITION: Duration = Duration::from_millis(300);
 const PINNED_DRAG_PREFIX: &str = "pinned:";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -189,415 +147,6 @@ impl RecentAvailability {
 
 fn should_show_recent_place(show_recent: bool, availability: RecentAvailability) -> bool {
     show_recent && availability.is_available()
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum MouseHistoryAction {
-    Back,
-    Forward,
-}
-
-#[derive(Clone)]
-struct TypeToSearch {
-    view: BrowserView,
-    preferences: Rc<PreferenceManager>,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum TypeToSearchQuery {
-    Empty,
-    Character(char),
-}
-
-impl TypeToSearch {
-    fn show(&self, query: TypeToSearchQuery) -> bool {
-        self.preferences.type_to_search_active()
-            && match query {
-                TypeToSearchQuery::Empty => self.view.show_filter(),
-                TypeToSearchQuery::Character(character) => {
-                    self.view.show_filter_with_query(&character.to_string())
-                }
-            }
-    }
-}
-
-pub(super) fn chooser_keys(
-    window: &gtk::Window,
-    view: &BrowserView,
-    sidebar: &SidebarView,
-    top_bar: super::top_bar_navigation::TopBarNavigation,
-    preview: &super::preview::PreviewDrawer,
-    shortcuts: &super::shortcut_footer::ShortcutFooter,
-    policy: ChooserPolicy,
-) -> ChooserKeys {
-    ChooserKeys::new(
-        window,
-        sidebar,
-        keyboard::DispatcherParts {
-            view: view.clone(),
-            top_bar,
-            preview: preview.clone(),
-            type_to_search: TypeToSearch {
-                view: view.clone(),
-                preferences: PreferenceManager::shared(),
-            },
-            shortcuts: shortcuts.clone(),
-            history: crate::services::NavigationHistory::shared(),
-        },
-        policy,
-    )
-}
-
-fn mouse_history_action(button: u32) -> Option<MouseHistoryAction> {
-    match button {
-        8 => Some(MouseHistoryAction::Back),
-        9 => Some(MouseHistoryAction::Forward),
-        _ => None,
-    }
-}
-
-pub fn present(application: &gtk::Application) {
-    present_target(application, None, Vec::new(), false, true, true);
-}
-
-/// Opens the requested directory with the named items selected.
-pub fn present_reveal(application: &gtk::Application, request: RevealRequest) {
-    present_target(
-        application,
-        Some(request.directory),
-        request.selection,
-        request.properties,
-        true,
-        false,
-    );
-}
-
-fn bind_update_notice_preferences(
-    anchor: &impl IsA<gtk::Widget>,
-    manager: &PreferenceManager,
-    notice: &super::settings::UpdateNoticeHandler,
-) {
-    let initial = Cell::new(true);
-    let notice = Rc::downgrade(notice);
-    manager.bind_preference(
-        anchor,
-        |manager| (manager.checks_for_updates(), manager.release_channel()),
-        move |_, _| {
-            if !initial.replace(false)
-                && let Some(notice) = notice.upgrade()
-            {
-                super::settings::clear_cached_update_notice();
-                notice(None);
-            }
-        },
-    );
-}
-
-fn browser_for_window() -> BrowserView {
-    let browser = BrowserView::new(Rc::new(LocalFileSource), PeekBehavior::default());
-    browser.set_operation_provider(Rc::new(LocalOperationProvider));
-    browser
-}
-
-pub(super) fn present_target(
-    application: &gtk::Application,
-    location: Option<Location>,
-    selection: Vec<Location>,
-    properties: bool,
-    auto_navigate: bool,
-    restore_tabs: bool,
-) -> BrowserView {
-    let present_started = std::time::Instant::now();
-    crate::assets::register_icon_theme();
-    let _theme_manager = super::theme::ThemeManager::shared();
-    let preference_manager = super::preferences::PreferenceManager::shared();
-    super::actions::shared();
-    tracing::debug!(
-        elapsed_ms = present_started.elapsed().as_millis() as u64,
-        "present theme and styles ready"
-    );
-
-    let window = gtk::ApplicationWindow::builder()
-        .application(application)
-        .title("Strata")
-        .default_width(1200)
-        .default_height(760)
-        .build();
-
-    let tabs = composition::TabWindow::new(&window, &preference_manager, restore_tabs);
-    let browser = tabs.active_browser();
-    window.present();
-    crate::metrics::mark_window_presented();
-    if auto_navigate {
-        let restore = restore_tabs && location.is_none();
-        let idle_browser = browser.clone();
-        glib::idle_add_local_once(move || {
-            let started = std::time::Instant::now();
-            if restore && tabs.try_restore() {
-                tracing::debug!(
-                    elapsed_ms = started.elapsed().as_millis() as u64,
-                    "present tab session restored"
-                );
-            } else {
-                match location {
-                    Some(location) if !selection.is_empty() => {
-                        idle_browser.reveal_locations(location, selection, properties);
-                    }
-                    Some(location) => idle_browser.navigate_location(location),
-                    None => open_default_folder(&idle_browser.browser(), &preference_manager),
-                }
-            }
-            tracing::debug!(
-                elapsed_ms = started.elapsed().as_millis() as u64,
-                "present navigation started"
-            );
-        });
-    }
-    browser
-}
-
-fn schedule_after_first_paint(
-    window: &gtk::ApplicationWindow,
-    sidebar: &SidebarView,
-    manager: &Rc<PreferenceManager>,
-) {
-    let state = Rc::downgrade(&sidebar.state);
-    let manager = manager.clone();
-    let armed = Cell::new(false);
-    window.connect_map(move |window| {
-        if armed.get() {
-            return;
-        }
-        let Some(clock) = window.frame_clock() else {
-            return;
-        };
-        armed.set(true);
-        let handler = Rc::new(RefCell::new(None));
-        let handler_for_paint = handler.clone();
-        let state = state.clone();
-        let manager = manager.clone();
-        let id = clock.connect_after_paint(move |clock| {
-            if let Some(id) = handler_for_paint.borrow_mut().take() {
-                clock.disconnect(id);
-            }
-            crate::metrics::mark_first_themed_frame();
-            let state = state.clone();
-            glib::idle_add_local_once(move || {
-                if let Some(state) = state.upgrade() {
-                    state.rebuild();
-                }
-            });
-            let manager = manager.clone();
-            glib::idle_add_local_once(move || {
-                super::settings::maybe_run_due_update_check(&manager);
-            });
-        });
-        handler.replace(Some(id));
-    });
-}
-
-pub(super) fn bind_sidebar_text_size(paned: &gtk::Paned, sidebar: &SidebarView) {
-    let sidebar = Rc::downgrade(&sidebar.state);
-    PreferenceManager::shared().bind_interface_scale(paned, move |widget, scale| {
-        let paned = widget.downcast_ref::<gtk::Paned>().expect("sidebar split");
-        if paned.position() > 0 {
-            let Some(shell) = paned.start_child() else {
-                return;
-            };
-            let target = if shell.has_css_class("sidebar-rail") {
-                if let Some(sidebar) = sidebar.upgrade() {
-                    sidebar.set_rail(true);
-                }
-                sidebar_rail_width()
-            } else {
-                scaled_sidebar_width(paned, scale).max(sidebar_minimum_width(&shell))
-            };
-            paned.set_position(target);
-        }
-    });
-}
-
-pub(super) fn preferred_sidebar_width() -> i32 {
-    (f64::from(SIDEBAR_WIDTH) * PreferenceManager::shared().interface_scale())
-        .round()
-        .max(f64::from(SIDEBAR_WIDTH)) as i32
-}
-
-fn scaled_sidebar_width(paned: &gtk::Paned, scale: f64) -> i32 {
-    let preferred = (f64::from(SIDEBAR_WIDTH) * scale).round() as i32;
-    let available = if paned.width() > 0 {
-        paned.width() / 2
-    } else {
-        preferred
-    };
-    preferred.min(available).max(MIN_SIDEBAR_WIDTH)
-}
-
-fn sidebar_animation_target(
-    paned: &gtk::Paned,
-    sidebar: &gtk::Widget,
-    state: &SidebarState,
-    expanded: bool,
-) -> i32 {
-    if !expanded {
-        0
-    } else if state.rail.get() {
-        sidebar_rail_width()
-    } else if let Some(saved) = state.saved_width.get() {
-        saved.max(sidebar_minimum_width(sidebar))
-    } else {
-        scaled_sidebar_width(paned, PreferenceManager::shared().interface_scale())
-            .max(sidebar_minimum_width(sidebar))
-    }
-}
-
-// Below this minimum, GTK can allocate more width than the divider position allows.
-fn sidebar_minimum_width(sidebar: &gtk::Widget) -> i32 {
-    let (minimum, _, _, _) = sidebar.measure(gtk::Orientation::Horizontal, -1);
-    minimum
-}
-
-fn animate_sidebar(
-    paned: &gtk::Paned,
-    sidebar: &gtk::Widget,
-    state: &Rc<SidebarState>,
-    generation: &Rc<Cell<u64>>,
-    animating: &Rc<Cell<bool>>,
-    expanded: bool,
-) {
-    let animation_id = generation.get().saturating_add(1);
-    generation.set(animation_id);
-    animating.set(true);
-    paned.set_shrink_start_child(true);
-    if expanded {
-        sidebar.set_visible(true);
-    }
-    let target = sidebar_animation_target(paned, sidebar, state, expanded);
-    let start = paned.position();
-
-    if !animations_enabled() || start == target {
-        paned.set_position(target);
-        sidebar.set_visible(expanded);
-        paned.set_shrink_start_child(!expanded);
-        animating.set(false);
-        return;
-    }
-
-    let started = Instant::now();
-    let paned = paned.clone();
-    let sidebar = sidebar.clone();
-    let generation = generation.clone();
-    let animating = animating.clone();
-    let state = Rc::downgrade(state);
-    let _tick = paned.clone().add_tick_callback(move |_, _| {
-        if generation.get() != animation_id {
-            return glib::ControlFlow::Break;
-        }
-        let Some(state) = state.upgrade() else {
-            return glib::ControlFlow::Break;
-        };
-
-        let target = sidebar_animation_target(&paned, &sidebar, &state, expanded);
-        let progress =
-            (started.elapsed().as_secs_f64() / SIDEBAR_TRANSITION.as_secs_f64()).clamp(0.0, 1.0);
-        let eased = emphasized_deceleration(progress);
-        let position = f64::from(start) + f64::from(target - start) * eased;
-        paned.set_position(position.round() as i32);
-
-        if progress >= 1.0 {
-            // Clear before the final set_position so the position clamp sees
-            // the settled state, including an engaged icon rail.
-            animating.set(false);
-            paned.set_position(target);
-            if !expanded {
-                sidebar.set_visible(false);
-            }
-            paned.set_shrink_start_child(!expanded);
-            glib::ControlFlow::Break
-        } else {
-            glib::ControlFlow::Continue
-        }
-    });
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum SinglePaneArrow {
-    Native,
-    Stay,
-    Sidebar,
-}
-
-fn single_pane_arrow_action(
-    mode: BrowserMode,
-    press: &KeyPress,
-    at_left_edge: bool,
-    sidebar_visible: bool,
-) -> Option<SinglePaneArrow> {
-    // GTK moves or extends the selection with Ctrl and Shift arrows.
-    const NATIVE: ModifierType = ModifierType::CONTROL_MASK.union(ModifierType::SHIFT_MASK);
-    if mode == BrowserMode::Columns {
-        return None;
-    }
-    let horizontal = press.is_any(&[LEFT.ignoring(NATIVE), RIGHT.ignoring(NATIVE)]);
-    if press.is(LEFT) && at_left_edge && sidebar_visible {
-        Some(SinglePaneArrow::Sidebar)
-    } else if horizontal && mode == BrowserMode::List {
-        Some(SinglePaneArrow::Stay)
-    } else if horizontal || press.is_any(&[UP.ignoring(NATIVE), DOWN.ignoring(NATIVE)]) {
-        Some(SinglePaneArrow::Native)
-    } else {
-        None
-    }
-}
-
-pub(super) fn is_browser_navigation_key(press: &KeyPress) -> bool {
-    const TOLERATED: ModifierType = ModifierType::SHIFT_MASK.union(ModifierType::ALT_MASK);
-    [UP, DOWN, LEFT, RIGHT, FOCUS_NEXT, ENTER]
-        .into_iter()
-        .any(|key| press.is(key.ignoring(TOLERATED).or_alternates()))
-        || [HOME_KEY, END_KEY, PAGE_UP_KEY, PAGE_DOWN_KEY, BACKSPACE]
-            .into_iter()
-            .any(|key| press.is(key.ignoring(TOLERATED)))
-}
-
-pub(super) fn type_to_search_query(press: &KeyPress) -> Option<TypeToSearchQuery> {
-    // Space belongs to quick preview; focused text fields handle their own spaces.
-    if press.is(SPACE.ignoring(ModifierType::SHIFT_MASK)) {
-        return None;
-    }
-    // A letter that reads as `/` only through the layout fallback is typed.
-    if press.is(FILTER_SLASH) && !press.used_fallback() {
-        return Some(TypeToSearchQuery::Empty);
-    }
-    press.text().map(TypeToSearchQuery::Character)
-}
-
-fn sidebar_focus_direction(
-    press: &KeyPress,
-    tolerated: ModifierType,
-) -> Option<gtk::DirectionType> {
-    super::focus_navigation::arrow_direction(press, tolerated)
-        .or_else(|| super::focus_navigation::vim_focus_direction(press))
-}
-
-pub(super) fn apply_browser_mode(
-    view: &BrowserView,
-    preferences: &super::preferences::PreferenceManager,
-    mode: BrowserMode,
-) {
-    view.set_view_mode(mode);
-    preferences.set_browser_mode(mode);
-}
-
-pub(super) fn browser_mode_for_digit(press: &KeyPress) -> Option<BrowserMode> {
-    [
-        (VIEW_COLUMNS, BrowserMode::Columns),
-        (VIEW_ICONS, BrowserMode::Icons),
-        (VIEW_LIST, BrowserMode::List),
-    ]
-    .into_iter()
-    .find(|(view, _)| press.is(*view))
-    .map(|(_, mode)| mode)
 }
 
 type RailListener = Rc<dyn Fn(bool)>;
@@ -4078,71 +3627,6 @@ fn attach_device_actions_menu(
         popover.popup();
     });
     row.add_controller(context);
-}
-
-fn navigate_to_gio_file(browser: &Rc<Browser>, file: &gio::File) {
-    if let Some(location) = location_for_file(file) {
-        browser.navigate(location);
-    }
-}
-
-pub(crate) fn home_directory() -> PathBuf {
-    env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/"))
-}
-
-pub(crate) fn default_save_folder() -> PathBuf {
-    glib::user_special_dir(glib::UserDirectory::Downloads).unwrap_or_else(home_directory)
-}
-
-fn open_checked(browser: &Rc<Browser>, location: Location, absent: impl FnOnce() + 'static) {
-    let Some(path) = location.native_path().map(PathBuf::from) else {
-        browser.navigate_location(location, true);
-        return;
-    };
-    let generation = browser.bump_navigation_generation();
-    let weak = Rc::downgrade(browser);
-    glib::MainContext::default().spawn_local(async move {
-        let gone = glib::future_with_timeout(mount_lanes::STALLED_AFTER, async {
-            match probes::folder(&path).await {
-                Err(LocationValidationError::NotDirectory) => true,
-                Err(LocationValidationError::Missing) => probes::folder_was_deleted(&path).await,
-                _ => false,
-            }
-        })
-        .await
-        .unwrap_or(false);
-        let Some(browser) = weak.upgrade() else {
-            return;
-        };
-        if browser.navigation_generation() != generation {
-            return;
-        }
-        if gone {
-            absent();
-        } else {
-            browser.navigate_location(location, true);
-        }
-    });
-}
-
-fn open_default_folder(browser: &Rc<Browser>, manager: &Rc<PreferenceManager>) {
-    let home = Location::local(home_directory());
-    let Some(saved) = manager.default_directory() else {
-        browser.navigate_location(home, true);
-        return;
-    };
-    let weak = Rc::downgrade(browser);
-    let manager = manager.clone();
-    open_checked(browser, Location::local(&saved), move || {
-        if manager.default_directory().as_ref() == Some(&saved) {
-            manager.set_default_directory(None);
-        }
-        if let Some(browser) = weak.upgrade() {
-            browser.navigate_location(home, true);
-        }
-    });
 }
 
 #[cfg(test)]
