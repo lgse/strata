@@ -10,14 +10,16 @@ impl FsOps for Scoped {
         mode: Mode,
         resolve: Option<ResolveFlags>,
     ) -> Result<OwnedFd, Errno> {
-        match scope_for(at.dir) {
-            Some(scope) => scope.run(Op::OpenAt, &[at.name], |scope| {
+        at_entry(
+            at,
+            Op::OpenAt,
+            |scope| {
                 scope
                     .resolved(at, |at| System.open_at(at, flags, mode, resolve))
                     .map(|opened| scope.record_open(opened))
-            }),
-            None => System.open_at(at, flags, mode, resolve),
-        }
+            },
+            || System.open_at(at, flags, mode, resolve),
+        )
     }
 
     fn open_path(&self, path: &OsStr, flags: OFlags, mode: Mode) -> Result<OwnedFd, Errno> {
@@ -101,38 +103,44 @@ impl FsOps for Scoped {
 
     fn unlink(&self, at: Entry<'_>, flags: AtFlags) -> Result<(), Errno> {
         assert_off_main_thread();
-        match scope_for(at.dir) {
-            Some(scope) => scope.run(Op::Unlink, &[at.name], |scope| {
+        at_entry(
+            at,
+            Op::Unlink,
+            |scope| {
                 if let Some(unlinked) = scope.unlink_held(at, flags) {
                     return unlinked;
                 }
                 scope.resolved(at, |at| System.unlink(at, flags))?;
                 scope.unlinked(at);
                 Ok(())
-            }),
-            None => System.unlink(at, flags),
-        }
+            },
+            || System.unlink(at, flags),
+        )
     }
 
     fn mkdir(&self, at: Entry<'_>, mode: Mode) -> Result<(), Errno> {
         assert_off_main_thread();
-        match scope_for(at.dir) {
-            Some(scope) => scope.run(Op::Mkdir, &[at.name], |scope| {
+        at_entry(
+            at,
+            Op::Mkdir,
+            |scope| {
                 scope.creating(at, |at| {
                     match scope.too_long(at.name, |quirks| quirks.folder_name_limit) {
                         Some(errno) => Err(errno),
                         None => System.mkdir(at, mode),
                     }
                 })
-            }),
-            None => System.mkdir(at, mode),
-        }
+            },
+            || System.mkdir(at, mode),
+        )
     }
 
     fn symlink(&self, target: &OsStr, at: Entry<'_>) -> Result<(), Errno> {
         assert_off_main_thread();
-        match scope_for(at.dir) {
-            Some(scope) => scope.run(Op::Symlink, &[at.name], |scope| {
+        at_entry(
+            at,
+            Op::Symlink,
+            |scope| {
                 if let Support::Rejected(error) = scope.quirk(|quirks| quirks.symlinks) {
                     return Err(if scope.occupied(at) {
                         scope.collision()
@@ -141,19 +149,14 @@ impl FsOps for Scoped {
                     });
                 }
                 scope.creating(at, |at| System.symlink(target, at))
-            }),
-            None => System.symlink(target, at),
-        }
+            },
+            || System.symlink(target, at),
+        )
     }
 
     fn readlink(&self, at: Entry<'_>) -> Result<OsString, Errno> {
         assert_off_main_thread();
-        match scope_for(at.dir) {
-            Some(scope) => scope.run(Op::Readlink, &[at.name], |scope| {
-                scope.resolved(at, |at| System.readlink(at))
-            }),
-            None => System.readlink(at),
-        }
+        resolved_at(at, Op::Readlink, |at| System.readlink(at))
     }
 
     fn stat(&self, at: Entry<'_>, force_sync: bool) -> Result<EntryStat, Errno> {
@@ -161,16 +164,18 @@ impl FsOps for Scoped {
         match scope_for(at.dir) {
             Some(scope) => {
                 let path = path_of(at.dir).map(|dir| dir.join(at.name));
-                if force_sync
-                    && scope.quirk(|quirks| quirks.stale_read_only)
-                    && let Some(path) = path.as_deref().and_then(|path| path.canonicalize().ok())
-                {
-                    scope.state().read_only_unseen.remove(&path);
+                if force_sync {
+                    scope.revalidate_read_only(path.as_deref());
                 }
                 scope
-                    .run_logged(Op::Stat, &[at.name], force_sync, |scope| {
-                        scope.stat(at, path.as_deref(), force_sync)
-                    })
+                    .run_logged(
+                        Logged {
+                            op: Op::Stat,
+                            names: &[at.name],
+                            forced: force_sync,
+                        },
+                        |scope| scope.stat(at, path.as_deref(), force_sync),
+                    )
                     .map(|stat| {
                         let stat = if force_sync {
                             scope.revalidate_written_time(&stat);
@@ -208,22 +213,21 @@ impl FsOps for Scoped {
 
     fn create_exclusive(&self, at: Entry<'_>, mode: Mode) -> Result<OwnedFd, Errno> {
         assert_off_main_thread();
-        match scope_for(at.dir) {
-            Some(scope) => scope.run(Op::Create, &[at.name], |scope| {
+        at_entry(
+            at,
+            Op::Create,
+            |scope| {
                 scope
                     .creating(at, |at| System.create_exclusive(at, mode))
                     .inspect(|opened| scope.opened_for_writing(opened.as_fd()))
-            }),
-            None => System.create_exclusive(at, mode),
-        }
+            },
+            || System.create_exclusive(at, mode),
+        )
     }
 
     fn names(&self, dir: Entry<'_>) -> Result<Vec<OsString>, Errno> {
         assert_off_main_thread();
-        match scope_for(dir.dir) {
-            Some(scope) => scope.run(Op::Names, &[dir.name], |_| System.names(dir)),
-            None => System.names(dir),
-        }
+        at_entry(dir, Op::Names, |_| System.names(dir), || System.names(dir))
     }
 
     fn mount_key(&self, dir: BorrowedFd<'_>) -> MountKey {
@@ -265,10 +269,7 @@ impl FsOps for Scoped {
         };
         let path = path_of(at.dir).map(|dir| dir.join(at.name));
         let opened = scope.run(Op::OpenSource, &[at.name], |scope| {
-            if let Some((pattern, until)) = scope.quirk(|quirks| quirks.deferred_close)
-                && matches(pattern, &[at.name])
-                && clock_for_test() < until
-            {
+            if scope.close_deferred(at.name) {
                 return Err(Errno::INVAL);
             }
             let opened = scope.resolved(at, |at| System.open_source(at, listed))?;
@@ -276,21 +277,7 @@ impl FsOps for Scoped {
             if let (Some((fd, stat)), Some(path)) = (&opened, &path)
                 && name_opens != NameOpens::Any
             {
-                let key = (stat.identity.device, stat.identity.inode);
-                let mut state = scope.state();
-                if name_opens == NameOpens::OneAtATime {
-                    state
-                        .opened_names
-                        .retain(|&(key, ref name, fd)| still_open(fd, name, key));
-                }
-                if state
-                    .opened_names
-                    .iter()
-                    .any(|(other, name, _)| *other == key && name != path)
-                {
-                    return Err(Errno::INVAL);
-                }
-                state.opened_names.push((key, path.clone(), fd.as_raw_fd()));
+                scope.open_name(name_opens, (fd.as_fd(), stat), path)?;
             }
             Ok(opened)
         })?;
@@ -383,10 +370,7 @@ impl FsOps for Scoped {
     fn read_at(&self, fd: BorrowedFd<'_>, buffer: &mut [u8], offset: u64) -> Result<usize, Errno> {
         assert_off_main_thread();
         on_fd(fd, Op::Read, None, |scope| {
-            let limit = scope
-                .and_then(|scope| scope.quirk(|quirks| quirks.short_io))
-                .unwrap_or(buffer.len())
-                .min(buffer.len());
+            let limit = io_limit(scope, buffer.len());
             System.read_at(fd, &mut buffer[..limit], offset)
         })
     }
@@ -394,10 +378,7 @@ impl FsOps for Scoped {
     fn write_at(&self, fd: BorrowedFd<'_>, buffer: &[u8], offset: u64) -> Result<usize, Errno> {
         assert_off_main_thread();
         on_fd(fd, Op::Write, None, |scope| {
-            let limit = scope
-                .and_then(|scope| scope.quirk(|quirks| quirks.short_io))
-                .unwrap_or(buffer.len())
-                .min(buffer.len());
+            let limit = io_limit(scope, buffer.len());
             if let Some(scope) = scope {
                 scope.mark_written(fd);
             }
@@ -477,16 +458,8 @@ impl FsOps for Scoped {
     fn chmod_fd(&self, fd: BorrowedFd<'_>, mode: u32) -> Result<(), Errno> {
         assert_off_main_thread();
         on_fd(fd, Op::ChmodFd, None, |scope| {
-            if let (Some(scope), Some(path)) = (scope, path_of(fd))
-                && scope.quirk(|quirks| quirks.stale_read_only)
-                && path.is_dir()
-            {
-                let mut state = scope.state();
-                if mode & 0o200 == 0 {
-                    state.read_only_unseen.insert(path);
-                } else if state.read_only_unseen.contains(&path) {
-                    return Ok(());
-                }
+            if scope.is_some_and(|scope| scope.keeps_read_only(fd, mode)) {
+                return Ok(());
             }
             System.chmod_fd(fd, mode)
         })
@@ -530,15 +503,7 @@ impl FsOps for Scoped {
     fn get_xattr(&self, fd: BorrowedFd<'_>, name: &OsStr) -> Result<Vec<u8>, Errno> {
         assert_off_main_thread();
         on_fd(fd, Op::GetXattr, Some(name), |scope| {
-            let extra = scope.and_then(|scope| {
-                scope.quirk(|quirks| {
-                    quirks
-                        .extra_xattrs
-                        .iter()
-                        .find(|(extra, _)| OsStr::new(extra) == name)
-                        .map(|(_, value)| value.to_vec())
-                })
-            });
+            let extra = scope.and_then(|scope| scope.extra_xattr(name));
             extra.map_or_else(|| System.get_xattr(fd, name), Ok)
         })
     }
@@ -546,28 +511,22 @@ impl FsOps for Scoped {
     fn set_xattr(&self, fd: BorrowedFd<'_>, name: &OsStr, value: &[u8]) -> Result<(), Errno> {
         assert_off_main_thread();
         on_fd(fd, Op::SetXattr, Some(name), |scope| {
-            let refused = scope.and_then(|scope| {
-                scope.quirk(|quirks| {
-                    quirks
-                        .xattrs_refused
-                        .iter()
-                        .find(|(prefix, _)| name.as_encoded_bytes().starts_with(prefix.as_bytes()))
-                        .map(|(_, error)| *error)
-                })
-            });
+            let refused = scope.and_then(|scope| scope.xattr_refusal(name));
             refused.map_or_else(|| System.set_xattr(fd, name, value), Err)
         })
     }
 
     fn open_dir(&self, at: Entry<'_>) -> Result<OwnedFd, Errno> {
         assert_off_main_thread();
-        match scope_for(at.dir) {
-            Some(scope) => scope.run(Op::OpenDir, &[at.name], |scope| {
+        at_entry(
+            at,
+            Op::OpenDir,
+            |scope| {
                 let opened = scope.resolved(at, |at| System.open_dir(at))?;
                 Ok(scope.record_open(opened))
-            }),
-            None => System.open_dir(at),
-        }
+            },
+            || System.open_dir(at),
+        )
     }
 
     fn list(&self, dir: BorrowedFd<'_>) -> Result<Vec<(OsString, FileType)>, Errno> {
@@ -612,9 +571,11 @@ impl FsOps for Scoped {
         match scope_for_folder(path) {
             Some(scope) => scope
                 .run_logged(
-                    Op::FolderStamp,
-                    &[path.file_name().unwrap_or_default()],
-                    force_sync,
+                    Logged {
+                        op: Op::FolderStamp,
+                        names: &[path.file_name().unwrap_or_default()],
+                        forced: force_sync,
+                    },
                     |_| System.folder_stamp(path, force_sync),
                 )
                 .map(|stamp| scope.reported_stamp(path, scope.cached_stamp(stamp, force_sync))),
@@ -634,8 +595,10 @@ impl FsOps for Scoped {
 
     fn create_node(&self, at: Entry<'_>, kind: FileType, mode: Mode) -> Result<(), Errno> {
         assert_off_main_thread();
-        match scope_for(at.dir) {
-            Some(scope) => scope.run(Op::CreateNode, &[at.name], |scope| {
+        at_entry(
+            at,
+            Op::CreateNode,
+            |scope| {
                 let support = scope.quirk(|quirks| match kind {
                     FileType::Fifo => quirks.fifos,
                     _ => quirks.node_create,
@@ -644,41 +607,38 @@ impl FsOps for Scoped {
                     Support::Rejected(error) => Err(error),
                     Support::Supported => System.create_node(at, kind, mode),
                 })
-            }),
-            None => System.create_node(at, kind, mode),
-        }
+            },
+            || System.create_node(at, kind, mode),
+        )
     }
 
     fn open_fifo(&self, at: Entry<'_>) -> Result<OwnedFd, Errno> {
         assert_off_main_thread();
-        match scope_for(at.dir) {
-            Some(scope) => scope.run(Op::OpenFifo, &[at.name], |scope| {
-                scope.resolved(at, |at| System.open_fifo(at))
-            }),
-            None => System.open_fifo(at),
-        }
+        resolved_at(at, Op::OpenFifo, |at| System.open_fifo(at))
     }
 
     fn create_readonly(&self, at: Entry<'_>, mode: Mode) -> Result<OwnedFd, Errno> {
         assert_off_main_thread();
-        match scope_for(at.dir) {
-            Some(scope) => scope.run(Op::CreateReadonly, &[at.name], |scope| {
-                scope.creating(at, |at| System.create_readonly(at, mode))
-            }),
-            None => System.create_readonly(at, mode),
-        }
+        at_entry(
+            at,
+            Op::CreateReadonly,
+            |scope| scope.creating(at, |at| System.create_readonly(at, mode)),
+            || System.create_readonly(at, mode),
+        )
     }
 
     fn open_write(&self, at: Entry<'_>) -> Result<OwnedFd, Errno> {
         assert_off_main_thread();
-        match scope_for(at.dir) {
-            Some(scope) => scope.run(Op::OpenWrite, &[at.name], |scope| {
+        at_entry(
+            at,
+            Op::OpenWrite,
+            |scope| {
                 scope
                     .resolved(at, |at| System.open_write(at))
                     .inspect(|opened| scope.opened_for_writing(opened.as_fd()))
-            }),
-            None => System.open_write(at),
-        }
+            },
+            || System.open_write(at),
+        )
     }
 
     fn file_flags(&self, fd: BorrowedFd<'_>) -> Result<u32, Errno> {
@@ -693,8 +653,10 @@ impl FsOps for Scoped {
         mtime: (i64, u32),
     ) -> Result<(), Errno> {
         assert_off_main_thread();
-        match scope_for(at.dir) {
-            Some(scope) => scope.run(Op::SetLinkTimes, &[at.name], |scope| {
+        at_entry(
+            at,
+            Op::SetLinkTimes,
+            |scope| {
                 scope.resolved(at, |at| {
                     System.set_link_times(at, atime, mtime)?;
                     if let Ok(stat) = System.stat(at, false) {
@@ -702,8 +664,8 @@ impl FsOps for Scoped {
                     }
                     Ok(())
                 })
-            }),
-            None => System.set_link_times(at, atime, mtime),
-        }
+            },
+            || System.set_link_times(at, atime, mtime),
+        )
     }
 }

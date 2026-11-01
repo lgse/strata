@@ -142,19 +142,48 @@ impl Drop for HoldGuard {
     }
 }
 
-pub(super) fn take_racer(
-    racers: &mut Vec<(Op, &'static str, usize, Racer)>,
+/// A seam call as a scope logs it.
+#[derive(Clone, Copy)]
+pub(super) struct Logged<'a> {
+    pub(super) op: Op,
+    pub(super) names: &'a [&'a OsStr],
+    /// A stat that forces revalidation.
+    pub(super) forced: bool,
+}
+
+/// Takes the first entry due for `op` on `names`, or counts down the
+/// matches it still skips.
+pub(super) fn take_due<T>(
+    due: &mut Vec<(Op, &'static str, usize, T)>,
     op: Op,
     names: &[&OsStr],
-) -> Option<Racer> {
-    let index = racers
+) -> Option<T> {
+    let index = due
         .iter()
-        .position(|(racer_op, pattern, _, _)| *racer_op == op && matches(pattern, names))?;
-    if racers[index].2 == 0 {
-        return Some(racers.remove(index).3);
+        .position(|(due_op, pattern, _, _)| *due_op == op && matches(pattern, names))?;
+    if due[index].2 == 0 {
+        return Some(due.remove(index).3);
     }
-    racers[index].2 -= 1;
+    due[index].2 -= 1;
     None
+}
+
+impl State {
+    /// Unplugs the device once the call it is unplugged after is due.
+    fn count_unplug(&mut self, call: Logged<'_>) {
+        let Some((unplug_op, pattern, skip)) = self.quirks.unplugged_after.as_mut() else {
+            return;
+        };
+        if *unplug_op != call.op || !matches(pattern, call.names) {
+            return;
+        }
+        if *skip == 0 {
+            self.quirks.unplugged_after = None;
+            self.unplugged = true;
+        } else {
+            *skip -= 1;
+        }
+    }
 }
 
 pub(super) fn still_open(fd: RawFd, name: &Path, key: (u64, u64)) -> bool {
@@ -200,88 +229,74 @@ impl Scope {
         names: &[&OsStr],
         perform: impl FnOnce(&Self) -> Result<T, Errno>,
     ) -> Result<T, Errno> {
-        self.run_logged(op, names, false, perform)
+        let call = Logged {
+            op,
+            names,
+            forced: false,
+        };
+        self.run_logged(call, perform)
     }
 
     pub(super) fn run_logged<T>(
         &self,
-        op: Op,
-        names: &[&OsStr],
-        forced: bool,
+        call: Logged<'_>,
         perform: impl FnOnce(&Self) -> Result<T, Errno>,
     ) -> Result<T, Errno> {
-        let racer = {
-            let mut state = self.state();
-            state.calls.push(Call {
-                op,
-                names: names.iter().map(|name| name.to_os_string()).collect(),
-                forced,
-            });
-            if state.unplugged {
-                return Err(Errno::IO);
-            }
-            take_racer(&mut state.quirks.before, op, names)
-        };
-        if let Some(mut racer) = racer {
+        if let Some(mut racer) = self.log(call)? {
             racer();
         }
-        let fault = {
-            let mut state = self.state();
-            let mut fault = None;
-            if let Some(index) = state
-                .quirks
-                .fail
-                .iter()
-                .position(|(fail_op, pattern, _, _)| *fail_op == op && matches(pattern, names))
-            {
-                let (_, _, skip, errno) = &mut state.quirks.fail[index];
-                if *skip == 0 {
-                    fault = Some(*errno);
-                    state.quirks.fail.remove(index);
-                } else {
-                    *skip -= 1;
-                }
-            }
-            fault
-        };
+        let fault = take_due(&mut self.state().quirks.fail, call.op, call.names);
         if let Some(errno) = fault {
             return Err(errno);
         }
         self.reap();
         let result = perform(self);
-        {
-            let mut state = self.state();
-            if result.is_ok() && op.changes() {
-                state.own_changes += 1;
-            }
-            if let Some((unplug_op, pattern, skip)) = state.quirks.unplugged_after.as_mut()
-                && *unplug_op == op
-                && matches(pattern, names)
-            {
-                if *skip == 0 {
-                    state.quirks.unplugged_after = None;
-                    state.unplugged = true;
-                } else {
-                    *skip -= 1;
-                }
-            }
-        }
-        let racer = take_racer(&mut self.state().quirks.after, op, names);
+        self.performed(call, result.is_ok());
+        let racer = take_due(&mut self.state().quirks.after, call.op, call.names);
         if let Some(mut racer) = racer {
             racer();
         }
-        if result.is_ok() {
-            let mut state = self.state();
-            if let Some(index) = state
-                .quirks
-                .lost_reply
-                .iter()
-                .position(|(lost_op, pattern, _)| *lost_op == op && matches(pattern, names))
-            {
-                return Err(state.quirks.lost_reply.remove(index).2);
-            }
+        if result.is_ok()
+            && let Some(errno) = self.lost_reply(call)
+        {
+            return Err(errno);
         }
         result
+    }
+
+    /// Logs `call`, failing it on an unplugged device, and takes the racer
+    /// due before it.
+    fn log(&self, call: Logged<'_>) -> Result<Option<Racer>, Errno> {
+        let mut state = self.state();
+        state.calls.push(Call {
+            op: call.op,
+            names: call.names.iter().map(|name| name.to_os_string()).collect(),
+            forced: call.forced,
+        });
+        if state.unplugged {
+            return Err(Errno::IO);
+        }
+        Ok(take_due(&mut state.quirks.before, call.op, call.names))
+    }
+
+    fn performed(&self, call: Logged<'_>, succeeded: bool) {
+        let mut state = self.state();
+        if succeeded && call.op.changes() {
+            state.own_changes += 1;
+        }
+        state.count_unplug(call);
+    }
+
+    fn lost_reply(&self, call: Logged<'_>) -> Option<Errno> {
+        let mut state = self.state();
+        let index = state
+            .quirks
+            .lost_reply
+            .iter()
+            .position(|(lost_op, pattern, _)| {
+                *lost_op == call.op && matches(pattern, call.names)
+            })?;
+        Some(state.quirks.lost_reply.remove(index).2)
     }
 
     pub(super) fn quirk<T>(&self, read: impl FnOnce(&Quirks) -> T) -> T {

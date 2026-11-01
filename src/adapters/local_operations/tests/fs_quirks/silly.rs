@@ -92,16 +92,7 @@ impl Scope {
         let silly = self.quirk(|quirks| quirks.silly_rename)?;
         let folder = path_of(at.dir)?;
         if flags.contains(AtFlags::REMOVEDIR) {
-            let Aside::Unlisted(errno) = silly.aside else {
-                return None;
-            };
-            let target = System.stat(at, false).ok()?.identity;
-            let held_below = self
-                .state()
-                .leftovers
-                .iter()
-                .any(|leftover| leftover.folder_key == (target.device, target.inode));
-            return held_below.then_some(Err(errno));
+            return self.unlink_held_folder(at, silly.aside);
         }
         let stat = System
             .stat(at, false)
@@ -113,43 +104,80 @@ impl Scope {
         let leftover = state.leftovers.iter().position(|leftover| {
             leftover.folder == folder && leftover.name.as_deref() == Some(at.name)
         });
+        let held = || state.holds.contains_key(&key) || silly.aside.held_here(key);
         match (leftover, silly.aside) {
             (Some(_), Aside::Nfs) => return Some(Err(Errno::BUSY)),
             (Some(_), Aside::Smb) => return Some(Err(Errno::NOENT)),
             (Some(_), _) => {}
-            (None, aside) if !state.holds.contains_key(&key) && !aside.held_here(key) => {
-                return None;
-            }
+            (None, _) if !held() => return None,
             (None, _) => {}
         }
-        let name = loop {
-            state.silly_renames += 1;
-            let name = silly.aside.name(key.1, state.silly_renames);
-            let Some(silly_name) = &name else {
-                break name;
-            };
-            match rustix::fs::statat(at.dir, silly_name, AtFlags::SYMLINK_NOFOLLOW) {
-                Ok(_) => {}
-                Err(Errno::NOENT) => break name,
-                Err(error) => return Some(Err(error)),
-            }
+        let name = match state.free_silly_name(at, silly.aside, key.1) {
+            Ok(name) => name,
+            Err(error) => return Some(Err(error)),
         };
         let unlinked = match &name {
             Some(name) => System.rename(at, Entry { dir: at.dir, name }, RenameFlags::empty()),
             None => System.unlink(at, AtFlags::empty()),
         };
         if unlinked.is_ok() {
-            match leftover {
-                Some(index) => state.leftovers[index].name = name,
-                None => state.leftovers.push(SillyLeftover {
+            state.record_leftover(
+                leftover,
+                SillyLeftover {
                     folder,
                     folder_key: (folder_key.device, folder_key.inode),
                     name,
                     key,
                     unheld_since: None,
-                }),
-            }
+                },
+            );
         }
         Some(unlinked)
+    }
+
+    /// A folder whose removal an unlisted leftover below it refuses.
+    fn unlink_held_folder(&self, at: Entry<'_>, aside: Aside) -> Option<Result<(), Errno>> {
+        let Aside::Unlisted(errno) = aside else {
+            return None;
+        };
+        let target = System.stat(at, false).ok()?.identity;
+        let held_below = self
+            .state()
+            .leftovers
+            .iter()
+            .any(|leftover| leftover.folder_key == (target.device, target.inode));
+        held_below.then_some(Err(errno))
+    }
+}
+
+impl State {
+    /// The next name `aside` sets a file aside under that nothing in `at`'s
+    /// folder holds, or none where it is set aside unlisted.
+    fn free_silly_name(
+        &mut self,
+        at: Entry<'_>,
+        aside: Aside,
+        inode: u64,
+    ) -> Result<Option<OsString>, Errno> {
+        loop {
+            self.silly_renames += 1;
+            let name = aside.name(inode, self.silly_renames);
+            let Some(silly_name) = &name else {
+                return Ok(name);
+            };
+            match rustix::fs::statat(at.dir, silly_name, AtFlags::SYMLINK_NOFOLLOW) {
+                Ok(_) => {}
+                Err(Errno::NOENT) => return Ok(name),
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    /// Names the leftover at `index` after it again, or records a new one.
+    fn record_leftover(&mut self, index: Option<usize>, set_aside: SillyLeftover) {
+        match index {
+            Some(index) => self.leftovers[index].name = set_aside.name,
+            None => self.leftovers.push(set_aside),
+        }
     }
 }

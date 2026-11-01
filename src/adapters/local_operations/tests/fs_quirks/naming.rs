@@ -40,7 +40,8 @@ impl Scope {
     pub(super) fn alias(&self, entry: Entry<'_>) -> Option<OsString> {
         let (case_insensitive, stored_as) =
             self.quirk(|quirks| (quirks.case_insensitive, quirks.stored_as.is_some()));
-        if !(case_insensitive || stored_as) || System.stat(entry, true).is_ok() {
+        let compares_names = case_insensitive || stored_as;
+        if !compares_names || System.stat(entry, true).is_ok() {
             return None;
         }
         let stored = self.stored(entry.name);

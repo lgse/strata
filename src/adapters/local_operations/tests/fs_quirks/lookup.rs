@@ -215,3 +215,37 @@ pub(super) fn same_scope(left: &Option<Arc<Scope>>, right: &Option<Arc<Scope>>) 
         _ => false,
     }
 }
+
+/// Runs `scoped` as `op` naming `at` in the scope of its folder, or
+/// `system` where no scope holds it.
+pub(super) fn at_entry<T>(
+    at: Entry<'_>,
+    op: Op,
+    scoped: impl FnOnce(&Scope) -> Result<T, Errno>,
+    system: impl FnOnce() -> Result<T, Errno>,
+) -> Result<T, Errno> {
+    match scope_for(at.dir) {
+        Some(scope) => scope.run(op, &[at.name], scoped),
+        None => system(),
+    }
+}
+
+/// Runs `read` as `op` on `at`, or on its alias where the scope finds one.
+pub(super) fn resolved_at<T>(
+    at: Entry<'_>,
+    op: Op,
+    read: impl Fn(Entry<'_>) -> Result<T, Errno>,
+) -> Result<T, Errno> {
+    match scope_for(at.dir) {
+        Some(scope) => scope.run(op, &[at.name], |scope| scope.resolved(at, &read)),
+        None => read(at),
+    }
+}
+
+/// The most of `len` bytes one read or write moves.
+pub(super) fn io_limit(scope: Option<&Scope>, len: usize) -> usize {
+    scope
+        .and_then(|scope| scope.quirk(|quirks| quirks.short_io))
+        .unwrap_or(len)
+        .min(len)
+}

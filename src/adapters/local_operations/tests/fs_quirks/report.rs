@@ -48,7 +48,8 @@ impl Scope {
             .seen_times
             .entry((stamp.device, stamp.inode))
             .or_insert(fetched);
-        if (forced && !ignores_force) || !seen.fetch.kept(kept_for, now) {
+        let forced_through = forced && !ignores_force;
+        if forced_through || !seen.fetch.kept(kept_for, now) {
             *seen = fetched;
         }
         (stamp.modified, stamp.changed) = (seen.modified, seen.changed);
@@ -99,67 +100,10 @@ impl Scope {
         let cached = path
             .as_ref()
             .and_then(|path| state.cached.get(path).copied());
-        if state.quirks.births == Births::Recorded
-            && stat.identity.birth.is_none_or(|birth| birth == (0, 0))
-        {
-            stat.identity.birth = state.recorded_birth(key);
-        }
-        if let Some(&birth) = state.reset_births.get(&key).filter(|_| stat.is_directory()) {
-            stat.identity.birth = Some(birth);
-        }
-        if let Some(&(inode, reported)) = path.as_ref().and_then(|path| state.link_names.get(path))
-            && inode == stat.identity.inode
-        {
-            stat.identity.inode = reported;
-        }
-        if path
-            .as_ref()
-            .is_some_and(|path| state.renumbered.contains(path))
-        {
-            stat.identity.inode = !stat.identity.inode;
-        }
-        if state.quirks.single_link_count {
-            stat.nlink = 1;
-        }
-        if let (Some((pattern, mode)), Some(name)) = (
-            state.quirks.reported_mode,
-            path.as_deref().and_then(Path::file_name),
-        ) && matches(pattern, &[name])
-        {
-            stat.mode = mode;
-        }
-        if let (Some(pattern), Some(path)) = (state.quirks.reused_inodes, path)
-            && path
-                .file_name()
-                .is_some_and(|name| matches(pattern, &[name]))
-        {
-            stat.identity.inode = *state
-                .inodes
-                .entry(path.clone())
-                .or_insert(stat.identity.inode);
-            stat.identity.birth = Some((1 + *state.births.entry(path).or_default(), 0));
-        }
-        if let Some(tick) = state.quirks.coarse_clock.and_then(timespec) {
-            stat.mtime = stat.mtime.min(tick);
-            stat.ctime = stat.ctime.min(tick);
-            stat.identity.birth = stat.identity.birth.map(|birth| birth.min(tick));
-        }
-        if state.quirks.births == Births::MadeUp && !state.created.contains(&key) {
-            let earliest = stat.atime.min(stat.mtime).min(stat.ctime);
-            stat.identity.birth = Some(*state.made_up.entry(key).or_insert(earliest));
-        }
-        if state.quirks.no_birth_time {
-            stat.identity.birth = None;
-        }
-        if state.quirks.ctime_is_mtime {
-            stat.ctime = stat.mtime;
-        }
-        if state.quirks.foreign_group {
-            stat.gid = stat.gid.wrapping_add(1);
-        }
-        if state.quirks.virtual_sizes && stat.kind == FileType::RegularFile {
-            stat.size = 0;
-        }
+        state.report_identity(path.as_deref(), key, &mut stat);
+        state.report_attributes(path.as_deref(), &mut stat);
+        state.report_reused_inode(path, &mut stat);
+        state.report_times(key, &mut stat);
         if let Some((inode, birth)) = cached {
             stat.identity.inode = inode;
             stat.identity.birth = birth;
@@ -265,6 +209,82 @@ impl Scope {
                     last_modification: now,
                 },
             );
+        }
+    }
+}
+
+impl State {
+    /// The birth time and inode number an entry reports, before any name
+    /// pattern applies.
+    fn report_identity(&mut self, path: Option<&Path>, key: (u64, u64), stat: &mut EntryStat) {
+        if self.quirks.births == Births::Recorded
+            && stat.identity.birth.is_none_or(|birth| birth == (0, 0))
+        {
+            stat.identity.birth = self.recorded_birth(key);
+        }
+        if let Some(&birth) = self.reset_births.get(&key).filter(|_| stat.is_directory()) {
+            stat.identity.birth = Some(birth);
+        }
+        if let Some(&(inode, reported)) = path.and_then(|path| self.link_names.get(path))
+            && inode == stat.identity.inode
+        {
+            stat.identity.inode = reported;
+        }
+        if path.is_some_and(|path| self.renumbered.contains(path)) {
+            stat.identity.inode = !stat.identity.inode;
+        }
+    }
+
+    /// The link count, mode, group and size an entry reports.
+    fn report_attributes(&self, path: Option<&Path>, stat: &mut EntryStat) {
+        if self.quirks.single_link_count {
+            stat.nlink = 1;
+        }
+        if let (Some((pattern, mode)), Some(name)) =
+            (self.quirks.reported_mode, path.and_then(Path::file_name))
+            && matches(pattern, &[name])
+        {
+            stat.mode = mode;
+        }
+        if self.quirks.foreign_group {
+            stat.gid = stat.gid.wrapping_add(1);
+        }
+        if self.quirks.virtual_sizes && stat.kind == FileType::RegularFile {
+            stat.size = 0;
+        }
+    }
+
+    /// The first inode number seen at a name matching `reused_inodes`.
+    fn report_reused_inode(&mut self, path: Option<PathBuf>, stat: &mut EntryStat) {
+        if let (Some(pattern), Some(path)) = (self.quirks.reused_inodes, path)
+            && path
+                .file_name()
+                .is_some_and(|name| matches(pattern, &[name]))
+        {
+            stat.identity.inode = *self
+                .inodes
+                .entry(path.clone())
+                .or_insert(stat.identity.inode);
+            stat.identity.birth = Some((1 + *self.births.entry(path).or_default(), 0));
+        }
+    }
+
+    /// The times an entry reports, as the clock ticks and the family keeps them.
+    fn report_times(&mut self, key: (u64, u64), stat: &mut EntryStat) {
+        if let Some(tick) = self.quirks.coarse_clock.and_then(timespec) {
+            stat.mtime = stat.mtime.min(tick);
+            stat.ctime = stat.ctime.min(tick);
+            stat.identity.birth = stat.identity.birth.map(|birth| birth.min(tick));
+        }
+        if self.quirks.births == Births::MadeUp && !self.created.contains(&key) {
+            let earliest = stat.atime.min(stat.mtime).min(stat.ctime);
+            stat.identity.birth = Some(*self.made_up.entry(key).or_insert(earliest));
+        }
+        if self.quirks.no_birth_time {
+            stat.identity.birth = None;
+        }
+        if self.quirks.ctime_is_mtime {
+            stat.ctime = stat.mtime;
         }
     }
 }

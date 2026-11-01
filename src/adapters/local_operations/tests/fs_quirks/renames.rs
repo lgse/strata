@@ -23,12 +23,7 @@ impl Scope {
             )
         });
         if flags.contains(RenameFlags::NOREPLACE) {
-            if self.occupied(to) || self.stale(to) {
-                return Err(Errno::EXIST);
-            }
-            if let Support::Rejected(error) = rename_flags {
-                return Err(error);
-            }
+            self.check_noreplace(to, rename_flags)?;
         }
         if let Some(errno) = self.refusal(to.name) {
             return Err(errno);
@@ -38,49 +33,74 @@ impl Scope {
             dir: to.dir,
             name: &stored,
         };
-        if flags.contains(RenameFlags::EXCHANGE) {
-            match exchange {
-                Exchange::Supported
-                    if System
-                        .statfs(to.dir)
-                        .is_some_and(|stat| stat.kind == FUSE_SUPER_MAGIC) =>
-                {
-                    return Err(Errno::INVAL);
-                }
-                Exchange::Supported => {}
-                Exchange::Rejected => return Err(Errno::INVAL),
-                Exchange::IgnoredOverwrites => {
-                    return System.rename(from, to, RenameFlags::empty());
-                }
-            }
+        if flags.contains(RenameFlags::EXCHANGE)
+            && let Some(exchanged) = self.exchange(from, to, exchange)
+        {
+            return exchanged;
         }
         if flags.is_empty() {
-            let source_is_directory = System
-                .stat(from, false)
-                .is_ok_and(|stat| stat.is_directory());
-            let target_is_empty_directory =
-                System.stat(to, false).is_ok_and(|stat| stat.is_directory())
-                    && System.names(to).is_ok_and(|names| names.is_empty());
-            if source_is_directory && target_is_empty_directory {
-                match over_empty {
-                    OverEmptyDirectory::Supported => {}
-                    OverEmptyDirectory::NotEmpty => return Err(Errno::NOTEMPTY),
-                    OverEmptyDirectory::Eperm => return Err(Errno::PERM),
-                }
-            }
-            self.cut_rename_over_name(to)?;
-            if let Some(alias) = self.alias(to) {
-                return System.rename(
-                    from,
-                    Entry {
-                        dir: to.dir,
-                        name: &alias,
-                    },
-                    flags,
-                );
-            }
+            return self.rename_plain(from, to, over_empty);
         }
         System.rename(from, to, flags)
+    }
+
+    fn check_noreplace(&self, to: Entry<'_>, rename_flags: Support) -> Result<(), Errno> {
+        if self.occupied(to) || self.stale(to) {
+            return Err(Errno::EXIST);
+        }
+        match rename_flags {
+            Support::Rejected(error) => Err(error),
+            Support::Supported => Ok(()),
+        }
+    }
+
+    /// The end of an exchange the mount does not perform as asked.
+    fn exchange(
+        &self,
+        from: Entry<'_>,
+        to: Entry<'_>,
+        exchange: Exchange,
+    ) -> Option<Result<(), Errno>> {
+        match exchange {
+            Exchange::Supported
+                if System
+                    .statfs(to.dir)
+                    .is_some_and(|stat| stat.kind == FUSE_SUPER_MAGIC) =>
+            {
+                Some(Err(Errno::INVAL))
+            }
+            Exchange::Supported => None,
+            Exchange::Rejected => Some(Err(Errno::INVAL)),
+            Exchange::IgnoredOverwrites => Some(System.rename(from, to, RenameFlags::empty())),
+        }
+    }
+
+    /// A rename without flags, which may replace what `to` names.
+    fn rename_plain(
+        &self,
+        from: Entry<'_>,
+        to: Entry<'_>,
+        over_empty: OverEmptyDirectory,
+    ) -> Result<(), Errno> {
+        if replaces_empty_folder(from, to) {
+            match over_empty {
+                OverEmptyDirectory::Supported => {}
+                OverEmptyDirectory::NotEmpty => return Err(Errno::NOTEMPTY),
+                OverEmptyDirectory::Eperm => return Err(Errno::PERM),
+            }
+        }
+        self.cut_rename_over_name(to)?;
+        if let Some(alias) = self.alias(to) {
+            return System.rename(
+                from,
+                Entry {
+                    dir: to.dir,
+                    name: &alias,
+                },
+                RenameFlags::empty(),
+            );
+        }
+        System.rename(from, to, RenameFlags::empty())
     }
 
     pub(super) fn cut_rename_over_name(&self, to: Entry<'_>) -> Result<(), Errno> {
@@ -165,28 +185,15 @@ impl Scope {
         ) else {
             return;
         };
+        let exchanged = flags.contains(RenameFlags::EXCHANGE);
         let mut state = self.state();
         let cached = state.cached.remove(&from);
         state.cached.remove(&to);
         if let Some(cached) = cached {
             state.cached.insert(to.clone(), cached);
         }
-        let renumbered = state.renumbered.remove(&from);
-        let displaced_renumbered = state.renumbered.remove(&to);
-        if renumbered {
-            state.renumbered.insert(to.clone());
-        }
-        if displaced_renumbered && flags.contains(RenameFlags::EXCHANGE) {
-            state.renumbered.insert(from.clone());
-        }
-        let moved = state.link_names.remove(&from);
-        let displaced = state.link_names.remove(&to);
-        if let Some(moved) = moved {
-            state.link_names.insert(to, moved);
-        }
-        if let Some(displaced) = displaced.filter(|_| flags.contains(RenameFlags::EXCHANGE)) {
-            state.link_names.insert(from, displaced);
-        }
+        state.move_renumbered(&from, &to, exchanged);
+        state.move_link_names(from, to, exchanged);
     }
 
     pub(super) fn inode_kept_on_lost_reply(&self, to: Entry<'_>) -> Option<u64> {
@@ -213,6 +220,40 @@ impl Scope {
             state.link_names.remove(&path);
             state.renumbered.remove(&path);
             state.cached.remove(&path);
+        }
+    }
+}
+
+/// Whether a folder renamed over `to` replaces an empty folder there.
+fn replaces_empty_folder(from: Entry<'_>, to: Entry<'_>) -> bool {
+    let source_is_directory = System
+        .stat(from, false)
+        .is_ok_and(|stat| stat.is_directory());
+    let target_is_empty_directory = System.stat(to, false).is_ok_and(|stat| stat.is_directory())
+        && System.names(to).is_ok_and(|names| names.is_empty());
+    source_is_directory && target_is_empty_directory
+}
+
+impl State {
+    fn move_renumbered(&mut self, from: &Path, to: &Path, exchanged: bool) {
+        let renumbered = self.renumbered.remove(from);
+        let displaced_renumbered = self.renumbered.remove(to);
+        if renumbered {
+            self.renumbered.insert(to.to_path_buf());
+        }
+        if displaced_renumbered && exchanged {
+            self.renumbered.insert(from.to_path_buf());
+        }
+    }
+
+    fn move_link_names(&mut self, from: PathBuf, to: PathBuf, exchanged: bool) {
+        let moved = self.link_names.remove(&from);
+        let displaced = self.link_names.remove(&to);
+        if let Some(moved) = moved {
+            self.link_names.insert(to, moved);
+        }
+        if let Some(displaced) = displaced.filter(|_| exchanged) {
+            self.link_names.insert(from, displaced);
         }
     }
 }

@@ -48,6 +48,7 @@ mod lookup;
 mod mounts;
 mod names;
 mod naming;
+mod opens;
 mod ops;
 mod presets;
 mod renames;
