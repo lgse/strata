@@ -273,7 +273,10 @@ fn later_archive_takes_stricter_names(root: &Path) -> Result<(), Box<dyn Error>>
         extracted.report.renamed,
         renamed(
             &archive,
-            &[(b"dir:1".as_slice(), "dir_1", Invalid), (b"file:1", "file_1", Invalid)]
+            &[
+                (b"dir:1".as_slice(), "dir_1", Invalid),
+                (b"file:1", "file_1", Invalid)
+            ]
         )
     );
     Ok(())
@@ -553,9 +556,7 @@ fn renamed_folder_rows() -> Vec<ReportRow> {
             existing: None,
             members: &[(b"a.txt", File), (b"b.txt", File)],
             ending: Ok(()),
-            finished: |outcome| {
-                matches!(outcome, Ok(ArchiveOutcome::Completed(Some(name))) if name.len() == 255)
-            },
+            finished: |outcome| matches!(outcome, Ok(ArchiveOutcome::Completed(Some(name))) if name.len() == 255),
             renamed_as: vec![rename(&long.as_bytes()[..256], &"a".repeat(255), TooLong)],
             skipped: &[],
         },
@@ -577,9 +578,7 @@ fn ended_early_rows() -> Vec<ReportRow> {
     vec![
         row(
             Err(ArchiveError::Failed("Damaged.".to_owned())),
-            |outcome| {
-                matches!(outcome, Err(ArchiveError::Failed(message)) if message.ends_with("remain in “archive”."))
-            },
+            |outcome| matches!(outcome, Err(ArchiveError::Failed(message)) if message.ends_with("remain in “archive”.")),
             nested_fixed(),
         ),
         row(
@@ -646,7 +645,10 @@ fn the_report_names_entries_where_the_extraction_left_them() -> Result<(), Box<d
         extracted.assert_skipped_links(root.path(), row.skipped);
         if let Ok(ArchiveOutcome::Cancelled { not_attempted, .. }) = outcome {
             let pending = format!("archive/10_00/later_x{}/next.txt", "a".repeat(248));
-            assert_eq!(*not_attempted, [crate::model::Location::local(root.path().join(pending))]);
+            assert_eq!(
+                *not_attempted,
+                [crate::model::Location::local(root.path().join(pending))]
+            );
         }
     }
     Ok(())

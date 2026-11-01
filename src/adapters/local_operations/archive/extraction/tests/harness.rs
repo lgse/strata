@@ -10,7 +10,9 @@ use std::{
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
-use super::super::{ArchiveError, ArchiveOutcome, ExtractionSession, MemberContent, MemberMetadata};
+use super::super::{
+    ArchiveError, ArchiveOutcome, ExtractionSession, MemberContent, MemberMetadata,
+};
 use crate::{model::Location, services::TransferReport};
 
 pub(super) const ARCHIVE: &str = "archive.zip";
@@ -24,7 +26,9 @@ impl<F: FnMut(&mut [u8]) -> io::Result<usize>> Read for TestReader<F> {
 }
 
 /// A member the session must refuse before reading it.
-pub(super) fn unread(reason: &'static str) -> TestReader<impl FnMut(&mut [u8]) -> io::Result<usize>> {
+pub(super) fn unread(
+    reason: &'static str,
+) -> TestReader<impl FnMut(&mut [u8]) -> io::Result<usize>> {
     TestReader(move |_: &mut [u8]| panic!("{reason}"))
 }
 
@@ -142,7 +146,10 @@ impl Harness {
         self.open_named(ARCHIVE)
     }
 
-    pub(super) fn open_named(&mut self, archive: &'static str) -> Result<Session<'_>, ArchiveError> {
+    pub(super) fn open_named(
+        &mut self,
+        archive: &'static str,
+    ) -> Result<Session<'_>, ArchiveError> {
         let inner = ExtractionSession::open(
             &self.destination,
             archive,

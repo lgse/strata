@@ -26,7 +26,10 @@ fn write_named(project: &Path, names: &[&str]) -> io::Result<()> {
 fn undo_moved_project(id: u64, mode: NameMode, disk: &Path, moved: &Path) -> Vec<OperationEvent> {
     undo_move(UndoMoveRequest {
         names: mode,
-        ..undo_request(id, vec![fail_if_exists(record(&disk.join("project"), moved))])
+        ..undo_request(
+            id,
+            vec![fail_if_exists(record(&disk.join("project"), moved))],
+        )
     })
 }
 
@@ -73,11 +76,35 @@ fn an_undone_move_gives_names_back_as_they_were_and_a_redone_one_fixes_them()
     let _serial = serial()?;
     let malformed = || OsString::from_vec(b"x\xc0\xafy".to_vec());
     let rows = [
-        ("ntfs3 undo", Quirks::ntfs3 as Preset, NameMode::Keep, vec!["a:b".into(), "CON".into()], ["CON", "a:b"]),
-        ("ntfs3 redo", Quirks::ntfs3, NameMode::Fix, vec!["a:b".into(), "CON".into()], ["CON_", "a_b"]),
+        (
+            "ntfs3 undo",
+            Quirks::ntfs3 as Preset,
+            NameMode::Keep,
+            vec!["a:b".into(), "CON".into()],
+            ["CON", "a:b"],
+        ),
+        (
+            "ntfs3 redo",
+            Quirks::ntfs3,
+            NameMode::Fix,
+            vec!["a:b".into(), "CON".into()],
+            ["CON_", "a_b"],
+        ),
         // Whatever the mode, exfat-fuse never gets a name it would corrupt.
-        ("exfat-fuse undo", Quirks::exfat_fuse, NameMode::Keep, vec![malformed(), "CON".into()], ["CON", "x__y"]),
-        ("exfat-fuse redo", Quirks::exfat_fuse, NameMode::Fix, vec![malformed(), "CON".into()], ["CON_", "x__y"]),
+        (
+            "exfat-fuse undo",
+            Quirks::exfat_fuse,
+            NameMode::Keep,
+            vec![malformed(), "CON".into()],
+            ["CON", "x__y"],
+        ),
+        (
+            "exfat-fuse redo",
+            Quirks::exfat_fuse,
+            NameMode::Fix,
+            vec![malformed(), "CON".into()],
+            ["CON_", "x__y"],
+        ),
     ];
     for (row, preset, mode, moved_names, expected) in rows {
         NamesBack {
@@ -283,7 +310,12 @@ fn undoing_a_move_gives_fixed_names_back_and_reports_those_it_cannot() -> Result
         Quirks {
             invalid_name: Some(refuses_refused),
             fail: vec![(Op::Rename, "failed:3", 0, Errno::ACCESS)],
-            before: vec![(Op::Rename, "taken:1", 0, takes_name(&project.join("taken:1")))],
+            before: vec![(
+                Op::Rename,
+                "taken:1",
+                0,
+                takes_name(&project.join("taken:1")),
+            )],
             ..Quirks::default()
         },
     );
@@ -363,7 +395,10 @@ fn undo_says_nothing_of_fixed_entries_gone_from_the_names_they_were_saved_as()
     for through_gio in [false, true] {
         let (_root, _origin, usb, project) = project_and_usb()?;
         fs::create_dir(project.join("gone:4"))?;
-        write_named(&project, &["deleted:1", "renamed:2", "kept:3", "gone:4/a:b"])?;
+        write_named(
+            &project,
+            &["deleted:1", "renamed:2", "kept:3", "gone:4/a:b"],
+        )?;
         let _usb = FsQuirks::install(&usb, Quirks::vfat());
         let mut record = moved_onto_fat(&project, &usb);
         if through_gio {
@@ -388,7 +423,10 @@ fn undoing_a_move_back_to_another_kind_of_location_gives_fixed_names_back()
     let _serial = serial()?;
     let (_root, _origin, usb, project) = project_and_usb()?;
     fs::create_dir(project.join("x:y"))?;
-    write_named(&project, &["x:y/a:b", "CON", "taken", "plain", "long", "bytes"])?;
+    write_named(
+        &project,
+        &["x:y/a:b", "CON", "taken", "plain", "long", "bytes"],
+    )?;
     let _usb = FsQuirks::install(&usb, Quirks::vfat());
     let mut record = moved_onto_fat(&project, &usb);
     let moved = usb.join("project");

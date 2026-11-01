@@ -230,9 +230,7 @@ struct NameSampler {
 
 impl NameSampler {
     fn new() -> Self {
-        Self {
-            state: 0x9e37_79b9,
-        }
+        Self { state: 0x9e37_79b9 }
     }
 
     fn below(&mut self, limit: usize) -> usize {

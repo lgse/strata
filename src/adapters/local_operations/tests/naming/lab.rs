@@ -458,7 +458,11 @@ fn character_cells() -> Vec<Cells> {
                 &[(VFAT, Listed("x")), (EXFAT, Listed("x"))],
             ),
         ),
-        (b"x ".to_vec(), File, with(unreserved_cells(), &[(VFAT, INVAL)])),
+        (
+            b"x ".to_vec(),
+            File,
+            with(unreserved_cells(), &[(VFAT, INVAL)]),
+        ),
         (
             b"x .".to_vec(),
             File,
@@ -532,7 +536,10 @@ fn encoding_cells() -> Vec<Cells> {
         (
             "x\u{f022}y".as_bytes().to_vec(),
             File,
-            with(STORED, &[(CIFS, Listed("x:y")), (CIFS_NOCASE, Listed("x:y"))]),
+            with(
+                STORED,
+                &[(CIFS, Listed("x:y")), (CIFS_NOCASE, Listed("x:y"))],
+            ),
         ),
         ("x\u{f03a}y".as_bytes().to_vec(), File, STORED),
         ("x\u{ff1a}y".as_bytes().to_vec(), File, STORED),
@@ -592,7 +599,11 @@ fn lab_cells() -> Vec<Cells> {
     rows
 }
 
-fn create_lab_entry(folder: &Path, name: &OsStr, kind: Kind) -> Result<Result<(), Errno>, Box<dyn Error>> {
+fn create_lab_entry(
+    folder: &Path,
+    name: &OsStr,
+    kind: Kind,
+) -> Result<Result<(), Errno>, Box<dyn Error>> {
     let parent = open_local_parent_directory(folder)?;
     let at = Entry::new(&parent, name);
     Ok(match kind {
@@ -651,7 +662,12 @@ fn assert_preset_matches_lab_column(
         fs::create_dir(&folder)?;
         let created = create_lab_entry(&folder, name, *kind)?;
         let listed = listed_names(&folder)?;
-        assert_eq!(probe.outcome(created, &listed), probe.cell, "{}", probe.context);
+        assert_eq!(
+            probe.outcome(created, &listed),
+            probe.cell,
+            "{}",
+            probe.context
+        );
     }
     Ok(())
 }

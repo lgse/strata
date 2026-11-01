@@ -132,7 +132,13 @@ fn restore_keeps_payload_and_metadata_when_destination_is_occupied() -> Result<(
             .join("info/report.trashinfo");
         let metadata = fs::read(&info)?;
 
-        let events = restore_entries(502, vec![RestoreTrashItem { entry, destination: destination.clone() }]);
+        let events = restore_entries(
+            502,
+            vec![RestoreTrashItem {
+                entry,
+                destination: destination.clone(),
+            }],
+        );
 
         assert_restore_failed(&events, "already exists");
         expect_contents(&[(source, b"original"), (info, &metadata)]);
@@ -232,7 +238,13 @@ fn restore_rejects_a_volume_orig_path_on_another_device() -> Result<(), Box<dyn 
         b"ssh-ed25519 AAAA attacker",
     )?;
 
-    let events = restore_entries(478, vec![RestoreTrashItem { entry, destination: dest.clone() }]);
+    let events = restore_entries(
+        478,
+        vec![RestoreTrashItem {
+            entry,
+            destination: dest.clone(),
+        }],
+    );
 
     assert_restore_failed(&events, "outside the trash volume");
     assert!(source.exists());
@@ -244,8 +256,7 @@ fn restore_rejects_a_volume_orig_path_on_another_device() -> Result<(), Box<dyn 
 /// A `report.txt` in the volume's Trash, deleted from `Documents`, with where it goes back.
 fn trashed_volume_report(root: &Path) -> Result<(PathBuf, FileEntry, PathBuf), Box<dyn Error>> {
     fs::create_dir_all(root.join("Documents"))?;
-    let (source, entry) =
-        volume_trash_entry(root, "report.txt", "Documents/report.txt", b"notes")?;
+    let (source, entry) = volume_trash_entry(root, "report.txt", "Documents/report.txt", b"notes")?;
     let destination = root.canonicalize()?.join("Documents/report.txt");
     Ok((source, entry, destination))
 }
@@ -256,7 +267,13 @@ fn restore_returns_a_volume_item_to_a_path_on_the_same_volume() -> Result<(), Bo
     let fixture = tempfile::tempdir()?;
     let (source, entry, destination) = trashed_volume_report(fixture.path())?;
 
-    let events = restore_entries(479, vec![RestoreTrashItem { entry, destination: destination.clone() }]);
+    let events = restore_entries(
+        479,
+        vec![RestoreTrashItem {
+            entry,
+            destination: destination.clone(),
+        }],
+    );
 
     assert_restored(&events, "");
     expect_contents(&[(destination, b"notes")]);
@@ -271,7 +288,13 @@ fn restore_fails_when_the_confirmed_destination_no_longer_matches() -> Result<()
     let (source, entry, destination) = trashed_volume_report(fixture.path())?;
     let confirmed = destination.with_file_name("other.txt");
 
-    let events = restore_entries(480, vec![RestoreTrashItem { entry, destination: confirmed.clone() }]);
+    let events = restore_entries(
+        480,
+        vec![RestoreTrashItem {
+            entry,
+            destination: confirmed.clone(),
+        }],
+    );
 
     assert_restore_failed(&events, "no longer matches the confirmed destination");
     assert!(source.exists());
@@ -287,7 +310,13 @@ fn restore_uses_the_trash_entry_target_path_as_the_physical_source() -> Result<(
     entry.location = Location::uri("trash:///report.txt");
     entry.thumbnail_path = Some(source.clone());
 
-    let events = restore_entries(481, vec![RestoreTrashItem { entry, destination: destination.clone() }]);
+    let events = restore_entries(
+        481,
+        vec![RestoreTrashItem {
+            entry,
+            destination: destination.clone(),
+        }],
+    );
 
     assert_restored(&events, "");
     expect_contents(&[(destination, b"notes")]);
@@ -296,7 +325,10 @@ fn restore_uses_the_trash_entry_target_path_as_the_physical_source() -> Result<(
 }
 
 /// Counts each close of a `notes.txt` copy.
-fn counting_closes(copied: &Arc<AtomicUsize>, count: usize) -> Vec<(Op, &'static str, usize, Racer)> {
+fn counting_closes(
+    copied: &Arc<AtomicUsize>,
+    count: usize,
+) -> Vec<(Op, &'static str, usize, Racer)> {
     (0..count)
         .map(|_| {
             let copied = copied.clone();
@@ -418,7 +450,10 @@ fn a_trash_entry_stays_restorable_while_its_item_is_in_the_trash() -> Result<(),
         };
         assert_eq!(kept_in_trash(&events), expected, "{added}");
         expect_entries(&[&report.item]);
-        assert!(report.info.exists(), "{added}: the Trash entry stays restorable");
+        assert!(
+            report.info.exists(),
+            "{added}: the Trash entry stays restorable"
+        );
         expect_contents(&[(report.destination.join("notes.txt"), b"notes")]);
     }
     Ok(())

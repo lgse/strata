@@ -401,7 +401,10 @@ fn zip_extraction_rejects_root_files_and_parent_only_directories() -> Result<(),
             other => panic!("accepted {name:?}: {other:?}"),
         }
         assert_eq!(decoder.progress(), 0, "{name:?}");
-        assert_empty(&destination, &format!("{name:?} wrote into the destination"))?;
+        assert_empty(
+            &destination,
+            &format!("{name:?} wrote into the destination"),
+        )?;
     }
     Ok(())
 }

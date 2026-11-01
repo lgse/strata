@@ -139,8 +139,7 @@ fn encrypted_decoders_fail_without_the_correct_password() -> Result<(), Box<dyn 
         write_compression_fixture(&archive, &[source], format, Some("test-password"))?;
         for password in [None, Some("wrong-password")] {
             let destination = tempfile::tempdir()?;
-            let result =
-                Decoder::with_password(format, password).run(&archive, destination.path());
+            let result = Decoder::with_password(format, password).run(&archive, destination.path());
             assert!(
                 match password {
                     None => matches!(result, Err(ArchiveError::PasswordRequired(_))),

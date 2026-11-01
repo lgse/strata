@@ -84,7 +84,10 @@ fn tampers_with_the_copy(copy: &Path, aside: &Path, evicted: bool) -> Racer {
     Box::new(move || {
         fs::write(copy.join("foreign"), b"unrelated").expect("add a foreign entry");
         if evicted {
-            assert!(super::super::fs_quirks::evict(&copy.join("contents")), "evict");
+            assert!(
+                super::super::fs_quirks::evict(&copy.join("contents")),
+                "evict"
+            );
             return;
         }
         fs::rename(copy.join("contents"), &aside).expect("move a copied entry aside");

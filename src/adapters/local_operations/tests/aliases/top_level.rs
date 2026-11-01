@@ -232,8 +232,16 @@ fn expect_numbered_pairs(
     for (name, saved_as) in numbered {
         let folder = *name == "docs";
         let (first, second) = (destination.join(name), destination.join(saved_as));
-        assert_eq!(read_item(&first, folder)?, format!("one/{name}"), "{context}");
-        assert_eq!(read_item(&second, folder)?, format!("two/{name}"), "{context}");
+        assert_eq!(
+            read_item(&first, folder)?,
+            format!("one/{name}"),
+            "{context}"
+        );
+        assert_eq!(
+            read_item(&second, folder)?,
+            format!("two/{name}"),
+            "{context}"
+        );
     }
     Ok(())
 }

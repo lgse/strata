@@ -18,7 +18,10 @@ fn zip_errors_translate_to_unsupported_invalid_and_password_failures() {
             ZipError::UnsupportedArchive("unsupported encryption"),
             UNSUPPORTED_ARCHIVE,
         ),
-        (ZipError::CompressionMethodNotSupported(99), UNSUPPORTED_ARCHIVE),
+        (
+            ZipError::CompressionMethodNotSupported(99),
+            UNSUPPORTED_ARCHIVE,
+        ),
         (ZipError::FileNotFound, INVALID_ARCHIVE),
     ] {
         assert_eq!(zip_error(error).to_string(), expected);
@@ -99,13 +102,19 @@ fn read_errors_translate_by_whether_a_password_was_supplied() {
 #[test]
 fn checksum_failure_without_a_password_remains_damaged() {
     let error = io::Error::other(sevenz_rust2::Error::ChecksumVerificationFailed);
-    assert_eq!(archive_read_error(error, false).to_string(), INVALID_ARCHIVE);
+    assert_eq!(
+        archive_read_error(error, false).to_string(),
+        INVALID_ARCHIVE
+    );
 }
 
 #[test]
 fn corrupt_deflate_stream_without_a_password_stays_damaged() {
     let error = io::Error::new(io::ErrorKind::InvalidInput, "corrupt deflate stream");
-    assert_eq!(archive_read_error(error, false).to_string(), INVALID_ARCHIVE);
+    assert_eq!(
+        archive_read_error(error, false).to_string(),
+        INVALID_ARCHIVE
+    );
 }
 
 #[test]

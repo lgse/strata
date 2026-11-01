@@ -125,12 +125,7 @@ fn password_failures_reach_the_event_as_their_kind_and_leave_nothing_behind()
             fs::write(source, b"contents")?;
         }
         let archive = root.path().join(format!("secret.{}", format.extension()));
-        super::super::write_compression_fixture(
-            &archive,
-            &sources,
-            format,
-            Some("test-password"),
-        )?;
+        super::super::write_compression_fixture(&archive, &sources, format, Some("test-password"))?;
         for (password, expected) in [
             (None, PasswordFailure::Required),
             (Some("wrong-password"), PasswordFailure::Incorrect),

@@ -9,7 +9,9 @@ use std::{
     sync::atomic::{AtomicBool, AtomicUsize},
 };
 
-use super::super::{ArchiveError, ArchiveOutcome, ExtractionSession, MemberContent, MemberMetadata};
+use super::super::{
+    ArchiveError, ArchiveOutcome, ExtractionSession, MemberContent, MemberMetadata,
+};
 use super::harness::Outcome;
 use crate::{
     model::Location,

@@ -69,12 +69,7 @@ fn compression_new_archive_staging_stays_private_until_publish() -> Result<(), B
         glib::MainContext::default().block_on(task)?,
         Ok(("created.zip".to_owned(), None, None))
     );
-    expect_published(
-        &destination,
-        &archive,
-        b"created",
-        0o666 & !process_umask(),
-    )
+    expect_published(&destination, &archive, b"created", 0o666 & !process_umask())
 }
 
 #[test]

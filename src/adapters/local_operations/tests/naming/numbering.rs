@@ -71,7 +71,13 @@ type Sibling = (String, bool, bool, String, Option<RenameCause>);
 
 fn fixed_sibling(name: &str, is_directory: bool, planned: &str) -> Sibling {
     let cause = (name != planned).then_some(RenameCause::Invalid);
-    (name.to_owned(), is_directory, true, planned.to_owned(), cause)
+    (
+        name.to_owned(),
+        is_directory,
+        true,
+        planned.to_owned(),
+        cause,
+    )
 }
 
 fn file(name: &str, planned: &str) -> Sibling {

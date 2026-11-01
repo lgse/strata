@@ -203,7 +203,13 @@ fn seed_origin(origin: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn paste_items(id: u64, items: &[&str], from: &Path, to: &Path, move_sources: bool) -> PasteRequest {
+fn paste_items(
+    id: u64,
+    items: &[&str],
+    from: &Path,
+    to: &Path,
+    move_sources: bool,
+) -> PasteRequest {
     PasteRequest {
         id: OperationRequestId(id),
         destination: Location::local(to),
@@ -399,7 +405,10 @@ fn undoing_a_grouping_reports_the_trashed_group_folder() {
             fs::create_dir(&group).expect("group folder");
             fs::write(group.join("report.txt"), b"contents").expect("grouped item");
             let identity = numbers_at(&group);
-            let item = fail_if_exists(record(&root.path().join("report.txt"), &group.join("report.txt")));
+            let item = fail_if_exists(record(
+                &root.path().join("report.txt"),
+                &group.join("report.txt"),
+            ));
 
             let events = undo_move(UndoMoveRequest {
                 cleanup_locations: vec![Location::local(&group)],
@@ -440,7 +449,10 @@ fn undoing_a_grouping_without_trash_removes_only_an_empty_group_folder()
             )?
             .boolean("access::can-trash");
         assert!(!can_trash, "precondition: GIO refuses Trash on tmpfs");
-        let item = fail_if_exists(record(&root.path().join("report.txt"), &group.join("report.txt")));
+        let item = fail_if_exists(record(
+            &root.path().join("report.txt"),
+            &group.join("report.txt"),
+        ));
 
         let events = undo_move(UndoMoveRequest {
             cleanup_locations: vec![Location::local(&group)],

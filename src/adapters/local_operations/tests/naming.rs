@@ -9,9 +9,7 @@ mod refusals;
 use super::super::names::fix::fix_name;
 use super::*;
 use crate::{
-    adapters::volume::{
-        MountType, NameEncoding, NameProfile, PrivateUse, Reserved, gvfs_profile,
-    },
+    adapters::volume::{MountType, NameEncoding, NameProfile, PrivateUse, Reserved, gvfs_profile},
     services::RenameCause,
 };
 

@@ -186,13 +186,20 @@ impl Shown {
     fn expected_landing(&self) -> Landing {
         Landing {
             contents: b"incoming".to_vec(),
-            entries: 1 + usize::from(self.landed != self.shown || self.conflict == TransferConflict::FailIfExists),
+            entries: 1 + usize::from(
+                self.landed != self.shown || self.conflict == TransferConflict::FailIfExists,
+            ),
             source_kept: !self.moving,
             renamed: vec![(self.item.to_owned(), self.landed.to_owned(), self.cause)],
         }
     }
 
-    fn landing(&self, source: &Path, disk: &Path, events: &[OperationEvent]) -> Result<Landing, Box<dyn Error>> {
+    fn landing(
+        &self,
+        source: &Path,
+        disk: &Path,
+        events: &[OperationEvent],
+    ) -> Result<Landing, Box<dyn Error>> {
         Ok(Landing {
             contents: fs::read(disk.join(self.file(self.landed)))?,
             entries: names(disk)?.len(),

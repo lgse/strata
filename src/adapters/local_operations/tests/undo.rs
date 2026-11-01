@@ -123,12 +123,7 @@ fn expect_contents(expected: &[(PathBuf, &[u8])]) {
 
 fn expect_names(expected: &[(&Path, &[&str])]) -> io::Result<()> {
     for (folder, names) in expected {
-        assert_eq!(
-            super::names(folder)?,
-            *names,
-            "{}",
-            folder.display()
-        );
+        assert_eq!(super::names(folder)?, *names, "{}", folder.display());
     }
     Ok(())
 }

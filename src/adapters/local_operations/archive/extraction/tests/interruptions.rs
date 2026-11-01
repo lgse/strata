@@ -276,7 +276,10 @@ fn member_cancelled_before_creation_is_reported_inside_the_archive_folder()
     );
     session.assert_extracted(
         1,
-        [("archive/folder/first.txt", file(b"")), ("folder", Node::Dir)],
+        [
+            ("archive/folder/first.txt", file(b"")),
+            ("folder", Node::Dir),
+        ],
     )
 }
 

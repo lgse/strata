@@ -153,7 +153,10 @@ fn an_unplug_after_an_exchange_leaves_no_original_at_a_stage() -> Result<(), Box
     assert_eq!(published, "existing.zip");
     expect_contents(
         &[
-            (root.path().join(originals).join("existing.zip"), b"original"),
+            (
+                root.path().join(originals).join("existing.zip"),
+                b"original",
+            ),
             (archive, b"replacement"),
         ],
         "unplugged",
@@ -190,7 +193,11 @@ fn barrier_quirks(fs_type: &'static str, fails: bool, during: &Listings, folder:
 }
 
 /// Checks a failed barrier keeps the original, and the failure says where.
-fn expect_original_kept(folder: &Path, result: Compressed, row: &str) -> Result<(), Box<dyn Error>> {
+fn expect_original_kept(
+    folder: &Path,
+    result: Compressed,
+    row: &str,
+) -> Result<(), Box<dyn Error>> {
     let kept = names(folder)?
         .into_iter()
         .find(|name| name != "existing.zip")

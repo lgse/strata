@@ -162,10 +162,7 @@ impl VolumeTrash {
     }
 
     fn add_info(&self, name: &str, orig_path: &str) -> io::Result<()> {
-        fs::write(
-            self.info(name),
-            format!("[Trash Info]\nPath={orig_path}\n"),
-        )
+        fs::write(self.info(name), format!("[Trash Info]\nPath={orig_path}\n"))
     }
 
     fn add_dated_info(&self, name: &str, orig_path: &str) -> io::Result<()> {
@@ -190,13 +187,18 @@ fn trashed_directory(source: &Path, destination: &Path) -> RestoreTrashItem {
     }
 }
 
-fn recording() -> (Rc<RefCell<Vec<OperationEvent>>>, Rc<dyn Fn(OperationEvent)>) {
+type Recorded = Rc<RefCell<Vec<OperationEvent>>>;
+
+fn recording() -> (Recorded, Rc<dyn Fn(OperationEvent)>) {
     let events = Rc::new(RefCell::new(Vec::new()));
     let emitted = events.clone();
-    (events, Rc::new(move |event| emitted.borrow_mut().push(event)))
+    (
+        events,
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    )
 }
 
-fn start_restore(id: u64, items: Vec<RestoreTrashItem>) -> (LoadHandle, Rc<RefCell<Vec<OperationEvent>>>) {
+fn start_restore(id: u64, items: Vec<RestoreTrashItem>) -> (LoadHandle, Recorded) {
     let (events, emit) = recording();
     let operation = LocalOperationProvider.restore(
         RestoreRequest {

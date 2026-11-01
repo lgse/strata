@@ -20,8 +20,8 @@ use crate::{
     services::{ArchiveFormat, PlacedSnapshot, ReplacedOriginal, TransferConflict},
     test_support::ASYNC_MAIN_CONTEXT_DEFAULT,
 };
-use gtk::glib;
 use contents::{CompressedEntry, read_compressed_entries};
+use gtk::glib;
 use policy::assert_seven_z_methods;
 use rustix::io::Errno;
 use std::{
@@ -211,19 +211,22 @@ fn publish_replacement(destination: &Path, conflict: TransferConflict) -> (Compr
 
 fn expect_contents(expected: &[(PathBuf, &[u8])], context: &str) -> Result<(), Box<dyn Error>> {
     for (path, contents) in expected {
-        assert_eq!(
-            fs::read(path)?,
-            *contents,
-            "{context}: {}",
-            path.display()
-        );
+        assert_eq!(fs::read(path)?, *contents, "{context}: {}", path.display());
     }
     Ok(())
 }
 
 /// Checks `existing.zip` is all `folder` holds, and that it holds `contents`.
-fn expect_only_existing(folder: &Path, contents: &[u8], context: &str) -> Result<(), Box<dyn Error>> {
-    assert_eq!(fs::read(folder.join("existing.zip"))?, contents, "{context}");
+fn expect_only_existing(
+    folder: &Path,
+    contents: &[u8],
+    context: &str,
+) -> Result<(), Box<dyn Error>> {
+    assert_eq!(
+        fs::read(folder.join("existing.zip"))?,
+        contents,
+        "{context}"
+    );
     assert_eq!(names(folder)?, ["existing.zip"], "{context}");
     Ok(())
 }

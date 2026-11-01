@@ -146,7 +146,11 @@ impl<'a> Decoder<'a> {
         }
     }
 
-    fn extract(&self, archive: &Path, destination: &Path) -> Result<Option<String>, Box<dyn Error>> {
+    fn extract(
+        &self,
+        archive: &Path,
+        destination: &Path,
+    ) -> Result<Option<String>, Box<dyn Error>> {
         Ok(completed_extract(self.run(archive, destination)?)?)
     }
 }

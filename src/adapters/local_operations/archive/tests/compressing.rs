@@ -266,7 +266,11 @@ fn an_archive_that_replaced_an_original_it_cannot_remove_completes_and_reports_i
 }
 
 /// Extracts `archive` into `extracted` with the decoder for `format`.
-fn decode_into(archive: &Path, extracted: &Path, format: ArchiveFormat) -> Result<(), Box<dyn Error>> {
+fn decode_into(
+    archive: &Path,
+    extracted: &Path,
+    format: ArchiveFormat,
+) -> Result<(), Box<dyn Error>> {
     let progress = Arc::new(AtomicUsize::new(0));
     let mut report = TransferReport::default();
     match format {

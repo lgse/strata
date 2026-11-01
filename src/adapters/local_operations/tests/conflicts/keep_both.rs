@@ -281,10 +281,7 @@ impl Kind {
             Kind::File => assert_eq!(fs::read(copied)?, b"incoming", "{row}"),
             Kind::Folder => assert_eq!(fs::read(copied.join("inside.txt"))?, b"incoming", "{row}"),
             Kind::Link => assert_eq!(fs::read_link(copied)?, Path::new("incoming"), "{row}"),
-            Kind::Pipe => assert!(
-                fs::symlink_metadata(copied)?.file_type().is_fifo(),
-                "{row}"
-            ),
+            Kind::Pipe => assert!(fs::symlink_metadata(copied)?.file_type().is_fifo(), "{row}"),
         }
         Ok(())
     }
@@ -408,7 +405,8 @@ impl Numbered {
     /// destination a copy crosses into from its own volume.
     fn install(&self, root: &Path, quirks: Quirks) -> (Option<FsQuirks>, FsQuirks) {
         let moving = self.way == Way::Moved;
-        let sources = (!moving).then(|| FsQuirks::install(&root.join("sources"), Quirks::default()));
+        let sources =
+            (!moving).then(|| FsQuirks::install(&root.join("sources"), Quirks::default()));
         let destination = root.join("destination");
         let scope = FsQuirks::install(if moving { root } else { &destination }, quirks);
         if self.way == Way::InPlace {

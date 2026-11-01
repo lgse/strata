@@ -224,7 +224,13 @@ fn a_typed_name_the_location_would_store_otherwise_is_refused_before_the_rename(
     };
     let long_folder_name = "f".repeat(214);
     let rows: [(Preset, &str, bool, &str, Option<String>); 6] = [
-        (Quirks::vfat, "", false, "a:b?", Some(cannot_contain(&[":", "?"]))),
+        (
+            Quirks::vfat,
+            "",
+            false,
+            "a:b?",
+            Some(cannot_contain(&[":", "?"])),
+        ),
         (
             Quirks::vfat,
             "",

@@ -213,10 +213,7 @@ fn links_the_destination_cannot_hold_are_left_out_with_hard_links_to_them()
             row.listed
         );
         if row.listed.contains(&"bin/now") {
-            assert_same_inode(
-                &root.path().join("bin/now"),
-                &root.path().join("bin/10_00"),
-            )?;
+            assert_same_inode(&root.path().join("bin/now"), &root.path().join("bin/10_00"))?;
         }
     }
     Ok(())

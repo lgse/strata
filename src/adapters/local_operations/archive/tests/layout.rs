@@ -6,7 +6,12 @@ use super::*;
 
 fn expect_listings(expected: &[(PathBuf, &[&str])], context: &str) -> Result<(), Box<dyn Error>> {
     for (folder, names) in expected {
-        assert_eq!(entry_names(folder)?, *names, "{context}: {}", folder.display());
+        assert_eq!(
+            entry_names(folder)?,
+            *names,
+            "{context}: {}",
+            folder.display()
+        );
     }
     Ok(())
 }

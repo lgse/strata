@@ -133,12 +133,7 @@ fn entry_names(directory: &Path) -> Result<Vec<String>, Box<dyn Error>> {
 
 fn expect_contents(expected: &[(PathBuf, &[u8])], context: &str) -> Result<(), Box<dyn Error>> {
     for (path, contents) in expected {
-        assert_eq!(
-            fs::read(path)?,
-            *contents,
-            "{context}: {}",
-            path.display()
-        );
+        assert_eq!(fs::read(path)?, *contents, "{context}: {}", path.display());
     }
     Ok(())
 }
