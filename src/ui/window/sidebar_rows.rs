@@ -3,11 +3,10 @@
 //! Sidebar row buttons, their keycaps and the active-row highlight.
 
 use gtk::prelude::*;
+
 use crate::model::Location;
-use super::place_keycap;
-use super::sidebar_device_shell;
-use super::sidebar_drop_feedback;
-use super::SidebarState;
+
+use super::{SidebarState, sidebar_drop_feedback, places::place_keycap, sidebar_devices::sidebar_device_shell};
 
 impl SidebarState {
     /// Keycaps name the second key of the **g** place chord while it is armed.

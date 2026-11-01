@@ -2,32 +2,14 @@
 
 //! Locking encrypted devices and forgetting their cached passwords.
 
+use std::{cell::{Cell, RefCell}, rc::Rc};
+
 use gtk::prelude::*;
-use std::cell::Cell;
-use std::cell::RefCell;
-use std::rc::Rc;
-use super::Browser;
-use super::BrowserView;
-use super::MediaRelease;
-use super::ModalHost;
-use super::ModalTone;
-use super::begin_media_release;
-use super::close_on_escape;
-use super::device_release::ReleaseKind;
-use super::device_release;
-use super::devices;
-use super::dismiss_modal_layer;
-use super::drive_ops;
-use super::focus_button;
-use super::gio_volume_is_locked;
-use super::gio_volume_unix_device;
-use super::message_dialog_description;
-use super::message_dialog_layout;
-use super::modal_layer;
-use super::release_kind;
-use super::release_unplug;
-use super::show_error_dialog;
-use super::volume_password;
+
+use crate::{app::Browser, ui::{browser::{BrowserView, show_error_dialog}, controls::{ModalTone, focus_button, message_dialog_description, message_dialog_layout}, modal::{ModalHost, close_on_escape, dismiss_modal_layer, modal_layer}}};
+
+use super::{device_release, devices, drive_ops, volume_password, device_actions::{MediaRelease, begin_media_release, release_kind, release_unplug}, device_release::ReleaseKind, gio_devices::{gio_volume_is_locked, gio_volume_unix_device}};
+
 pub(super) fn lock_encrypted_volume(
     volume: &gio::Volume,
     parent: &gtk::Widget,

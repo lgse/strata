@@ -2,19 +2,13 @@
 
 //! Dropping files onto sidebar places.
 
-use gtk::prelude::*;
-use crate::model::Location;
 use std::rc::Rc;
-use super::DropHandler;
-use super::PreparedFileDrop;
-use super::arm_spring_load_navigation;
-use super::attach_drop_target;
-use super::commit_dropped_value;
-use super::file_drag_hover_target;
-use super::file_drop_action;
-use super::install_sidebar_trash_drop;
-use super::prepare_file_drop_target;
-use super::SidebarState;
+
+use gtk::prelude::*;
+
+use crate::{model::Location, ui::browser::{DropHandler, PreparedFileDrop, arm_spring_load_navigation, attach_drop_target, commit_dropped_value, file_drag_hover_target, file_drop_action, prepare_file_drop_target}};
+
+use super::{SidebarState, sidebar_trash::install_sidebar_trash_drop};
 
 pub(super) fn sidebar_accepts_file_drop(location: &Location) -> bool {
     location.native_path().is_some()

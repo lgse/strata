@@ -2,12 +2,11 @@
 
 //! Pinning, unpinning and moving the user's pinned folders.
 
-use crate::model::Location;
 use std::rc::Rc;
-use super::PinStatus;
-use super::is_standard_place_location;
-use super::show_error_dialog;
-use super::SidebarState;
+
+use crate::{model::Location, ui::browser::{PinStatus, show_error_dialog}};
+
+use super::{SidebarState, places::is_standard_place_location};
 
 impl SidebarState {
     pub(super) fn pin_location(self: &Rc<Self>, location: Location, name: String) {

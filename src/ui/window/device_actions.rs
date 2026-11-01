@@ -6,18 +6,14 @@
 /// the drive reports it (USB sticks, optical discs); plain unmount covers
 /// mounts without ejectable media. `None` means fixed internal storage with
 /// no actionable release.
+use std::{cell::Cell, rc::Rc};
+
 use gtk::prelude::*;
-use std::cell::Cell;
-use crate::model::Location;
-use std::rc::Rc;
-use super::Browser;
-use super::BrowserView;
-use super::device_release::ReleaseKind;
-use super::device_release;
-use super::home_directory;
-use super::location_for_file;
-use super::mount_can_unplug;
-use super::volume_can_unplug;
+
+use crate::{adapters::{location_for_file, mount_can_unplug, volume_can_unplug}, app::Browser, model::Location, ui::browser::BrowserView};
+
+use super::{device_release, device_release::ReleaseKind, launch::home_directory};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum MediaRelease {
     EjectVolume,

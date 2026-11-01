@@ -2,12 +2,11 @@
 
 //! The sidebar handle a window holds, rebuilding and scroll preservation.
 
+use std::{cell::{Cell, RefCell}, rc::Rc};
+
 use gtk::prelude::*;
-use std::cell::Cell;
-use std::cell::RefCell;
-use std::rc::Rc;
-use super::device_release;
-use super::SidebarState;
+
+use super::{SidebarState, device_release};
 
 pub(in crate::ui) struct SidebarView {
     pub(in crate::ui) widget: gtk::Widget,

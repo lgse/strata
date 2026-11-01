@@ -2,17 +2,13 @@
 
 //! Dragging sidebar places and pins to reorder them.
 
+use std::{cell::Cell, rc::Rc};
+
 use gtk::prelude::*;
-use std::cell::Cell;
+
 use crate::model::Location;
-use std::rc::Rc;
-use super::PlaceNavigation;
-use super::STANDARD_PLACE_IDS;
-use super::customize_sidebar_folder_icon;
-use super::sidebar;
-use super::sidebar_button;
-use super::sidebar_drop_feedback;
-use super::SidebarState;
+
+use super::{SidebarState, sidebar, sidebar_drop_feedback, places::STANDARD_PLACE_IDS, sidebar::PlaceNavigation, sidebar_rows::{customize_sidebar_folder_icon, sidebar_button}};
 
 pub(super) const PINNED_DRAG_PREFIX: &str = "pinned:";
 

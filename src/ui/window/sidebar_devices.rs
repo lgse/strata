@@ -2,41 +2,13 @@
 
 //! Volume, mount and drive rows in the sidebar Devices section.
 
+use std::{cell::Cell, rc::Rc};
+
 use gtk::prelude::*;
-use std::cell::Cell;
-use crate::model::Location;
-use std::rc::Rc;
-use super::DeviceRowActions;
-use super::EncryptedMediaAction;
-use super::MediaRelease;
-use super::PlaceNavigation;
-use super::SidebarSection;
-use super::attach_device_actions_menu;
-use super::device_labels;
-use super::device_release;
-use super::device_row_actions;
-use super::drive_dialogs::PropertiesTarget;
-use super::drive_dialogs;
-use super::eject_password_drive;
-use super::gio_mount_is_encrypted;
-use super::gio_volume_is_encrypted;
-use super::gio_volume_is_locked;
-use super::gio_volume_unix_device;
-use super::install_sidebar_file_drop;
-use super::location_for_file;
-use super::lock_encrypted_mount;
-use super::lock_encrypted_volume;
-use super::media_release_label;
-use super::navigate_to_gio_file;
-use super::orphaned_password_drives;
-use super::release_device_mount;
-use super::release_device_volume;
-use super::select_sidebar_row;
-use super::show_error_dialog;
-use super::sidebar;
-use super::sidebar_button;
-use super::sidebar_context_option;
-use super::SidebarState;
+
+use crate::{adapters::location_for_file, model::Location, ui::browser::show_error_dialog};
+
+use super::{SidebarState, device_labels, device_release, drive_dialogs, sidebar, device_actions::{DeviceRowActions, EncryptedMediaAction, MediaRelease, device_row_actions, media_release_label, release_device_mount, release_device_volume}, device_lock::{eject_password_drive, lock_encrypted_mount, lock_encrypted_volume}, device_menu::attach_device_actions_menu, drive_dialogs::PropertiesTarget, gio_devices::{gio_mount_is_encrypted, gio_volume_is_encrypted, gio_volume_is_locked, gio_volume_unix_device, orphaned_password_drives}, launch::navigate_to_gio_file, sidebar::PlaceNavigation, sidebar_context_menu::sidebar_context_option, sidebar_file_drop::install_sidebar_file_drop, sidebar_rows::{select_sidebar_row, sidebar_button}, sidebar_sections::SidebarSection};
 
 impl SidebarState {
     pub(super) fn append_devices(self: &Rc<Self>) {

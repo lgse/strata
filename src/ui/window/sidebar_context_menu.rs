@@ -2,11 +2,13 @@
 
 //! The context menu attached to sidebar places.
 
-use gtk::prelude::*;
-use crate::model::Location;
 use std::rc::Rc;
-use super::sidebar;
-use super::SidebarState;
+
+use gtk::prelude::*;
+
+use crate::model::Location;
+
+use super::{SidebarState, sidebar};
 
 impl SidebarState {
     pub(super) fn attach_place_context_menu(

@@ -2,25 +2,13 @@
 
 //! The standard, recent and pinned places listed in the sidebar.
 
-use gtk::prelude::*;
-use crate::model::Location;
 use std::rc::Rc;
-use super::BrowserEvent;
-use super::PlaceNavigation;
-use super::home_directory;
-use super::is_standard_place_location;
-use super::network_location;
-use super::pin_keycap;
-use super::pinned_drop::FolderDragCache;
-use super::pinned_drop;
-use super::set_sidebar_row_active;
-use super::should_show_standard_place;
-use super::sidebar_button;
-use super::sidebar_standard_place_visible;
-use super::standard_place;
-use super::standard_place_chord_key;
-use super::sync_keycap;
-use super::SidebarState;
+
+use gtk::prelude::*;
+
+use crate::{app::BrowserEvent, model::Location};
+
+use super::{SidebarState, network_location, pinned_drop, launch::home_directory, pinned_drop::FolderDragCache, places::{is_standard_place_location, pin_keycap, should_show_standard_place, sidebar_standard_place_visible, standard_place, standard_place_chord_key}, sidebar::PlaceNavigation, sidebar_rows::{set_sidebar_row_active, sidebar_button, sync_keycap}};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct RecentAvailability {

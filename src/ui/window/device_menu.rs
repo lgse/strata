@@ -2,17 +2,14 @@
 
 //! The actions menu of a sidebar device row.
 
-use gtk::prelude::*;
 use std::rc::Rc;
-use super::BrowserView;
-use super::DeviceRowActions;
-use super::drive_dialogs::PropertiesTarget;
-use super::drive_dialogs;
-use super::drive_ops;
-use super::location_for_file;
-use super::media_release_label;
-use super::sidebar;
-use super::sidebar_context_option;
+
+use gtk::prelude::*;
+
+use crate::{adapters::location_for_file, ui::browser::BrowserView};
+
+use super::{drive_dialogs, drive_ops, sidebar, device_actions::{DeviceRowActions, media_release_label}, drive_dialogs::PropertiesTarget, sidebar_context_menu::sidebar_context_option};
+
 pub(super) fn attach_device_actions_menu(
     row: &gtk::Button,
     view: &BrowserView,

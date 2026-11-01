@@ -2,17 +2,16 @@
 
 //! The collapsible Pinned and Devices sections of the sidebar.
 
-use gtk::prelude::*;
-use std::cell::Cell;
-use std::cell::RefCell;
-use std::rc::Rc;
-use super::PreferenceManager;
-use super::animations_enabled;
-use super::reparent_in_order;
-use super::{SidebarState, sidebar_drop_feedback};
-
 /// Pinned rows are split across two revealers with the active row kept between
 /// them, so collapsing folds the other rows away around the row the user is in.
+use std::{cell::{Cell, RefCell}, rc::Rc};
+
+use gtk::prelude::*;
+
+use crate::ui::{motion::animations_enabled, preferences::PreferenceManager};
+
+use super::{SidebarState, sidebar_drop_feedback, sidebar_rows::reparent_in_order};
+
 pub(super) struct PinnedSection {
     pub(super) header: SectionHeader,
     pub(super) upper_revealer: gtk::Revealer,
