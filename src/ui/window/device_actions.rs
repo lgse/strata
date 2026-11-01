@@ -138,129 +138,133 @@ pub(super) fn begin_media_release(in_flight: &Cell<bool>) -> bool {
     !in_flight.replace(true)
 }
 
+/// Where a device action shows progress and errors, with the guard that keeps a
+/// row to one action at a time.
+#[derive(Clone)]
+pub(super) struct DeviceActionContext {
+    pub(super) parent: gtk::Widget,
+    pub(super) browser: Option<Rc<Browser>>,
+    pub(super) view: BrowserView,
+    pub(super) in_flight: Rc<Cell<bool>>,
+}
+
+impl DeviceActionContext {
+    /// Starts `release` unless another action on the row is still running.
+    pub(super) fn run_release<F, Fut>(&self, target: device_release::ReleaseTarget, run_gio: F)
+    where
+        F: FnOnce(gtk::MountOperation) -> Fut + 'static,
+        Fut: Future<Output = Result<(), glib::Error>> + 'static,
+    {
+        let in_flight = self.in_flight.clone();
+        let started = device_release::begin_release(
+            device_release::ReleaseRequest {
+                parent: &self.parent,
+                browser: self.browser.clone(),
+                view: Some(&self.view),
+                target,
+            },
+            move || in_flight.set(false),
+            run_gio,
+        );
+        if !started {
+            self.in_flight.set(false);
+        }
+    }
+}
+
+fn release_needs_mount(action: MediaRelease) -> bool {
+    matches!(
+        action,
+        MediaRelease::EjectMount | MediaRelease::UnmountMount
+    )
+}
+
+fn not_mounted_error() -> glib::Error {
+    glib::Error::new(
+        gio::IOErrorEnum::Failed,
+        &crate::i18n::tr("The volume is not mounted."),
+    )
+}
+
+async fn release_volume_media(
+    action: MediaRelease,
+    volume: gio::Volume,
+    mount: Option<gio::Mount>,
+    operation: gtk::MountOperation,
+) -> Result<(), glib::Error> {
+    match (action, mount) {
+        (MediaRelease::EjectVolume, _) => {
+            volume
+                .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
+                .await
+        }
+        (_, None) => Err(not_mounted_error()),
+        (_, Some(mount)) => release_mount_media(action, mount, operation).await,
+    }
+}
+
+async fn release_mount_media(
+    action: MediaRelease,
+    mount: gio::Mount,
+    operation: gtk::MountOperation,
+) -> Result<(), glib::Error> {
+    match action {
+        MediaRelease::EjectVolume | MediaRelease::EjectMount => {
+            mount
+                .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
+                .await
+        }
+        MediaRelease::UnmountMount => {
+            mount
+                .unmount_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
+                .await
+        }
+    }
+}
+
 pub(super) fn release_device_volume(
     volume: &gio::Volume,
     action: MediaRelease,
-    parent: &gtk::Widget,
-    browser: &Rc<Browser>,
-    view: &BrowserView,
-    in_flight: &Rc<Cell<bool>>,
+    context: &DeviceActionContext,
 ) {
-    if !begin_media_release(in_flight) {
+    if !begin_media_release(&context.in_flight) {
         return;
     }
     let mount = volume.get_mount();
-    if matches!(
-        action,
-        MediaRelease::EjectMount | MediaRelease::UnmountMount
-    ) && mount.is_none()
-    {
-        in_flight.set(false);
+    if release_needs_mount(action) && mount.is_none() {
+        context.in_flight.set(false);
         return;
     }
-    let key = device_release::key_for_volume(volume);
-    let sync_root = mount.as_ref().and_then(|mount| mount.root().path());
-    let away_root = mount.as_ref().map(gio::Mount::root);
-    let unplug = release_unplug(&action, mount.as_ref(), Some(volume));
+    let target = device_release::ReleaseTarget {
+        key: device_release::key_for_volume(volume),
+        kind: release_kind(action),
+        unplug: release_unplug(&action, mount.as_ref(), Some(volume)),
+        sync_root: mount.as_ref().and_then(|mount| mount.root().path()),
+        away_root: mount.as_ref().map(gio::Mount::root),
+    };
     let volume = volume.clone();
-    let mount = mount.clone();
-    let in_flight_for_settle = in_flight.clone();
-    let started = device_release::start_release(
-        parent,
-        Some(browser.clone()),
-        Some(view),
-        key,
-        release_kind(action),
-        unplug,
-        sync_root,
-        away_root,
-        move || in_flight_for_settle.set(false),
-        move |operation| async move {
-            match action {
-                MediaRelease::EjectVolume => {
-                    volume
-                        .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
-                        .await
-                }
-                MediaRelease::EjectMount => {
-                    let Some(mount) = mount else {
-                        return Err(glib::Error::new(
-                            gio::IOErrorEnum::Failed,
-                            &crate::i18n::tr("The volume is not mounted."),
-                        ));
-                    };
-                    mount
-                        .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
-                        .await
-                }
-                MediaRelease::UnmountMount => {
-                    let Some(mount) = mount else {
-                        return Err(glib::Error::new(
-                            gio::IOErrorEnum::Failed,
-                            &crate::i18n::tr("The volume is not mounted."),
-                        ));
-                    };
-                    mount
-                        .unmount_with_operation_future(
-                            gio::MountUnmountFlags::NONE,
-                            Some(&operation),
-                        )
-                        .await
-                }
-            }
-        },
-    );
-    if !started {
-        in_flight.set(false);
-    }
+    context.run_release(target, move |operation| {
+        release_volume_media(action, volume, mount, operation)
+    });
 }
 
 pub(super) fn release_device_mount(
     mount: &gio::Mount,
     action: MediaRelease,
-    parent: &gtk::Widget,
-    browser: &Rc<Browser>,
-    view: &BrowserView,
-    in_flight: &Rc<Cell<bool>>,
+    context: &DeviceActionContext,
 ) {
-    if !begin_media_release(in_flight) {
+    if !begin_media_release(&context.in_flight) {
         return;
     }
-    let key = device_release::key_for_mount(mount);
-    let sync_root = mount.root().path();
-    let away_root = mount.root();
-    let unplug = release_unplug(&action, Some(mount), None);
+    let target = device_release::ReleaseTarget {
+        key: device_release::key_for_mount(mount),
+        kind: release_kind(action),
+        unplug: release_unplug(&action, Some(mount), None),
+        sync_root: mount.root().path(),
+        away_root: Some(mount.root()),
+    };
     let mount = mount.clone();
-    let in_flight_for_settle = in_flight.clone();
-    let started = device_release::start_release(
-        parent,
-        Some(browser.clone()),
-        Some(view),
-        key,
-        release_kind(action),
-        unplug,
-        sync_root,
-        Some(away_root),
-        move || in_flight_for_settle.set(false),
-        move |operation| async move {
-            match action {
-                MediaRelease::EjectVolume | MediaRelease::EjectMount => {
-                    mount
-                        .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
-                        .await
-                }
-                MediaRelease::UnmountMount => {
-                    mount
-                        .unmount_with_operation_future(
-                            gio::MountUnmountFlags::NONE,
-                            Some(&operation),
-                        )
-                        .await
-                }
-            }
-        },
-    );
-    if !started {
-        in_flight.set(false);
-    }
+    context.run_release(target, move |operation| {
+        release_mount_media(action, mount, operation)
+    });
 }

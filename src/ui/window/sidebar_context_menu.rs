@@ -2,13 +2,16 @@
 
 //! The context menu attached to sidebar places.
 
-use std::rc::Rc;
+use std::{path::PathBuf, rc::Rc};
 
 use gtk::prelude::*;
 
-use crate::model::Location;
+use crate::{model::Location, ui::browser::BrowserView};
 
-use super::{SidebarState, sidebar};
+use super::{
+    SidebarState, sidebar,
+    sidebar_popover::{context_popover, open_on_secondary_click, popdown},
+};
 
 impl SidebarState {
     pub(super) fn attach_place_context_menu(
@@ -17,20 +20,24 @@ impl SidebarState {
         location: Location,
         on_unpin: impl Fn(&Rc<Self>) + 'static,
     ) {
-        self.attach_place_context_menu_with(row, location, on_unpin, None);
+        let place = PlaceMenu {
+            location,
+            extra: None,
+        };
+        self.attach_place_context_menu_with(row, place, on_unpin);
     }
 
-    /// Like [`Self::attach_place_context_menu`], with `extra` above the standard items.
+    /// Like [`Self::attach_place_context_menu`], with the place's extra item above the
+    /// standard items.
     pub(super) fn attach_place_context_menu_with(
         self: &Rc<Self>,
         row: &gtk::Button,
-        location: Location,
+        place: PlaceMenu,
         on_unpin: impl Fn(&Rc<Self>) + 'static,
-        extra: Option<PlaceMenuExtra>,
     ) {
         let menu = crate::ui::accessibility::menu_box();
         menu.add_css_class("folder-context-menu");
-        let extra_item = extra.map(|extra| {
+        let extra_item = place.extra.map(|extra| {
             let button = sidebar_context_option(extra.icon, extra.label, false);
             menu.append(&button);
             (button, extra.action)
@@ -38,91 +45,84 @@ impl SidebarState {
         let unpin = sidebar_context_option(crate::assets::icons::PIN, "Unpin", false);
         let properties = sidebar_context_option(crate::assets::icons::INFO, "Properties", false);
         menu.append(&unpin);
-        let customize = location.native_path().map(|path| {
+        let customize = place.location.native_path().map(|path| {
             let button = sidebar_context_option(crate::assets::icons::PALETTE, "Customize…", false);
             menu.append(&button);
             (button, path.to_path_buf())
         });
         menu.append(&properties);
-        let popover = gtk::Popover::builder()
-            .child(&menu)
-            .autohide(true)
-            .has_arrow(false)
-            .build();
-        popover.add_css_class("folder-context-popover");
-        popover.set_parent(row);
-        sidebar::append_open_in_tab(&menu, &popover, row, &self.view, &location);
-
+        let popover = context_popover(row, &menu);
+        sidebar::append_open_in_tab(&menu, &popover, row, &self.view, &place.location);
         if let Some((button, action)) = extra_item {
-            let popover = popover.downgrade();
-            let weak_state = Rc::downgrade(self);
-            button.connect_clicked(move |_| {
-                if let Some(popover) = popover.upgrade() {
-                    popover.popdown();
-                }
-                if let Some(state) = weak_state.upgrade() {
-                    action(&state);
-                }
-            });
+            self.connect_state_item(&button, &popover, action);
         }
-
         if let Some((customize, path)) = customize {
-            let weak_popover = popover.downgrade();
-            let weak_row = row.downgrade();
-            customize.connect_clicked(move |_| {
-                if let Some(popover) = weak_popover.upgrade() {
-                    popover.popdown();
-                }
-                if let Some(row) = weak_row.upgrade() {
-                    crate::ui::browser::show_customize_modal(
-                        &row,
-                        path.clone(),
-                        true,
-                        crate::assets::icons::FOLDER,
-                    );
-                }
-            });
+            connect_customize(&customize, &popover, row, path);
         }
-
-        let weak_state = Rc::downgrade(self);
-        let unpin_popover = popover.downgrade();
-        unpin.connect_clicked(move |_| {
-            if let Some(popover) = unpin_popover.upgrade() {
-                popover.popdown();
-            }
-            if let Some(state) = weak_state.upgrade() {
-                on_unpin(&state);
-            }
-        });
-        let properties_view = self.view.downgrade();
-        let properties_location = location;
-        let properties_popover = popover.downgrade();
-        properties.connect_clicked(move |_| {
-            if let Some(popover) = properties_popover.upgrade() {
-                popover.popdown();
-            }
-            if let Some(view) = properties_view.upgrade() {
-                view.show_location_properties(&properties_location);
-            }
-        });
-        let context = gtk::GestureClick::new();
-        context.set_button(3);
-        let weak_popover = popover.downgrade();
-        context.connect_pressed(move |gesture, _, x, y| {
-            gesture.set_state(gtk::EventSequenceState::Claimed);
-            let Some(popover) = weak_popover.upgrade() else {
-                return;
-            };
-            popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
-                x.round() as i32,
-                y.round() as i32,
-                1,
-                1,
-            )));
-            popover.popup();
-        });
-        row.add_controller(context);
+        self.connect_state_item(&unpin, &popover, on_unpin);
+        connect_properties(&properties, &popover, &self.view, place.location);
+        open_on_secondary_click(row, &popover);
     }
+
+    /// Closes the menu, then runs `action` while the sidebar is still alive.
+    fn connect_state_item(
+        self: &Rc<Self>,
+        button: &gtk::Button,
+        popover: &gtk::Popover,
+        action: impl Fn(&Rc<Self>) + 'static,
+    ) {
+        let popover = popover.downgrade();
+        let weak_state = Rc::downgrade(self);
+        button.connect_clicked(move |_| {
+            popdown(&popover);
+            if let Some(state) = weak_state.upgrade() {
+                action(&state);
+            }
+        });
+    }
+}
+
+fn connect_customize(
+    customize: &gtk::Button,
+    popover: &gtk::Popover,
+    row: &gtk::Button,
+    path: PathBuf,
+) {
+    let weak_popover = popover.downgrade();
+    let weak_row = row.downgrade();
+    customize.connect_clicked(move |_| {
+        popdown(&weak_popover);
+        if let Some(row) = weak_row.upgrade() {
+            crate::ui::browser::show_customize_modal(
+                &row,
+                path.clone(),
+                true,
+                crate::assets::icons::FOLDER,
+            );
+        }
+    });
+}
+
+fn connect_properties(
+    properties: &gtk::Button,
+    popover: &gtk::Popover,
+    view: &BrowserView,
+    location: Location,
+) {
+    let properties_view = view.downgrade();
+    let properties_popover = popover.downgrade();
+    properties.connect_clicked(move |_| {
+        popdown(&properties_popover);
+        if let Some(view) = properties_view.upgrade() {
+            view.show_location_properties(&location);
+        }
+    });
+}
+
+/// The place a context menu acts on, and the extra item it offers.
+pub(super) struct PlaceMenu {
+    pub(super) location: Location,
+    pub(super) extra: Option<PlaceMenuExtra>,
 }
 
 /// Extra context-menu action placed above the standard place items.

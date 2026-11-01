@@ -11,13 +11,14 @@ use crate::{adapters::location_for_file, model::Location, ui::browser::show_erro
 use super::{
     SidebarState,
     device_actions::{
-        DeviceRowActions, EncryptedMediaAction, MediaRelease, device_row_actions,
-        media_release_label, release_device_mount, release_device_volume,
+        DeviceActionContext, DeviceRowActions, EncryptedMediaAction, MediaRelease,
+        device_row_actions, media_release_label, release_device_mount, release_device_volume,
     },
     device_labels,
     device_lock::{eject_password_drive, lock_encrypted_mount, lock_encrypted_volume},
-    device_menu::attach_device_actions_menu,
-    device_release, drive_dialogs,
+    device_menu::{DeviceMenuEntries, attach_device_menu},
+    device_release,
+    drive_dialogs::PropertiesTarget,
     gio_devices::{
         gio_mount_is_encrypted, gio_volume_is_encrypted, gio_volume_is_locked,
         gio_volume_unix_device, orphaned_password_drives,
@@ -27,9 +28,12 @@ use super::{
     sidebar::PlaceNavigation,
     sidebar_context_menu::sidebar_context_option,
     sidebar_file_drop::install_sidebar_file_drop,
+    sidebar_popover::{context_popover, open_on_secondary_click, popdown},
     sidebar_rows::{select_sidebar_row, sidebar_button},
     sidebar_sections::SidebarSection,
 };
+
+type DeviceAction = Rc<dyn Fn()>;
 
 impl SidebarState {
     pub(super) fn append_devices(self: &Rc<Self>) {
@@ -37,11 +41,8 @@ impl SidebarState {
         let mounts = self.mounts_without_volumes(&volumes);
         let password_drives =
             orphaned_password_drives(&volumes, &self.volume_monitor.connected_drives());
-        if volumes.is_empty()
-            && mounts.is_empty()
-            && password_drives.is_empty()
-            && !device_release::any_pending()
-        {
+        let listed = volumes.len() + mounts.len() + password_drives.len();
+        if listed == 0 && !device_release::any_pending() {
             return;
         }
         if self.widget.first_child().is_some() {
@@ -49,21 +50,21 @@ impl SidebarState {
         }
         let section = self.append_devices_section();
         let mut shown = Vec::new();
-        for volume in volumes {
-            if let Some(ids) = self.append_volume(volume) {
-                shown.push(ids);
-            }
-        }
-        for drive in password_drives {
-            if let Some(ids) = self.append_password_drive(drive) {
-                shown.push(ids);
-            }
-        }
-        for (name, location, mount) in mounts {
-            if let Some(ids) = self.append_mount(&name, location, mount) {
-                shown.push(ids);
-            }
-        }
+        shown.extend(
+            volumes
+                .into_iter()
+                .filter_map(|volume| self.append_volume(volume)),
+        );
+        shown.extend(
+            password_drives
+                .into_iter()
+                .filter_map(|drive| self.append_password_drive(drive)),
+        );
+        shown.extend(
+            mounts
+                .into_iter()
+                .filter_map(|(name, location, mount)| self.append_mount(&name, location, mount)),
+        );
         for key in device_release::unmatched_pending(&shown) {
             self.append_release_ghost(&key);
         }
@@ -97,6 +98,25 @@ impl SidebarState {
             .collect()
     }
 
+    /// Lock and release actions on one row share a context, so only one runs at a time.
+    fn device_action_context(&self) -> DeviceActionContext {
+        DeviceActionContext {
+            parent: self.view.widget(),
+            browser: Some(self.browser.clone()),
+            view: self.view.clone(),
+            in_flight: Rc::new(Cell::new(false)),
+        }
+    }
+
+    /// Shows a pending stand-in instead of the row while the device is being released.
+    fn append_if_releasing(&self, row: &gtk::Button, ids: &device_release::DeviceIds) -> bool {
+        let releasing = device_release::is_pending(ids);
+        if releasing {
+            self.append_sidebar_row(&device_release::pending_device_shell(row));
+        }
+        releasing
+    }
+
     pub(super) fn append_mount(
         self: &Rc<Self>,
         name: &str,
@@ -107,68 +127,47 @@ impl SidebarState {
             self.append_smb_mount(name, location, mount);
             return None;
         }
-        let ids = device_release::ids_for_mount(&mount);
         let row = sidebar_button(crate::assets::icons::HARD_DRIVE, name);
-        if let Some(id) = drive_dialogs::PropertiesTarget::Mount(mount.clone()).label_id() {
+        if let Some(id) = PropertiesTarget::Mount(mount.clone()).label_id() {
             device_labels::bind_row_label(&row, &self.preference_manager, &id, name);
         }
         crate::ui::accessibility::set_description(&row, Some(&location.display_path()));
-        if device_release::is_pending(&ids) {
-            self.append_sidebar_row(&device_release::pending_device_shell(&row));
+        let ids = device_release::ids_for_mount(&mount);
+        if self.append_if_releasing(&row, &ids) {
             return Some(ids);
         }
         self.bind_place_row(&row, location, PlaceNavigation::Validate);
-        let encrypted = gio_mount_is_encrypted(&mount);
+        let entries = self.mount_menu_entries(mount);
+        self.append_device_chrome(&row, entries);
+        Some(ids)
+    }
+
+    fn mount_menu_entries(&self, mount: gio::Mount) -> DeviceMenuEntries {
         let actions = device_row_actions(
-            encrypted,
+            gio_mount_is_encrypted(&mount),
             true,
             false,
             mount.can_eject(),
             mount.can_unmount(),
         );
-        let in_flight = Rc::new(Cell::new(false));
+        let context = self.device_action_context();
         let on_crypto = actions.encrypted.map(|_| {
-            let crypto_mount = mount.clone();
-            let crypto_parent = self.view.widget();
-            let crypto_browser = self.browser.clone();
-            let crypto_view = self.view.clone();
-            let crypto_in_flight = in_flight.clone();
-            Rc::new(move || {
-                lock_encrypted_mount(
-                    &crypto_mount,
-                    &crypto_parent,
-                    &crypto_browser,
-                    &crypto_view,
-                    &crypto_in_flight,
-                );
-            }) as Rc<dyn Fn()>
+            let mount = mount.clone();
+            let context = context.clone();
+            Rc::new(move || lock_encrypted_mount(&mount, &context)) as DeviceAction
         });
         let on_release = actions.release.map(|action| {
-            let release_mount = mount.clone();
-            let release_browser = self.browser.clone();
-            let release_parent = self.view.widget();
-            let release_view = self.view.clone();
-            let release_in_flight = in_flight.clone();
-            Rc::new(move || {
-                release_device_mount(
-                    &release_mount,
-                    action,
-                    &release_parent,
-                    &release_browser,
-                    &release_view,
-                    &release_in_flight,
-                );
-            }) as Rc<dyn Fn()>
+            let mount = mount.clone();
+            let context = context.clone();
+            Rc::new(move || release_device_mount(&mount, action, &context)) as DeviceAction
         });
-        self.append_device_chrome(
-            &row,
+        DeviceMenuEntries {
             actions,
             on_crypto,
             on_release,
-            None,
-            Some(drive_dialogs::PropertiesTarget::Mount(mount)),
-        );
-        Some(ids)
+            on_mount: None,
+            properties: Some(PropertiesTarget::Mount(mount)),
+        }
     }
 
     pub(super) fn append_volume(
@@ -177,7 +176,7 @@ impl SidebarState {
     ) -> Option<device_release::DeviceIds> {
         let name = volume.name().to_string();
         let row = sidebar_button(crate::assets::icons::HARD_DRIVE, &name);
-        if let Some(id) = drive_dialogs::PropertiesTarget::Volume(volume.clone()).label_id() {
+        if let Some(id) = PropertiesTarget::Volume(volume.clone()).label_id() {
             device_labels::bind_row_label(&row, &self.preference_manager, &id, &name);
         }
         crate::ui::accessibility::set_description(&row, Some(&name));
@@ -185,30 +184,47 @@ impl SidebarState {
             .get_mount()
             .as_ref()
             .and_then(|mount| location_for_file(&mount.root()));
-        if let Some(location) = mounted_location.as_ref() {
-            if self.local_only && location.native_path().is_none() {
-                return None;
-            }
-        } else if self.local_only
-            && (gio_volume_unix_device(&volume).is_none()
-                || volume
-                    .activation_root()
-                    .is_some_and(|root| root.path().is_none()))
-        {
+        if self.hides_volume(&volume, mounted_location.as_ref()) {
             return None;
         }
         let ids = device_release::ids_for_volume(&volume);
-        if device_release::is_pending(&ids) {
-            self.append_sidebar_row(&device_release::pending_device_shell(&row));
+        if self.append_if_releasing(&row, &ids) {
             return Some(ids);
         }
         if let Some(location) = mounted_location {
-            sidebar::install_open_in_tab(&row, &self.view, &location, &self.drop_feedback);
-            self.place_rows
-                .borrow_mut()
-                .push((location.clone(), row.clone()));
-            install_sidebar_file_drop(self, &row, location);
+            self.install_mounted_volume_row(&row, location);
         }
+        self.connect_volume_click(&row, &volume);
+        let entries = self.volume_menu_entries(volume);
+        self.append_device_chrome(&row, entries);
+        Some(ids)
+    }
+
+    /// A local-only sidebar lists only volumes that are, or would mount as, local paths.
+    fn hides_volume(&self, volume: &gio::Volume, mounted_location: Option<&Location>) -> bool {
+        if !self.local_only {
+            return false;
+        }
+        match mounted_location {
+            Some(location) => location.native_path().is_none(),
+            None => {
+                gio_volume_unix_device(volume).is_none()
+                    || volume
+                        .activation_root()
+                        .is_some_and(|root| root.path().is_none())
+            }
+        }
+    }
+
+    fn install_mounted_volume_row(self: &Rc<Self>, row: &gtk::Button, location: Location) {
+        sidebar::install_open_in_tab(row, &self.view, &location, &self.drop_feedback);
+        self.place_rows
+            .borrow_mut()
+            .push((location.clone(), row.clone()));
+        install_sidebar_file_drop(self, row, location);
+    }
+
+    fn connect_volume_click(&self, row: &gtk::Button, volume: &gio::Volume) {
         let weak_browser = Rc::downgrade(&self.browser);
         let sidebar = self.widget.clone();
         let selected_row = row.clone();
@@ -227,68 +243,46 @@ impl SidebarState {
 
             mount_view.mount_volume(volume);
         });
+    }
+
+    fn volume_menu_entries(&self, volume: gio::Volume) -> DeviceMenuEntries {
         let (mount_can_eject, mount_can_unmount) = volume
             .get_mount()
             .map(|mount| (mount.can_eject(), mount.can_unmount()))
             .unwrap_or((false, false));
-        let encrypted = gio_volume_is_encrypted(&volume);
-        let mounted = !gio_volume_is_locked(&volume);
         let actions = device_row_actions(
-            encrypted,
-            mounted,
+            gio_volume_is_encrypted(&volume),
+            !gio_volume_is_locked(&volume),
             volume.can_eject(),
             mount_can_eject,
             mount_can_unmount,
         );
-        let in_flight = Rc::new(Cell::new(false));
+        let context = self.device_action_context();
         let on_release = actions.release.map(|action| {
-            let release_volume = volume.clone();
-            let release_browser = self.browser.clone();
-            let release_parent = self.view.widget();
-            let release_view = self.view.clone();
-            let release_in_flight = in_flight.clone();
-            Rc::new(move || {
-                release_device_volume(
-                    &release_volume,
-                    action,
-                    &release_parent,
-                    &release_browser,
-                    &release_view,
-                    &release_in_flight,
-                );
-            }) as Rc<dyn Fn()>
+            let volume = volume.clone();
+            let context = context.clone();
+            Rc::new(move || release_device_volume(&volume, action, &context)) as DeviceAction
         });
         let on_crypto = actions.encrypted.map(|action| {
-            let crypto_volume = volume.clone();
-            let crypto_view = self.view.clone();
-            let crypto_parent = self.view.widget();
-            let crypto_browser = self.browser.clone();
-            let crypto_in_flight = in_flight.clone();
+            let volume = volume.clone();
+            let context = context.clone();
             Rc::new(move || match action {
-                EncryptedMediaAction::Unlock => crypto_view.unlock_volume(crypto_volume.clone()),
-                EncryptedMediaAction::Lock => lock_encrypted_volume(
-                    &crypto_volume,
-                    &crypto_parent,
-                    &crypto_browser,
-                    &crypto_view,
-                    &crypto_in_flight,
-                ),
-            }) as Rc<dyn Fn()>
+                EncryptedMediaAction::Unlock => context.view.unlock_volume(volume.clone()),
+                EncryptedMediaAction::Lock => lock_encrypted_volume(&volume, &context),
+            }) as DeviceAction
         });
         let on_mount = {
             let mount_view = self.view.clone();
             let mount_volume = volume.clone();
-            Rc::new(move || mount_view.mount_volume(mount_volume.clone())) as Rc<dyn Fn()>
+            Rc::new(move || mount_view.mount_volume(mount_volume.clone())) as DeviceAction
         };
-        self.append_device_chrome(
-            &row,
+        DeviceMenuEntries {
             actions,
             on_crypto,
             on_release,
-            Some(on_mount),
-            Some(drive_dialogs::PropertiesTarget::Volume(volume)),
-        );
-        Some(ids)
+            on_mount: Some(on_mount),
+            properties: Some(PropertiesTarget::Volume(volume)),
+        }
     }
 
     pub(super) fn append_release_ghost(&self, key: &device_release::ReleaseKey) {
@@ -304,8 +298,7 @@ impl SidebarState {
         let name = drive.name().to_string();
         let row = sidebar_button(crate::assets::icons::HARD_DRIVE, &name);
         crate::ui::accessibility::set_description(&row, Some(&name));
-        if device_release::is_pending(&ids) {
-            self.append_sidebar_row(&device_release::pending_device_shell(&row));
+        if self.append_if_releasing(&row, &ids) {
             return Some(ids);
         }
         let sidebar = self.widget.clone();
@@ -316,29 +309,34 @@ impl SidebarState {
             select_sidebar_row(&sidebar, &selected_row);
             mount_view.start_password_drive(clicked_drive.clone(), true);
         });
+        let entries = self.password_drive_menu_entries(drive);
+        self.append_device_chrome(&row, entries);
+        Some(ids)
+    }
+
+    fn password_drive_menu_entries(&self, drive: gio::Drive) -> DeviceMenuEntries {
         let actions = device_row_actions(true, false, drive.can_eject(), false, false);
         let on_crypto = Some({
             let drive = drive.clone();
             let view = self.view.clone();
-            Rc::new(move || view.start_password_drive(drive.clone(), true)) as Rc<dyn Fn()>
+            Rc::new(move || view.start_password_drive(drive.clone(), true)) as DeviceAction
         });
         let on_release = actions.release.map(|action| {
-            let release_drive = drive.clone();
-            let release_parent = self.view.widget();
-            let release_view = self.view.clone();
-            let release_in_flight = Rc::new(Cell::new(false));
-            Rc::new(move || {
-                eject_password_drive(
-                    &release_drive,
-                    action,
-                    &release_parent,
-                    &release_view,
-                    &release_in_flight,
-                );
-            }) as Rc<dyn Fn()>
+            let context = DeviceActionContext {
+                parent: self.view.widget(),
+                browser: None,
+                view: self.view.clone(),
+                in_flight: Rc::new(Cell::new(false)),
+            };
+            Rc::new(move || eject_password_drive(&drive, action, &context)) as DeviceAction
         });
-        self.append_device_chrome(&row, actions, on_crypto, on_release, None, None);
-        Some(ids)
+        DeviceMenuEntries {
+            actions,
+            on_crypto,
+            on_release,
+            on_mount: None,
+            properties: None,
+        }
     }
 
     pub(super) fn append_smb_mount(
@@ -357,21 +355,13 @@ impl SidebarState {
         menu.append(&properties);
         menu.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
         menu.append(&disconnect);
-        let popover = gtk::Popover::builder()
-            .child(&menu)
-            .autohide(true)
-            .has_arrow(false)
-            .build();
-        popover.add_css_class("folder-context-popover");
-        popover.set_parent(&row);
+        let popover = context_popover(&row, &menu);
         sidebar::append_open_in_tab(&menu, &popover, &row, &self.view, &properties_location);
 
         let properties_popover = popover.downgrade();
         let properties_view = self.view.downgrade();
         properties.connect_clicked(move |_| {
-            if let Some(popover) = properties_popover.upgrade() {
-                popover.popdown();
-            }
+            popdown(&properties_popover);
             if let Some(view) = properties_view.upgrade() {
                 view.show_location_properties(&properties_location);
             }
@@ -380,45 +370,10 @@ impl SidebarState {
         let disconnect_popover = popover.downgrade();
         let parent = self.view.widget();
         disconnect.connect_clicked(move |_| {
-            if let Some(popover) = disconnect_popover.upgrade() {
-                popover.popdown();
-            }
-            let window = parent.root().and_downcast::<gtk::Window>();
-            let operation = gtk::MountOperation::new(window.as_ref());
-            let mount = mount.clone();
-            let error_parent = parent.clone();
-            glib::MainContext::default().spawn_local(async move {
-                if let Err(error) = mount
-                    .unmount_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
-                    .await
-                    && !error.matches(gio::IOErrorEnum::Cancelled)
-                {
-                    show_error_dialog(
-                        &error_parent,
-                        &crate::i18n::tr("Unable to disconnect"),
-                        &error.to_string(),
-                    );
-                }
-            });
+            popdown(&disconnect_popover);
+            disconnect_mount(&parent, mount.clone());
         });
-
-        let context = gtk::GestureClick::new();
-        context.set_button(3);
-        let weak_popover = popover.downgrade();
-        context.connect_pressed(move |gesture, _, x, y| {
-            gesture.set_state(gtk::EventSequenceState::Claimed);
-            let Some(popover) = weak_popover.upgrade() else {
-                return;
-            };
-            popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
-                x.round() as i32,
-                y.round() as i32,
-                1,
-                1,
-            )));
-            popover.popup();
-        });
-        row.add_controller(context);
+        open_on_secondary_click(&row, &popover);
     }
 
     pub(super) fn append_device_place(
@@ -426,64 +381,71 @@ impl SidebarState {
         icon: &str,
         name: &str,
         location: Location,
-        release: Option<(MediaRelease, Rc<dyn Fn()>)>,
+        release: Option<(MediaRelease, DeviceAction)>,
     ) -> gtk::Button {
         let row = sidebar_button(icon, name);
         crate::ui::accessibility::set_description(&row, Some(&location.display_path()));
         self.bind_place_row(&row, location, PlaceNavigation::Validate);
-        match release {
-            Some((action, on_release)) => {
-                let eject = sidebar_eject_button(action, {
-                    let on_release = on_release.clone();
-                    move || on_release()
-                });
-                attach_device_actions_menu(
-                    &row,
-                    &self.view,
-                    DeviceRowActions {
-                        encrypted: None,
-                        release: Some(action),
-                    },
-                    None,
-                    Some(on_release),
-                    None,
-                    None,
-                );
-                self.append_sidebar_row(&sidebar_device_row(&row, None, Some(&eject)));
-            }
-            None => {
-                self.append_sidebar_row(&row);
-            }
-        }
+        let Some((action, on_release)) = release else {
+            self.append_sidebar_row(&row);
+            return row;
+        };
+        let eject = sidebar_eject_button(action, {
+            let on_release = on_release.clone();
+            move || on_release()
+        });
+        let entries = DeviceMenuEntries {
+            actions: DeviceRowActions {
+                encrypted: None,
+                release: Some(action),
+            },
+            on_crypto: None,
+            on_release: Some(on_release),
+            on_mount: None,
+            properties: None,
+        };
+        attach_device_menu(&row, &self.view, entries);
+        self.append_sidebar_row(&sidebar_device_row(&row, None, Some(&eject)));
         row
     }
 
-    pub(super) fn append_device_chrome(
-        &self,
-        row: &gtk::Button,
-        actions: DeviceRowActions,
-        on_crypto: Option<Rc<dyn Fn()>>,
-        on_release: Option<Rc<dyn Fn()>>,
-        on_mount: Option<Rc<dyn Fn()>>,
-        properties: Option<drive_dialogs::PropertiesTarget>,
-    ) {
-        let lock = actions
+    pub(super) fn append_device_chrome(&self, row: &gtk::Button, entries: DeviceMenuEntries) {
+        let lock = entries
+            .actions
             .encrypted
-            .zip(on_crypto.clone())
+            .zip(entries.on_crypto.clone())
             .map(|(action, on_crypto)| sidebar_lock_button(action, move || on_crypto()));
-        let eject = actions
+        let eject = entries
+            .actions
             .release
-            .zip(on_release.clone())
+            .zip(entries.on_release.clone())
             .map(|(action, on_release)| sidebar_eject_button(action, move || on_release()));
-        if actions.encrypted.is_some() || actions.release.is_some() || properties.is_some() {
-            attach_device_actions_menu(
-                row, &self.view, actions, on_crypto, on_release, on_mount, properties,
-            );
+        if entries.offers_actions() {
+            attach_device_menu(row, &self.view, entries);
             self.append_sidebar_row(&sidebar_device_row(row, lock.as_ref(), eject.as_ref()));
         } else {
             self.append_sidebar_row(row);
         }
     }
+}
+
+fn disconnect_mount(parent: &gtk::Widget, mount: gio::Mount) {
+    let window = parent.root().and_downcast::<gtk::Window>();
+    let operation = gtk::MountOperation::new(window.as_ref());
+    let error_parent = parent.clone();
+    glib::MainContext::default().spawn_local(async move {
+        if let Err(error) = mount
+            .unmount_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
+            .await
+            && !error.matches(gio::IOErrorEnum::Cancelled)
+        {
+            show_error_dialog(
+                &error_parent,
+                &crate::i18n::tr("Unable to disconnect"),
+                &error.to_string(),
+            );
+        }
+    });
 }
 
 pub(super) fn sidebar_device_shell(row: &gtk::Button) -> Option<gtk::Box> {
@@ -525,13 +487,9 @@ pub(super) fn sidebar_device_row(
     actions.set_hexpand(false);
     actions.set_halign(gtk::Align::End);
     actions.set_valign(gtk::Align::Center);
-    if let Some(lock) = lock {
-        lock.set_hexpand(false);
-        actions.append(lock);
-    }
-    if let Some(eject) = eject {
-        eject.set_hexpand(false);
-        actions.append(eject);
+    for button in [lock, eject].into_iter().flatten() {
+        button.set_hexpand(false);
+        actions.append(button);
     }
     if actions.first_child().is_some() {
         shell.append(&actions);
@@ -543,33 +501,24 @@ pub(super) fn sidebar_eject_button(
     action: MediaRelease,
     on_release: impl Fn() + 'static,
 ) -> gtk::Button {
-    let button = gtk::Button::new();
-    crate::ui::accessibility::set_tooltip_and_label(
-        &button,
+    device_action_button(
         &crate::i18n::tr(media_release_label(action)),
-    );
-    button.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::EJECT,
-        14,
-    )));
-    button.add_css_class("sidebar-eject");
-    button.add_css_class("sidebar-device-action");
-    button.set_cursor_from_name(Some("pointer"));
-    button.set_has_frame(false);
-    button.set_hexpand(false);
-    button.set_valign(gtk::Align::Center);
-    button.set_width_request(24);
-    button.connect_clicked(move |_| on_release());
-    button
+        on_release,
+    )
 }
 
 pub(super) fn sidebar_lock_button(
     action: EncryptedMediaAction,
     on_click: impl Fn() + 'static,
 ) -> gtk::Button {
+    device_action_button(&crate::i18n::tr(action.label()), action.icon(), on_click)
+}
+
+fn device_action_button(label: &str, icon: &str, on_click: impl Fn() + 'static) -> gtk::Button {
     let button = gtk::Button::new();
-    crate::ui::accessibility::set_tooltip_and_label(&button, &crate::i18n::tr(action.label()));
-    button.set_child(Some(&crate::assets::primary_icon(action.icon(), 14)));
+    crate::ui::accessibility::set_tooltip_and_label(&button, label);
+    button.set_child(Some(&crate::assets::primary_icon(icon, 14)));
     button.add_css_class("sidebar-eject");
     button.add_css_class("sidebar-device-action");
     button.set_cursor_from_name(Some("pointer"));

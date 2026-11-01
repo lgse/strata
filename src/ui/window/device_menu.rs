@@ -10,11 +10,30 @@ use crate::{adapters::location_for_file, ui::browser::BrowserView};
 
 use super::{
     device_actions::{DeviceRowActions, media_release_label},
-    drive_dialogs,
+    drive_dialogs::{self, PropertiesTarget},
     drive_ops, sidebar,
     sidebar_context_menu::sidebar_context_option,
+    sidebar_popover::{context_popover, open_on_secondary_click, popdown},
 };
 
+/// What a device row's menu can offer, with the handler behind each action.
+pub(super) struct DeviceMenuEntries {
+    pub(super) actions: DeviceRowActions,
+    pub(super) on_crypto: Option<Rc<dyn Fn()>>,
+    pub(super) on_release: Option<Rc<dyn Fn()>>,
+    pub(super) on_mount: Option<Rc<dyn Fn()>>,
+    pub(super) properties: Option<PropertiesTarget>,
+}
+
+impl DeviceMenuEntries {
+    pub(super) fn offers_actions(&self) -> bool {
+        self.actions.encrypted.is_some()
+            || self.actions.release.is_some()
+            || self.properties.is_some()
+    }
+}
+
+#[cfg(test)]
 pub(super) fn attach_device_actions_menu(
     row: &gtk::Button,
     view: &BrowserView,
@@ -22,143 +41,160 @@ pub(super) fn attach_device_actions_menu(
     on_crypto: Option<Rc<dyn Fn()>>,
     on_release: Option<Rc<dyn Fn()>>,
     on_mount: Option<Rc<dyn Fn()>>,
-    properties: Option<drive_dialogs::PropertiesTarget>,
+    properties: Option<PropertiesTarget>,
 ) {
-    let volume = properties
+    attach_device_menu(
+        row,
+        view,
+        DeviceMenuEntries {
+            actions,
+            on_crypto,
+            on_release,
+            on_mount,
+            properties,
+        },
+    );
+}
+
+pub(super) fn attach_device_menu(
+    row: &gtk::Button,
+    view: &BrowserView,
+    entries: DeviceMenuEntries,
+) {
+    let volume = entries
+        .properties
         .as_ref()
-        .and_then(drive_dialogs::PropertiesTarget::volume);
-    if actions.encrypted.is_none() && actions.release.is_none() && properties.is_none() {
+        .and_then(PropertiesTarget::volume);
+    if !entries.offers_actions() {
         return;
     }
-    let menu = crate::ui::accessibility::menu_box();
-    menu.add_css_class("folder-context-menu");
-    let popover = gtk::Popover::builder()
-        .child(&menu)
-        .autohide(true)
-        .has_arrow(false)
-        .build();
-    popover.add_css_class("folder-context-popover");
-    popover.set_parent(row);
-    let mounted_location = properties
-        .as_ref()
-        .and_then(|target| match target {
-            drive_dialogs::PropertiesTarget::Volume(volume) => volume.get_mount(),
-            drive_dialogs::PropertiesTarget::Mount(mount) => Some(mount.clone()),
-        })
-        .and_then(|mount| location_for_file(&mount.root()));
-    if let Some(location) = mounted_location {
-        sidebar::append_open_in_tab(&menu, &popover, row, view, &location);
+    let menu = DeviceMenu::new(row, view);
+    menu.append_open_in_tab(entries.properties.as_ref());
+    if let (Some(action), Some(on_crypto)) = (entries.actions.encrypted, entries.on_crypto) {
+        menu.append_action(action.icon(), action.label(), on_crypto);
     }
-    if let (Some(action), Some(on_crypto)) = (actions.encrypted, on_crypto) {
-        let option = sidebar_context_option(action.icon(), action.label(), false);
-        menu.append(&option);
-        let crypto_popover = popover.downgrade();
-        option.connect_clicked(move |_| {
-            if let Some(popover) = crypto_popover.upgrade() {
-                popover.popdown();
-            }
-            on_crypto();
-        });
-    }
-    if let (Some(action), Some(on_release)) = (actions.release, on_release.clone()) {
-        let option = sidebar_context_option(
+    if let (Some(action), Some(on_release)) = (entries.actions.release, entries.on_release.clone())
+    {
+        menu.append_action(
             crate::assets::icons::EJECT,
             media_release_label(action),
-            false,
+            on_release,
         );
-        menu.append(&option);
-        let release_popover = popover.downgrade();
-        option.connect_clicked(move |_| {
-            if let Some(popover) = release_popover.upgrade() {
-                popover.popdown();
-            }
-            on_release();
-        });
     }
     if drive_ops::show_mount(volume.as_ref())
-        && let Some(on_mount) = on_mount
+        && let Some(on_mount) = entries.on_mount
     {
-        let option = sidebar_context_option(crate::assets::icons::HARD_DRIVE, "Mount", false);
-        menu.append(&option);
-        let mount_popover = popover.downgrade();
-        option.connect_clicked(move |_| {
-            if let Some(popover) = mount_popover.upgrade() {
-                popover.popdown();
-            }
-            on_mount();
-        });
+        menu.append_action(crate::assets::icons::HARD_DRIVE, "Mount", on_mount);
     }
     if drive_ops::is_eligible(volume.as_ref())
-        && let Some(volume) = &volume
+        && let Some(volume) = volume
     {
-        let format_volume = volume.clone();
-        let option = sidebar_context_option(crate::assets::icons::SHREDDER, "Format…", true);
-        menu.append(&option);
-        let format_popover = popover.downgrade();
-        let format_view = view.clone();
-        let parent = row.clone().upcast::<gtk::Widget>();
-        option.connect_clicked(move |_| {
-            drive_dialogs::open_from_sidebar(
-                &format_view,
-                format_popover.upgrade().as_ref(),
-                || {
-                    drive_dialogs::show_format_dialog(&parent, &format_volume);
-                },
+        menu.append_dialog(
+            crate::assets::icons::SHREDDER,
+            "Format…",
+            true,
+            move |parent| {
+                drive_dialogs::show_format_dialog(parent, &volume);
+            },
+        );
+    }
+    menu.append_dialogs_for(entries.properties, entries.on_release);
+    open_on_secondary_click(row, &menu.popover);
+}
+
+struct DeviceMenu {
+    row: gtk::Button,
+    view: BrowserView,
+    menu: gtk::Box,
+    popover: gtk::Popover,
+}
+
+impl DeviceMenu {
+    fn new(row: &gtk::Button, view: &BrowserView) -> Self {
+        let menu = crate::ui::accessibility::menu_box();
+        menu.add_css_class("folder-context-menu");
+        let popover = context_popover(row, &menu);
+        Self {
+            row: row.clone(),
+            view: view.clone(),
+            menu,
+            popover,
+        }
+    }
+
+    fn append_open_in_tab(&self, properties: Option<&PropertiesTarget>) {
+        let mounted_location = properties
+            .and_then(|target| match target {
+                PropertiesTarget::Volume(volume) => volume.get_mount(),
+                PropertiesTarget::Mount(mount) => Some(mount.clone()),
+            })
+            .and_then(|mount| location_for_file(&mount.root()));
+        if let Some(location) = mounted_location {
+            sidebar::append_open_in_tab(
+                &self.menu,
+                &self.popover,
+                &self.row,
+                &self.view,
+                &location,
             );
-        });
+        }
     }
-    if let Some(target) = properties
-        .as_ref()
-        .filter(|target| target.label_id().is_some())
-        .cloned()
-    {
-        let option = sidebar_context_option(crate::assets::icons::PENCIL, "Set label…", false);
-        menu.append(&option);
-        let label_popover = popover.downgrade();
-        let label_view = view.clone();
-        let parent = row.clone().upcast::<gtk::Widget>();
+
+    /// An item that closes the menu, then runs `action`.
+    fn append_action(&self, icon: &str, label: &str, action: Rc<dyn Fn()>) {
+        let option = sidebar_context_option(icon, label, false);
+        self.menu.append(&option);
+        let popover = self.popover.downgrade();
         option.connect_clicked(move |_| {
-            drive_dialogs::open_from_sidebar(&label_view, label_popover.upgrade().as_ref(), || {
-                drive_dialogs::show_label_dialog(&parent, &target);
-            });
+            popdown(&popover);
+            action();
         });
     }
-    if let Some(properties_target) = properties {
-        let on_release = on_release.clone();
-        let option = sidebar_context_option(crate::assets::icons::INFO, "Properties", false);
-        menu.append(&option);
-        let properties_popover = popover.downgrade();
-        let properties_view = view.clone();
-        let parent = row.clone().upcast::<gtk::Widget>();
+
+    /// An item that closes the menu and opens a dialog over the row.
+    fn append_dialog(
+        &self,
+        icon: &str,
+        label: &str,
+        danger: bool,
+        show: impl Fn(&gtk::Widget) + 'static,
+    ) {
+        let option = sidebar_context_option(icon, label, danger);
+        self.menu.append(&option);
+        let popover = self.popover.downgrade();
+        let view = self.view.clone();
+        let parent = self.row.clone().upcast::<gtk::Widget>();
         option.connect_clicked(move |_| {
-            drive_dialogs::open_from_sidebar(
-                &properties_view,
-                properties_popover.upgrade().as_ref(),
-                || {
-                    drive_dialogs::show_drive_properties(
-                        &parent,
-                        &properties_target,
-                        on_release.clone(),
-                    );
-                },
-            );
+            drive_dialogs::open_from_sidebar(&view, popover.upgrade().as_ref(), || show(&parent));
         });
     }
-    let context = gtk::GestureClick::new();
-    context.set_button(3);
-    let weak_popover = popover.downgrade();
-    context.connect_pressed(move |gesture, _, x, y| {
-        gesture.set_state(gtk::EventSequenceState::Claimed);
-        let Some(popover) = weak_popover.upgrade() else {
+
+    fn append_dialogs_for(
+        &self,
+        properties: Option<PropertiesTarget>,
+        on_release: Option<Rc<dyn Fn()>>,
+    ) {
+        let Some(properties) = properties else {
             return;
         };
-        popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
-            x.round() as i32,
-            y.round() as i32,
-            1,
-            1,
-        )));
-        popover.popup();
-    });
-    row.add_controller(context);
+        if properties.label_id().is_some() {
+            let target = properties.clone();
+            self.append_dialog(
+                crate::assets::icons::PENCIL,
+                "Set label…",
+                false,
+                move |parent| {
+                    drive_dialogs::show_label_dialog(parent, &target);
+                },
+            );
+        }
+        self.append_dialog(
+            crate::assets::icons::INFO,
+            "Properties",
+            false,
+            move |parent| {
+                drive_dialogs::show_drive_properties(parent, &properties, on_release.clone());
+            },
+        );
+    }
 }

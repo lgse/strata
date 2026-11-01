@@ -39,6 +39,7 @@ mod sidebar_drop_feedback;
 mod sidebar_file_drop;
 mod sidebar_pins;
 mod sidebar_places;
+mod sidebar_popover;
 mod sidebar_rail;
 mod sidebar_reorder;
 mod sidebar_rows;

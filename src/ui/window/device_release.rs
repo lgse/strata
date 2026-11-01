@@ -821,9 +821,27 @@ fn show_safe_to_remove(overlay: &ReleaseOverlay, display_name: &str) {
     overlay.confirm.set_label(&crate::i18n::tr("Close"));
 }
 
+/// The device a release frees, how, and which folder it flushes and leaves.
+pub(super) struct ReleaseTarget {
+    pub(super) key: ReleaseKey,
+    pub(super) kind: ReleaseKind,
+    pub(super) unplug: bool,
+    pub(super) sync_root: Option<PathBuf>,
+    pub(super) away_root: Option<gio::File>,
+}
+
+/// A release and the window it reports progress through.
+pub(super) struct ReleaseRequest<'a> {
+    pub(super) parent: &'a gtk::Widget,
+    pub(super) browser: Option<Rc<Browser>>,
+    pub(super) view: Option<&'a BrowserView>,
+    pub(super) target: ReleaseTarget,
+}
+
+#[cfg(test)]
 #[expect(
     clippy::too_many_arguments,
-    reason = "release start wires the window, flush root, and GIO future together"
+    reason = "keeps the positional form the release tests drive"
 )]
 pub(super) fn start_release<F, Fut>(
     parent: &gtk::Widget,
@@ -841,6 +859,44 @@ where
     F: FnOnce(gtk::MountOperation) -> Fut + 'static,
     Fut: Future<Output = Result<(), glib::Error>> + 'static,
 {
+    let target = ReleaseTarget {
+        key,
+        kind,
+        unplug,
+        sync_root,
+        away_root,
+    };
+    let request = ReleaseRequest {
+        parent,
+        browser,
+        view,
+        target,
+    };
+    begin_release(request, on_settled, run_gio)
+}
+
+pub(super) fn begin_release<F, Fut>(
+    request: ReleaseRequest<'_>,
+    on_settled: impl FnOnce() + 'static,
+    run_gio: F,
+) -> bool
+where
+    F: FnOnce(gtk::MountOperation) -> Fut + 'static,
+    Fut: Future<Output = Result<(), glib::Error>> + 'static,
+{
+    let ReleaseRequest {
+        parent,
+        browser,
+        view,
+        target:
+            ReleaseTarget {
+                key,
+                kind,
+                unplug,
+                sync_root,
+                away_root,
+            },
+    } = request;
     if release_is_pending(&key) {
         return false;
     }

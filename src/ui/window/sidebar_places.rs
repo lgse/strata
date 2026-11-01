@@ -17,6 +17,7 @@ use super::{
         sidebar_standard_place_visible, standard_place, standard_place_chord_key,
     },
     sidebar::PlaceNavigation,
+    sidebar_context_menu::PlaceMenu,
     sidebar_rows::{set_sidebar_row_active, sidebar_button, sync_keycap},
 };
 
@@ -94,14 +95,13 @@ impl SidebarState {
                     location.clone(),
                 );
                 self.add_place_keycap(&row, crate::ui::keys::bindings::GO_NETWORK);
-                self.attach_place_context_menu_with(
-                    &row,
+                let place_menu = PlaceMenu {
                     location,
-                    |state| {
-                        state.preference_manager.set_sidebar_show_network(false);
-                    },
-                    Some(network_location::menu_extra()),
-                );
+                    extra: Some(network_location::menu_extra()),
+                };
+                self.attach_place_context_menu_with(&row, place_menu, |state| {
+                    state.preference_manager.set_sidebar_show_network(false);
+                });
                 self.make_place_reorderable(&row, place);
             }
             "recent" => {
