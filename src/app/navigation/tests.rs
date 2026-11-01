@@ -1440,6 +1440,31 @@ fn parent_removes_the_deepest_committed_column() {
     assert_eq!(parent.locations(), &[location("/home")]);
 }
 
+#[test]
+fn go_to_column_keeps_the_path_from_that_column_and_records_it() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    assert!(state.descend(0, location("/home/projects"), RequestId(2)));
+    assert!(state.descend(1, location("/home/projects/strata"), RequestId(3)));
+    let whole = state.current_path().expect("an open path");
+
+    assert_eq!(state.go_to_column(0), None, "the first column stays");
+    assert_eq!(state.go_to_column(3), None, "past the last column");
+    let target = state.go_to_column(1).expect("a column to the right");
+    assert_eq!(
+        target.locations(),
+        &[
+            location("/home/projects"),
+            location("/home/projects/strata")
+        ]
+    );
+    assert_eq!(
+        state.go_back(),
+        Some(whole),
+        "Back returns to the whole strip"
+    );
+}
+
 #[derive(Clone, Copy, Debug)]
 enum Delivery {
     Snapshot,

@@ -504,6 +504,7 @@
   "Loading directory": "Chargement du dossier",
   "Locking task did not complete": "La tâche de verrouillage ne s’est pas terminée",
   "Looking for compatible applications…": "Recherche d’applications compatibles…",
+  "Make the focused pane the first pane": "Faire du volet actif le premier volet",
   "Managed by Omarchy. Turn off Follow Omarchy to pick a theme manually.": "Géré par Omarchy. Désactivez « Suivre Omarchy » pour choisir un thème manuellement.",
   "Match %{current} of %{total}": "Correspondance %{current} sur %{total}",
   "Mermaid diagram unavailable: %{message}": "Diagramme Mermaid indisponible : %{message}",

@@ -458,6 +458,10 @@ fn default_navigation(mode: BrowserMode) -> Vec<Shortcut> {
                 One(BACKSPACE.shown()),
                 "Close the current pane or go to the parent folder",
             ),
+            row(
+                One(MAKE_FIRST_COLUMN.shown()),
+                "Make the focused pane the first pane",
+            ),
         ],
         BrowserMode::Icons => vec![
             row(

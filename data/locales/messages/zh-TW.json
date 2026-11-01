@@ -488,6 +488,7 @@
   "Loading directory": "正在載入目錄",
   "Locking task did not complete": "鎖定工作未完成",
   "Looking for compatible applications…": "正在尋找相容的應用程式…",
+  "Make the focused pane the first pane": "將目前窗格設為第一個窗格",
   "Managed by Omarchy. Turn off Follow Omarchy to pick a theme manually.": "由 Omarchy 管理。關閉“跟隨 Omarchy”即可手動選擇主題。",
   "Match %{current} of %{total}": "第 %{current} 項，共 %{total} 項",
   "Mermaid diagram unavailable: %{message}": "Mermaid 圖表無法使用：%{message}",

@@ -504,6 +504,7 @@
   "Loading directory": "Loading directory",
   "Locking task did not complete": "Locking task did not complete",
   "Looking for compatible applications…": "Looking for compatible applications…",
+  "Make the focused pane the first pane": "Make the focused pane the first pane",
   "Managed by Omarchy. Turn off Follow Omarchy to pick a theme manually.": "Managed by Omarchy. Turn off Follow Omarchy to pick a theme manually.",
   "Match %{current} of %{total}": "Match %{current} of %{total}",
   "Mermaid diagram unavailable: %{message}": "Mermaid diagram unavailable: %{message}",

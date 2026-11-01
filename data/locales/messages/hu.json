@@ -504,6 +504,7 @@
   "Loading directory": "Könyvtár betöltése",
   "Locking task did not complete": "Nem fejeződött be a zárolási feladat",
   "Looking for compatible applications…": "Kompatibilis alkalmazások keresése…",
+  "Make the focused pane the first pane": "Jelenlegi panel első panellé tétele",
   "Managed by Omarchy. Turn off Follow Omarchy to pick a theme manually.": "Az Omarchy kezeli. Kapcsolja ki az Omarchy követését a téma kézi kiválasztásához.",
   "Match %{current} of %{total}": "%{current}. találat / %{total}",
   "Mermaid diagram unavailable: %{message}": "Nem érhető el a Mermaid-diagram: %{message}",
