@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: MIT
 
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-};
+use std::{cell::RefCell, collections::HashMap};
 
 use crate::{
     model::Location,
-    services::{ItemIdentity, MoveRecord, PlacedSnapshot, RenameRecord, RenamedItem, UndoMoveItem},
+    services::{ItemIdentity, MoveRecord, PlacedSnapshot, RenameRecord, UndoMoveItem},
 };
+
+mod group;
+mod merge;
+mod moves;
+
+pub(super) use merge::{MergeUndoState, retain_merge_records};
+pub(super) use moves::{move_records, moved_target, undo_move_parents};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UndoEntry {
@@ -115,16 +119,7 @@ pub(super) fn complete_undo_item(
     match (entry, completed) {
         (UndoEntry::Move(records), UndoEntry::Move(done))
         | (UndoEntry::Group { records, .. }, UndoEntry::Group { records: done, .. }) => {
-            if let Some(index) = records.iter().position(|record| {
-                let endpoint = if move_source {
-                    &record.original
-                } else {
-                    &record.current
-                };
-                endpoint == location
-            }) {
-                done.push(records.remove(index));
-            }
+            complete_move_record(records, done, location, move_source)
         }
         (
             UndoEntry::Trash { locations, .. } | UndoEntry::Copy(locations),
@@ -132,11 +127,7 @@ pub(super) fn complete_undo_item(
                 locations: done, ..
             }
             | UndoEntry::Copy(done),
-        ) => {
-            if let Some(index) = locations.iter().position(|candidate| candidate == location) {
-                done.push(locations.remove(index));
-            }
-        }
+        ) => complete_location(locations, done, location),
         (
             UndoEntry::Merge {
                 created,
@@ -151,106 +142,50 @@ pub(super) fn complete_undo_item(
                 placed: done_placed,
             },
         ) => {
-            if let Some(index) = created.iter().position(|candidate| candidate == location) {
-                done_created.push(created.remove(index));
-            }
-            if let Some(index) = overwritten
-                .iter()
-                .position(|candidate| candidate == location)
-            {
-                done_overwritten.push(overwritten.remove(index));
-            }
-            if let Some(original) = originals.remove(location) {
-                done_originals.insert(location.clone(), original);
-            }
-            if let Some(snapshot) = placed.remove(location) {
-                done_placed.insert(location.clone(), snapshot);
-            }
+            complete_location(created, done_created, location);
+            complete_location(overwritten, done_overwritten, location);
+            complete_keyed(originals, done_originals, location);
+            complete_keyed(placed, done_placed, location);
         }
         _ => {}
     }
 }
 
-/// Merge bookkeeping collected while a paste runs: which sources merged, and
-/// what each merge created or overwrote. Sources matter for move transfers,
-/// where a merged source must not join the move-undo records.
-#[derive(Default)]
-pub(super) struct MergeUndoState {
-    pub(super) sources: HashSet<Location>,
-    pub(super) created: Vec<Location>,
-    /// `None` once its incoming copy was saved under another name.
-    pub(super) overwritten: Vec<Option<Location>>,
-    pub(super) created_at: HashMap<Location, Vec<usize>>,
-    pub(super) overwritten_at: HashMap<Location, Vec<usize>>,
-    pub(super) placed: HashMap<Location, PlacedSnapshot>,
+fn complete_move_record(
+    records: &mut Vec<MoveRecord>,
+    done: &mut Vec<MoveRecord>,
+    location: &Location,
+    move_source: bool,
+) {
+    if let Some(index) = records
+        .iter()
+        .position(|record| move_endpoint(record, move_source) == location)
+    {
+        done.push(records.remove(index));
+    }
 }
 
-impl MergeUndoState {
-    pub(super) fn merged(
-        &mut self,
-        source: Location,
-        created: Vec<Location>,
-        overwritten: Vec<Location>,
-        placed: HashMap<Location, PlacedSnapshot>,
-    ) {
-        self.sources.insert(source);
-        for location in created {
-            self.create(location);
-        }
-        for location in overwritten {
-            self.overwritten_at
-                .entry(location.clone())
-                .or_default()
-                .push(self.overwritten.len());
-            self.overwritten.push(Some(location));
-        }
-        self.placed.extend(placed);
+fn move_endpoint(record: &MoveRecord, move_source: bool) -> &Location {
+    if move_source {
+        &record.original
+    } else {
+        &record.current
     }
+}
 
-    pub(super) fn create(&mut self, location: Location) {
-        self.created_at
-            .entry(location.clone())
-            .or_default()
-            .push(self.created.len());
-        self.created.push(location);
+fn complete_location(remaining: &mut Vec<Location>, done: &mut Vec<Location>, location: &Location) {
+    if let Some(index) = remaining.iter().position(|candidate| candidate == location) {
+        done.push(remaining.remove(index));
     }
+}
 
-    /// An overwritten original stays in Trash when its copy landed under
-    /// another name, since another item now holds that name. Renames apply in
-    /// reported order and are not chained: a record under a planned name
-    /// follows only the rename that starts at that name.
-    pub(super) fn rename(&mut self, renamed: &[RenamedItem]) {
-        for item in renamed {
-            if let Some(positions) = self.created_at.remove(&item.requested) {
-                for &position in &positions {
-                    self.created[position] = item.saved_as.clone();
-                }
-                self.created_at
-                    .entry(item.saved_as.clone())
-                    .or_default()
-                    .extend(positions);
-            }
-            let first = self
-                .overwritten_at
-                .get_mut(&item.requested)
-                .filter(|positions| !positions.is_empty())
-                .map(|positions| positions.remove(0));
-            if let Some(position) = first {
-                self.overwritten[position] = None;
-                self.create(item.saved_as.clone());
-            }
-        }
-    }
-
-    pub(super) fn into_records(
-        self,
-    ) -> (
-        Vec<Location>,
-        Vec<Location>,
-        HashMap<Location, PlacedSnapshot>,
-    ) {
-        let overwritten = self.overwritten.into_iter().flatten().collect();
-        (self.created, overwritten, self.placed)
+fn complete_keyed<V>(
+    remaining: &mut HashMap<Location, V>,
+    done: &mut HashMap<Location, V>,
+    location: &Location,
+) {
+    if let Some(value) = remaining.remove(location) {
+        done.insert(location.clone(), value);
     }
 }
 
@@ -316,84 +251,6 @@ impl UndoState {
             stack.remove(index);
         }
     }
-
-    pub(super) fn fold_group_tail(&mut self) {
-        let Some(created) = self.group_folder.clone() else {
-            return;
-        };
-        let tail = |offset: usize| {
-            self.history
-                .iter()
-                .rev()
-                .nth(offset)
-                .filter(|top| !top.claimed)
-        };
-        enum Fold {
-            Fuse {
-                folder: Location,
-                records: Vec<MoveRecord>,
-                done: bool,
-            },
-            Clear,
-        }
-        let fold = match tail(0).map(|top| top.entry.clone()) {
-            Some(UndoEntry::Move(records))
-                if !records.is_empty()
-                    && records
-                        .iter()
-                        .all(|record| record.current.parent().as_ref() == Some(&created))
-                    && matches!(
-                        tail(1).map(|top| &top.entry),
-                        Some(UndoEntry::Copy(locations))
-                            if locations.as_slice() == std::slice::from_ref(&created)
-                    ) =>
-            {
-                Fold::Fuse {
-                    folder: created,
-                    records,
-                    done: self.group_rename_finished,
-                }
-            }
-            Some(UndoEntry::Rename(record)) => match tail(1).map(|top| &top.entry) {
-                Some(UndoEntry::Group { folder, records }) if *folder == record.original => {
-                    let folder = record.current.clone();
-                    Fold::Fuse {
-                        records: records
-                            .iter()
-                            .map(|moved| MoveRecord {
-                                original: moved.original.clone(),
-                                current: moved
-                                    .original
-                                    .file_name()
-                                    .and_then(|name| folder.child(&name))
-                                    .unwrap_or_else(|| moved.current.clone()),
-                                renamed: Vec::new(),
-                            })
-                            .collect(),
-                        folder,
-                        done: true,
-                    }
-                }
-                _ => Fold::Clear,
-            },
-            _ => Fold::Clear,
-        };
-        match fold {
-            Fold::Fuse {
-                folder,
-                records,
-                done,
-            } => {
-                let len = self.history.len();
-                self.history.truncate(len - 2);
-                self.push_entry(false, UndoEntry::Group { folder, records });
-                if done {
-                    self.group_folder = None;
-                }
-            }
-            Fold::Clear => self.group_folder = None,
-        }
-    }
 }
 
 // Undo follows the latest operation across every Strata window on the GTK main thread.
@@ -441,13 +298,20 @@ pub(super) fn push_background_undo(entry: UndoEntry) {
         let mut entry = pending.history.pop().expect("new background undo");
         entry.background = true;
         let anchor = pending.group_folder.as_ref().and_then(|folder| {
-            pending.history.iter().rposition(|entry| !entry.claimed && matches!(&entry.entry,
-                UndoEntry::Copy(locations) if locations.as_slice() == std::slice::from_ref(folder))
-                || !entry.claimed && matches!(&entry.entry, UndoEntry::Group { folder: grouped, .. } if grouped == folder))
+            pending
+                .history
+                .iter()
+                .rposition(|entry| !entry.claimed && records_group_folder(&entry.entry, folder))
         });
         let position = anchor.unwrap_or(pending.history.len());
         pending.history.insert(position, entry);
     });
+}
+
+/// The entry that created `folder`, or the group it already gathered.
+fn records_group_folder(entry: &UndoEntry, folder: &Location) -> bool {
+    matches!(entry, UndoEntry::Copy(locations) if locations.as_slice() == std::slice::from_ref(folder))
+        || matches!(entry, UndoEntry::Group { folder: grouped, .. } if grouped == folder)
 }
 
 pub(super) fn push_regenerated_undo(entry: UndoEntry) {
@@ -596,70 +460,6 @@ pub(super) fn retain_replay_merge_items(
             retain_merge_records(placed, created, overwritten);
         }
     });
-}
-
-pub(super) fn retain_merge_records(
-    placed: &mut HashMap<Location, PlacedSnapshot>,
-    created: &[Location],
-    overwritten: &[Location],
-) {
-    let undone: HashSet<&Location> = created.iter().chain(overwritten).collect();
-    placed.retain(|location, _| undone.contains(location));
-}
-
-pub(super) fn undo_move_parents(items: &[UndoMoveItem]) -> HashSet<Location> {
-    items
-        .iter()
-        .flat_map(|item| [&item.record.current, &item.record.original])
-        .filter_map(Location::parent)
-        .collect()
-}
-
-pub(super) fn moved_target(
-    source: &Location,
-    destination: &Location,
-    moved_to: &HashMap<Location, Location>,
-) -> Option<Location> {
-    moved_to
-        .get(source)
-        .cloned()
-        .or_else(|| source.transfer_target(destination))
-}
-
-/// Items that never left their own directory carry no undo.
-pub(super) fn move_records(
-    sources: &[Location],
-    destination: &Location,
-    moved_to: &HashMap<Location, Location>,
-    renamed: &[RenamedItem],
-) -> Vec<MoveRecord> {
-    let mut records = sources
-        .iter()
-        .filter_map(|source| {
-            let current = moved_target(source, destination, moved_to)?;
-            (&current != source).then(|| MoveRecord {
-                original: source.clone(),
-                current,
-                renamed: Vec::new(),
-            })
-        })
-        .collect::<Vec<_>>();
-    let moved = records
-        .iter()
-        .enumerate()
-        .map(|(index, record)| (record.current.clone(), index))
-        .collect::<HashMap<_, _>>();
-    for item in renamed {
-        let mut folder = item.saved_as.parent();
-        while let Some(location) = folder {
-            if let Some(&index) = moved.get(&location) {
-                records[index].renamed.push(item.clone());
-                break;
-            }
-            folder = location.parent();
-        }
-    }
-    records
 }
 
 #[cfg(test)]
