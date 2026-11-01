@@ -22,7 +22,6 @@ pub(super) use super::icons_cell::{
 use crate::{
     app::{Browser, BrowserColumnSnapshot},
     model::{FileEntry, Location, MetadataValue, SortDirection, SortKey},
-    services::DropCommit,
     ui::browser::{ClipboardMark, ClipboardMarks, FilterFocus, mark_in, paths::is_trash_location},
 };
 
@@ -30,6 +29,7 @@ use crate::ui::preferences::ListColumnId;
 
 mod column_options;
 mod events;
+mod grouped_model;
 mod list_factory;
 mod navigation;
 #[cfg(test)]
@@ -132,7 +132,7 @@ impl ListColumnLayout {
     }
 }
 
-type TransferHandler = Rc<dyn Fn(Location, Vec<Location>, DropCommit)>;
+type TransferHandler = super::browser::DropHandler;
 type TransferHandlerSlot = Rc<RefCell<Option<TransferHandler>>>;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -263,11 +263,13 @@ struct SlowClickRename {
 
 /// A view's source positions by view position, built for the two maps' generations.
 type ViewSources = ((u64, u64), Vec<u32>);
+const SPARSE_LOOKUP_LIMIT: usize = 64;
 
 /// Filter, sort, and flatten models preserve item identity across position changes.
 #[derive(Clone, Default)]
 struct SourceIndexMap {
-    by_item: Rc<RefCell<HashMap<glib::Object, usize>>>,
+    model: glib::WeakRef<gio::ListModel>,
+    by_item: Rc<RefCell<Option<HashMap<glib::Object, usize>>>>,
     generation: Rc<Cell<u64>>,
     // Reading a filter model's item walks its match set, so selections map through this.
     sources: Rc<RefCell<Option<ViewSources>>>,
@@ -276,76 +278,86 @@ struct SourceIndexMap {
 impl SourceIndexMap {
     fn watch(source: &impl IsA<gio::ListModel>) -> Self {
         let source = source.as_ref();
-        let map = Self::default();
+        let map = Self {
+            model: source.downgrade(),
+            ..Self::default()
+        };
         let tracked = map.clone();
         // Capturing the model here would keep it alive through its own signal.
         source.connect_items_changed(move |source, position, removed, added| {
             tracked.apply(source, position, removed, added);
         });
-        map.rebuild(source);
+        if source.n_items() == 0 || !source.is::<grouped_model::GroupedModel>() {
+            map.ensure_current();
+        }
         map
     }
 
     fn apply(&self, source: &gio::ListModel, position: u32, removed: u32, added: u32) {
-        self.generation.set(self.generation.get().wrapping_add(1));
-        let can_append = {
-            let by_item = self.by_item.borrow();
-            removed == 0
-                && position == by_item.len() as u32
-                && position.saturating_add(added) == source.n_items()
-        };
-        if can_append {
-            let mut by_item = self.by_item.borrow_mut();
-            for index in position..position.saturating_add(added) {
-                if let Some(item) = source.item(index) {
-                    by_item.insert(item, index as usize);
-                }
-            }
+        let generation = self.generation.get().wrapping_add(1);
+        self.generation.set(generation);
+        let total = source.n_items();
+        if total == 0 {
+            *self.by_item.borrow_mut() = Some(HashMap::new());
             return;
         }
-        let mut by_item = self.by_item.borrow_mut();
-        let previous_count = source.n_items() - added + removed;
-        if by_item.len() != previous_count as usize || (position == 0 && removed == previous_count)
+        let can_append = removed == 0
+            && position.saturating_add(added) == total
+            && self
+                .by_item
+                .borrow()
+                .as_ref()
+                .is_some_and(|by_item| position == by_item.len() as u32);
+        if !can_append {
+            // A grouped insertion can replace almost the whole view. Coalesce
+            // those ranges until a caller actually needs a reverse lookup.
+            self.by_item.borrow_mut().take();
+            return;
+        }
+        let arrivals: Vec<_> = (position..position.saturating_add(added))
+            .filter_map(|index| source.item(index).map(|item| (item, index as usize)))
+            .collect();
+        if self.generation.get() == generation
+            && let Some(by_item) = self.by_item.borrow_mut().as_mut()
         {
-            drop(by_item);
-            self.rebuild(source);
-            return;
-        }
-        let end = position.saturating_add(removed) as usize;
-        by_item.retain(|_, index| {
-            if *index < position as usize {
-                true
-            } else if *index < end {
-                false
-            } else {
-                *index = *index - removed as usize + added as usize;
-                true
-            }
-        });
-        for index in position..position.saturating_add(added) {
-            if let Some(item) = source.item(index) {
-                by_item
-                    .entry(item)
-                    .and_modify(|last| *last = (*last).max(index as usize))
-                    .or_insert(index as usize);
-            }
+            by_item.extend(arrivals);
         }
     }
 
-    fn rebuild(&self, source: &gio::ListModel) {
-        self.generation.set(self.generation.get().wrapping_add(1));
-        let n_items = source.n_items() as usize;
-        let mut by_item = HashMap::with_capacity(n_items);
+    fn ensure_current(&self) -> bool {
+        let Some(source) = self.model.upgrade() else {
+            return false;
+        };
+        if self.by_item.borrow().is_some() {
+            return true;
+        }
+        let generation = self.generation.get();
+        let mut by_item = HashMap::with_capacity(source.n_items() as usize);
         for position in 0..source.n_items() {
             if let Some(item) = source.item(position) {
                 by_item.insert(item, position as usize);
             }
         }
-        *self.by_item.borrow_mut() = by_item;
+        // A custom model may emit another change while resolving its items.
+        if self.generation.get() != generation {
+            return false;
+        }
+        *self.by_item.borrow_mut() = Some(by_item);
+        true
     }
 
     fn of_item(&self, item: &glib::Object) -> Option<usize> {
-        self.by_item.borrow().get(item).copied()
+        let model = self.model.upgrade()?;
+        if let Some(by_item) = self.by_item.borrow().as_ref() {
+            return by_item.get(item).copied();
+        }
+        if let Some(grouped) = model.downcast_ref::<grouped_model::GroupedModel>() {
+            return grouped.position_of(item).map(|position| position as usize);
+        }
+        if !self.ensure_current() {
+            return None;
+        }
+        self.by_item.borrow().as_ref()?.get(item).copied()
     }
 
     fn of_view_position(&self, view: &impl IsA<gio::ListModel>, position: u32) -> Option<usize> {
@@ -360,6 +372,19 @@ impl SourceIndexMap {
         positions: impl Iterator<Item = u32>,
     ) -> Vec<Option<usize>> {
         const UNMAPPED: u32 = u32::MAX;
+        let mut positions = positions;
+        let first: Vec<_> = positions.by_ref().take(SPARSE_LOOKUP_LIMIT + 1).collect();
+        // A cursor or small selection must not rebuild the entire view index.
+        if first.len() <= SPARSE_LOOKUP_LIMIT {
+            return first
+                .into_iter()
+                .map(|position| source.of_view_position(view, position))
+                .collect();
+        }
+        let positions = first.into_iter().chain(positions);
+        if !self.ensure_current() || !source.ensure_current() {
+            return positions.map(|_| None).collect();
+        }
         let key = (self.generation.get(), source.generation.get());
         let mut cache = self.sources.borrow_mut();
         let forward = match &mut *cache {
@@ -367,7 +392,13 @@ impl SourceIndexMap {
             slot => {
                 let mut forward = vec![UNMAPPED; view.n_items() as usize];
                 let by_source_item = source.by_item.borrow();
-                for (item, position) in self.by_item.borrow().iter() {
+                let by_view_item = self.by_item.borrow();
+                let (Some(by_source_item), Some(by_view_item)) =
+                    (by_source_item.as_ref(), by_view_item.as_ref())
+                else {
+                    return positions.map(|_| None).collect();
+                };
+                for (item, position) in by_view_item {
                     if let Some(slot) = forward.get_mut(*position)
                         && let Some(source) = by_source_item
                             .get(item)
@@ -819,7 +850,7 @@ impl ModeViews {
     pub(in crate::ui) fn take_active_rename(
         &self,
         field: &gtk::Entry,
-    ) -> Option<(FileEntry, String)> {
+    ) -> Option<super::collection_edit::Submission> {
         super::collection_edit::take_submission(&self.active_rename, field)
     }
 
@@ -876,10 +907,10 @@ impl ModeViews {
             if let Some(state) = state.upgrade() {
                 state.submit_mode_rename(field);
             } else if let Some(active) = active.upgrade()
-                && let Some((entry, name)) = super::collection_edit::take_submission(&active, field)
+                && let Some(submission) = super::collection_edit::take_submission(&active, field)
                 && let Some(browser) = browser.upgrade()
             {
-                super::browser::queue_rename(&browser, entry, name);
+                super::browser::queue_rename(&browser, submission.entry, submission.name);
             }
         })
     }
@@ -974,7 +1005,13 @@ impl ModeViews {
         )
     }
 
-    pub fn begin_rename(&self, depth: usize, source_position: usize, entry: &FileEntry) -> bool {
+    pub fn begin_rename(
+        &self,
+        depth: usize,
+        source_position: usize,
+        entry: &FileEntry,
+        naming: super::collection_edit::Naming,
+    ) -> bool {
         self.cancel_rename();
         let pane = match self.mode {
             BrowserMode::Columns => return false,
@@ -1007,6 +1044,7 @@ impl ModeViews {
             return false;
         };
         let mut target = super::collection_edit::EditTarget::from(widgets);
+        target.naming = naming;
         self.bind_rename_cancellation(&mut target, &entry.location);
         if self.mode == BrowserMode::List {
             let state = self.context_state.borrow().clone().unwrap_or_default();
@@ -3994,15 +4032,13 @@ fn build_list_pane(
         options.state.clone(),
         enter_target.clone(),
     );
-    let view_model =
-        gtk::SortListModel::new(Some(filtered_model.clone()), None::<gtk::CustomSorter>);
     let type_group_sorter = options
         .group_by_type
         .then(|| pane_type_group_sorter(&browser, depth));
-    if let Some(sorter) = &type_group_sorter {
-        view_model.set_sorter(Some(&sorter.sorter));
-        view_model.set_section_sorter(Some(&sorter.sorter));
-    }
+    let view_model = grouped_model::GroupedModel::new(
+        &filtered_model,
+        type_group_sorter.as_ref().map(|sorter| &sorter.sorter),
+    );
     let view_model_object = view_model.clone().upcast::<gio::ListModel>();
     let view_index = SourceIndexMap::watch(&view_model_object);
     let selection = gtk::MultiSelection::new(Some(view_model.clone()));
@@ -4664,23 +4700,31 @@ fn install_mode_directory_drop_target(
     drop.connect_motion(move |target, _, _| {
         super::browser::file_drop_action(target, &state_for_motion)
     });
+    let handler = mode_drop_handler(&transfer_handler);
+    let state_for_drop = drop_state.clone();
     drop.connect_drop(move |target, value, _, _| {
-        let Some(sources) = super::browser::locations_from_file_list_value(value) else {
-            return false;
-        };
         let Some(handler) = transfer_handler.borrow().clone() else {
             return false;
         };
-        super::browser::file_drop_commit(
+        super::browser::commit_dropped_value(
             target,
+            value,
             destination.clone(),
-            sources,
-            &drop_state,
-            move |destination, sources, commit| handler(destination, sources, commit),
-        );
-        true
+            &state_for_drop,
+            move |destination, request| handler(destination, request),
+        )
     });
-    widget.add_controller(drop);
+    super::browser::attach_drop_target(widget, &drop, &drop_state, handler);
+}
+
+/// Reads the slot when a drop lands, as the view's handler can be replaced.
+fn mode_drop_handler(transfer_handler: &TransferHandlerSlot) -> TransferHandler {
+    let transfer_handler = transfer_handler.clone();
+    Rc::new(move |destination, request| {
+        if let Some(handler) = transfer_handler.borrow().clone() {
+            handler(destination, request);
+        }
+    })
 }
 
 #[expect(
@@ -4866,54 +4910,29 @@ fn install_list_drag_drop(
             row.remove_css_class("drop-destination");
         }
     });
-    let accepted_item = item.downgrade();
-    let browser_for_accept = browser.clone();
-    let map_for_accept = position_map.clone();
-    drop.connect_accept(move |_, offered| {
-        let Some(browser) = browser_for_accept.upgrade() else {
-            return false;
-        };
-        let Some(accepted_item) = accepted_item.upgrade() else {
-            return false;
-        };
-        let position = accepted_item.position();
-        let position = map_for_accept.as_ref().map_or(
-            (position != gtk::INVALID_LIST_POSITION).then_some(position as usize),
-            |(map, view)| source_position_for_view(map, Some(view), position),
-        );
-        position.is_some()
-            && browser
-                .entry_at(depth, position.unwrap_or_default())
-                .is_some_and(|entry| entry.is_directory() && !is_trash_location(&entry.location))
-            && offered
-                .formats()
-                .contains_type(gtk::gdk::FileList::static_type())
-    });
+    let handler = mode_drop_handler(&transfer_handler);
     let dropped_row = row.downgrade();
+    let state_for_drop = drop_state.clone();
     drop.connect_drop(move |target, value, _, _| {
         if let Some(row) = dropped_row.upgrade() {
             row.remove_css_class("drop-destination");
         }
-        drop_state.cancel_spring_load_navigation();
-        let Some(destination) = drop_state.destination() else {
-            return false;
-        };
-        let Some(sources) = super::browser::locations_from_file_list_value(value) else {
+        state_for_drop.cancel_spring_load_navigation();
+        let Some(destination) = state_for_drop.destination() else {
             return false;
         };
         let Some(handler) = transfer_handler.borrow().clone() else {
             return false;
         };
-        super::browser::file_drop_commit(
+        super::browser::commit_dropped_value(
             target,
+            value,
             destination,
-            sources,
-            &drop_state,
-            move |destination, sources, commit| handler(destination, sources, commit),
-        );
-        true
+            &state_for_drop,
+            move |destination, request| handler(destination, request),
+        )
     });
-    row.add_controller(drop);
+    super::browser::attach_drop_target(row, &drop, &drop_state, handler);
 }
 
 #[derive(Clone)]
@@ -5144,6 +5163,9 @@ fn view_position_for_source(
         return Some(position as u32);
     };
     let item = source.item(position as u32)?;
+    if let Some(grouped) = filtered.downcast_ref::<grouped_model::GroupedModel>() {
+        return grouped.position_of(&item);
+    }
     let guessed = position as u32;
     // Unfiltered views keep source order.
     if filtered.item(guessed).is_some_and(|value| value == item) {
@@ -5514,6 +5536,9 @@ fn set_selections(pane: &Pane, positions: &[usize]) {
         let selected = if all_selected && section.view_model.n_items() == pane.model.n_items() {
             gtk::Bitset::new_range(0, total_items)
         } else {
+            if positions.len() > SPARSE_LOOKUP_LIMIT {
+                section.view_index.ensure_current();
+            }
             let selected = gtk::Bitset::new_empty();
             for position in positions {
                 if let Some(position) = section.source_to_view(&pane.model, *position) {

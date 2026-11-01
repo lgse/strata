@@ -185,6 +185,10 @@ pub(in crate::ui) struct Preferences {
     #[serde(default = "default_enabled")]
     sidebar_expanded: bool,
     #[serde(default)]
+    sidebar_pinned_collapsed: bool,
+    #[serde(default)]
+    sidebar_devices_collapsed: bool,
+    #[serde(default)]
     sidebar_compact: bool,
     #[serde(default)]
     show_hidden: bool,
@@ -427,6 +431,8 @@ impl Default for Preferences {
             sidebar_show_pictures: true,
             sidebar_show_videos: true,
             sidebar_expanded: true,
+            sidebar_pinned_collapsed: false,
+            sidebar_devices_collapsed: false,
             sidebar_compact: false,
             show_hidden: false,
             text_size: TextSize::default(),
@@ -1913,6 +1919,24 @@ impl PreferenceManager {
 
     pub fn set_sidebar_expanded(&self, expanded: bool) {
         self.preferences.borrow_mut().sidebar_expanded = expanded;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_pinned_collapsed(&self) -> bool {
+        self.preferences.borrow().sidebar_pinned_collapsed
+    }
+
+    pub fn set_sidebar_pinned_collapsed(&self, collapsed: bool) {
+        self.preferences.borrow_mut().sidebar_pinned_collapsed = collapsed;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_devices_collapsed(&self) -> bool {
+        self.preferences.borrow().sidebar_devices_collapsed
+    }
+
+    pub fn set_sidebar_devices_collapsed(&self, collapsed: bool) {
+        self.preferences.borrow_mut().sidebar_devices_collapsed = collapsed;
         self.save_preferences();
     }
 

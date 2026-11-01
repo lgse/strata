@@ -6,6 +6,7 @@ pub(crate) mod diagnostics;
 mod document;
 pub(crate) mod document_media;
 pub(crate) mod docx;
+mod dropped_content;
 pub(crate) mod file_activity;
 pub(crate) mod file_providers;
 mod file_source;
@@ -44,6 +45,10 @@ pub(crate) use document::{
     DocumentSpanStyle, DocumentTableCellLayout, DocumentUnit, DocumentUnitKind, document_kind,
     has_web_scheme, layout_document, parse_document, parse_markdown,
 };
+pub(crate) use dropped_content::{
+    DroppedFile, MAX_DROPPED_FILE_BYTES, WebLink, has_link_extension, save_dropped_files,
+    save_new_file,
+};
 pub use file_source::{
     DirectoryChange, DirectoryEvent, DirectoryRequest, DirectoryStamp, FileSource, LoadHandle,
     LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, MountToken,
@@ -75,10 +80,10 @@ pub use operations::{
     ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
     DeleteRequest, ExtractRequest, Holder, KeptCause, KeptItem, LeftoverInside, MoveRecord,
     NameMode, OperationEvent, OperationProvider, OperationRequestId, PasswordFailure, PasteItem,
-    PasteRequest, PlacedSnapshot, RecoverRequest, RenameCause, RenameRecord, RenameRequest,
-    RenamedItem, ReplacedOriginal, RestoreRequest, RestoreSource, RestoreTrashItem,
+    PasteRequest, PlaceEntryRequest, PlacedSnapshot, RecoverRequest, RenameCause, RenameRecord,
+    RenameRequest, RenamedItem, ReplacedOriginal, RestoreRequest, RestoreSource, RestoreTrashItem,
     ReviewedLeftover, ShownName, SkippedItem, SpecialKind, TransferConflict, TransferReport,
-    UndoCopyRequest, UndoMergeRequest, UndoMoveItem, UndoMoveRequest, UndoRenameRequest,
+    TypedPath, UndoCopyRequest, UndoMergeRequest, UndoMoveItem, UndoMoveRequest, UndoRenameRequest,
     validate_basename,
 };
 pub(crate) use path_match::{PathMatcher, PathQuery};

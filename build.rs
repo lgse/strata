@@ -20,6 +20,10 @@ fn main() {
     println!("cargo::rerun-if-env-changed=STRATA_UPDATER");
     configure_updater();
 
+    println!("cargo::rustc-check-cfg=cfg(strata_integrations_package)");
+    println!("cargo::rerun-if-env-changed=STRATA_INTEGRATIONS");
+    configure_integrations();
+
     println!("cargo::rerun-if-env-changed=STRATA_BUILD_COMMIT");
     track_git_metadata();
 
@@ -64,6 +68,20 @@ fn configure_updater() {
         Some("" | "enabled") => {}
         Some("disabled") => println!("cargo::rustc-cfg=strata_updater_disabled"),
         _ => panic!("STRATA_UPDATER must be \"enabled\" or \"disabled\", not {value:?}"),
+    }
+}
+
+/// Store-based packages (Nix, Guix) set `STRATA_INTEGRATIONS=package` because every
+/// path the runtime installers would record changes on update. The package ships the
+/// portal, D-Bus service, and udiskie files instead.
+fn configure_integrations() {
+    let Some(value) = env::var_os("STRATA_INTEGRATIONS") else {
+        return;
+    };
+    match value.to_str().map(str::trim) {
+        Some("" | "runtime") => {}
+        Some("package") => println!("cargo::rustc-cfg=strata_integrations_package"),
+        _ => panic!("STRATA_INTEGRATIONS must be \"runtime\" or \"package\", not {value:?}"),
     }
 }
 

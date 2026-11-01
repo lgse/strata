@@ -107,3 +107,71 @@ fn inline_setup_actions_follow_status_and_preserve_errors() {
         }
     }
 }
+
+fn descendants<T: IsA<gtk::Widget> + Clone>(root: &gtk::Widget) -> Vec<T> {
+    let mut widgets = Vec::new();
+    if let Ok(widget) = root.clone().downcast::<T>() {
+        widgets.push(widget);
+    }
+    let mut child = root.first_child();
+    while let Some(widget) = child {
+        widgets.extend(descendants::<T>(&widget));
+        child = widget.next_sibling();
+    }
+    widgets
+}
+
+#[test]
+fn package_builds_show_package_notes_and_refuse_runtime_setup() {
+    crate::test_support::gtk_test(
+        "ui::portal_preferences::tests::package_builds_show_package_notes_and_refuse_runtime_setup",
+        || {
+            crate::ui::prepare_portal_ui();
+            crate::build_info::disable_runtime_integrations_for_test();
+            for (row, note) in [
+                (settings_row(), PACKAGE_NOTE),
+                (
+                    crate::ui::udiskie_preferences::settings_row(),
+                    crate::ui::udiskie_preferences::PACKAGE_NOTE,
+                ),
+            ] {
+                assert!(row.is_visible(), "package note rows stay searchable");
+                assert!(
+                    descendants::<gtk::Button>(row.upcast_ref()).is_empty(),
+                    "package builds offer no setup actions"
+                );
+                assert!(
+                    descendants::<gtk::Label>(row.upcast_ref())
+                        .iter()
+                        .any(|label| label.text() == note)
+                );
+            }
+            let refused = crate::i18n::tr(portal_setup::PACKAGE_PROVIDED);
+            for result in [
+                portal_setup::install(),
+                portal_setup::uninstall(),
+                portal_setup::install_file_manager(),
+                portal_setup::uninstall_file_manager(),
+                portal_setup::dismiss_prompt(),
+                portal_setup::udiskie::install(),
+                portal_setup::udiskie::uninstall(),
+            ] {
+                assert_eq!(result, Err(refused.clone()));
+            }
+            assert_eq!(portal_setup::refresh_stale_portal(), Ok(()));
+            assert_eq!(portal_setup::refresh_after_in_place_update(), Ok(()));
+            for path in [
+                glib::user_config_dir().join("strata/portal-opt-in-v1"),
+                glib::user_config_dir().join("xdg-desktop-portal"),
+                glib::user_config_dir().join("udiskie"),
+                glib::user_data_dir().join("dbus-1"),
+                glib::user_data_dir().join("xdg-desktop-portal"),
+                glib::user_data_dir().join("strata/portal-install"),
+                glib::user_data_dir().join("strata/file-manager-install"),
+                glib::user_data_dir().join("strata/udiskie-install"),
+            ] {
+                assert!(!path.exists(), "refused setup must not write {path:?}");
+            }
+        },
+    );
+}

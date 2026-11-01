@@ -294,11 +294,13 @@ impl Dispatcher {
             }
         };
         let folder = rename
-            .entry
-            .location
-            .parent()
+            .start_folder()
             .map(|folder| crate::adapters::gio_file_for_location(&folder));
         let paths = rename.native_paths();
+        let folders = rename.folders();
+        let start = rename
+            .start_folder()
+            .and_then(|start| start.native_path().map(std::path::Path::to_path_buf));
         let submitted = self.next_typed_name();
         let revision = self.typed_name_revision.clone();
         let target = self.rename_target.clone();
@@ -308,21 +310,31 @@ impl Dispatcher {
         // The rename itself refuses to replace or to take a name the location
         // would store as another; this only keeps the prompt open to fix it.
         glib::MainContext::default().spawn_local(async move {
-            let unstorable = match &folder {
-                Some(folder) => {
-                    crate::adapters::typed_name_refusal(folder, &rename.name, false).await
+            let mut unstorable = None;
+            if let Some(folder) = &folder {
+                for (name, new_folder) in rename.components() {
+                    unstorable =
+                        crate::adapters::typed_name_refusal(folder, name, new_folder).await;
+                    if unstorable.is_some() {
+                        break;
+                    }
                 }
-                None => None,
-            };
-            let taken = match paths {
-                Some((current, wanted)) if unstorable.is_none() => {
+            }
+            let (blocked, taken) = match paths.zip(start) {
+                Some(((current, wanted), start)) if unstorable.is_none() => {
                     gtk::gio::spawn_blocking(move || {
-                        crate::adapters::typed_rename_is_taken(&current, &wanted)
+                        match crate::adapters::typed_folder_blocked(&start, &folders) {
+                            Some(blocked) => (Some(blocked), false),
+                            None => (
+                                None,
+                                crate::adapters::typed_rename_is_taken(&current, &wanted),
+                            ),
+                        }
                     })
                     .await
-                    .unwrap_or(false)
+                    .unwrap_or_default()
                 }
-                _ => false,
+                _ => (None, false),
             };
             let still_open = revision.get() == submitted
                 && shortcuts.open_prompt_kind() == Some(Prompt::Rename)
@@ -335,9 +347,10 @@ impl Dispatcher {
                 return;
             }
             let browser = view.browser();
-            let refusal = match unstorable {
-                Some(message) => Some(CreateRefusal::Unstorable(message)),
-                None => taken.then_some(CreateRefusal::Exists(text)),
+            let refusal = match (unstorable, blocked) {
+                (Some(message), _) => Some(CreateRefusal::Unstorable(message)),
+                (None, Some(folder)) => Some(CreateRefusal::NotAFolder(folder)),
+                (None, None) => taken.then_some(CreateRefusal::Exists(text)),
             };
             match refusal {
                 Some(refusal) => {
@@ -375,6 +388,9 @@ fn refuse_typed_name(
             rust_i18n::t!("“%{name}” already exists", name = name).into_owned()
         }
         CreateRefusal::Unstorable(message) => message,
+        CreateRefusal::NotAFolder(name) => {
+            rust_i18n::t!("“%{name}” is not a folder", name = name).into_owned()
+        }
         CreateRefusal::Unsupported => {
             return_to_listing(shortcuts, view, browser);
             shortcuts.show_feedback(&crate::i18n::tr(if prompt == Prompt::Create {

@@ -450,20 +450,24 @@ pub(super) fn remove_local_delete_directory(
         Err(Refused::Stopped(_)) => {}
         Err(Refused::Changed(_)) => queue.fail(changed.take().unwrap_or_default()),
         Err(refused) => {
-            let still_open = matches!(refused, Refused::StillOpen(_))
-                .then(|| leftovers::still_open(fs(), folder))
-                .flatten();
-            queue.fail(
-                rust_i18n::t!(
-                    "Could not delete “%{name}”: %{error}",
-                    name = name.to_string_lossy(),
-                    error = still_open.map_or_else(
-                        || os_error_detail(refused.errno()),
-                        crate::services::error_detail
-                    )
+            let open = matches!(refused, Refused::StillOpen(_));
+            let still_open = open.then(|| leftovers::still_open(fs(), folder)).flatten();
+            let error = rust_i18n::t!(
+                "Could not delete “%{name}”: %{error}",
+                name = name.to_string_lossy(),
+                error = still_open.map_or_else(
+                    || os_error_detail(refused.errno()),
+                    crate::services::error_detail
                 )
-                .into_owned(),
-            );
+            )
+            .into_owned();
+            // A folder kept only by open files leaves its parent in place but nothing else, so
+            // what the delete removes does not depend on which worker reached it first.
+            if open {
+                queue.defer(error);
+            } else {
+                queue.fail(error);
+            }
         }
     }
 }

@@ -668,7 +668,7 @@ impl Browser {
                 result,
                 std::mem::take(report),
             ),
-            OperationEvent::Renamed { .. } => {
+            OperationEvent::Renamed { .. } | OperationEvent::EntryPlaced { .. } => {
                 self.emit(BrowserEvent::RenameCompleted {
                     request_id: context.request_id,
                 });
@@ -866,6 +866,7 @@ fn replaced_archive_undo(
 fn operation_event_id(event: &OperationEvent) -> OperationRequestId {
     match event {
         OperationEvent::Renamed { request_id }
+        | OperationEvent::EntryPlaced { request_id, .. }
         | OperationEvent::Created { request_id }
         | OperationEvent::EntryCreated { request_id, .. }
         | OperationEvent::Pasted { request_id, .. }

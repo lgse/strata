@@ -46,6 +46,7 @@ mod moves;
 mod naming;
 mod paste_results;
 mod paths;
+mod place_entry;
 mod placement;
 mod progress;
 mod release;
