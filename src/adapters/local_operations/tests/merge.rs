@@ -362,3 +362,22 @@ fn undo_merge_cancelling(
     ));
     events.take()
 }
+
+/// Undo kept the original of `placed` in `trash` as `name`, as what the
+/// merge placed there changed after it.
+fn assert_kept_in_trash(
+    events: &[OperationEvent],
+    (trash, name): (&Path, &str),
+    placed: &Path,
+    row: &str,
+) {
+    assert_eq!(
+        kept_in_trash(events),
+        changed_after_the_merge(placed),
+        "{row}"
+    );
+    assert!(
+        trash.join(format!("info/{name}.trashinfo")).exists(),
+        "{row}"
+    );
+}
