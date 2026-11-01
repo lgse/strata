@@ -24,7 +24,8 @@ impl Browser {
         location: Location,
         include_icon_details: bool,
     ) {
-        self.queue_metadata_fill(depth, position, location, include_icon_details, false);
+        let target = ViewportTarget::new(position, location, include_icon_details);
+        self.queue_metadata_fill(depth, target, false);
     }
 
     pub(crate) fn request_visible_metadata_fill(
@@ -34,62 +35,33 @@ impl Browser {
         location: Location,
         include_icon_details: bool,
     ) {
-        self.queue_metadata_fill(depth, position, location, include_icon_details, true);
+        let target = ViewportTarget::new(position, location, include_icon_details);
+        self.queue_metadata_fill(depth, target, true);
     }
 
-    pub(super) fn queue_metadata_fill(
-        self: &Rc<Self>,
-        depth: usize,
-        position: usize,
-        location: Location,
-        include_icon_details: bool,
-        visible: bool,
-    ) {
+    fn queue_metadata_fill(self: &Rc<Self>, depth: usize, target: ViewportTarget, visible: bool) {
         // Defer to the provider instead of rejecting remote locations owner-side:
         // unsupported sources answer `Unsupported`.
-        if !self.source.supports_metadata_fill(&location) {
+        if !self.source.supports_metadata_fill(&target.location) {
             return;
         }
-        let directory_request = self.state.borrow().request_id_for_depth(depth);
-        if self.fill_tokens.borrow().values().any(|fill| {
-            fill.depth == depth
-                && Some(fill.directory_request) == directory_request
-                && (!include_icon_details || fill.include_icon_details)
-                && fill
-                    .tokens
-                    .iter()
-                    .any(|(index, entry)| *index == position && *entry == location)
-        }) {
+        if self.fill_in_flight(depth, &target) {
             return;
         }
-        {
-            let mut pending = self.metadata_pending.borrow_mut();
-            let queued = pending.entry(depth).or_default();
-            if let Some(index) = queued.iter().position(|target| target.location == location) {
-                queued[index].position = position;
-                queued[index].include_icon_details |= include_icon_details;
-                if visible {
-                    let target = queued.remove(index);
-                    queued.insert(0, target);
-                }
-            } else if visible || queued.len() < MAX_PENDING_FILL_LOCATIONS {
-                let target = ViewportTarget {
-                    position,
-                    location,
-                    include_icon_details,
-                };
-                if visible {
-                    // A saturated offscreen backlog must not strand newly visible details.
-                    if queued.len() == MAX_PENDING_FILL_LOCATIONS {
-                        queued.pop();
-                    }
-                    queued.insert(0, target);
-                } else {
-                    queued.push(target);
-                }
-            }
-        }
+        queue_fill_target(
+            self.metadata_pending.borrow_mut().entry(depth).or_default(),
+            target,
+            visible,
+        );
         self.schedule_metadata_fill();
+    }
+
+    fn fill_in_flight(&self, depth: usize, target: &ViewportTarget) -> bool {
+        let directory_request = self.state.borrow().request_id_for_depth(depth);
+        self.fill_tokens
+            .borrow()
+            .values()
+            .any(|fill| fill.covers(depth, directory_request, target))
     }
 
     pub(crate) fn prioritize_metadata_fills(&self, depth: usize, visible: &[Location]) {
@@ -112,12 +84,15 @@ impl Browser {
 
     pub(super) fn request_sort_fill(
         self: &Rc<Self>,
-        depth: usize,
-        generation: u64,
-        origin: SortOrigin,
-        preferences: ViewPreferences,
+        pass: SortPass,
         targets: Vec<(usize, Location)>,
     ) {
+        let SortPass {
+            depth,
+            generation,
+            origin,
+            preferences,
+        } = pass;
         let Some(directory_request) = self.state.borrow().request_id_for_depth(depth) else {
             self.sort_resync.note_attempt(origin, depth, preferences);
             self.pending_sort.set(None);
@@ -214,30 +189,35 @@ impl Browser {
         if let Some(awaiting) = awaiting
             && awaiting.fill_request == request_id
         {
-            self.sort_loads.borrow_mut().remove(&awaiting.depth);
-            let current = self.pending_sort.get() == Some((awaiting.generation, awaiting.depth));
-            if outcome == MetadataOutcome::Complete && current {
-                self.finish_awaited_sort(awaiting);
-            } else {
-                if current {
-                    self.sort_resync.note_attempt(
-                        awaiting.origin,
-                        awaiting.depth,
-                        awaiting.preferences,
-                    );
-                }
-                self.abandon_awaited_sort(awaiting.depth, awaiting.generation, outcome);
-            }
+            self.finish_sort_fill(awaiting, outcome);
             return;
         }
         // Only a fill's own id releases its handle; terminals from superseded fills
         // cannot affect a sort or a newer request.
         let fill = self.fill_tokens.borrow_mut().remove(&request_id);
         if let Some(fill) = fill {
-            self.metadata_loads.borrow_mut().remove(&fill.depth);
-            if self.metadata_pending.borrow().contains_key(&fill.depth) {
-                self.schedule_metadata_fill();
-            }
+            self.release_viewport_fill(fill.depth);
+        }
+    }
+
+    fn finish_sort_fill(self: &Rc<Self>, awaiting: SortFill, outcome: MetadataOutcome) {
+        self.sort_loads.borrow_mut().remove(&awaiting.depth);
+        let current = self.pending_sort.get() == Some((awaiting.generation, awaiting.depth));
+        if outcome == MetadataOutcome::Complete && current {
+            self.finish_awaited_sort(awaiting);
+            return;
+        }
+        if current {
+            self.sort_resync
+                .note_attempt(awaiting.origin, awaiting.depth, awaiting.preferences);
+        }
+        self.abandon_awaited_sort(awaiting.depth, awaiting.generation, outcome);
+    }
+
+    fn release_viewport_fill(self: &Rc<Self>, depth: usize) {
+        self.metadata_loads.borrow_mut().remove(&depth);
+        if self.metadata_pending.borrow().contains_key(&depth) {
+            self.schedule_metadata_fill();
         }
     }
 
@@ -304,13 +284,13 @@ impl Browser {
             .borrow()
             .column_unknown_metadata(depth)
             .unwrap_or_default();
-        self.request_sort_fill(
+        let pass = SortPass {
             depth,
             generation,
-            SortOrigin::Followed,
+            origin: SortOrigin::Followed,
             preferences,
-            targets,
-        );
+        };
+        self.request_sort_fill(pass, targets);
     }
 
     pub(super) fn flush_metadata_fills(self: &Rc<Self>) {
@@ -372,5 +352,78 @@ impl Browser {
                 self.metadata_loads.borrow_mut().insert(depth, handle);
             }
         }
+    }
+}
+
+/// One column sort waiting for the metadata it orders by.
+#[derive(Clone, Copy)]
+pub(super) struct SortPass {
+    pub(super) depth: usize,
+    pub(super) generation: u64,
+    pub(super) origin: SortOrigin,
+    pub(super) preferences: ViewPreferences,
+}
+
+impl ViewportTarget {
+    fn new(position: usize, location: Location, include_icon_details: bool) -> Self {
+        Self {
+            position,
+            location,
+            include_icon_details,
+        }
+    }
+}
+
+impl ViewportFill {
+    /// Whether this fill already asks for `target` under the column's current listing.
+    fn covers(
+        &self,
+        depth: usize,
+        directory_request: Option<RequestId>,
+        target: &ViewportTarget,
+    ) -> bool {
+        self.depth == depth
+            && Some(self.directory_request) == directory_request
+            && (!target.include_icon_details || self.include_icon_details)
+            && self
+                .tokens
+                .iter()
+                .any(|(index, entry)| *index == target.position && *entry == target.location)
+    }
+}
+
+fn queue_fill_target(queued: &mut Vec<ViewportTarget>, target: ViewportTarget, visible: bool) {
+    match queued
+        .iter()
+        .position(|queued| queued.location == target.location)
+    {
+        Some(index) => requeue_fill_target(queued, index, target, visible),
+        None => enqueue_fill_target(queued, target, visible),
+    }
+}
+
+fn requeue_fill_target(
+    queued: &mut Vec<ViewportTarget>,
+    index: usize,
+    target: ViewportTarget,
+    visible: bool,
+) {
+    queued[index].position = target.position;
+    queued[index].include_icon_details |= target.include_icon_details;
+    if visible {
+        let target = queued.remove(index);
+        queued.insert(0, target);
+    }
+}
+
+fn enqueue_fill_target(queued: &mut Vec<ViewportTarget>, target: ViewportTarget, visible: bool) {
+    if visible {
+        // A saturated offscreen backlog must not strand newly visible details.
+        if queued.len() == MAX_PENDING_FILL_LOCATIONS {
+            queued.pop();
+        }
+        queued.insert(0, target);
+    } else if queued.len() < MAX_PENDING_FILL_LOCATIONS {
+        queued.push(target);
     }
 }

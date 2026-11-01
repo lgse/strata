@@ -4,6 +4,7 @@ use std::{rc::Rc, time::Duration};
 
 use crate::model::{Location, SortDirection, SortKey, ViewPreferences};
 
+use super::metadata_fills::SortPass;
 use super::{Browser, BrowserEvent, PublicationPlan, PublishTerminal, SortOrigin};
 
 impl Browser {
@@ -192,7 +193,13 @@ impl Browser {
                 && !targets.is_empty()
             {
                 drop(state);
-                self.request_sort_fill(depth, generation, origin, preferences, targets);
+                let pass = SortPass {
+                    depth,
+                    generation,
+                    origin,
+                    preferences,
+                };
+                self.request_sort_fill(pass, targets);
                 return;
             }
             self.sort_resync.note_attempt(origin, depth, preferences);
