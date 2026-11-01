@@ -759,19 +759,18 @@ pub(super) fn select_all_in_column(column: &ColumnView) {
     column.syncing_selection.set(false);
 }
 
+/// `plain_press` is a single press without Control or Shift.
 fn should_activate_single_click(
-    press_count: i32,
+    plain_press: bool,
     is_directory: bool,
     activation: ClickActivation,
-    control: bool,
-    shift: bool,
 ) -> bool {
     let configured = if is_directory {
         activation.folders
     } else {
         activation.files
     };
-    press_count == 1 && configured == ClickCount::One && !control && !shift
+    plain_press && configured == ClickCount::One
 }
 
 fn should_preview_pointer_press(press_count: i32, control: bool, shift: bool) -> bool {
@@ -1697,13 +1696,15 @@ impl ViewState {
             scrolling: column_scrolling,
         } = rows::column_rows(
             self,
-            depth,
-            &map,
-            &selection,
-            &recursive_search_active,
-            &search_results,
-            &hits,
-            &enter_target,
+            &rows::RowSources {
+                depth,
+                map: &map,
+                selection: &selection,
+                recursive_search_active: &recursive_search_active,
+                search_results: &search_results,
+                hits: &hits,
+                enter_target: &enter_target,
+            },
         );
 
         let list = gtk::ListView::new(Some(selection.clone()), Some(factory));
