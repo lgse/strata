@@ -311,7 +311,8 @@ impl ViewState {
             crate::ui::browser::dissolve_delete::prepare_dissolve(&source, entries)
         });
         if let (Some(depth), Some(dissolve)) = (self.browser.active_depth(), dissolve) {
-            self.pending_delete_dissolve.replace(Some((depth, dissolve)));
+            self.pending_delete_dissolve
+                .replace(Some((depth, dissolve)));
         }
     }
 }
@@ -384,11 +385,7 @@ fn activate_focused_button(buttons: &[gtk::Button]) -> glib::Propagation {
     glib::Propagation::Stop
 }
 
-fn move_delete_focus(
-    target: DeleteConfirmationFocus,
-    cancel: &gtk::Button,
-    confirm: &gtk::Button,
-) {
+fn move_delete_focus(target: DeleteConfirmationFocus, cancel: &gtk::Button, confirm: &gtk::Button) {
     match target {
         DeleteConfirmationFocus::Cancel => cancel.grab_focus(),
         DeleteConfirmationFocus::Confirm => confirm.grab_focus(),

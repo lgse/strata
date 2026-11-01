@@ -78,8 +78,8 @@ impl FileProgressState {
                 if transferred_bytes > last_bytes
                     && now.duration_since(last) >= Duration::from_millis(250) =>
             {
-                let measured =
-                    (transferred_bytes - last_bytes) as f64 / now.duration_since(last).as_secs_f64();
+                let measured = (transferred_bytes - last_bytes) as f64
+                    / now.duration_since(last).as_secs_f64();
                 let rate = self
                     .transfer_rate_bytes_per_second
                     .get()

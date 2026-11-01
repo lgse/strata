@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-use crate::model::{FileEntry, Location};
 #[cfg(test)]
 use crate::model::{EntryKind, MetadataValue};
+use crate::model::{FileEntry, Location};
 use crate::ui::blur::BlurBin;
 use crate::ui::browser::ViewState;
 use crate::ui::focus_navigation::vim_focus_direction;
@@ -17,9 +17,9 @@ use std::rc::Rc;
 mod delete_dialog;
 mod empty;
 mod restore;
-use delete_dialog::DeleteDialog;
 #[cfg(test)]
 use delete_dialog::DELETE_CONFIRMATION_MAX_ROWS;
+use delete_dialog::DeleteDialog;
 
 /// A presented trash dialog's layer and the overlay it was added to.
 #[derive(Clone)]

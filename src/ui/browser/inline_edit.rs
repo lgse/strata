@@ -953,14 +953,14 @@ impl ViewState {
                     let destination = location.clone();
                     gtk::glib::idle_add_local_once(move || {
                         if let Some(state) = weak.upgrade() {
-                            state.start_transfer_with_reveal(
+                            state.start_transfer_with_reveal(super::transfer::TransferRequest {
                                 destination,
-                                move_sources,
-                                true,
-                                false,
-                                None,
-                                super::transfer::ConflictFocus::Replace,
-                            );
+                                sources: move_sources,
+                                move_sources: true,
+                                reveal: false,
+                                send_to: None,
+                                focus: super::transfer::ConflictFocus::Replace,
+                            });
                         }
                     });
                 }

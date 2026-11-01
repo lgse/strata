@@ -96,7 +96,11 @@ fn transfer_fraction_status(
     }
 }
 
-pub(super) fn transfer_rate_status(rate: Option<f64>, transferred: u64, total: Option<u64>) -> String {
+pub(super) fn transfer_rate_status(
+    rate: Option<f64>,
+    transferred: u64,
+    total: Option<u64>,
+) -> String {
     let Some(rate) = rate.filter(|rate| rate.is_finite() && *rate > 0.0) else {
         return crate::i18n::tr("Calculating speed…");
     };
@@ -116,7 +120,8 @@ pub(super) fn transfer_rate_status(rate: Option<f64>, transferred: u64, total: O
     .into_owned()
 }
 
-pub(in crate::ui::browser) const TRANSFER_SUBTITLE: &str = "Cancelling will not undo completed changes";
+pub(in crate::ui::browser) const TRANSFER_SUBTITLE: &str =
+    "Cancelling will not undo completed changes";
 
 pub(in crate::ui::browser) fn transfer_heading(moving: bool) -> (&'static str, &'static str) {
     if moving {
