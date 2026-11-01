@@ -68,14 +68,14 @@ impl FocusTargets {
         self.cancel.grab_focus()
     }
 
-    fn from_search(&self, backward: bool) -> bool {
+    fn leave_search(&self, backward: bool) -> bool {
         if backward {
             return self.close.grab_focus();
         }
         self.focus_list_or_cancel()
     }
 
-    fn from_list(&self, backward: bool) -> bool {
+    fn leave_list(&self, backward: bool) -> bool {
         if backward {
             return self.focus_search_or_close();
         }
@@ -101,10 +101,10 @@ impl FocusTargets {
 
     fn move_focus(&self, focus: &gtk::Widget, backward: bool) -> bool {
         if *focus == self.search || focus.is_ancestor(&self.search) {
-            return self.from_search(backward);
+            return self.leave_search(backward);
         }
         if *focus == self.list || focus.is_ancestor(&self.list) {
-            return self.from_list(backward);
+            return self.leave_list(backward);
         }
         if backward && *focus == self.cancel {
             return self.back_from_cancel();
