@@ -159,6 +159,7 @@ pub(in crate::adapters::local_operations) enum CopyRecord {
     Root(Rc<CreatedCopyRoot>),
 }
 
+#[cfg(test)]
 pub(super) fn copy_recursively_with_progress(
     source: gio::File,
     target: gio::File,

@@ -151,22 +151,22 @@ impl<'a> Sequential<'a> {
 
     async fn merge(&mut self, item: &Item<'_>) -> Transferred {
         let plan = self.plan;
-        merge_owing(
-            item.source.clone(),
-            item.target.clone(),
-            plan.request.move_sources,
-            &plan.cancellable,
-            Some(&mut self.state.affected_locations),
-            &plan.copying.placed_entries,
-            progress_merge_hooks(
+        let on_merged = |merged| plan.report_merged(item.entry, merged);
+        let merging = Merging {
+            move_source: plan.request.move_sources,
+            cancellable: &plan.cancellable,
+            affected_locations: Some(&mut self.state.affected_locations),
+            placed_entries: &plan.copying.placed_entries,
+            hooks: progress_merge_hooks(
                 Some(plan.progress.clone()),
                 plan.names.clone(),
                 Some(plan.operation.clone()),
-                &|merged| plan.report_merged(item.entry, merged),
+                &on_merged,
             ),
-        )
-        .await
-        .map(|owed| (item.target.clone(), owed))
+        };
+        merge_owing(item.source.clone(), item.target.clone(), merging)
+            .await
+            .map(|owed| (item.target.clone(), owed))
     }
 
     async fn replace(
@@ -184,17 +184,16 @@ impl<'a> Sequential<'a> {
             target: replaced_target,
             permanently: transfer.replaced_permanently.clone(),
         };
-        replace_owing(
-            item.source.clone(),
-            item.target.clone(),
-            plan.request.move_sources,
-            &plan.cancellable,
-            Some(&mut self.state.affected_locations),
-            plan.copying.clone(),
-            &move |original, placed| replaced.report(original, placed),
-        )
-        .await
-        .map(|owed| (item.target.clone(), owed))
+        let replacing = Replacing {
+            move_source: plan.request.move_sources,
+            cancellable: &plan.cancellable,
+            affected_locations: Some(&mut self.state.affected_locations),
+            copying: plan.copying.clone(),
+            on_replaced: &move |original, placed| replaced.report(original, placed),
+        };
+        replace_owing(item.source.clone(), item.target.clone(), replacing)
+            .await
+            .map(|owed| (item.target.clone(), owed))
     }
 
     async fn place_new(&mut self, item: &Item<'_>, transfer: &mut Transfer) -> Transferred {

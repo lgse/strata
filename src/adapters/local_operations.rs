@@ -59,6 +59,7 @@ use replacement::merge_local;
 #[cfg(test)]
 use replacement::merge_local_with;
 use replacement::merge_owing;
+use replacement::{Merging, Replacing};
 use replacement::progress_merge_hooks;
 #[cfg(test)]
 use replacement::publish_staged_replacement;

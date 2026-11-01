@@ -246,16 +246,14 @@ impl UndoMove {
             .map(|moved| moved.owed);
         }
         let reporting = (&self.emit, self.request.id);
-        replace_owing(
-            source,
-            target,
-            true,
-            &self.cancellable,
-            Some(&mut self.affected_locations),
+        let replacing = Replacing {
+            move_source: true,
+            cancellable: &self.cancellable,
+            affected_locations: Some(&mut self.affected_locations),
             copying,
-            &|original, _| report_trashed(reporting, &item.record.original, original),
-        )
-        .await
+            on_replaced: &|original, _| report_trashed(reporting, &item.record.original, original),
+        };
+        replace_owing(source, target, replacing).await
     }
 
     fn currents(&self, from: usize) -> Vec<Location> {
