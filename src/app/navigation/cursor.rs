@@ -1,10 +1,69 @@
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashSet;
+use std::{cmp::Ordering, collections::HashSet};
 
 use crate::model::FileEntry;
 
 use super::{ColumnState, LoadState, NavigationState, adopt_selected_locations, adopt_selected_positions};
+
+impl ColumnState {
+    fn shows(&self, entry: &FileEntry) -> bool {
+        self.preferences.show_hidden || !entry.is_hidden
+    }
+
+    fn first_visible(&self) -> Option<usize> {
+        self.entries.iter().position(|entry| self.shows(entry))
+    }
+
+    fn last_visible(&self) -> Option<usize> {
+        self.entries.iter().rposition(|entry| self.shows(entry))
+    }
+
+    fn clear_cursor(&mut self) {
+        self.selected = None;
+        self.selected_locations.clear();
+        self.selection_anchor = None;
+        self.load_cursor = None;
+    }
+
+    /// The next visible entry in `direction`, or the cursor itself when no
+    /// visible entry lies that way.
+    fn stepped_cursor(&self, direction: i32) -> Option<usize> {
+        match (self.selected, direction.cmp(&0)) {
+            (None, Ordering::Less) => self.last_visible(),
+            (None, _) => self.first_visible(),
+            (Some(current), Ordering::Less) => Some(self.step_back(current)),
+            (Some(current), Ordering::Greater) => Some(self.step_forward(current)),
+            (Some(current), Ordering::Equal) => match self.shows(&self.entries[current]) {
+                true => Some(current),
+                false => self.first_visible(),
+            },
+        }
+    }
+
+    fn step_back(&self, current: usize) -> usize {
+        self.entries[..current]
+            .iter()
+            .rposition(|entry| self.shows(entry))
+            .unwrap_or_else(|| self.stay_visible_or(current, || self.first_visible()))
+    }
+
+    fn step_forward(&self, current: usize) -> usize {
+        self.entries
+            .get(current + 1..)
+            .and_then(|after| after.iter().position(|entry| self.shows(entry)))
+            .map(|offset| current + 1 + offset)
+            .unwrap_or_else(|| self.stay_visible_or(current, || self.last_visible()))
+    }
+
+    /// A visible cursor stays put; a hidden one lands on `fallback`.
+    fn stay_visible_or(&self, current: usize, fallback: impl FnOnce() -> Option<usize>) -> usize {
+        match self.shows(&self.entries[current]) {
+            true => current,
+            false => fallback().unwrap_or(current),
+        }
+    }
+}
 
 impl NavigationState {
     pub fn extend_selection(&mut self, direction: i32) -> Option<(usize, usize, Vec<usize>)> {
@@ -119,69 +178,11 @@ impl NavigationState {
             return None;
         }
 
-        let show_hidden = column.preferences.show_hidden;
-        let is_visible = |entry: &FileEntry| show_hidden || !entry.is_hidden;
-
-        if !column.entries.iter().any(is_visible) {
-            column.selected = None;
-            column.selected_locations.clear();
-            column.selection_anchor = None;
-            column.load_cursor = None;
+        if column.first_visible().is_none() {
+            column.clear_cursor();
             return None;
         }
-
-        let position = match (column.selected, direction.cmp(&0)) {
-            (None, std::cmp::Ordering::Less) => column.entries.iter().rposition(is_visible)?,
-            (None, _) => column.entries.iter().position(is_visible)?,
-            (Some(current), std::cmp::Ordering::Less) => column.entries[..current]
-                .iter()
-                .rposition(is_visible)
-                .unwrap_or_else(|| {
-                    if is_visible(&column.entries[current]) {
-                        current
-                    } else {
-                        column
-                            .entries
-                            .iter()
-                            .position(is_visible)
-                            .unwrap_or(current)
-                    }
-                }),
-            (Some(current), std::cmp::Ordering::Greater) => {
-                if current + 1 < column.entries.len() {
-                    column.entries[current + 1..]
-                        .iter()
-                        .position(is_visible)
-                        .map(|offset| current + 1 + offset)
-                        .unwrap_or_else(|| {
-                            if is_visible(&column.entries[current]) {
-                                current
-                            } else {
-                                column
-                                    .entries
-                                    .iter()
-                                    .rposition(is_visible)
-                                    .unwrap_or(current)
-                            }
-                        })
-                } else if is_visible(&column.entries[current]) {
-                    current
-                } else {
-                    column
-                        .entries
-                        .iter()
-                        .rposition(is_visible)
-                        .unwrap_or(current)
-                }
-            }
-            (Some(current), std::cmp::Ordering::Equal) => {
-                if is_visible(&column.entries[current]) {
-                    current
-                } else {
-                    column.entries.iter().position(is_visible)?
-                }
-            }
-        };
+        let position = column.stepped_cursor(direction)?;
         focus_only(column, position);
         self.active_column = Some(depth);
         Some((depth, position))
@@ -196,8 +197,12 @@ impl NavigationState {
         page: usize,
         order: Option<&[usize]>,
     ) -> Option<(usize, usize)> {
-        self.shift_cursor(direction, page, order, true)
-            .map(|(depth, position, _)| (depth, position))
+        let (depth, _, position) = self.page_target(direction, page, order)?;
+        let column = self.columns.get_mut(depth)?;
+        self.visual = None;
+        focus_only(column, position);
+        self.active_column = Some(depth);
+        Some((depth, position))
     }
 
     pub fn page_cursor(
@@ -206,7 +211,11 @@ impl NavigationState {
         page: usize,
         order: Option<&[usize]>,
     ) -> Option<(usize, usize, bool)> {
-        self.shift_cursor(direction, page, order, false)
+        let (depth, _, position) = self.page_target(direction, page, order)?;
+        let column = self.columns.get_mut(depth)?;
+        let cleared = place_cursor(column, position);
+        self.active_column = Some(depth);
+        Some((depth, position, cleared))
     }
 
     pub fn extend_page_selection(
@@ -272,26 +281,6 @@ impl NavigationState {
         };
         let position = visible[target];
         Some((depth, visible, position))
-    }
-
-    pub(super) fn shift_cursor(
-        &mut self,
-        direction: i32,
-        page: usize,
-        order: Option<&[usize]>,
-        replace_fill: bool,
-    ) -> Option<(usize, usize, bool)> {
-        let (depth, _, position) = self.page_target(direction, page, order)?;
-        let column = self.columns.get_mut(depth)?;
-        let cleared = if replace_fill {
-            self.visual = None;
-            focus_only(column, position);
-            false
-        } else {
-            place_cursor(column, position)
-        };
-        self.active_column = Some(depth);
-        Some((depth, position, cleared))
     }
 
     pub fn focus_column(&mut self, depth: usize) -> bool {

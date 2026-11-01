@@ -117,25 +117,13 @@ impl NavigationState {
     ) -> Option<(usize, Vec<EntryInsertion>)> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
         let preferences = column.preferences;
-        let selected_location = column
-            .selected
-            .and_then(|position| column.entries.get(position))
-            .map(|entry| entry.location.clone());
+        let selected_location = column.cursor_location();
         // Spares a scan in the selection read that follows each batch.
         let lone_cursor = column.selected_locations.lone_position() == column.selected
             && selected_location
                 .as_ref()
                 .is_some_and(|location| entries.iter().all(|entry| &entry.location != location));
-        if column.selected_locations.is_all() {
-            let existing: HashSet<_> = column.entries.iter().map(|entry| &entry.location).collect();
-            for entry in &entries {
-                if !existing.contains(&entry.location) {
-                    column
-                        .selected_locations
-                        .excludes_new(entry.location.clone());
-                }
-            }
-        }
+        column.exclude_new_from_full_fill(&entries);
         let (merged, insertions) =
             merge_entries(std::mem::take(&mut column.entries), entries, preferences);
         column.entries = merged;
@@ -143,23 +131,12 @@ impl NavigationState {
         if let Some(selected_location) =
             selected_location.or_else(|| column.selection_target.clone())
         {
-            column.selected = column
-                .entries
-                .iter()
-                .position(|entry| entry.location == selected_location);
-            if column.selected.is_some() {
-                column.selection_target = None;
-            }
+            column.select_target(&selected_location);
         }
         if lone_cursor && let Some(cursor) = column.selected {
             column.selected_locations.move_lone_position(cursor);
         }
-        column.resolve_pending_reveal();
-        column.restore_pending_selection();
-        column.resolve_preferred_on_load();
-        if column.select_first_on_load && !column.entries.is_empty() {
-            column.select_first_visible_entry();
-        }
+        column.resolve_load_intents();
         Some((depth, insertions))
     }
 
@@ -173,20 +150,9 @@ impl NavigationState {
         column.entries = entries;
         column.invalidate_entry_indexes();
         if let Some(selected_location) = column.selection_target.clone() {
-            column.selected = column
-                .entries
-                .iter()
-                .position(|entry| entry.location == selected_location);
-            if column.selected.is_some() {
-                column.selection_target = None;
-            }
+            column.select_target(&selected_location);
         }
-        column.resolve_pending_reveal();
-        column.restore_pending_selection();
-        column.resolve_preferred_on_load();
-        if column.select_first_on_load && !column.entries.is_empty() {
-            column.select_first_visible_entry();
-        }
+        column.resolve_load_intents();
         // The listing is complete, and its selection is published before `finish`.
         column.complete_load_selection();
         Some(depth)
@@ -216,11 +182,7 @@ impl NavigationState {
         column.truncated = truncated;
         column.can_trash = can_trash;
         column.can_delete = can_delete;
-        column.load_state = if column.entries.is_empty() {
-            LoadState::Empty
-        } else {
-            LoadState::Ready
-        };
+        column.settle_listed_state();
         Some((depth, cursor_moved))
     }
 
@@ -230,11 +192,7 @@ impl NavigationState {
         };
         column.pending_selection.clear();
         column.truncated = truncated;
-        column.load_state = if column.entries.is_empty() {
-            LoadState::Empty
-        } else {
-            LoadState::Ready
-        };
+        column.settle_listed_state();
         true
     }
 
@@ -258,6 +216,44 @@ impl NavigationState {
 }
 
 impl ColumnState {
+    /// A full fill (Select All) must not grow to cover newly listed entries.
+    fn exclude_new_from_full_fill(&mut self, entries: &[FileEntry]) {
+        if !self.selected_locations.is_all() {
+            return;
+        }
+        let existing: HashSet<_> = self.entries.iter().map(|entry| &entry.location).collect();
+        for entry in entries
+            .iter()
+            .filter(|entry| !existing.contains(&entry.location))
+        {
+            self.selected_locations
+                .excludes_new(entry.location.clone());
+        }
+    }
+
+    /// Puts the cursor on `location` once it is listed, settling the target.
+    fn select_target(&mut self, location: &Location) {
+        self.selected = self.position_of(location);
+        if self.selected.is_some() {
+            self.selection_target = None;
+        }
+    }
+
+    /// Applies what the load meant to select to the entries listed so far.
+    fn resolve_load_intents(&mut self) {
+        self.resolve_pending_reveal();
+        self.restore_pending_selection();
+        self.resolve_preferred_on_load();
+        if self.select_first_on_load && !self.entries.is_empty() {
+            self.select_first_visible_entry();
+        }
+    }
+
+    /// Nothing selected or revealed the cursor in a listing that has entries.
+    fn awaits_fallback_cursor(&self) -> bool {
+        self.selected.is_none() && self.pending_reveal.is_empty() && !self.entries.is_empty()
+    }
+
     /// A user selection or a failed load supersedes whatever the load meant to select.
     pub(super) fn drop_load_intents(&mut self) {
         self.pending_reveal.clear();
@@ -317,17 +313,11 @@ impl ColumnState {
     /// entry is gone. Returns whether the cursor moved.
     pub(super) fn complete_load_selection(&mut self) -> bool {
         let before = self.selected;
-        if self.preferred_on_load.take().is_some()
-            && self.selected.is_none()
-            && self.pending_reveal.is_empty()
-            && !self.entries.is_empty()
-        {
+        if self.preferred_on_load.take().is_some() && self.awaits_fallback_cursor() {
             self.select_first_visible_entry();
         }
         if let Some(previous) = self.reload_cursor.take()
-            && self.selected.is_none()
-            && self.pending_reveal.is_empty()
-            && !self.entries.is_empty()
+            && self.awaits_fallback_cursor()
         {
             self.selected = self.visible_neighbor(previous.min(self.entries.len() - 1));
             if self.selected.is_some() {

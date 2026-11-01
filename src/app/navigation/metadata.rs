@@ -23,25 +23,12 @@ impl NavigationState {
         }
         column.index_metadata_positions();
         let index = column.metadata_positions.as_ref().expect("indexed entries");
-        let mut positions = Vec::with_capacity(updates.len());
-        if index.len() == column.entries.len() {
-            for (location, update) in updates {
-                if let Some(&position) = index.get(location)
-                    && apply_metadata_update(&mut column.entries[position], update)
-                {
-                    positions.push(position);
-                }
-            }
+        let mut positions = if index.len() == column.entries.len() {
+            update_indexed_entries(&mut column.entries, index, updates)
         } else {
             // Providers may repeat a location; keep updating every matching entry.
-            for (position, entry) in column.entries.iter_mut().enumerate() {
-                if let Some(update) = updates.get(&entry.location)
-                    && apply_metadata_update(entry, update)
-                {
-                    positions.push(position);
-                }
-            }
-        }
+            update_every_matching_entry(&mut column.entries, &updates)
+        };
         if positions.is_empty() {
             return None;
         }
@@ -136,41 +123,57 @@ impl ColumnState {
     }
 }
 
-pub(super) fn apply_metadata_update(entry: &mut FileEntry, update: &MetadataUpdate) -> bool {
-    let mut changed = false;
-    if update.size != MetadataValue::Unknown && entry.size != update.size {
-        entry.size = update.size.clone();
-        changed = true;
+type MetadataUpdates<'a> = HashMap<&'a Location, &'a MetadataUpdate>;
+
+fn update_indexed_entries(
+    entries: &mut [FileEntry],
+    index: &HashMap<Location, usize>,
+    updates: MetadataUpdates<'_>,
+) -> Vec<usize> {
+    let mut positions = Vec::with_capacity(updates.len());
+    for (location, update) in updates {
+        if let Some(&position) = index.get(location)
+            && apply_metadata_update(&mut entries[position], update)
+        {
+            positions.push(position);
+        }
     }
-    if update.modified_unix_seconds != MetadataValue::Unknown
-        && entry.modified_unix_seconds != update.modified_unix_seconds
-    {
-        entry.modified_unix_seconds = update.modified_unix_seconds.clone();
-        changed = true;
+    positions
+}
+
+fn update_every_matching_entry(
+    entries: &mut [FileEntry],
+    updates: &MetadataUpdates<'_>,
+) -> Vec<usize> {
+    let mut positions = Vec::with_capacity(updates.len());
+    for (position, entry) in entries.iter_mut().enumerate() {
+        if let Some(update) = updates.get(&entry.location)
+            && apply_metadata_update(entry, update)
+        {
+            positions.push(position);
+        }
     }
-    if update.mode != MetadataValue::Unknown && entry.mode != update.mode {
-        entry.mode = update.mode.clone();
-        changed = true;
+    positions
+}
+
+/// Takes a known `update` value, and returns whether it changed `current`.
+fn merge_known<T: Clone + PartialEq>(current: &mut MetadataValue<T>, update: &MetadataValue<T>) -> bool {
+    if *update == MetadataValue::Unknown || current == update {
+        return false;
     }
-    if update.image_dimensions != MetadataValue::Unknown
-        && entry.image_dimensions != update.image_dimensions
-    {
-        entry.image_dimensions = update.image_dimensions.clone();
-        changed = true;
-    }
-    if update.child_count != MetadataValue::Unknown && entry.child_count != update.child_count {
-        entry.child_count = update.child_count.clone();
-        changed = true;
-    }
-    if update.duration_seconds != MetadataValue::Unknown
-        && entry.duration_seconds != update.duration_seconds
-    {
-        entry.duration_seconds = update.duration_seconds.clone();
-        changed = true;
-    }
-    if update.listable != MetadataValue::Unknown && entry.listable != update.listable {
-        entry.listable = update.listable.clone();
-        changed = true;
-    }
-    changed
+    *current = update.clone();
+    true
+}
+
+fn apply_metadata_update(entry: &mut FileEntry, update: &MetadataUpdate) -> bool {
+    let changed = [
+        merge_known(&mut entry.size, &update.size),
+        merge_known(&mut entry.modified_unix_seconds, &update.modified_unix_seconds),
+        merge_known(&mut entry.mode, &update.mode),
+        merge_known(&mut entry.image_dimensions, &update.image_dimensions),
+        merge_known(&mut entry.child_count, &update.child_count),
+        merge_known(&mut entry.duration_seconds, &update.duration_seconds),
+        merge_known(&mut entry.listable, &update.listable),
+    ];
+    changed.contains(&true)
 }

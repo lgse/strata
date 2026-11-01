@@ -4,7 +4,7 @@ use std::{cmp::Ordering, collections::HashSet};
 
 use crate::{model::{FileEntry, Location, MetadataValue, SortKey, ViewPreferences}, services::{DirectoryChange, RequestId}};
 
-use super::{EntrySplice, EntrySpliceApplication, LoadState, NavigationState, compare_entries, merge_entries};
+use super::{ColumnState, EntrySplice, EntrySpliceApplication, LoadState, NavigationState, compare_entries, merge_entries};
 
 impl NavigationState {
     pub fn set_preserve_fill_on_removal(&mut self, preserve: bool) {
@@ -99,82 +99,37 @@ impl NavigationState {
             return None;
         }
 
-        let selected_position = column.selected;
-        let selected_location = selected_position
-            .and_then(|position| column.entries.get(position))
-            .map(|entry| entry.location.clone());
-        let mut retained = Vec::with_capacity(column.entries.len());
-        let mut removed_locations = Vec::new();
-        let mut splices = Vec::<EntrySplice>::new();
-        let mut retained_before_selected = 0;
-        for (position, entry) in std::mem::take(&mut column.entries).into_iter().enumerate() {
-            if removals.contains(&entry.location) {
-                removed_locations.push(entry.location);
-                let splice_position = retained.len();
-                if let Some(splice) = splices
-                    .last_mut()
-                    .filter(|splice| splice.position == splice_position)
-                {
-                    splice.removed += 1;
-                } else {
-                    splices.push(EntrySplice {
-                        position: splice_position,
-                        removed: 1,
-                        entries: Vec::new(),
-                    });
-                }
-            } else {
-                if selected_position.is_some_and(|selected| position < selected) {
-                    retained_before_selected += 1;
-                }
-                retained.push(entry);
-            }
-        }
-        column.entries = retained;
-        if removed_locations.is_empty() {
+        let selected_location = column.cursor_location();
+        let removed = RemovedEntries::split(
+            std::mem::take(&mut column.entries),
+            &removals,
+            column.selected,
+        );
+        column.entries = removed.retained;
+        if removed.locations.is_empty() {
             return None;
         }
 
         let selected_was_removed = selected_location
             .as_ref()
             .is_some_and(|location| removals.contains(location));
-        let mut replace_selection = false;
-        for location in &removed_locations {
-            let replace = !self.selectionless_removals.remove(location);
-            if selected_location.as_ref() == Some(location) {
-                replace_selection = replace;
-            }
-            column.selected_locations.remove(location);
-        }
-        column.selected = if selected_was_removed {
-            if replace_selection {
-                let replacement = column.visible_neighbor(retained_before_selected);
-                if !self.preserve_fill_on_removal
-                    && let Some(position) = replacement
-                {
-                    column
-                        .selected_locations
-                        .insert(column.entries[position].location.clone());
-                }
-                replacement
-            } else {
-                None
-            }
-        } else {
-            selected_location.and_then(|location| {
-                column
-                    .entries
-                    .iter()
-                    .position(|entry| entry.location == location)
-            })
+        let replace_selection = forget_removed(
+            &mut self.selectionless_removals,
+            column,
+            &removed.locations,
+            selected_location.as_ref(),
+        );
+        column.selected = match (selected_was_removed, replace_selection) {
+            (true, true) => column.neighbour_after_removal(
+                removed.retained_before_selected,
+                self.preserve_fill_on_removal,
+            ),
+            (true, false) => None,
+            (false, _) => selected_location.and_then(|location| column.position_of(&location)),
         };
         column.invalidate_spliced_entry_indexes();
-        column.load_state = if column.entries.is_empty() {
-            LoadState::Empty
-        } else {
-            LoadState::Ready
-        };
-        Some((splices, column.selected))
+        column.settle_listed_state();
+        Some((removed.splices, column.selected))
     }
 
     pub fn apply_directory_change(
@@ -194,136 +149,20 @@ impl NavigationState {
             DirectoryChange::Remove(location) => !self.selectionless_removals.remove(location),
             _ => true,
         };
+        let preserve_fill = self.preserve_fill_on_removal;
         let column = self.columns.get_mut(depth).expect("column checked");
-        let preferences = column.preferences;
-        let mut selected_location = column
-            .selected
-            .and_then(|position| column.entries.get(position))
-            .map(|entry| entry.location.clone());
-        let mut splices = Vec::new();
-
+        let mut monitored = MonitoredChange::new(column, preserve_fill);
         match change {
             DirectoryChange::Upsert(entry) => {
-                let existing = column
-                    .entries
-                    .iter()
-                    .find(|current| current.location == entry.location);
-                if existing == Some(&entry) {
+                if !monitored.upsert(entry) {
                     return None;
                 }
-                if existing.is_none() {
-                    column
-                        .selected_locations
-                        .excludes_new(entry.location.clone());
-                }
-                upsert_monitored_entry(&mut column.entries, entry, preferences, &mut splices);
             }
-            DirectoryChange::Remove(location) => {
-                let removed_position = column
-                    .entries
-                    .iter()
-                    .position(|entry| entry.location == location);
-                let selected_was_removed = selected_location.as_ref() == Some(&location);
-                column.selected_locations.remove(&location);
-                remove_monitored_entry(&mut column.entries, &location, &mut splices);
-                if selected_was_removed && replace_selection {
-                    selected_location = removed_position.and_then(|position| {
-                        column
-                            .visible_neighbor(position)
-                            .and_then(|index| column.entries.get(index))
-                            .map(|entry| entry.location.clone())
-                    });
-                    if !self.preserve_fill_on_removal
-                        && let Some(ref replacement) = selected_location
-                    {
-                        column.selected_locations.insert(replacement.clone());
-                    }
-                }
-            }
-            DirectoryChange::Move { from, mut entry } => {
-                if let Some(previous) = column
-                    .entries
-                    .iter()
-                    .find(|previous| previous.location == from)
-                    && previous.kind == entry.kind
-                    && matches!(entry.size, MetadataValue::Known(_))
-                    && previous.size == entry.size
-                    && matches!(entry.modified_unix_seconds, MetadataValue::Known(_))
-                    && previous.modified_unix_seconds == entry.modified_unix_seconds
-                    && std::path::Path::new(&previous.native_name).extension()
-                        == std::path::Path::new(&entry.native_name).extension()
-                {
-                    // Monitor entries contain stat data, not the details already loaded for this file.
-                    if entry.image_dimensions == MetadataValue::Unknown {
-                        entry.image_dimensions = previous.image_dimensions.clone();
-                    }
-                    if entry.child_count == MetadataValue::Unknown {
-                        entry.child_count = previous.child_count.clone();
-                    }
-                    if entry.duration_seconds == MetadataValue::Unknown {
-                        entry.duration_seconds = previous.duration_seconds.clone();
-                    }
-                }
-                // A hidden destination leaves the filtered view, so the cursor moves as on removal.
-                let hides = entry.is_hidden && !preferences.show_hidden;
-                let removed_position = column
-                    .entries
-                    .iter()
-                    .position(|previous| previous.location == from);
-                let follow = (!hides).then(|| entry.location.clone());
-                if follow.is_some() {
-                    column
-                        .selected_locations
-                        .relocate(&from, entry.location.clone());
-                } else {
-                    column.selected_locations.remove(&from);
-                }
-                for target in [
-                    &mut column.selection_target,
-                    &mut column.selection_anchor,
-                    &mut column.load_cursor,
-                ] {
-                    if target.as_ref() == Some(&from) {
-                        *target = follow.clone();
-                    }
-                }
-                remove_monitored_entry(&mut column.entries, &from, &mut splices);
-                if selected_location.as_ref() == Some(&from) {
-                    selected_location = follow.or_else(|| {
-                        removed_position
-                            .and_then(|position| column.visible_neighbor(position))
-                            .and_then(|index| column.entries.get(index))
-                            .map(|neighbor| neighbor.location.clone())
-                    });
-                    if hides
-                        && !self.preserve_fill_on_removal
-                        && let Some(ref replacement) = selected_location
-                    {
-                        column.selected_locations.insert(replacement.clone());
-                    }
-                }
-                upsert_monitored_entry(&mut column.entries, entry, preferences, &mut splices);
-            }
+            DirectoryChange::Remove(location) => monitored.remove(&location, replace_selection),
+            DirectoryChange::Move { from, entry } => monitored.relocate(&from, entry),
             DirectoryChange::Rescan => return None,
         }
-
-        if splices.is_empty() {
-            return None;
-        }
-        column.selected = selected_location.and_then(|location| {
-            column
-                .entries
-                .iter()
-                .position(|entry| entry.location == location)
-        });
-        column.invalidate_spliced_entry_indexes();
-        column.retain_selected_locations(false);
-        column.load_state = if column.entries.is_empty() {
-            LoadState::Empty
-        } else {
-            LoadState::Ready
-        };
-        Some((splices, column.selected))
+        monitored.finish()
     }
 
     pub fn refresh_column(&mut self, depth: usize, request_id: RequestId) -> Option<Location> {
@@ -469,4 +308,251 @@ pub(super) fn insert_monitored_entry(
         removed: 0,
         entries: vec![entry],
     });
+}
+
+/// What one removal batch leaves of a column's entries.
+struct RemovedEntries {
+    retained: Vec<FileEntry>,
+    locations: Vec<Location>,
+    splices: Vec<EntrySplice>,
+    retained_before_selected: usize,
+}
+
+impl RemovedEntries {
+    fn split(
+        entries: Vec<FileEntry>,
+        removals: &HashSet<Location>,
+        selected_position: Option<usize>,
+    ) -> Self {
+        let mut split = Self {
+            retained: Vec::with_capacity(entries.len()),
+            locations: Vec::new(),
+            splices: Vec::new(),
+            retained_before_selected: 0,
+        };
+        for (position, entry) in entries.into_iter().enumerate() {
+            if removals.contains(&entry.location) {
+                split.remove(entry.location);
+            } else {
+                split.retain(entry, selected_position.is_some_and(|selected| position < selected));
+            }
+        }
+        split
+    }
+
+    fn remove(&mut self, location: Location) {
+        self.locations.push(location);
+        let position = self.retained.len();
+        match self
+            .splices
+            .last_mut()
+            .filter(|splice| splice.position == position)
+        {
+            Some(splice) => splice.removed += 1,
+            None => self.splices.push(EntrySplice {
+                position,
+                removed: 1,
+                entries: Vec::new(),
+            }),
+        }
+    }
+
+    fn retain(&mut self, entry: FileEntry, before_selected: bool) {
+        if before_selected {
+            self.retained_before_selected += 1;
+        }
+        self.retained.push(entry);
+    }
+}
+
+/// Drops the removed locations from the fill, and returns whether a removed
+/// cursor entry hands the cursor to a neighbour.
+fn forget_removed(
+    selectionless_removals: &mut HashSet<Location>,
+    column: &mut ColumnState,
+    removed: &[Location],
+    selected: Option<&Location>,
+) -> bool {
+    let mut replace_selection = false;
+    for location in removed {
+        let replace = !selectionless_removals.remove(location);
+        if selected == Some(location) {
+            replace_selection = replace;
+        }
+        column.selected_locations.remove(location);
+    }
+    replace_selection
+}
+
+impl ColumnState {
+    fn neighbour_after_removal(&mut self, position: usize, preserve_fill: bool) -> Option<usize> {
+        let replacement = self.visible_neighbor(position);
+        if !preserve_fill && let Some(position) = replacement {
+            self.selected_locations
+                .insert(self.entries[position].location.clone());
+        }
+        replacement
+    }
+
+    fn neighbour_location(&self, removed_position: Option<usize>) -> Option<Location> {
+        removed_position
+            .and_then(|position| self.visible_neighbor(position))
+            .and_then(|index| self.entries.get(index))
+            .map(|entry| entry.location.clone())
+    }
+
+    /// Moves the fill and load targets from `from` onto `follow`, or drops them
+    /// when the moved entry leaves the view.
+    fn follow_moved_selection(&mut self, from: &Location, follow: Option<&Location>) {
+        match follow {
+            Some(to) => self.selected_locations.relocate(from, to.clone()),
+            None => {
+                self.selected_locations.remove(from);
+            }
+        }
+        for target in [
+            &mut self.selection_target,
+            &mut self.selection_anchor,
+            &mut self.load_cursor,
+        ] {
+            if target.as_ref() == Some(from) {
+                *target = follow.cloned();
+            }
+        }
+    }
+}
+
+/// One monitor change applied to a column, tracking where its cursor goes.
+struct MonitoredChange<'a> {
+    column: &'a mut ColumnState,
+    preferences: ViewPreferences,
+    preserve_fill: bool,
+    selected: Option<Location>,
+    splices: Vec<EntrySplice>,
+}
+
+impl<'a> MonitoredChange<'a> {
+    fn new(column: &'a mut ColumnState, preserve_fill: bool) -> Self {
+        Self {
+            preferences: column.preferences,
+            selected: column.cursor_location(),
+            column,
+            preserve_fill,
+            splices: Vec::new(),
+        }
+    }
+
+    /// Returns false when the column already lists the entry unchanged.
+    fn upsert(&mut self, entry: FileEntry) -> bool {
+        let existing = self
+            .column
+            .entries
+            .iter()
+            .find(|current| current.location == entry.location);
+        if existing == Some(&entry) {
+            return false;
+        }
+        if existing.is_none() {
+            self.column
+                .selected_locations
+                .excludes_new(entry.location.clone());
+        }
+        upsert_monitored_entry(
+            &mut self.column.entries,
+            entry,
+            self.preferences,
+            &mut self.splices,
+        );
+        true
+    }
+
+    fn remove(&mut self, location: &Location, replace_selection: bool) {
+        let removed_position = self.column.position_of(location);
+        let selected_was_removed = self.selected.as_ref() == Some(location);
+        self.column.selected_locations.remove(location);
+        remove_monitored_entry(&mut self.column.entries, location, &mut self.splices);
+        if selected_was_removed && replace_selection {
+            self.selected = self.column.neighbour_location(removed_position);
+            self.fill_replacement();
+        }
+    }
+
+    fn relocate(&mut self, from: &Location, mut entry: FileEntry) {
+        if let Some(previous) = self
+            .column
+            .entries
+            .iter()
+            .find(|previous| previous.location == *from)
+            && same_file_moved(previous, &entry)
+        {
+            inherit_loaded_details(&mut entry, previous);
+        }
+        // A hidden destination leaves the filtered view, so the cursor moves as on removal.
+        let hides = entry.is_hidden && !self.preferences.show_hidden;
+        let removed_position = self.column.position_of(from);
+        let follow = (!hides).then(|| entry.location.clone());
+        self.column.follow_moved_selection(from, follow.as_ref());
+        remove_monitored_entry(&mut self.column.entries, from, &mut self.splices);
+        if self.selected.as_ref() == Some(from) {
+            self.selected = follow.or_else(|| self.column.neighbour_location(removed_position));
+            if hides {
+                self.fill_replacement();
+            }
+        }
+        upsert_monitored_entry(
+            &mut self.column.entries,
+            entry,
+            self.preferences,
+            &mut self.splices,
+        );
+    }
+
+    fn fill_replacement(&mut self) {
+        if !self.preserve_fill
+            && let Some(replacement) = &self.selected
+        {
+            self.column
+                .selected_locations
+                .insert(replacement.clone());
+        }
+    }
+
+    fn finish(self) -> EntrySpliceApplication {
+        if self.splices.is_empty() {
+            return None;
+        }
+        let column = self.column;
+        column.selected = self
+            .selected
+            .and_then(|location| column.position_of(&location));
+        column.invalidate_spliced_entry_indexes();
+        column.retain_selected_locations(false);
+        column.settle_listed_state();
+        Some((self.splices, column.selected))
+    }
+}
+
+/// A move that kept the file's kind, size, modification time and extension
+/// still describes the same content.
+fn same_file_moved(previous: &FileEntry, entry: &FileEntry) -> bool {
+    previous.kind == entry.kind
+        && matches!(entry.size, MetadataValue::Known(_))
+        && previous.size == entry.size
+        && matches!(entry.modified_unix_seconds, MetadataValue::Known(_))
+        && previous.modified_unix_seconds == entry.modified_unix_seconds
+        && std::path::Path::new(&previous.native_name).extension()
+            == std::path::Path::new(&entry.native_name).extension()
+}
+
+/// Monitor entries contain stat data, not the details already loaded for this file.
+fn inherit_loaded_details(entry: &mut FileEntry, previous: &FileEntry) {
+    if entry.image_dimensions == MetadataValue::Unknown {
+        entry.image_dimensions = previous.image_dimensions.clone();
+    }
+    if entry.child_count == MetadataValue::Unknown {
+        entry.child_count = previous.child_count.clone();
+    }
+    if entry.duration_seconds == MetadataValue::Unknown {
+        entry.duration_seconds = previous.duration_seconds.clone();
+    }
 }

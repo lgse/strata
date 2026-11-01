@@ -35,49 +35,62 @@ pub(super) fn merge_entries(
         return (incoming_entries, vec![insertion]);
     }
 
-    let existing_count = existing.len();
-    let incoming_count = incoming_items.len();
+    merge_sorted(existing, incoming_items, preferences)
+}
+
+fn merge_sorted(
+    existing: Vec<FileEntry>,
+    incoming_items: Vec<SortItem>,
+    preferences: ViewPreferences,
+) -> (Vec<FileEntry>, Vec<EntryInsertion>) {
+    let precompute_type = preferences.sort_key == SortKey::Type;
+    let mut merged = Vec::with_capacity(existing.len() + incoming_items.len());
     let mut existing_items = existing
         .into_iter()
         .map(|entry| SortItem::new(entry, precompute_type))
         .peekable();
     let mut incoming_items = incoming_items.into_iter().peekable();
-    let mut merged = Vec::with_capacity(existing_count + incoming_count);
     let mut insertions = Vec::<EntryInsertion>::new();
 
     while existing_items.peek().is_some() || incoming_items.peek().is_some() {
-        let take_incoming = match (existing_items.peek(), incoming_items.peek()) {
-            (Some(left), Some(right)) => {
-                compare_sort_items(right, left, preferences) != Ordering::Greater
-            }
-            (None, Some(_)) => true,
-            _ => false,
-        };
-
-        if take_incoming {
+        if takes_incoming(existing_items.peek(), incoming_items.peek(), preferences) {
             let Some(item) = incoming_items.next() else {
                 break;
             };
-            let entry = item.entry;
-            let position = merged.len();
-            if let Some(insertion) = insertions
-                .last_mut()
-                .filter(|insertion| insertion.position + insertion.entries.len() == position)
-            {
-                insertion.entries.push(entry.clone());
-            } else {
-                insertions.push(EntryInsertion {
-                    position,
-                    entries: vec![entry.clone()],
-                });
-            }
-            merged.push(entry);
+            push_insertion(&mut insertions, merged.len(), item.entry.clone());
+            merged.push(item.entry);
         } else if let Some(item) = existing_items.next() {
             merged.push(item.entry);
         }
     }
 
     (merged, insertions)
+}
+
+fn takes_incoming(
+    existing: Option<&SortItem>,
+    incoming: Option<&SortItem>,
+    preferences: ViewPreferences,
+) -> bool {
+    match (existing, incoming) {
+        (Some(left), Some(right)) => compare_sort_items(right, left, preferences) != Ordering::Greater,
+        (None, Some(_)) => true,
+        _ => false,
+    }
+}
+
+/// Extends the previous insertion when `entry` lands right after it.
+fn push_insertion(insertions: &mut Vec<EntryInsertion>, position: usize, entry: FileEntry) {
+    match insertions
+        .last_mut()
+        .filter(|insertion| insertion.position + insertion.entries.len() == position)
+    {
+        Some(insertion) => insertion.entries.push(entry),
+        None => insertions.push(EntryInsertion {
+            position,
+            entries: vec![entry],
+        }),
+    }
 }
 
 pub(crate) fn sort_entries(

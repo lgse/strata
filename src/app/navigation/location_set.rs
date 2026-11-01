@@ -58,11 +58,7 @@ impl LocationSet {
         match self {
             Self::Explicit(locations) => locations.insert(location),
             Self::All { excluded, count } => {
-                let inserted = excluded.remove(&location);
-                if inserted {
-                    *count = count.saturating_add(1);
-                }
-                inserted
+                step_count(count, excluded.remove(&location), usize::saturating_add)
             }
         }
     }
@@ -71,11 +67,7 @@ impl LocationSet {
         match self {
             Self::Explicit(locations) => locations.remove(location),
             Self::All { excluded, count } => {
-                let removed = excluded.insert(location.clone());
-                if removed {
-                    *count = count.saturating_sub(1);
-                }
-                removed
+                step_count(count, excluded.insert(location.clone()), usize::saturating_sub)
             }
         }
     }
@@ -148,4 +140,12 @@ impl LocationSet {
             }
         }
     }
+}
+
+/// Steps a full set's count by one when its exclusions `changed`.
+fn step_count(count: &mut usize, changed: bool, step: fn(usize, usize) -> usize) -> bool {
+    if changed {
+        *count = step(*count, 1);
+    }
+    changed
 }

@@ -2,7 +2,31 @@
 
 use crate::model::{FolderSort, Location, SortDirection, SortKey, ViewPreferences};
 
-use super::{FolderSortResolver, LoadState, NavigationState, sort_entries};
+use super::{ColumnState, FolderSortResolver, LoadState, NavigationState, sort_entries};
+
+impl ColumnState {
+    /// A hidden cursor entry hands the cursor and a single fill to its nearest
+    /// visible neighbour, preferring the entries after it.
+    fn move_cursor_off_hidden(&mut self) {
+        let Some(selected) = self
+            .selected
+            .filter(|&selected| self.entries.get(selected).is_some_and(|e| e.is_hidden))
+        else {
+            return;
+        };
+        let nearest_visible = (selected + 1..self.entries.len())
+            .find(|&i| !self.entries[i].is_hidden)
+            .or_else(|| (0..selected).rev().find(|&i| !self.entries[i].is_hidden));
+        self.selected = nearest_visible;
+        self.selected_locations.clear();
+        self.selection_anchor = None;
+        if let Some(pos) = nearest_visible {
+            let loc = self.entries[pos].location.clone();
+            self.selected_locations.insert(loc.clone());
+            self.selection_anchor = Some(loc);
+        }
+    }
+}
 
 impl NavigationState {
     pub fn set_show_hidden(&mut self, show_hidden: bool) {
@@ -10,22 +34,7 @@ impl NavigationState {
         for column in &mut self.columns {
             column.preferences.show_hidden = show_hidden;
             if !show_hidden {
-                if let Some(selected) = column.selected
-                    && column.entries.get(selected).is_some_and(|e| e.is_hidden)
-                {
-                    let nearest_visible = (selected + 1..column.entries.len())
-                        .find(|&i| !column.entries[i].is_hidden)
-                        .or_else(|| (0..selected).rev().find(|&i| !column.entries[i].is_hidden));
-                    column.selected = nearest_visible;
-                    column.selected_locations.clear();
-                    if let Some(pos) = nearest_visible {
-                        let loc = column.entries[pos].location.clone();
-                        column.selected_locations.insert(loc.clone());
-                        column.selection_anchor = Some(loc);
-                    } else {
-                        column.selection_anchor = None;
-                    }
-                }
+                column.move_cursor_off_hidden();
                 column.retain_selected_locations(true);
             }
         }

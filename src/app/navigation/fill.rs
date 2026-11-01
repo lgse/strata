@@ -153,74 +153,30 @@ impl NavigationState {
         let Some(column) = self.columns.get_mut(depth) else {
             return false;
         };
-        if positions
+        let out_of_range = positions
             .iter()
             .any(|position| *position >= column.entries.len())
-            || focused.is_some_and(|position| position >= column.entries.len())
-        {
+            || focused.is_some_and(|position| position >= column.entries.len());
+        if out_of_range {
             return false;
         }
         let mut positions = positions.to_vec();
         positions.sort_unstable();
         positions.dedup();
-        let mut located = None;
-        // Repeating the fill is a widget echo, as is a report of only the cursor
-        // while a different fill remains. After a clear, that cursor report is the
-        // click on the still-focused file, so it becomes the selection.
-        if !self.selection_commit
-            && let Some(cursor) = column
-                .selected
-                .and_then(|cursor| column.entries.get(cursor))
-        {
-            let unchanged = match column.selected_locations.exact_positions(|| {
-                lists_each_location_once(&column.entries, &column.each_location_once)
-            }) {
-                Some(previous) => previous == positions,
-                None => {
-                    let locations: HashSet<_> = positions
-                        .iter()
-                        .map(|position| column.entries[*position].location.clone())
-                        .collect();
-                    let unchanged = column
-                        .selected_locations
-                        .equals_explicit(&locations, &column.entries);
-                    located = Some(locations);
-                    unchanged
-                }
-            };
-            let cursor_only_outside_fill = !column.selected_locations.is_empty()
-                && !column.selected_locations.contains(&cursor.location)
-                && !positions.is_empty()
-                && positions
-                    .iter()
-                    .all(|position| column.entries[*position].location == cursor.location);
-            if unchanged || cursor_only_outside_fill {
-                if unchanged && located.is_some() {
-                    column.selected_locations.remember(positions, || {
-                        lists_each_location_once(&column.entries, &column.each_location_once)
-                    });
-                }
-                self.active_column = Some(depth);
-                return true;
-            }
-        }
+        let report = match self.selection_commit {
+            true => ReportedFill::Changed(None),
+            false => column.classify_reported_fill(&positions),
+        };
+        let ReportedFill::Changed(located) = report else {
+            self.active_column = Some(depth);
+            return true;
+        };
         let commit = std::mem::take(&mut self.selection_commit);
-        match located {
-            Some(locations) => {
-                adopt_selected_locations(column, locations, commit);
-                column.selected_locations.remember(positions, || {
-                    lists_each_location_once(&column.entries, &column.each_location_once)
-                });
-            }
-            None => adopt_selected_positions(column, positions, commit),
-        }
+        column.adopt_reported_fill(positions, located, commit);
         column.selected = focused.or(column.selected);
         self.visual = None;
         if column.selection_anchor.is_none() {
-            column.selection_anchor = column
-                .selected
-                .and_then(|position| column.entries.get(position))
-                .map(|entry| entry.location.clone());
+            column.selection_anchor = column.cursor_location();
         }
         self.active_column = Some(depth);
         true
@@ -364,4 +320,82 @@ pub(super) fn adopt_selected_positions(column: &mut ColumnState, mut positions: 
         .select_positions(&column.entries, positions, || {
             lists_each_location_once(&column.entries, &column.each_location_once)
         });
+}
+
+/// A selection the view reported, compared with the pane's current fill.
+enum ReportedFill {
+    /// The report only echoes what the pane already shows.
+    Echo,
+    /// A new fill, with its locations when the comparison had to resolve them.
+    Changed(Option<HashSet<Location>>),
+}
+
+impl ColumnState {
+    /// Repeating the fill is a widget echo, as is a report of only the cursor
+    /// while a different fill remains. After a clear, that cursor report is the
+    /// click on the still-focused file, so it becomes the selection.
+    fn classify_reported_fill(&mut self, positions: &[usize]) -> ReportedFill {
+        let Some(cursor) = self
+            .selected
+            .and_then(|cursor| self.entries.get(cursor))
+        else {
+            return ReportedFill::Changed(None);
+        };
+        let (unchanged, located) = self.compare_reported_fill(positions);
+        if !unchanged && !self.cursor_only_outside_fill(&cursor.location, positions) {
+            return ReportedFill::Changed(located);
+        }
+        if unchanged && located.is_some() {
+            self.remember_fill_positions(positions.to_vec());
+        }
+        ReportedFill::Echo
+    }
+
+    /// Whether `positions` match the fill, with the locations they name when
+    /// the fill keeps no positions to compare against.
+    fn compare_reported_fill(&self, positions: &[usize]) -> (bool, Option<HashSet<Location>>) {
+        if let Some(previous) = self.selected_locations.exact_positions(|| {
+            lists_each_location_once(&self.entries, &self.each_location_once)
+        }) {
+            return (previous == positions, None);
+        }
+        let locations: HashSet<_> = positions
+            .iter()
+            .map(|position| self.entries[*position].location.clone())
+            .collect();
+        let unchanged = self
+            .selected_locations
+            .equals_explicit(&locations, &self.entries);
+        (unchanged, Some(locations))
+    }
+
+    fn cursor_only_outside_fill(&self, cursor: &Location, positions: &[usize]) -> bool {
+        !self.selected_locations.is_empty()
+            && !self.selected_locations.contains(cursor)
+            && !positions.is_empty()
+            && positions
+                .iter()
+                .all(|position| self.entries[*position].location == *cursor)
+    }
+
+    fn adopt_reported_fill(
+        &mut self,
+        positions: Vec<usize>,
+        located: Option<HashSet<Location>>,
+        commit: bool,
+    ) {
+        match located {
+            Some(locations) => {
+                adopt_selected_locations(self, locations, commit);
+                self.remember_fill_positions(positions);
+            }
+            None => adopt_selected_positions(self, positions, commit),
+        }
+    }
+
+    fn remember_fill_positions(&mut self, positions: Vec<usize>) {
+        self.selected_locations.remember(positions, || {
+            lists_each_location_once(&self.entries, &self.each_location_once)
+        });
+    }
 }

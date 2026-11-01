@@ -377,6 +377,27 @@ pub enum CursorToggle {
 }
 
 impl ColumnState {
+    fn cursor_location(&self) -> Option<Location> {
+        self.selected
+            .and_then(|position| self.entries.get(position))
+            .map(|entry| entry.location.clone())
+    }
+
+    fn position_of(&self, location: &Location) -> Option<usize> {
+        self.entries
+            .iter()
+            .position(|entry| entry.location == *location)
+    }
+
+    /// A finished or monitored listing is empty or ready.
+    fn settle_listed_state(&mut self) {
+        self.load_state = if self.entries.is_empty() {
+            LoadState::Empty
+        } else {
+            LoadState::Ready
+        };
+    }
+
     fn visible_neighbor(&self, position: usize) -> Option<usize> {
         let visible =
             |&index: &usize| self.preferences.show_hidden || !self.entries[index].is_hidden;
