@@ -221,8 +221,7 @@ impl Special<'_> {
                 copy,
                 self.stat,
                 (at, staged.identity),
-                &parent_stat,
-                &self.mount,
+                (&parent_stat, &self.mount),
             )?;
         } else {
             self.prepare_link(at, staged)?;
@@ -274,11 +273,11 @@ impl Special<'_> {
         let to = Entry::new(&**self.parent, name);
         let uncounted = copy.uncounted();
         if self.is_link() {
-            tree::copy_link(&uncounted, from, to, &self.mount, None)?;
+            tree::copy_link(&uncounted, (from, to), &self.mount, None)?;
             return Ok(());
         }
         let parent_stat = copy.fs.stat_fd(self.parent.as_fd())?;
-        let made = tree::copy_fifo(&uncounted, from, to, &parent_stat, &self.mount, None)?;
+        let made = tree::copy_fifo(&uncounted, (from, to), (&parent_stat, &self.mount), None)?;
         if made.1.is_none() {
             return Err(Failure::NotCopyable);
         }
