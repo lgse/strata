@@ -12,13 +12,7 @@ use super::{Browser, BrowserEvent, CursorToggle, SelectionUpdate, VisualKind, Vi
 impl Browser {
     pub fn select(&self, depth: usize, position: usize) {
         let selected = self.state.borrow_mut().select(depth, position);
-        if selected {
-            self.emit(BrowserEvent::FocusChanged {
-                depth,
-                position: Some(position),
-                triggered_by_removal: false,
-            });
-        }
+        self.emit_focus(selected.then_some((depth, Some(position))));
     }
 
     pub fn toggle_cursor_fill(&self) -> CursorToggle {
@@ -202,25 +196,13 @@ impl Browser {
 
     pub fn move_selection(&self, direction: i32) {
         let moved = self.state.borrow_mut().move_selection(direction);
-        if let Some((depth, position)) = moved {
-            self.emit(BrowserEvent::FocusChanged {
-                depth,
-                position: Some(position),
-                triggered_by_removal: false,
-            });
-        }
+        self.emit_focus(moved.map(|(depth, position)| (depth, Some(position))));
     }
 
     /// Moves the focus by `page` visible entries, for `Page Up` and `Page Down`.
     pub fn page_along(&self, direction: i32, page: usize, order: Option<&[usize]>) {
         let moved = self.state.borrow_mut().page_along(direction, page, order);
-        if let Some((depth, position)) = moved {
-            self.emit(BrowserEvent::FocusChanged {
-                depth,
-                position: Some(position),
-                triggered_by_removal: false,
-            });
-        }
+        self.emit_focus(moved.map(|(depth, position)| (depth, Some(position))));
     }
 
     pub fn extend_page_selection(&self, direction: i32, page: usize, order: Option<&[usize]>) {
@@ -228,26 +210,12 @@ impl Browser {
             .state
             .borrow_mut()
             .extend_page_selection(direction, page, order);
-        if let Some((depth, focused, positions)) = extended {
-            self.emit(BrowserEvent::SelectionSetChanged {
-                depth,
-                selection: SelectionUpdate::Positions(positions),
-                focused,
-                take_focus: true,
-            });
-        }
+        self.emit_extended_fill(extended);
     }
 
     pub fn extend_selection(&self, direction: i32) {
         let extended = self.state.borrow_mut().extend_selection(direction);
-        if let Some((depth, focused, positions)) = extended {
-            self.emit(BrowserEvent::SelectionSetChanged {
-                depth,
-                selection: SelectionUpdate::Positions(positions),
-                focused,
-                take_focus: true,
-            });
-        }
+        self.emit_extended_fill(extended);
     }
 
     pub fn extend_visual_selection(&self, depth: usize, focused: usize, order: &[usize]) {
@@ -255,34 +223,36 @@ impl Browser {
             .state
             .borrow_mut()
             .extend_visual_selection(depth, focused, order);
-        if let Some(positions) = positions {
+        self.emit_extended_fill(positions.map(|positions| (depth, focused, positions)));
+    }
+
+    pub fn focus_parent(&self) {
+        let focus = self.state.borrow_mut().focus_parent();
+        self.emit_focus(focus);
+    }
+
+    pub(super) fn focus_child(&self) {
+        let focus = self.state.borrow_mut().focus_child();
+        self.emit_focus(focus);
+    }
+
+    fn emit_focus(&self, focus: Option<(usize, Option<usize>)>) {
+        if let Some((depth, position)) = focus {
+            self.emit(BrowserEvent::FocusChanged {
+                depth,
+                position,
+                triggered_by_removal: false,
+            });
+        }
+    }
+
+    fn emit_extended_fill(&self, extended: Option<(usize, usize, Vec<usize>)>) {
+        if let Some((depth, focused, positions)) = extended {
             self.emit(BrowserEvent::SelectionSetChanged {
                 depth,
                 selection: SelectionUpdate::Positions(positions),
                 focused,
                 take_focus: true,
-            });
-        }
-    }
-
-    pub fn focus_parent(&self) {
-        let focus = self.state.borrow_mut().focus_parent();
-        if let Some((depth, position)) = focus {
-            self.emit(BrowserEvent::FocusChanged {
-                depth,
-                position,
-                triggered_by_removal: false,
-            });
-        }
-    }
-
-    pub(super) fn focus_child(&self) {
-        let focus = self.state.borrow_mut().focus_child();
-        if let Some((depth, position)) = focus {
-            self.emit(BrowserEvent::FocusChanged {
-                depth,
-                position,
-                triggered_by_removal: false,
             });
         }
     }
