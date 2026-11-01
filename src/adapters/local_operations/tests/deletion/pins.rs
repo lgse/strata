@@ -2,66 +2,88 @@
 
 use super::*;
 
+fn pin(path: &Path) -> String {
+    format!("{} Pin\n", gio::File::for_path(path).uri())
+}
+
+/// Pins `first` and `second`, returning the bookmarks file.
+fn pin_both(first: &Path, second: &Path) -> io::Result<PathBuf> {
+    let bookmarks = crate::adapters::bookmarks::pinned_places_path();
+    fs::create_dir_all(bookmarks.parent().expect("bookmarks directory"))?;
+    fs::write(&bookmarks, format!("{}{}", pin(first), pin(second)))?;
+    Ok(bookmarks)
+}
+
+/// Deletes `entries` permanently, dropping the operation once the first
+/// is done if `cancel_after_first`, until it is cancelled or fails. Returns
+/// the operation's slot with what it emitted.
+fn delete_cancelling(
+    entries: Vec<FileEntry>,
+    cancel_after_first: bool,
+) -> (Rc<RefCell<Option<LoadHandle>>>, Vec<OperationEvent>) {
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let operation = Rc::new(RefCell::new(None::<LoadHandle>));
+    let cancelling = operation.clone();
+    operation.replace(Some(LocalOperationProvider.delete(
+        DeleteRequest {
+            id: OperationRequestId(1372),
+            entries,
+            permanent: true,
+        },
+        Rc::new(move |event| {
+            if cancel_after_first
+                && matches!(event, OperationEvent::DeleteProgress { completed: 1, .. })
+            {
+                cancelling.borrow_mut().take();
+            }
+            emitted.borrow_mut().push(event);
+        }),
+    )));
+    let context = glib::MainContext::default();
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Cancelled { .. } | OperationEvent::CompletedWithErrors { .. }
+        )
+    }) {
+        context.iteration(true);
+    }
+    (operation, events.take())
+}
+
+fn check_confirmed_pins(cancel_after_first: bool) -> Result<(), Box<dyn Error>> {
+    let directory = tempfile::tempdir()?;
+    let first = directory.path().join("first");
+    let second = directory.path().join("second");
+    fs::create_dir(&first)?;
+    if cancel_after_first {
+        fs::create_dir(&second)?;
+    }
+    let bookmarks = pin_both(&first, &second)?;
+    let entries = vec![directory_entry(&first), directory_entry(&second)];
+
+    let (_operation, events) = delete_cancelling(entries, cancel_after_first);
+
+    crate::storage::writer::settle();
+    assert_eq!(fs::read_to_string(&bookmarks)?, pin(&second));
+    if cancel_after_first {
+        assert!(events.iter().any(|event| matches!(event, OperationEvent::Cancelled { result, .. } if result.completed == [Location::local(&first)] && result.not_attempted == [Location::local(&second)])));
+        assert!(second.exists());
+    } else {
+        assert!(events.iter().any(|event| matches!(event, OperationEvent::CompletedWithErrors { deleted_locations, .. } if deleted_locations == &[Location::local(&first)])));
+    }
+    assert!(!first.exists());
+    Ok(())
+}
+
 #[test]
 fn provider_cleans_only_confirmed_pins_on_failure_and_cancellation() {
     crate::test_support::gtk_test(
         "adapters::local_operations::tests::deletion::pins::provider_cleans_only_confirmed_pins_on_failure_and_cancellation",
         || {
             for cancel_after_first in [false, true] {
-                let directory = tempfile::tempdir().expect("fixture");
-                let first = directory.path().join("first");
-                let second = directory.path().join("second");
-                fs::create_dir(&first).expect("first folder");
-                if cancel_after_first {
-                    fs::create_dir(&second).expect("second folder");
-                }
-                let bookmarks = crate::adapters::bookmarks::pinned_places_path();
-                fs::create_dir_all(bookmarks.parent().expect("bookmarks directory"))
-                    .expect("config");
-                let pin = |path: &Path| format!("{} Pin\n", gio::File::for_path(path).uri());
-                fs::write(&bookmarks, format!("{}{}", pin(&first), pin(&second))).expect("pins");
-                let events = Rc::new(RefCell::new(Vec::new()));
-                let emitted = events.clone();
-                let operation = Rc::new(RefCell::new(None::<LoadHandle>));
-                let cancelling = operation.clone();
-                operation.replace(Some(LocalOperationProvider.delete(
-                    DeleteRequest {
-                        id: OperationRequestId(1372),
-                        entries: vec![directory_entry(&first), directory_entry(&second)],
-                        permanent: true,
-                    },
-                    Rc::new(move |event| {
-                        if cancel_after_first
-                            && matches!(event, OperationEvent::DeleteProgress { completed: 1, .. })
-                        {
-                            cancelling.borrow_mut().take();
-                        }
-                        emitted.borrow_mut().push(event);
-                    }),
-                )));
-                let context = glib::MainContext::default();
-                while !events.borrow().iter().any(|event| {
-                    matches!(
-                        event,
-                        OperationEvent::Cancelled { .. }
-                            | OperationEvent::CompletedWithErrors { .. }
-                    )
-                }) {
-                    context.iteration(true);
-                }
-                crate::storage::writer::settle();
-                assert_eq!(
-                    fs::read_to_string(&bookmarks).expect("remaining pins"),
-                    pin(&second)
-                );
-                let events = events.borrow();
-                if cancel_after_first {
-                    assert!(events.iter().any(|event| matches!(event, OperationEvent::Cancelled { result, .. } if result.completed == [Location::local(&first)] && result.not_attempted == [Location::local(&second)])));
-                    assert!(second.exists());
-                } else {
-                    assert!(events.iter().any(|event| matches!(event, OperationEvent::CompletedWithErrors { deleted_locations, .. } if deleted_locations == &[Location::local(&first)])));
-                }
-                assert!(!first.exists());
+                check_confirmed_pins(cancel_after_first).expect("confirmed pins");
             }
         },
     );
@@ -77,10 +99,7 @@ fn deleting_browser_can_drop_after_a_confirmed_deletion_without_losing_pin_clean
             let second = directory.path().join("second");
             fs::create_dir(&first).expect("first folder");
             fs::create_dir(&second).expect("second folder");
-            let bookmarks = crate::adapters::bookmarks::pinned_places_path();
-            fs::create_dir_all(bookmarks.parent().expect("bookmarks directory")).expect("config");
-            let pin = |path: &Path| format!("{} Pin\n", gio::File::for_path(path).uri());
-            fs::write(&bookmarks, format!("{}{}", pin(&first), pin(&second))).expect("pins");
+            let bookmarks = pin_both(&first, &second).expect("pins");
             let browser = crate::app::Browser::new(Rc::new(crate::adapters::LocalFileSource));
             browser.set_operation_provider(Rc::new(LocalOperationProvider));
             let weak = Rc::downgrade(&browser);

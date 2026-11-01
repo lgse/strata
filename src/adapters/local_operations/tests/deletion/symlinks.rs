@@ -207,15 +207,112 @@ fn permanent_delete_revalidates_identity_after_a_parent_alias_changes() -> Resul
     Ok(())
 }
 
+#[derive(Clone, Copy, Debug)]
+enum Since {
+    Evicted,
+    Replaced,
+    ReplacedAlike,
+    ReplacedOnceNumbersWent,
+}
+
+/// Changes what stands at `path` since its identity was recorded.
+fn change_since(since: Since, path: &Path, theirs: &Path, row: &str) -> Result<(), Box<dyn Error>> {
+    match since {
+        Since::Evicted => assert!(super::super::fs_quirks::evict(path), "{row}"),
+        Since::Replaced => {
+            let probe = path.with_file_name("probe");
+            wait_for_a_later_birth_time(&probe, &fs::metadata(path)?);
+            fs::remove_file(path)?;
+            fs::write(path, b"theirs")?;
+            super::super::fs_quirks::recreated(path);
+        }
+        Since::ReplacedAlike => fs::rename(theirs, path)?,
+        Since::ReplacedOnceNumbersWent => {
+            assert!(
+                super::super::fs_quirks::autodisable_serverino(path),
+                "{row}"
+            );
+            fs::rename(theirs, path)?;
+        }
+    }
+    Ok(())
+}
+
+/// Removes `item` beneath `root` only if it is still `expected`, through
+/// the permanent delete or the placement's removal.
+fn remove_recorded(
+    root: &Path,
+    expected: super::super::super::native_fs::Recorded,
+    permanently: bool,
+    row: &str,
+) -> Result<bool, Box<dyn Error>> {
+    let path = root.join("item");
+    if permanently {
+        let result = glib::MainContext::default().block_on(
+            super::super::permanently_delete_local_path_if_unchanged(
+                path,
+                Some(expected),
+                gio::Cancellable::new(),
+            ),
+        );
+        if let Err(error) = &result {
+            assert!(error.to_string().contains("changed"), "{row}: {error}");
+        }
+        return Ok(result.is_ok());
+    }
+    let parent = super::super::open_local_parent_directory(root)?;
+    let item = std::ffi::OsStr::new("item");
+    let removed = std::thread::scope(|scope| {
+        scope
+            .spawn(|| {
+                super::super::super::placement::remove_if_unchanged(
+                    super::super::super::fs_ops::fs(),
+                    super::super::super::fs_ops::Entry::new(&parent, item),
+                    expected.identity,
+                    expected.attributes,
+                    rustix::fs::AtFlags::empty(),
+                )
+            })
+            .join()
+    })
+    .map_err(|_| "the removal panicked")?;
+    Ok(removed)
+}
+
+fn check_recorded_removal(
+    (preset, since, removed): (Preset, Since, bool),
+    permanently: bool,
+) -> Result<(), Box<dyn Error>> {
+    let row = format!("{:?}, {since:?}, {permanently}", preset().mount_type);
+    let root = tempfile::tempdir()?;
+    let path = root.path().join("item");
+    let theirs = root.path().join("theirs");
+    fs::write(&path, b"recorded")?;
+    fs::write(&theirs, b"theirs")?;
+    let hour_before = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)?
+        .as_secs()
+        - 3600;
+    for file in [&path, &theirs] {
+        set_times(file, hour_before, 0)?;
+    }
+    let _scope = FsQuirks::install(root.path(), preset());
+    let expected = glib::MainContext::default()
+        .block_on(super::super::local_file_identity(&gio::File::for_path(
+            &path,
+        )))?
+        .ok_or("a local item")?;
+    change_since(since, &path, &theirs, &row)?;
+
+    let gone = remove_recorded(root.path(), expected, permanently, &row)?;
+
+    assert_eq!(gone, removed, "{row}");
+    assert_eq!(path.exists(), !removed, "{row}");
+    Ok(())
+}
+
 #[test]
 fn a_removal_by_a_recorded_identity_follows_the_mounts_rule() -> Result<(), Box<dyn Error>> {
-    #[derive(Clone, Copy, Debug)]
-    enum Since {
-        Evicted,
-        Replaced,
-        ReplacedAlike,
-        ReplacedOnceNumbersWent,
-    }
     let _serial = serial()?;
     let samba = || Quirks {
         births: Births::MadeUp,
@@ -228,79 +325,9 @@ fn a_removal_by_a_recorded_identity_follows_the_mounts_rule() -> Result<(), Box<
         (samba, Since::ReplacedAlike, false),
         (samba, Since::ReplacedOnceNumbersWent, false),
     ];
-    for (preset, since, removed) in rows {
+    for row in rows {
         for permanently in [true, false] {
-            let row = format!("{:?}, {since:?}, {permanently}", preset().mount_type);
-            let root = tempfile::tempdir()?;
-            let path = root.path().join("item");
-            let theirs = root.path().join("theirs");
-            fs::write(&path, b"recorded")?;
-            fs::write(&theirs, b"theirs")?;
-            let hour_before = std::time::SystemTime::now()
-                .duration_since(std::time::SystemTime::UNIX_EPOCH)?
-                .as_secs()
-                - 3600;
-            for file in [&path, &theirs] {
-                set_times(file, hour_before, 0)?;
-            }
-            let _scope = FsQuirks::install(root.path(), preset());
-            let context = glib::MainContext::default();
-            let expected = context
-                .block_on(super::super::local_file_identity(&gio::File::for_path(
-                    &path,
-                )))?
-                .ok_or("a local item")?;
-            match since {
-                Since::Evicted => assert!(super::super::fs_quirks::evict(&path), "{row}"),
-                Since::Replaced => {
-                    let probe = root.path().join("probe");
-                    wait_for_a_later_birth_time(&probe, &fs::metadata(&path)?);
-                    fs::remove_file(&path)?;
-                    fs::write(&path, b"theirs")?;
-                    super::super::fs_quirks::recreated(&path);
-                }
-                Since::ReplacedAlike => fs::rename(&theirs, &path)?,
-                Since::ReplacedOnceNumbersWent => {
-                    assert!(
-                        super::super::fs_quirks::autodisable_serverino(&path),
-                        "{row}"
-                    );
-                    fs::rename(&theirs, &path)?;
-                }
-            }
-
-            let gone = if permanently {
-                let result =
-                    context.block_on(super::super::permanently_delete_local_path_if_unchanged(
-                        path.clone(),
-                        Some(expected),
-                        gio::Cancellable::new(),
-                    ));
-                if let Err(error) = &result {
-                    assert!(error.to_string().contains("changed"), "{row}: {error}");
-                }
-                result.is_ok()
-            } else {
-                let parent = super::super::open_local_parent_directory(root.path())?;
-                let item = std::ffi::OsStr::new("item");
-                std::thread::scope(|scope| {
-                    scope
-                        .spawn(|| {
-                            super::super::super::placement::remove_if_unchanged(
-                                super::super::super::fs_ops::fs(),
-                                super::super::super::fs_ops::Entry::new(&parent, item),
-                                expected.identity,
-                                expected.attributes,
-                                rustix::fs::AtFlags::empty(),
-                            )
-                        })
-                        .join()
-                })
-                .map_err(|_| "the removal panicked")?
-            };
-
-            assert_eq!(gone, removed, "{row}");
-            assert_eq!(path.exists(), !removed, "{row}");
+            check_recorded_removal(row, permanently)?;
         }
     }
     Ok(())

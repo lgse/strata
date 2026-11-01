@@ -99,6 +99,161 @@ fn meanwhile_racer(
     }
 }
 
+/// Whether `folder` holds nothing but one other program's leftover.
+fn leftovers_only(folder: &Path) -> Result<bool, Box<dyn Error>> {
+    let left = names(folder)?;
+    Ok(left.len() <= 1
+        && left
+            .iter()
+            .all(|name| foreign_leftover(OsStr::new(name)).is_some()))
+}
+
+/// What of Strata's own keeps the open file in use, as `holding` says.
+struct InUse {
+    _read: Option<file_activity::Hold>,
+    _other_operation: Option<file_activity::Activity>,
+    _this_delete: Option<file_activity::Activity>,
+}
+
+impl InUse {
+    fn start(holding: Holding, real_folder: &Path) -> Result<Self, Box<dyn Error>> {
+        use Holding::*;
+        let read_by_strata = real_folder.join("open.txt");
+        let _read = matches!(holding, StrataRead)
+            .then(|| file_activity::hold([&read_by_strata], || {}))
+            .transpose()?;
+        let _other_operation = matches!(holding, StrataOperation).then(|| {
+            file_activity::begin(file_activity::OperationScope {
+                roots: vec![read_by_strata.clone()],
+                folders: Vec::new(),
+            })
+        });
+        let _this_delete = matches!(holding, TheDeleteItself).then(|| {
+            file_activity::begin(file_activity::OperationScope {
+                roots: vec![real_folder.to_path_buf(), read_by_strata.clone()],
+                folders: Vec::new(),
+            })
+        });
+        Ok(Self {
+            _read,
+            _other_operation,
+            _this_delete,
+        })
+    }
+}
+
+/// Why a folder kept open by `holding` on `mount` could not be deleted.
+fn still_open_reason(holding: Holding, mount: &str) -> String {
+    use Holding::*;
+    match (holding, mount) {
+        (Program, _) => rust_i18n::t!(
+            "A file in it is still open in %{program}. Close it there and try again.",
+            program = "Text Editor"
+        )
+        .into_owned(),
+        (StrataRead | StrataOperation, _) => crate::i18n::tr(
+            "A file in it is still in use by Strata. Try again when its other operation or search ends.",
+        ),
+        (Unnamed | TheDeleteItself, "cifs") => {
+            crate::i18n::tr("A file in it is still open in a program on this or another computer.")
+        }
+        (Unnamed | TheDeleteItself, "cifs-posix") => crate::services::io_error_detail(
+            &io::Error::from_raw_os_error(rustix::io::Errno::ACCESS.raw_os_error()),
+        ),
+        (Unnamed | TheDeleteItself, _) => crate::i18n::tr(
+            "A file in it is still open in another program. Close it and try again.",
+        ),
+    }
+}
+
+/// The delete waited out the mount's whole budget, kept the folder with
+/// only the leftover, and named why.
+fn assert_stays_open(
+    events: &[OperationEvent],
+    (holding, mount): (Holding, &str),
+    scope: &FsQuirks,
+    row: &str,
+) {
+    let line = rust_i18n::t!(
+        "Could not delete “%{name}”: %{error}",
+        name = "folder",
+        error = still_open_reason(holding, mount)
+    );
+    assert!(
+        matches!(
+            events.last(),
+            Some(OperationEvent::CompletedWithErrors { message, .. })
+                if message.contains(&*line)
+        ),
+        "{row}: {events:?}"
+    );
+    let scanned = scope.count(Op::Holders);
+    let expected = match holding {
+        Holding::StrataRead | Holding::StrataOperation => 0,
+        Holding::Unnamed | Holding::Program | Holding::TheDeleteItself => 1,
+    };
+    assert_eq!(scanned, expected, "{row}");
+}
+
+/// A mount's family, its preset, and how long it waits for open files.
+type Waiting = (&'static str, Preset, Duration);
+
+fn check_leftover_wait(
+    (mount, preset, budget): Waiting,
+    meanwhile: Meanwhile,
+) -> Result<(), Box<dyn Error>> {
+    use Meanwhile::*;
+    let row = format!("{mount}, {meanwhile:?}");
+    let start = SystemTime::UNIX_EPOCH + CLOCK_START;
+    let _clock = ClockGuard::set(start);
+    let root = tempfile::tempdir()?;
+    let folder = root.path().join("folder");
+    let holds = Holds::default();
+    let holding = match meanwhile {
+        StaysOpen(holding) => holding,
+        _ => Holding::Unnamed,
+    };
+    let scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            after: meanwhile_racer(meanwhile, &folder, &holds, start + budget)
+                .into_iter()
+                .collect(),
+            holder: matches!(holding, Holding::Program)
+                .then(|| Holder::Program("Text Editor".to_owned())),
+            ..preset()
+        },
+    );
+    folder_with_an_open_file(&folder, &holds)?;
+    let _in_use = InUse::start(holding, &folder.canonicalize()?)?;
+
+    let events = delete_permanently(std::slice::from_ref(&folder));
+
+    let waited = waited_since(start)?;
+    let deleted = matches!(events.last(), Some(OperationEvent::Deleted { .. }));
+    match meanwhile {
+        Closes | ClosesAsTheWaitEnds => {
+            assert!(deleted, "{row}: {events:?}");
+            assert!(!folder.exists(), "{row}");
+            if let Closes = meanwhile {
+                assert!(waited < budget, "{row}: {waited:?}");
+            }
+        }
+        StaysOpen(holding) => {
+            assert!(!deleted, "{row}: {events:?}");
+            assert_eq!(waited, budget, "{row}");
+            assert!(leftovers_only(&folder)?, "{row}");
+            assert_stays_open(&events, (holding, mount), &scope, &row);
+        }
+        IsSwappedForAnEmptyFolder => {
+            assert!(!deleted, "{row}: {events:?}");
+            assert!(names(&folder)?.is_empty(), "{row}");
+            assert!(leftovers_only(&folder.with_extension("moved"))?, "{row}");
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn a_folder_only_leftovers_keep_goes_once_they_do_within_the_mount_s_wait()
 -> Result<(), Box<dyn Error>> {
@@ -116,14 +271,12 @@ fn a_folder_only_leftovers_keep_goes_once_they_do_within_the_mount_s_wait()
             IsSwappedForAnEmptyFolder,
         ]
     };
-    let rows: [(&str, Preset, Duration, &[Meanwhile]); 6] = [
-        ("nfs3", Quirks::nfs3, fuse_and_nfs, &renamed(StrataRead)),
-        ("nfs42", Quirks::nfs42, fuse_and_nfs, &renamed(Program)),
-        ("cifs", Quirks::cifs, smb, &renamed(StrataOperation)),
+    let rows: [(Waiting, &[Meanwhile]); 6] = [
+        (("nfs3", Quirks::nfs3, fuse_and_nfs), &renamed(StrataRead)),
+        (("nfs42", Quirks::nfs42, fuse_and_nfs), &renamed(Program)),
+        (("cifs", Quirks::cifs, smb), &renamed(StrataOperation)),
         (
-            "cifs-posix",
-            Quirks::cifs_posix,
-            smb,
+            ("cifs-posix", Quirks::cifs_posix, smb),
             &[
                 StaysOpen(Unnamed),
                 StaysOpen(Program),
@@ -132,127 +285,17 @@ fn a_folder_only_leftovers_keep_goes_once_they_do_within_the_mount_s_wait()
             ],
         ),
         (
-            "sshfs",
-            Quirks::sshfs,
-            fuse_and_nfs,
+            ("sshfs", Quirks::sshfs, fuse_and_nfs),
             &renamed(TheDeleteItself),
         ),
         (
-            "exfat-fuse",
-            Quirks::exfat_fuse,
-            fuse_and_nfs,
+            ("exfat-fuse", Quirks::exfat_fuse, fuse_and_nfs),
             &renamed(Unnamed),
         ),
     ];
-    for (mount, preset, budget, cases) in rows {
+    for (waiting, cases) in rows {
         for &meanwhile in cases {
-            let row = format!("{mount}, {meanwhile:?}");
-            let start = SystemTime::UNIX_EPOCH + CLOCK_START;
-            let _clock = ClockGuard::set(start);
-            let root = tempfile::tempdir()?;
-            let folder = root.path().join("folder");
-            let holds = Holds::default();
-            let holding = match meanwhile {
-                StaysOpen(holding) => holding,
-                _ => Unnamed,
-            };
-            let scope = FsQuirks::install(
-                root.path(),
-                Quirks {
-                    after: meanwhile_racer(meanwhile, &folder, &holds, start + budget)
-                        .into_iter()
-                        .collect(),
-                    holder: matches!(holding, Program)
-                        .then(|| Holder::Program("Text Editor".to_owned())),
-                    ..preset()
-                },
-            );
-            folder_with_an_open_file(&folder, &holds)?;
-            let real_folder = folder.canonicalize()?;
-            let read_by_strata = real_folder.join("open.txt");
-            let _read = matches!(holding, StrataRead)
-                .then(|| file_activity::hold([&read_by_strata], || {}))
-                .transpose()?;
-            let _other_operation = matches!(holding, StrataOperation).then(|| {
-                file_activity::begin(file_activity::OperationScope {
-                    roots: vec![read_by_strata.clone()],
-                    folders: Vec::new(),
-                })
-            });
-            let _this_delete = matches!(holding, TheDeleteItself).then(|| {
-                file_activity::begin(file_activity::OperationScope {
-                    roots: vec![real_folder.clone(), read_by_strata.clone()],
-                    folders: Vec::new(),
-                })
-            });
-
-            let events = delete_permanently(std::slice::from_ref(&folder));
-
-            let waited = waited_since(start)?;
-            let deleted = matches!(events.last(), Some(OperationEvent::Deleted { .. }));
-            let leftovers_only = |folder: &Path| -> Result<bool, Box<dyn Error>> {
-                let left = names(folder)?;
-                Ok(left.len() <= 1
-                    && left
-                        .iter()
-                        .all(|name| foreign_leftover(OsStr::new(name)).is_some()))
-            };
-            match meanwhile {
-                Closes | ClosesAsTheWaitEnds => {
-                    assert!(deleted, "{row}: {events:?}");
-                    assert!(!folder.exists(), "{row}");
-                    if let Closes = meanwhile {
-                        assert!(waited < budget, "{row}: {waited:?}");
-                    }
-                }
-                StaysOpen(holding) => {
-                    assert!(!deleted, "{row}: {events:?}");
-                    assert_eq!(waited, budget, "{row}");
-                    assert!(leftovers_only(&folder)?, "{row}");
-                    let reason = match (holding, mount) {
-                        (Program, _) => rust_i18n::t!(
-                            "A file in it is still open in %{program}. Close it there and try again.",
-                            program = "Text Editor"
-                        )
-                        .into_owned(),
-                        (StrataRead | StrataOperation, _) => crate::i18n::tr(
-                            "A file in it is still in use by Strata. Try again when its other operation or search ends.",
-                        ),
-                        (Unnamed | TheDeleteItself, "cifs") => crate::i18n::tr(
-                            "A file in it is still open in a program on this or another computer.",
-                        ),
-                        (Unnamed | TheDeleteItself, "cifs-posix") => crate::services::io_error_detail(
-                            &io::Error::from_raw_os_error(rustix::io::Errno::ACCESS.raw_os_error()),
-                        ),
-                        (Unnamed | TheDeleteItself, _) => crate::i18n::tr(
-                            "A file in it is still open in another program. Close it and try again.",
-                        ),
-                    };
-                    let line = rust_i18n::t!(
-                        "Could not delete “%{name}”: %{error}",
-                        name = "folder",
-                        error = reason
-                    );
-                    assert!(
-                        matches!(
-                            events.last(),
-                            Some(OperationEvent::CompletedWithErrors { message, .. })
-                                if message.contains(&*line)
-                        ),
-                        "{row}: {events:?}"
-                    );
-                    let scanned = scope.count(Op::Holders);
-                    match holding {
-                        StrataRead | StrataOperation => assert_eq!(scanned, 0, "{row}"),
-                        Unnamed | Program | TheDeleteItself => assert_eq!(scanned, 1, "{row}"),
-                    }
-                }
-                IsSwappedForAnEmptyFolder => {
-                    assert!(!deleted, "{row}: {events:?}");
-                    assert!(names(&folder)?.is_empty(), "{row}");
-                    assert!(leftovers_only(&folder.with_extension("moved"))?, "{row}");
-                }
-            }
+            check_leftover_wait(waiting, meanwhile)?;
         }
     }
     Ok(())
@@ -390,11 +433,134 @@ enum Hidden {
     NamedLikeOne,
 }
 
+const EARLIER: &str = ".__smbfile_silly1";
+
+/// Leaves a hidden name in `folder` as `hidden` says: another program's
+/// leftover of an open file unlinked there, or an ordinary file named alike.
+fn plant_hidden(hidden: Hidden, folder: &Path, holds: &Holds) -> Result<(), Box<dyn Error>> {
+    if let Hidden::NamedLikeOne = hidden {
+        fs::create_dir(folder)?;
+        fs::write(folder.join(".nfs000000000000005e000000de"), b"ordinary")?;
+        return Ok(());
+    }
+    folder_with_an_open_file(folder, holds)?;
+    if let Hidden::LeftoverBesideAnEarlierOne = hidden {
+        fs::write(folder.join(EARLIER), b"earlier")?;
+    }
+    let dir = open_local_parent_directory(folder)?;
+    super::super::super::fs_ops::fs().unlink(
+        super::super::super::fs_ops::Entry::new(&dir, OsStr::new("open.txt")),
+        rustix::fs::AtFlags::empty(),
+    )?;
+    Ok(())
+}
+
+fn assert_planted(hidden: Hidden, folder: &Path, row: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    let hidden_names = names(folder)?;
+    if let Hidden::LeftoverBesideAnEarlierOne = hidden {
+        assert_eq!(hidden_names.len(), 2, "{row}: {hidden_names:?}");
+        assert_eq!(fs::read(folder.join(EARLIER))?, b"earlier", "{row}");
+    } else {
+        assert_eq!(hidden_names.len(), 1, "{row}: {hidden_names:?}");
+    }
+    Ok(hidden_names)
+}
+
+fn unlinked_names(scope: &FsQuirks) -> Vec<OsString> {
+    scope
+        .calls()
+        .into_iter()
+        .filter(|call| call.op == Op::Unlink)
+        .flat_map(|call| call.names)
+        .collect()
+}
+
+/// The delete unlinked no leftover, finishing once the file closed or
+/// leaving the leftovers alone in the folder.
+fn assert_leftovers_spared(
+    events: &[OperationEvent],
+    (folder, hidden_names): (&Path, &[String]),
+    unlinked: &[OsString],
+    (closed, row): (bool, &str),
+) -> Result<(), Box<dyn Error>> {
+    assert!(
+        hidden_names
+            .iter()
+            .all(|name| !unlinked.contains(&name.into())),
+        "{row}: {unlinked:?}"
+    );
+    if closed {
+        assert!(
+            matches!(events.last(), Some(OperationEvent::Deleted { .. })),
+            "{row}: {events:?}"
+        );
+        assert!(!folder.exists(), "{row}");
+        return Ok(());
+    }
+    assert!(
+        matches!(
+            events.last(),
+            Some(OperationEvent::CompletedWithErrors { .. })
+        ),
+        "{row}: {events:?}"
+    );
+    assert_eq!(names(folder)?, hidden_names, "{row}");
+    Ok(())
+}
+
+fn check_hidden_leftover(
+    mount: &str,
+    preset: Preset,
+    hidden: Hidden,
+) -> Result<(), Box<dyn Error>> {
+    let row = format!("{mount}, {hidden:?}");
+    let start = SystemTime::UNIX_EPOCH + CLOCK_START;
+    let _clock = ClockGuard::set(start);
+    let root = tempfile::tempdir()?;
+    let folder = root.path().join("folder");
+    let holds = Holds::default();
+    let closed_after = match hidden {
+        Hidden::Leftover { closed_after } => closed_after,
+        Hidden::LeftoverBesideAnEarlierOne | Hidden::NamedLikeOne => None,
+    };
+    let scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            after: closed_after
+                .map(|op| (op, "folder", 0, releasing(&holds)))
+                .into_iter()
+                .collect(),
+            ..preset()
+        },
+    );
+    plant_hidden(hidden, &folder, &holds)?;
+    let hidden_names = assert_planted(hidden, &folder, &row)?;
+    fs::write(folder.join("ordinary.txt"), b"ordinary")?;
+    scope.clear_calls();
+
+    let events = delete_permanently(std::slice::from_ref(&folder));
+
+    let unlinked = unlinked_names(&scope);
+    assert!(
+        unlinked.contains(&"ordinary.txt".into()),
+        "{row}: {unlinked:?}"
+    );
+    if let Hidden::NamedLikeOne = hidden {
+        assert!(!folder.exists(), "{row}: {events:?}");
+        return Ok(());
+    }
+    assert_leftovers_spared(
+        &events,
+        (&folder, &hidden_names),
+        &unlinked,
+        (closed_after.is_some(), &row),
+    )
+}
+
 #[test]
 fn a_recursive_delete_never_unlinks_another_program_s_leftover() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
     let leftover = |closed_after| Hidden::Leftover { closed_after };
-    let earlier = ".__smbfile_silly1";
     let rows: [(&str, Preset, Hidden); 10] = [
         ("nfs3", Quirks::nfs3, leftover(None)),
         ("nfs3", Quirks::nfs3, leftover(Some(Op::Unlink))),
@@ -408,91 +574,7 @@ fn a_recursive_delete_never_unlinks_another_program_s_leftover() -> Result<(), B
         ("exfat-fuse", Quirks::exfat_fuse, Hidden::NamedLikeOne),
     ];
     for (mount, preset, hidden) in rows {
-        let row = format!("{mount}, {hidden:?}");
-        let start = SystemTime::UNIX_EPOCH + CLOCK_START;
-        let _clock = ClockGuard::set(start);
-        let root = tempfile::tempdir()?;
-        let folder = root.path().join("folder");
-        let holds = Holds::default();
-        let closed_after = match hidden {
-            Hidden::Leftover { closed_after } => closed_after,
-            Hidden::LeftoverBesideAnEarlierOne | Hidden::NamedLikeOne => None,
-        };
-        let scope = FsQuirks::install(
-            root.path(),
-            Quirks {
-                after: closed_after
-                    .map(|op| (op, "folder", 0, releasing(&holds)))
-                    .into_iter()
-                    .collect(),
-                ..preset()
-            },
-        );
-        match hidden {
-            Hidden::Leftover { .. } | Hidden::LeftoverBesideAnEarlierOne => {
-                folder_with_an_open_file(&folder, &holds)?;
-                if let Hidden::LeftoverBesideAnEarlierOne = hidden {
-                    fs::write(folder.join(earlier), b"earlier")?;
-                }
-                let dir = open_local_parent_directory(&folder)?;
-                super::super::super::fs_ops::fs().unlink(
-                    super::super::super::fs_ops::Entry::new(&dir, OsStr::new("open.txt")),
-                    rustix::fs::AtFlags::empty(),
-                )?;
-            }
-            Hidden::NamedLikeOne => {
-                fs::create_dir(&folder)?;
-                fs::write(folder.join(".nfs000000000000005e000000de"), b"ordinary")?;
-            }
-        }
-        let hidden_names = names(&folder)?;
-        if let Hidden::LeftoverBesideAnEarlierOne = hidden {
-            assert_eq!(hidden_names.len(), 2, "{row}: {hidden_names:?}");
-            assert_eq!(fs::read(folder.join(earlier))?, b"earlier", "{row}");
-        } else {
-            assert_eq!(hidden_names.len(), 1, "{row}: {hidden_names:?}");
-        }
-        fs::write(folder.join("ordinary.txt"), b"ordinary")?;
-        scope.clear_calls();
-
-        let events = delete_permanently(std::slice::from_ref(&folder));
-
-        let unlinked = scope
-            .calls()
-            .into_iter()
-            .filter(|call| call.op == Op::Unlink)
-            .flat_map(|call| call.names)
-            .collect::<Vec<_>>();
-        assert!(
-            unlinked.contains(&"ordinary.txt".into()),
-            "{row}: {unlinked:?}"
-        );
-        if let Hidden::NamedLikeOne = hidden {
-            assert!(!folder.exists(), "{row}: {events:?}");
-            continue;
-        }
-        assert!(
-            hidden_names
-                .iter()
-                .all(|name| !unlinked.contains(&name.into())),
-            "{row}: {unlinked:?}"
-        );
-        if closed_after.is_some() {
-            assert!(
-                matches!(events.last(), Some(OperationEvent::Deleted { .. })),
-                "{row}: {events:?}"
-            );
-            assert!(!folder.exists(), "{row}");
-        } else {
-            assert!(
-                matches!(
-                    events.last(),
-                    Some(OperationEvent::CompletedWithErrors { .. })
-                ),
-                "{row}: {events:?}"
-            );
-            assert_eq!(names(&folder)?, hidden_names, "{row}");
-        }
+        check_hidden_leftover(mount, preset, hidden)?;
     }
     Ok(())
 }
