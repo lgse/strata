@@ -14,6 +14,7 @@ use crate::services::{Holder, KeptCause, KeptItem, SpecialKind, TransferReport};
 
 mod across_volumes;
 mod changed;
+mod coarse_ticks;
 mod deletion;
 mod flushing;
 mod identity;
