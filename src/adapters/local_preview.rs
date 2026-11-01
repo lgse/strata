@@ -224,16 +224,16 @@ impl PreviewProvider for LocalPreviewProvider {
             request,
             emit,
             move |path, operation, value, backend, cancellation| {
-                crate::sandbox::parse_with_progress(
-                    path,
+                let request = crate::sandbox::ParseRequest {
+                    input: path,
                     operation,
                     value,
-                    backend,
+                    media_backend: backend,
                     cancellation,
-                    &|stage| {
-                        let _ = send.borrow_mut().try_send(stage);
-                    },
-                )
+                };
+                crate::sandbox::parse_with_progress(request, &|stage| {
+                    let _ = send.borrow_mut().try_send(stage);
+                })
             },
         );
         LoadHandle::new(move || {
