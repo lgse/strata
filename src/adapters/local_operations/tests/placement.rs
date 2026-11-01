@@ -62,6 +62,16 @@ fn rename_in(dir: &Path, from: &str, to: &str) -> Result<Renamed, RenameFailure>
     )
 }
 
+/// Only `name` is left in `root`, and it is the item `original` was.
+fn assert_only(root: &Path, name: &str, original: LocalFileIdentity, row: &str) -> io::Result<()> {
+    assert_eq!(
+        (names(root)?, identity(&root.join(name))),
+        (vec![name.to_owned()], original),
+        "{row}"
+    );
+    Ok(())
+}
+
 fn case_insensitive(quirks: Quirks) -> Quirks {
     Quirks {
         case_insensitive: true,

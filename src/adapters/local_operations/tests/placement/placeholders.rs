@@ -101,6 +101,71 @@ fn an_ambiguous_rename_failure_is_resolved_by_identity() -> Result<(), Box<dyn E
     Ok(())
 }
 
+/// What a placement over a placeholder ends as when the reply to the
+/// rename over it is lost, if it was `performed`, or it failed.
+fn lost_reply_outcome(
+    numbers: InodeNumbers,
+    performed: bool,
+    folder: bool,
+) -> Result<Placed, PlaceError> {
+    let placed = if folder {
+        Placed::ReservedDirectory
+    } else {
+        Placed::OverReservedFile
+    };
+    match (numbers, performed) {
+        (InodeNumbers::Renewed, _) | (InodeNumbers::Unknown, false) => Err(PlaceError::Unconfirmed),
+        (_, true) => Ok(placed),
+        (InodeNumbers::Kept, false) => Err(PlaceError::Io(Errno::IO)),
+    }
+}
+
+fn check_lost_placeholder_reply(
+    preset: Preset,
+    folder: bool,
+    numbers: InodeNumbers,
+    performed: bool,
+) -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    if folder {
+        fs::create_dir(&source)?;
+    } else {
+        // Empty, so the moved file passes for the placeholder at `target`.
+        fs::write(&source, b"")?;
+    }
+    let original = identity(&source);
+    let mut quirks = preset();
+    if performed {
+        quirks.lost_reply.push((Op::Rename, "target", Errno::IO));
+    } else {
+        // The second rename into `target` is the one over the placeholder.
+        quirks.fail.push((Op::Rename, "target", 1, Errno::IO));
+    }
+    let case = format!(
+        "{:?}, folder: {folder}, performed: {performed}",
+        quirks.mount_type
+    );
+    let _scope = FsQuirks::install(root.path(), quirks);
+
+    assert_eq!(
+        place_in(root.path(), "source", "target", Some(original)),
+        lost_reply_outcome(numbers, performed, folder),
+        "{case}"
+    );
+    if performed {
+        return Ok(assert_only(root.path(), "target", original, &case)?);
+    }
+    let left: &[&str] = if numbers == InodeNumbers::Kept {
+        &["source"]
+    } else {
+        &["source", "target"]
+    };
+    assert_eq!(names(root.path())?, left, "{case}");
+    assert_eq!(identity(&source), original, "{case}");
+    Ok(())
+}
+
 #[test]
 fn a_lost_reply_over_a_placeholder_removes_only_one_proven_untouched() -> Result<(), Box<dyn Error>>
 {
@@ -143,57 +208,7 @@ fn a_lost_reply_over_a_placeholder_removes_only_one_proven_untouched() -> Result
     ];
     for (preset, folder, numbers) in rows {
         for performed in [true, false] {
-            let root = tempfile::tempdir()?;
-            let source = root.path().join("source");
-            if folder {
-                fs::create_dir(&source)?;
-            } else {
-                // Empty, so the moved file passes for the placeholder at `target`.
-                fs::write(&source, b"")?;
-            }
-            let original = identity(&source);
-            let mut quirks = preset();
-            if performed {
-                quirks.lost_reply.push((Op::Rename, "target", Errno::IO));
-            } else {
-                // The second rename into `target` is the one over the placeholder.
-                quirks.fail.push((Op::Rename, "target", 1, Errno::IO));
-            }
-            let case = format!(
-                "{:?}, folder: {folder}, performed: {performed}",
-                quirks.mount_type
-            );
-            let _scope = FsQuirks::install(root.path(), quirks);
-
-            let placed = if folder {
-                Placed::ReservedDirectory
-            } else {
-                Placed::OverReservedFile
-            };
-            let expected = match (numbers, performed) {
-                (InodeNumbers::Renewed, _) | (InodeNumbers::Unknown, false) => {
-                    Err(PlaceError::Unconfirmed)
-                }
-                (_, true) => Ok(placed),
-                (InodeNumbers::Kept, false) => Err(PlaceError::Io(Errno::IO)),
-            };
-            assert_eq!(
-                place_in(root.path(), "source", "target", Some(original)),
-                expected,
-                "{case}"
-            );
-            if performed {
-                assert_eq!(names(root.path())?, ["target"], "{case}");
-                assert_eq!(identity(&root.path().join("target")), original, "{case}");
-            } else {
-                let left: &[&str] = if numbers == InodeNumbers::Kept {
-                    &["source"]
-                } else {
-                    &["source", "target"]
-                };
-                assert_eq!(names(root.path())?, left, "{case}");
-                assert_eq!(identity(&source), original, "{case}");
-            }
+            check_lost_placeholder_reply(preset, folder, numbers, performed)?;
         }
     }
     Ok(())

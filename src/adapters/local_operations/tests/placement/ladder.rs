@@ -2,6 +2,14 @@
 
 use super::*;
 
+/// Each `(name, contents)` in `root` reads as its contents.
+fn assert_files(root: &Path, files: &[(&str, &str)]) -> io::Result<()> {
+    for (name, contents) in files {
+        assert_eq!(fs::read(root.join(name))?, contents.as_bytes(), "{name}");
+    }
+    Ok(())
+}
+
 fn fingerprint(path: &Path) -> String {
     let Ok(metadata) = fs::symlink_metadata(path) else {
         return "absent".to_owned();
@@ -17,6 +25,29 @@ fn fingerprint(path: &Path) -> String {
             fs::read(path).expect("read")
         )
     }
+}
+
+/// A `source` file placed at `target` in a fresh folder whose mount has
+/// `quirks` installed before the file is written.
+struct DataPlaced {
+    root: tempfile::TempDir,
+    _scope: FsQuirks,
+    original: LocalFileIdentity,
+    result: Result<Placed, PlaceError>,
+}
+
+fn place_data(quirks: Quirks) -> Result<DataPlaced, Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let scope = FsQuirks::install(root.path(), quirks);
+    fs::write(root.path().join("source"), b"data")?;
+    let original = identity(&root.path().join("source"));
+    let result = place_in(root.path(), "source", "target", None);
+    Ok(DataPlaced {
+        root,
+        _scope: scope,
+        original,
+        result,
+    })
 }
 
 #[test]
@@ -63,8 +94,7 @@ fn rejected_rename_flags_link_files_without_copying() -> Result<(), Box<dyn Erro
                 "{error:?} {kind}"
             );
 
-            assert_eq!(identity(&root.path().join("target")), original);
-            assert_eq!(names(root.path())?, ["target"]);
+            assert_only(root.path(), "target", original, "")?;
             assert_eq!(mount_capabilities(scope.key()).no_replace, Some(false));
             // Only an ambiguous EINVAL needs the probe to learn this.
             let probed = scope.count(Op::Create) > 0;
@@ -106,6 +136,55 @@ fn create_destination(path: &Path, kind: &str) {
     .expect("create destination");
 }
 
+fn check_ladder(
+    index: usize,
+    quirks: Preset,
+    source_is_folder: bool,
+    kind: &'static str,
+) -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    fs::write(root.path().join("other"), b"other")?;
+    let source = root.path().join("source");
+    if source_is_folder {
+        fs::create_dir(&source)?;
+        fs::write(source.join("mine"), b"mine")?;
+    } else {
+        fs::write(&source, b"mine")?;
+    }
+    let target = root.path().join("target");
+    let mut quirks = quirks();
+    if index == 0 {
+        create_destination(&target, kind);
+    } else {
+        // Rung 1 sees no destination; it appears in front of the fallback rung.
+        let raced = target.clone();
+        let fallback = if source_is_folder {
+            Op::Mkdir
+        } else {
+            Op::Link
+        };
+        let racer: Racer = Box::new(move || create_destination(&raced, kind));
+        quirks.before.push((fallback, "target", 0, racer));
+    }
+    let _scope = FsQuirks::install(root.path(), quirks);
+    let source_before = fingerprint(&source);
+    let target_before = (index == 0).then(|| fingerprint(&target));
+
+    let result = place_in(root.path(), "source", "target", None);
+
+    assert_eq!(result, Err(PlaceError::Exists), "{index} {kind}");
+    assert_eq!(fingerprint(&source), source_before, "{index} {kind}");
+    if let Some(target_before) = target_before {
+        assert_eq!(fingerprint(&target), target_before);
+    }
+    assert_eq!(
+        names(root.path())?,
+        ["other", "source", "target"],
+        "{index} {kind}"
+    );
+    Ok(())
+}
+
 #[test]
 fn the_ladder_never_replaces_an_existing_destination() -> Result<(), Box<dyn Error>> {
     let quirk_sets: [Preset; 5] = [
@@ -124,55 +203,17 @@ fn the_ladder_never_replaces_an_existing_destination() -> Result<(), Box<dyn Err
             ..without_flags(Errno::NOSYS)
         },
     ];
+    let kinds = [
+        "file",
+        "empty folder",
+        "full folder",
+        "symlink",
+        "dangling symlink",
+    ];
     for (index, quirks) in quirk_sets.into_iter().enumerate() {
         for source_is_folder in [false, true] {
-            for kind in [
-                "file",
-                "empty folder",
-                "full folder",
-                "symlink",
-                "dangling symlink",
-            ] {
-                let root = tempfile::tempdir()?;
-                fs::write(root.path().join("other"), b"other")?;
-                let source = root.path().join("source");
-                if source_is_folder {
-                    fs::create_dir(&source)?;
-                    fs::write(source.join("mine"), b"mine")?;
-                } else {
-                    fs::write(&source, b"mine")?;
-                }
-                let target = root.path().join("target");
-                let mut quirks = quirks();
-                if index == 0 {
-                    create_destination(&target, kind);
-                } else {
-                    // Rung 1 sees no destination; it appears in front of the fallback rung.
-                    let raced = target.clone();
-                    let fallback = if source_is_folder {
-                        Op::Mkdir
-                    } else {
-                        Op::Link
-                    };
-                    let racer: Racer = Box::new(move || create_destination(&raced, kind));
-                    quirks.before.push((fallback, "target", 0, racer));
-                }
-                let _scope = FsQuirks::install(root.path(), quirks);
-                let source_before = fingerprint(&source);
-                let target_before = (index == 0).then(|| fingerprint(&target));
-
-                let result = place_in(root.path(), "source", "target", None);
-
-                assert_eq!(result, Err(PlaceError::Exists), "{index} {kind}");
-                assert_eq!(fingerprint(&source), source_before, "{index} {kind}");
-                if let Some(target_before) = target_before {
-                    assert_eq!(fingerprint(&target), target_before);
-                }
-                assert_eq!(
-                    names(root.path())?,
-                    ["other", "source", "target"],
-                    "{index} {kind}"
-                );
+            for kind in kinds {
+                check_ladder(index, quirks, source_is_folder, kind)?;
             }
         }
     }
@@ -282,8 +323,7 @@ fn a_mount_refusing_links_with_eacces_still_places_an_item() -> Result<(), Box<d
             Some(false),
             "{kind}"
         );
-        assert_eq!(names(root.path())?, ["target"], "{kind}");
-        assert_eq!(identity(&root.path().join("target")), original, "{kind}");
+        assert_only(root.path(), "target", original, kind)?;
     }
     Ok(())
 }
@@ -330,30 +370,19 @@ fn item_level_eperm_does_not_disable_links_for_the_mount() -> Result<(), Box<dyn
         Ok(Placed::OverReservedFile)
     );
     assert_eq!(mount_capabilities(scope.key()).hard_links, Some(true));
-    assert_eq!(names(root.path())?, ["target"]);
-    assert_eq!(identity(&root.path().join("target")), original);
+    assert_only(root.path(), "target", original, "")?;
     Ok(())
 }
 
 #[test]
 fn a_lost_link_reply_is_recognized() -> Result<(), Box<dyn Error>> {
-    let root = tempfile::tempdir()?;
-    let _scope = FsQuirks::install(
-        root.path(),
-        Quirks {
-            lost_reply: vec![(Op::Link, "target", Errno::EXIST)],
-            ..without_flags(Errno::NOSYS)
-        },
-    );
-    fs::write(root.path().join("source"), b"data")?;
-    let original = identity(&root.path().join("source"));
+    let placed = place_data(Quirks {
+        lost_reply: vec![(Op::Link, "target", Errno::EXIST)],
+        ..without_flags(Errno::NOSYS)
+    })?;
 
-    assert_eq!(
-        place_in(root.path(), "source", "target", None),
-        Ok(Placed::Linked)
-    );
-    assert_eq!(identity(&root.path().join("target")), original);
-    assert_eq!(names(root.path())?, ["target"]);
+    assert_eq!(placed.result, Ok(Placed::Linked));
+    assert_only(placed.root.path(), "target", placed.original, "")?;
     Ok(())
 }
 
@@ -398,43 +427,29 @@ fn a_case_alias_or_existing_hard_link_is_never_taken_for_a_lost_reply() -> Resul
 
 #[test]
 fn a_lost_unlink_reply_completes_the_move() -> Result<(), Box<dyn Error>> {
-    let root = tempfile::tempdir()?;
-    let _scope = FsQuirks::install(
-        root.path(),
-        Quirks {
-            lost_reply: vec![(Op::Unlink, "source", Errno::NOENT)],
-            ..without_flags(Errno::NOSYS)
-        },
-    );
-    fs::write(root.path().join("source"), b"data")?;
+    let placed = place_data(Quirks {
+        lost_reply: vec![(Op::Unlink, "source", Errno::NOENT)],
+        ..without_flags(Errno::NOSYS)
+    })?;
 
-    assert_eq!(
-        place_in(root.path(), "source", "target", None),
-        Ok(Placed::Linked)
-    );
-    assert_eq!(fs::read(root.path().join("target"))?, b"data");
-    assert_eq!(names(root.path())?, ["target"]);
+    let root = placed.root.path();
+    assert_eq!(placed.result, Ok(Placed::Linked));
+    assert_eq!(fs::read(root.join("target"))?, b"data");
+    assert_eq!(names(root)?, ["target"]);
     Ok(())
 }
 
 #[test]
 fn a_failed_source_unlink_rolls_back_only_our_link() -> Result<(), Box<dyn Error>> {
-    let root = tempfile::tempdir()?;
-    let _scope = FsQuirks::install(
-        root.path(),
-        Quirks {
-            fail: vec![(Op::Unlink, "source", 0, Errno::ACCESS)],
-            ..without_flags(Errno::NOSYS)
-        },
-    );
-    fs::write(root.path().join("source"), b"data")?;
+    let placed = place_data(Quirks {
+        fail: vec![(Op::Unlink, "source", 0, Errno::ACCESS)],
+        ..without_flags(Errno::NOSYS)
+    })?;
 
-    assert_eq!(
-        place_in(root.path(), "source", "target", None),
-        Err(PlaceError::Io(Errno::ACCESS))
-    );
-    assert_eq!(names(root.path())?, ["source"]);
-    assert_eq!(fs::metadata(root.path().join("source"))?.nlink(), 1);
+    let root = placed.root.path();
+    assert_eq!(placed.result, Err(PlaceError::Io(Errno::ACCESS)));
+    assert_eq!(names(root)?, ["source"]);
+    assert_eq!(fs::metadata(root.join("source"))?.nlink(), 1);
     Ok(())
 }
 
@@ -464,7 +479,9 @@ fn a_source_replaced_after_linking_keeps_the_original_at_the_target() -> Result<
         Err(PlaceError::Changed)
     );
     assert_eq!(identity(&root.path().join("target")), original);
-    assert_eq!(fs::read(root.path().join("target"))?, b"original");
-    assert_eq!(fs::read(&source)?, b"intruder");
+    assert_files(
+        root.path(),
+        &[("target", "original"), ("source", "intruder")],
+    )?;
     Ok(())
 }

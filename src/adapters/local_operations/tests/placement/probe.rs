@@ -140,12 +140,12 @@ fn check_probe(
     Ok(())
 }
 
-#[test]
-fn the_probe_learns_each_quirk_and_leaves_nothing_behind() -> Result<(), Box<dyn Error>> {
+/// Mounts that rename in place, with and without the flags and links.
+fn renaming_mounts() -> [ProbeCase; 6] {
     use Feasibility::{No, Yes};
     use InodeNumbers::{Kept, Renewed};
     let all = probed(Some(true), Some(true), Some(true), true);
-    let cases: [ProbeCase; 11] = [
+    [
         (Quirks::default, all, Yes, Yes, Kept),
         (
             Quirks::without_rename_flags,
@@ -188,6 +188,15 @@ fn the_probe_learns_each_quirk_and_leaves_nothing_behind() -> Result<(), Box<dyn
             No,
             Kept,
         ),
+    ]
+}
+
+/// Mounts that place nothing, refuse probe names, or renumber links.
+fn other_mounts() -> [ProbeCase; 5] {
+    use Feasibility::{No, Yes};
+    use InodeNumbers::{Kept, Renewed};
+    let all = probed(Some(true), Some(true), Some(true), true);
+    [
         (
             Quirks::without_placement,
             probed(Some(false), None, Some(false), false),
@@ -229,8 +238,12 @@ fn the_probe_learns_each_quirk_and_leaves_nothing_behind() -> Result<(), Box<dyn
             Renewed,
         ),
         (Quirks::ntfs_3g, all, Yes, Yes, Kept),
-    ];
-    for case in cases {
+    ]
+}
+
+#[test]
+fn the_probe_learns_each_quirk_and_leaves_nothing_behind() -> Result<(), Box<dyn Error>> {
+    for case in renaming_mounts().into_iter().chain(other_mounts()) {
         for learned_first in [false, true] {
             check_probe(case, learned_first)?;
         }

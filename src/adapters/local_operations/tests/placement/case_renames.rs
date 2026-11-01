@@ -2,6 +2,61 @@
 
 use super::*;
 
+#[derive(Clone, Copy, Debug)]
+enum Item {
+    File,
+    Folder,
+    ReadOnlyFolder,
+}
+
+fn mode(path: &Path) -> io::Result<u32> {
+    fs::metadata(path).map(|metadata| metadata.mode() & 0o7777)
+}
+
+fn set_mode(path: &Path, mode: u32) -> io::Result<()> {
+    fs::set_permissions(path, fs::Permissions::from_mode(mode))
+}
+
+/// The modes of what `root` holds, each opened again for the cleanup.
+fn modes_reopened(root: &Path, left: &[String]) -> io::Result<Vec<Option<u32>>> {
+    left.iter()
+        .map(|name| {
+            let path = root.join(name);
+            let kept = mode(&path).ok();
+            set_mode(&path, 0o755).map(|()| kept)
+        })
+        .collect()
+}
+
+fn check_case_only_rename(quirks: Preset, item: Item) -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let _scope = FsQuirks::install(root.path(), case_insensitive(quirks()));
+    let source = root.path().join("report");
+    make(&source, !matches!(item, Item::File))?;
+    if let Item::ReadOnlyFolder = item {
+        set_mode(&source, 0o555)?;
+    }
+    let original = identity(&source);
+    let original_mode = forced_mode(&source)? & 0o7777;
+
+    assert_eq!(
+        rename_in(root.path(), "report", "report"),
+        Ok(Renamed::Unchanged)
+    );
+    let renamed = rename_in(root.path(), "report", "Report");
+
+    let left = names(root.path())?;
+    let modes = modes_reopened(root.path(), &left)?;
+    assert_eq!(renamed, Ok(Renamed::CaseOnly), "{item:?}");
+    assert_eq!(left, ["Report"], "{item:?}");
+    assert_eq!(
+        (identity(&root.path().join("Report")), modes),
+        (original, vec![Some(original_mode)]),
+        "{item:?}"
+    );
+    Ok(())
+}
+
 #[test]
 fn a_case_only_rename_goes_through_a_temporary_name() -> Result<(), Box<dyn Error>> {
     let smb = || Quirks {
@@ -12,12 +67,6 @@ fn a_case_only_rename_goes_through_a_temporary_name() -> Result<(), Box<dyn Erro
         alias_inodes: true,
         ..Quirks::exfat_fuse()
     };
-    #[derive(Clone, Copy, Debug)]
-    enum Item {
-        File,
-        Folder,
-        ReadOnlyFolder,
-    }
     let plain: &[Item] = &[Item::File, Item::Folder];
     let shapes: [(Preset, &[Item]); 4] = [
         (
@@ -30,38 +79,7 @@ fn a_case_only_rename_goes_through_a_temporary_name() -> Result<(), Box<dyn Erro
     ];
     for (quirks, items) in shapes {
         for &item in items {
-            let root = tempfile::tempdir()?;
-            let _scope = FsQuirks::install(root.path(), case_insensitive(quirks()));
-            let source = root.path().join("report");
-            make(&source, !matches!(item, Item::File))?;
-            let mode = |path: &Path| fs::metadata(path).map(|metadata| metadata.mode() & 0o7777);
-            let set_mode =
-                |path: &Path, mode| fs::set_permissions(path, fs::Permissions::from_mode(mode));
-            if let Item::ReadOnlyFolder = item {
-                set_mode(&source, 0o555)?;
-            }
-            let original = identity(&source);
-            let original_mode = forced_mode(&source)? & 0o7777;
-
-            assert_eq!(
-                rename_in(root.path(), "report", "report"),
-                Ok(Renamed::Unchanged)
-            );
-            let renamed = rename_in(root.path(), "report", "Report");
-
-            let left = names(root.path())?;
-            let modes: Vec<_> = left
-                .iter()
-                .map(|name| {
-                    let path = root.path().join(name);
-                    let kept = mode(&path).ok();
-                    set_mode(&path, 0o755).map(|()| kept)
-                })
-                .collect::<Result<_, _>>()?;
-            assert_eq!(renamed, Ok(Renamed::CaseOnly), "{item:?}");
-            assert_eq!(left, ["Report"], "{item:?}");
-            assert_eq!(identity(&root.path().join("Report")), original);
-            assert_eq!(modes, [Some(original_mode)], "{item:?}");
+            check_case_only_rename(quirks, item)?;
         }
     }
     Ok(())
@@ -152,10 +170,13 @@ fn a_hard_link_is_never_taken_for_a_case_alias() -> Result<(), Box<dyn Error>> {
             "{wanted}"
         );
         assert_eq!(
-            rename_in(root.path(), "report", wanted),
-            Err(RenameFailure::Place(PlaceError::Exists))
+            (
+                rename_in(root.path(), "report", wanted),
+                scope.count(Op::Rename)
+            ),
+            (Err(RenameFailure::Place(PlaceError::Exists)), 1),
+            "{wanted}"
         );
-        assert_eq!(scope.count(Op::Rename), 1, "{wanted}");
         assert_eq!(names(root.path())?, [link, "report"]);
         assert_eq!(fs::metadata(root.path().join("report"))?.nlink(), 2);
     }
@@ -219,11 +240,7 @@ fn a_failed_case_only_rename_moves_back_or_names_the_temporary() -> Result<(), B
             assert_eq!(identity(&source), original);
         } else {
             assert!(left[0].starts_with(".strata-originals-"), "{left:?}");
-            assert_eq!(names(&root.path().join(&left[0]))?, ["report"]);
-            assert_eq!(
-                identity(&root.path().join(&left[0]).join("report")),
-                original
-            );
+            assert_only(&root.path().join(&left[0]), "report", original, "")?;
             assert_eq!(
                 result,
                 Err(RenameFailure::Stranded {
@@ -255,8 +272,7 @@ fn a_hard_link_reporting_another_inode_is_rolled_back_and_never_used_again()
         place_in(root.path(), "source", "target", None),
         Ok(Placed::OverReservedFile)
     );
-    assert_eq!(names(root.path())?, ["target"]);
-    assert_eq!(identity(&root.path().join("target")), original);
+    assert_only(root.path(), "target", original, "")?;
     assert_eq!(mount_capabilities(scope.key()).hard_links, Some(false));
 
     scope.clear_calls();
@@ -265,8 +281,53 @@ fn a_hard_link_reporting_another_inode_is_rolled_back_and_never_used_again()
         Ok(Placed::OverReservedFile)
     );
     assert_eq!(scope.count(Op::Link), 0);
-    assert_eq!(names(root.path())?, ["moved"]);
-    assert_eq!(identity(&root.path().join("moved")), original);
+    assert_only(root.path(), "moved", original, "")?;
+    Ok(())
+}
+
+fn check_replaced_new_link(
+    case: &str,
+    quirks: Preset,
+    links_work: bool,
+) -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let dir = root.path().to_path_buf();
+    let racer: Racer = Box::new(move || {
+        fs::write(dir.join("theirs"), b"theirs").expect("write");
+        fs::rename(dir.join("theirs"), dir.join("target")).expect("replace");
+    });
+    let scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            before: vec![(Op::Stat, "target", 0, racer)],
+            ..quirks()
+        },
+    );
+    fs::write(root.path().join("source"), b"data")?;
+    let original = identity(&root.path().join("source"));
+
+    assert_eq!(
+        place_in(root.path(), "source", "target", None),
+        Err(PlaceError::Unconfirmed),
+        "{case}"
+    );
+    assert_eq!(
+        (
+            fs::read(root.path().join("target"))?,
+            identity(&root.path().join("source"))
+        ),
+        (b"theirs".to_vec(), original)
+    );
+    assert_eq!(mount_capabilities(scope.key()).hard_links, Some(links_work));
+    if links_work {
+        assert_eq!(
+            place_in(root.path(), "source", "moved", None),
+            Ok(Placed::Linked)
+        );
+        assert_eq!(names(root.path())?, ["moved", "target"]);
+    } else {
+        assert_eq!(names(root.path())?, ["source", "target"]);
+    }
     Ok(())
 }
 
@@ -287,39 +348,7 @@ fn a_racer_replacing_a_new_link_keeps_its_item() -> Result<(), Box<dyn Error>> {
         ),
     ];
     for (case, quirks, links_work) in cases {
-        let root = tempfile::tempdir()?;
-        let dir = root.path().to_path_buf();
-        let racer: Racer = Box::new(move || {
-            fs::write(dir.join("theirs"), b"theirs").expect("write");
-            fs::rename(dir.join("theirs"), dir.join("target")).expect("replace");
-        });
-        let scope = FsQuirks::install(
-            root.path(),
-            Quirks {
-                before: vec![(Op::Stat, "target", 0, racer)],
-                ..quirks()
-            },
-        );
-        fs::write(root.path().join("source"), b"data")?;
-        let original = identity(&root.path().join("source"));
-
-        assert_eq!(
-            place_in(root.path(), "source", "target", None),
-            Err(PlaceError::Unconfirmed),
-            "{case}"
-        );
-        assert_eq!(fs::read(root.path().join("target"))?, b"theirs");
-        assert_eq!(identity(&root.path().join("source")), original);
-        assert_eq!(mount_capabilities(scope.key()).hard_links, Some(links_work));
-        if links_work {
-            assert_eq!(
-                place_in(root.path(), "source", "moved", None),
-                Ok(Placed::Linked)
-            );
-            assert_eq!(names(root.path())?, ["moved", "target"]);
-        } else {
-            assert_eq!(names(root.path())?, ["source", "target"]);
-        }
+        check_replaced_new_link(case, quirks, links_work)?;
     }
     Ok(())
 }
