@@ -219,3 +219,146 @@ fn write_files(root: &Path, files: &[(&str, &str)]) -> Result<(), io::Error> {
     }
     Ok(())
 }
+
+/// Merges `source` into `target` as a copy through the default hooks.
+fn merge_into(
+    source: &Path,
+    target: &Path,
+    on_merged: &dyn Fn(MergePlan),
+) -> Result<(), glib::Error> {
+    merge_file_into(gio::File::for_path(source), target, on_merged)
+}
+
+fn merge_file_into(
+    source: gio::File,
+    target: &Path,
+    on_merged: &dyn Fn(MergePlan),
+) -> Result<(), glib::Error> {
+    glib::MainContext::default().block_on(merge_local(
+        source,
+        gio::File::for_path(target),
+        false,
+        gio::Cancellable::new(),
+        on_merged,
+    ))
+}
+
+/// Merges `source` into `target` as a copy through `hooks`.
+fn merge_hooked(
+    source: gio::File,
+    target: &Path,
+    hooks: MergeHooks<'_>,
+) -> Result<(), glib::Error> {
+    glib::MainContext::default().block_on(merge_local_with(
+        source,
+        gio::File::for_path(target),
+        false,
+        gio::Cancellable::new(),
+        None,
+        hooks,
+    ))
+}
+
+fn hooks<'a>(
+    names: NamePolicy,
+    copy_into_target: CopyStep,
+    stage_overwrite: StageOverwrite,
+    on_merged: &'a dyn Fn(MergePlan),
+) -> MergeHooks<'a> {
+    MergeHooks {
+        names,
+        copy_into_target,
+        stage_overwrite,
+        on_merged,
+        progress: None,
+    }
+}
+
+/// Merges `source` into `target` with the real copy, staging what it
+/// overwrites through `stage`.
+fn merge_staged(
+    source: &Path,
+    target: &Path,
+    stage: StageOverwrite,
+    on_merged: &dyn Fn(MergePlan),
+) -> Result<(), glib::Error> {
+    let hooks = hooks(NamePolicy::default(), real_copy(), stage, on_merged);
+    merge_hooked(gio::File::for_path(source), target, hooks)
+}
+
+/// Each `(path, contents)` beneath `root` reads as its contents.
+fn assert_files<C: AsRef<[u8]>>(root: &Path, files: &[(&str, C)], row: &str) -> io::Result<()> {
+    for (path, contents) in files {
+        assert_eq!(
+            fs::read(root.join(path))?,
+            contents.as_ref(),
+            "{row}: {path}"
+        );
+    }
+    Ok(())
+}
+
+fn locations_in(folder: &Path, names: &[&str]) -> HashSet<Location> {
+    names
+        .iter()
+        .map(|name| Location::local(folder.join(name)))
+        .collect()
+}
+
+fn created_set(plan: &MergePlan) -> HashSet<Location> {
+    plan.created.iter().cloned().collect()
+}
+
+/// The completed, failed, and not attempted items of the cancel `events`
+/// end with.
+fn cancel_outcome(events: &[OperationEvent], row: &str) -> [Vec<Location>; 3] {
+    let Some(OperationEvent::Cancelled { result, .. }) = events.last() else {
+        panic!("{row}: expected a cancel, got {events:?}");
+    };
+    [
+        result.completed.clone(),
+        result.failed.clone(),
+        result.not_attempted.clone(),
+    ]
+}
+
+/// Runs a merge undo of `parts` as request `id`, collecting what it emits.
+fn undo_merge(
+    id: u64,
+    parts: UndoParts,
+    cancellable: gio::Cancellable,
+    lookup: StagedOriginalLookup,
+) -> Vec<OperationEvent> {
+    undo_merge_cancelling(id, parts, (cancellable, lookup), |_| false)
+}
+
+/// As [`undo_merge`], and once an event `cancel_on` matches is emitted,
+/// cancels from an idle callback that runs ahead of the reply then in flight.
+fn undo_merge_cancelling(
+    id: u64,
+    parts: UndoParts,
+    (cancellable, lookup): (gio::Cancellable, StagedOriginalLookup),
+    cancel_on: impl Fn(&OperationEvent) -> bool + 'static,
+) -> Vec<OperationEvent> {
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let cancel = cancellable.clone();
+    let emit = Rc::new(move |event: OperationEvent| {
+        if cancel_on(&event) {
+            let cancel = cancel.clone();
+            glib::idle_add_local_full(glib::Priority::HIGH, move || {
+                cancel.cancel();
+                glib::ControlFlow::Break
+            });
+        }
+        emitted.borrow_mut().push(event);
+    });
+    glib::MainContext::default().block_on(run_merge_undo(
+        OperationRequestId(id),
+        parts,
+        emit,
+        cancellable,
+        lookup,
+    ));
+    events.take()
+}
