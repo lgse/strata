@@ -51,7 +51,7 @@ mod unlock_argument;
 mod volume_password;
 
 pub(super) use appearance_menu::build_appearance_menu;
-use device_actions::{MediaRelease, media_release_error_title, navigate_home_if_within};
+use device_actions::{MediaRelease, media_release_error_title};
 pub(crate) use device_lock::crypto_password_uuid_for_volume;
 #[cfg(test)]
 pub(super) use devices::offer_removable_destinations_for_test;
