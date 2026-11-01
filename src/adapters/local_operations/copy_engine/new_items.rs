@@ -33,7 +33,7 @@ pub(super) fn first_free<T>(
             Err(Failure::Place(PlaceError::Exists)) if taken == Taken::Number => {}
             Err(refused) if refused.refuses_name() => {
                 let names = (name, candidate.as_os_str());
-                return copy.retry_item(dir, (names, is_directory, taken), refused, attempt);
+                return copy.retry_item((dir, (names, is_directory, taken)), refused, attempt);
             }
             result => return result.map(|value| (candidate, value)),
         }
@@ -99,7 +99,7 @@ pub(super) fn copy_new(
             )
             .map(|(name, identity)| (name, copy.ownership(identity))),
         FileType::Symlink | FileType::Fifo => {
-            copy_special(copy, source, (parent, name), &stat, taken)
+            copy_special(copy, source, (parent, name), (&stat, taken))
         }
         FileType::Directory => {
             let workers = workers.unwrap_or_else(|| worker_count(source, parent));
@@ -119,129 +119,204 @@ pub(super) fn copy_special(
     copy: &Arc<Copy>,
     source: &Source,
     (parent, name): (&Arc<OwnedFd>, &OsStr),
-    stat: &EntryStat,
-    taken: Taken,
+    (stat, taken): (&EntryStat, Taken),
 ) -> Result<(OsString, Ownership), Failure> {
     copy.check_cancelled()?;
     let mount = copy.mount(parent.as_fd());
     let link = stat.kind == FileType::Symlink;
     let site = copy.site(&mount, parent.as_fd());
-    if link && !copy.names.profiles.holds_links(&site) {
-        return Err(Failure::LinkRefused(Errno::OPNOTSUPP));
-    }
-    let target = link
-        .then(|| tree::read_link(copy.fs, source.entry()))
-        .transpose()?;
-    if let Some(target) = &target
-        && !copy.names.profiles.holds_link_to(&site, target)
-    {
-        return Err(Failure::LinkRefused(Errno::ILSEQ));
-    }
-    let content = match &target {
-        Some(target) => StageContent::Symlink(target.clone()),
-        None => StageContent::Fifo,
+    let target = if link {
+        Some(checked_link(copy, source, &site)?)
+    } else {
+        None
     };
-    // These creation syscalls return no descriptor; retain ownership in a private stage.
-    let staged = StagedSibling::create(parent.clone(), content).map_err(|error| {
-        match error {
-            PlaceError::Io(error)
-                if stat.kind == FileType::Fifo && tree::refuses_node(FileType::Fifo, error) =>
-            {
-                Failure::NotCopyable
-            }
-            // The stage's name is valid everywhere, unlike the target.
-            PlaceError::Io(error)
-                if link
-                    && (tree::refuses_node(FileType::Symlink, error)
-                        || matches!(error, Errno::INVAL | Errno::ILSEQ)) =>
-            {
-                let refused = Failure::LinkRefused(error);
-                copy.refused_link(&site, &refused);
-                refused
-            }
-            error => error.into(),
-        }
-    })?;
-    let prepared = (|| {
-        let at = Entry::new(&**parent, &staged.name);
-        if stat.kind == FileType::Fifo {
-            let parent_stat = copy.fs.stat_fd(parent.as_fd())?;
-            tree::finish_pipe(copy, stat, (at, staged.identity), &parent_stat, &mount)?;
-        } else {
-            if mount.family != Family::Fuse {
-                best_effort(copy.fs.set_link_times(at, stat.atime, stat.mtime))?;
-            }
-            if copy.recording {
-                copy.record_state(staged.identity, &copy.fs.stat(at, false)?);
-            }
-        }
-        copy.check_cancelled()
-    })();
-    if let Err(failure) = prepared {
+    let special = Special {
+        copy,
+        source,
+        parent,
+        stat,
+        mount,
+        site,
+        target,
+    };
+    let staged = special.stage()?;
+    if let Err(failure) = special.prepare(&staged) {
         return Err(copy.discarding(staged, failure));
     }
-    let published =
-        first_free(
-            copy,
-            parent.as_fd(),
-            (name, taken, false),
-            |name| match stage::publish(
-                copy.fs,
-                parent.as_fd(),
-                &staged.name,
-                staged.identity,
-                name,
-            ) {
-                Ok(placement::Placed::RecreatedSymlink) => Ok((
-                    tree::made_again(copy.fs, Entry::new(&**parent, name), target.as_deref()),
-                    false,
-                )),
-                Ok(_) => Ok((copy.ownership(staged.identity), false)),
-                Err(PlaceError::Unsupported) => {
-                    let from = Entry::new(&**parent, &staged.name);
-                    let to = Entry::new(&**parent, name);
-                    let uncounted = copy.uncounted();
-                    if stat.kind == FileType::Symlink {
-                        tree::copy_link(&uncounted, from, to, &mount, None)?;
-                    } else {
-                        let parent_stat = copy.fs.stat_fd(parent.as_fd())?;
-                        if tree::copy_fifo(&uncounted, from, to, &parent_stat, &mount, None)?
-                            .1
-                            .is_none()
-                        {
-                            return Err(Failure::NotCopyable);
-                        }
-                    }
-                    Ok((Ownership::unproven(), true))
-                }
-                Err(error) => Err(error.into()),
-            },
+    let published = first_free(copy, parent.as_fd(), (name, taken, false), |name| {
+        special.publish(&staged, name)
+    });
+    special.settle(staged, published)
+}
+
+/// A link's target, where the destination holds links to it.
+fn checked_link(copy: &Copy, source: &Source, site: &Site) -> Result<OsString, Failure> {
+    if !copy.names.profiles.holds_links(site) {
+        return Err(Failure::LinkRefused(Errno::OPNOTSUPP));
+    }
+    let target = tree::read_link(copy.fs, source.entry())?;
+    if !copy.names.profiles.holds_link_to(site, &target) {
+        return Err(Failure::LinkRefused(Errno::ILSEQ));
+    }
+    Ok(target)
+}
+
+/// The stage's name is valid everywhere, unlike the target.
+fn link_stage_refused(error: Errno) -> bool {
+    tree::refuses_node(FileType::Symlink, error) || matches!(error, Errno::INVAL | Errno::ILSEQ)
+}
+
+fn refuse_link(copy: &Copy, site: &Site, error: Errno) -> Failure {
+    let refused = Failure::LinkRefused(error);
+    copy.refused_link(site, &refused);
+    refused
+}
+
+/// A symlink or FIFO copied through a private stage.
+struct Special<'a> {
+    copy: &'a Arc<Copy>,
+    source: &'a Source,
+    parent: &'a Arc<OwnedFd>,
+    stat: &'a EntryStat,
+    mount: Mount,
+    site: Site,
+    target: Option<OsString>,
+}
+
+type Publication = (Ownership, bool);
+
+impl Special<'_> {
+    fn is_link(&self) -> bool {
+        self.stat.kind == FileType::Symlink
+    }
+
+    fn stage(&self) -> Result<StagedSibling, Failure> {
+        let content = match &self.target {
+            Some(target) => StageContent::Symlink(target.clone()),
+            None => StageContent::Fifo,
+        };
+        // These creation syscalls return no descriptor; retain ownership in a private stage.
+        StagedSibling::create(self.parent.clone(), content).map_err(|error| self.not_staged(error))
+    }
+
+    fn not_staged(&self, error: PlaceError) -> Failure {
+        let PlaceError::Io(errno) = error else {
+            return error.into();
+        };
+        if self.stat.kind == FileType::Fifo && tree::refuses_node(FileType::Fifo, errno) {
+            return Failure::NotCopyable;
+        }
+        if self.is_link() && link_stage_refused(errno) {
+            return refuse_link(self.copy, &self.site, errno);
+        }
+        error.into()
+    }
+
+    fn prepare(&self, staged: &StagedSibling) -> Result<(), Failure> {
+        let copy = self.copy;
+        let at = Entry::new(&**self.parent, &staged.name);
+        if self.stat.kind == FileType::Fifo {
+            let parent_stat = copy.fs.stat_fd(self.parent.as_fd())?;
+            tree::finish_pipe(
+                copy,
+                self.stat,
+                (at, staged.identity),
+                &parent_stat,
+                &self.mount,
+            )?;
+        } else {
+            self.prepare_link(at, staged)?;
+        }
+        copy.check_cancelled()
+    }
+
+    fn prepare_link(&self, at: Entry<'_>, staged: &StagedSibling) -> Result<(), Failure> {
+        let copy = self.copy;
+        if self.mount.family != Family::Fuse {
+            best_effort(copy.fs.set_link_times(at, self.stat.atime, self.stat.mtime))?;
+        }
+        if copy.recording {
+            copy.record_state(staged.identity, &copy.fs.stat(at, false)?);
+        }
+        Ok(())
+    }
+
+    fn publish(&self, staged: &StagedSibling, name: &OsStr) -> Result<Publication, Failure> {
+        let copy = self.copy;
+        let published = stage::publish(
+            copy.fs,
+            self.parent.as_fd(),
+            &staged.name,
+            staged.identity,
+            name,
         );
-    match published {
-        Ok((name, (ownership, copied_out))) => {
-            if copied_out {
-                copy.discard(staged)
-                    .map_err(|error| Failure::Error(stage_left(&error)))?;
+        match published {
+            Ok(placement::Placed::RecreatedSymlink) => Ok((
+                tree::made_again(
+                    copy.fs,
+                    Entry::new(&**self.parent, name),
+                    self.target.as_deref(),
+                ),
+                false,
+            )),
+            Ok(_) => Ok((copy.ownership(staged.identity), false)),
+            Err(PlaceError::Unsupported) => {
+                self.copy_out(staged, name)?;
+                Ok((Ownership::unproven(), true))
             }
-            if let Some(folder) = &source.recorded_in {
-                folder.entry(&source.name, stat);
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    fn copy_out(&self, staged: &StagedSibling, name: &OsStr) -> Result<(), Failure> {
+        let copy = self.copy;
+        let from = Entry::new(&**self.parent, &staged.name);
+        let to = Entry::new(&**self.parent, name);
+        let uncounted = copy.uncounted();
+        if self.is_link() {
+            tree::copy_link(&uncounted, from, to, &self.mount, None)?;
+            return Ok(());
+        }
+        let parent_stat = copy.fs.stat_fd(self.parent.as_fd())?;
+        let made = tree::copy_fifo(&uncounted, from, to, &parent_stat, &self.mount, None)?;
+        if made.1.is_none() {
+            return Err(Failure::NotCopyable);
+        }
+        Ok(())
+    }
+
+    fn settle(
+        &self,
+        staged: StagedSibling,
+        published: Result<(OsString, Publication), Failure>,
+    ) -> Result<(OsString, Ownership), Failure> {
+        let copy = self.copy;
+        let (name, (ownership, copied_out)) = match published {
+            Ok(published) => published,
+            Err(Failure::Place(PlaceError::Unconfirmed)) => {
+                return Err(Failure::Place(PlaceError::Unconfirmed));
             }
-            copy.add_file(if stat.kind == FileType::Symlink {
-                stat.size
-            } else {
-                0
-            });
-            Ok((name, ownership))
+            Err(failure) => return Err(copy.discarding(staged, self.link_failure(failure))),
+        };
+        if copied_out {
+            copy.discard(staged)
+                .map_err(|error| Failure::Error(stage_left(&error)))?;
         }
-        Err(Failure::Place(PlaceError::Unconfirmed)) => {
-            Err(Failure::Place(PlaceError::Unconfirmed))
+        if let Some(folder) = &self.source.recorded_in {
+            folder.entry(&self.source.name, self.stat);
         }
-        Err(failure) => {
-            let failure = match link.then(|| copy.refused_link(&site, &failure)).flatten() {
-                Some(error) => Failure::LinkRefused(error),
-                None => failure,
-            };
-            Err(copy.discarding(staged, failure))
+        copy.add_file(if self.is_link() { self.stat.size } else { 0 });
+        Ok((name, ownership))
+    }
+
+    fn link_failure(&self, failure: Failure) -> Failure {
+        let refused = self
+            .is_link()
+            .then(|| self.copy.refused_link(&self.site, &failure))
+            .flatten();
+        match refused {
+            Some(error) => Failure::LinkRefused(error),
+            None => failure,
         }
     }
 }
@@ -271,49 +346,51 @@ pub(super) fn copy_stage(
                 restrictive: Vec::new(),
             })
         }
-        FileType::Symlink => {
-            copy.check_cancelled()?;
-            let site = copy.site(&copy.mount(parent.as_fd()), parent.as_fd());
-            if !copy.names.profiles.holds_links(&site) {
-                return Err(Failure::LinkRefused(Errno::OPNOTSUPP));
-            }
-            let link = tree::read_link(copy.fs, source.entry())?;
-            if !copy.names.profiles.holds_link_to(&site, &link) {
-                return Err(Failure::LinkRefused(Errno::ILSEQ));
-            }
-            let staged = match StagedSibling::create(parent, StageContent::Symlink(link)) {
-                // The stage's name is valid everywhere, unlike the target.
-                Err(PlaceError::Io(error))
-                    if tree::refuses_node(FileType::Symlink, error)
-                        || matches!(error, Errno::INVAL | Errno::ILSEQ) =>
-                {
-                    let refused = Failure::LinkRefused(error);
-                    copy.refused_link(&site, &refused);
-                    return Err(refused);
-                }
-                staged => staged?,
-            };
-            // sshfs sets a link's times on what it points to.
-            if Mount::new(copy.fs, staged.parent.as_fd()).family != Family::Fuse {
-                let link = Entry::new(&*staged.parent, &staged.name);
-                if let Err(error) =
-                    best_effort(copy.fs.set_link_times(link, stat.atime, stat.mtime))
-                {
-                    return Err(copy.discarding(staged, error.into()));
-                }
-            }
-            copy.add_file(stat.size);
-            if let Some(folder) = recorded_in {
-                folder.entry(&source.name, &stat);
-            }
-            Ok(staged)
-        }
+        FileType::Symlink => stage_link(copy, source, parent, &stat),
         FileType::Directory => {
             let workers = workers.unwrap_or_else(|| worker_count(source, &parent));
             stage_folder(copy, source, stat.identity, &parent, workers)
         }
         _ => Err(Failure::NotCopyable),
     }
+}
+
+fn stage_link(
+    copy: &Arc<Copy>,
+    source: &Source,
+    parent: Arc<OwnedFd>,
+    stat: &EntryStat,
+) -> Result<StagedSibling, Failure> {
+    copy.check_cancelled()?;
+    let site = copy.site(&copy.mount(parent.as_fd()), parent.as_fd());
+    let link = checked_link(copy, source, &site)?;
+    let staged = match StagedSibling::create(parent, StageContent::Symlink(link)) {
+        Err(PlaceError::Io(error)) if link_stage_refused(error) => {
+            return Err(refuse_link(copy, &site, error));
+        }
+        staged => staged?,
+    };
+    if let Err(error) = set_staged_link_times(copy, &staged, stat) {
+        return Err(copy.discarding(staged, error.into()));
+    }
+    copy.add_file(stat.size);
+    if let Some(folder) = source.recorded_in.as_deref() {
+        folder.entry(&source.name, stat);
+    }
+    Ok(staged)
+}
+
+/// sshfs sets a link's times on what it points to.
+fn set_staged_link_times(
+    copy: &Copy,
+    staged: &StagedSibling,
+    stat: &EntryStat,
+) -> Result<(), Errno> {
+    if Mount::new(copy.fs, staged.parent.as_fd()).family == Family::Fuse {
+        return Ok(());
+    }
+    let link = Entry::new(&*staged.parent, &staged.name);
+    best_effort(copy.fs.set_link_times(link, stat.atime, stat.mtime))
 }
 
 pub(super) fn worker_count(source: &Source, target: &OwnedFd) -> usize {

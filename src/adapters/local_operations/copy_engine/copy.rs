@@ -22,15 +22,65 @@ pub(super) struct Copy {
     pub(super) leftovers: Deadline,
 }
 
+/// Where a file's bytes go: the open target, its folder's stat, and its mount.
+#[derive(Clone, Copy)]
+pub(super) struct Written<'a> {
+    pub(super) fd: BorrowedFd<'a>,
+    pub(super) parent: &'a EntryStat,
+    pub(super) mount: &'a Mount,
+}
+
+type RetriedItem<'a> = (BorrowedFd<'a>, ((&'a OsStr, &'a OsStr), bool, Taken));
+
+/// What one pass of a file copy saw: its digest, where it ended, and how unsettled the source was.
+type Pass = (
+    Option<ring::digest::Digest>,
+    Option<u64>,
+    Option<manifest::Unsettled>,
+);
+
+/// A rewrite within one tick of a coarse clock keeps the times, not
+/// always the size the copy read up to. Virtual files report none. Gives the
+/// stat back where the source changed while it was read.
+fn settled_read(
+    stat: &EntryStat,
+    read: EntryStat,
+    (digest, end, unsettled): Pass,
+) -> Result<manifest::Read, EntryStat> {
+    let whole = end.is_none_or(|end| end == read.size || (stat.size == 0 && read.size == 0));
+    if manifest::changed(stat, &read) || !whole {
+        return Err(read);
+    }
+    Ok(manifest::Read {
+        stat: read,
+        contents: digest
+            .zip(unsettled)
+            .map(|(digest, unsettled)| manifest::Contents::new(digest, unsettled)),
+        copied: digest,
+    })
+}
+
+/// A mode that gives the owner no read, as a copy of another
+/// user's file readable through its group or others may have.
+fn reopen_for_times(
+    fs: &dyn FsOps,
+    entry: Entry<'_>,
+) -> Result<Option<(OwnedFd, EntryStat)>, Errno> {
+    match fs.open_source(entry, false) {
+        Err(Errno::ACCESS) => fs.open_write(entry).and_then(|fd| {
+            let stat = fs.stat_fd(fd.as_fd())?;
+            Ok(Some((fd, stat)))
+        }),
+        opened => opened,
+    }
+}
+
 impl Copy {
     pub(super) fn new(
         fs: &'static dyn FsOps,
         item: OsString,
-        cancelled: Arc<AtomicBool>,
-        progress: Arc<SharedProgress>,
-        counted: bool,
-        options: Options,
-        leftovers: Deadline,
+        (cancelled, progress, counted): (Arc<AtomicBool>, Arc<SharedProgress>, bool),
+        (options, leftovers): (Options, Deadline),
     ) -> Arc<Self> {
         Arc::new(Self {
             fs,
@@ -73,18 +123,16 @@ impl Copy {
     }
 
     pub(super) fn uncounted(&self) -> Arc<Self> {
+        let options = Options {
+            names: self.names.clone(),
+            durable: self.durable,
+            ..Options::default()
+        };
         Self::new(
             self.fs,
             self.item.clone(),
-            self.cancelled.clone(),
-            self.progress.clone(),
-            false,
-            Options {
-                names: self.names.clone(),
-                durable: self.durable,
-                ..Options::default()
-            },
-            self.leftovers.clone(),
+            (self.cancelled.clone(), self.progress.clone(), false),
+            (options, self.leftovers.clone()),
         )
     }
 
@@ -123,8 +171,7 @@ impl Copy {
     /// is reported by the planner.
     pub(super) fn retry_item<T>(
         &self,
-        dir: BorrowedFd<'_>,
-        ((name, refused_name), is_directory, taken): ((&OsStr, &OsStr), bool, Taken),
+        (dir, ((name, refused_name), is_directory, taken)): RetriedItem<'_>,
         refused: Failure,
         mut attempt: impl FnMut(&OsStr) -> Result<T, Failure>,
     ) -> Result<(OsString, T), Failure> {
@@ -175,11 +222,8 @@ impl Copy {
         Self::new(
             self.fs,
             self.item.clone(),
-            self.cancelled.clone(),
-            self.progress.clone(),
-            self.counted,
-            options,
-            self.leftovers.clone(),
+            (self.cancelled.clone(), self.progress.clone(), self.counted),
+            (options, self.leftovers.clone()),
         )
     }
 
@@ -270,27 +314,24 @@ impl Copy {
     pub(super) fn copy_data(
         &self,
         data: &mut Data,
-        target_mount: &Mount,
         (source, source_stat, source_mount): (BorrowedFd<'_>, &EntryStat, Option<&Mount>),
-        target: BorrowedFd<'_>,
-        parent: &EntryStat,
-        counted: bool,
+        (target, counted): (Written<'_>, bool),
     ) -> Result<Option<u64>, Failure> {
         let route = data::Route::new(
             self.fs,
-            target_mount,
+            target.mount,
             source_mount,
             source,
             source_stat,
-            parent,
+            target.parent,
         );
         let progress = (counted && self.counted).then_some(&*self.progress);
         data.copy(
             self.fs,
             &self.cancelled,
-            target_mount,
+            target.mount,
             &route,
-            (source, target),
+            (source, target.fd),
             source_stat.size,
             |bytes| {
                 if let Some(progress) = progress {
@@ -304,8 +345,7 @@ impl Copy {
         &self,
         data: &mut Data,
         (source, source_stat): (BorrowedFd<'_>, &EntryStat),
-        target: BorrowedFd<'_>,
-        counted: bool,
+        (target, counted): (BorrowedFd<'_>, bool),
     ) -> Result<(ring::digest::Digest, u64), Failure> {
         let progress = (counted && self.counted).then_some(&*self.progress);
         data.copy_digested(
@@ -328,10 +368,8 @@ impl Copy {
     pub(super) fn copy_file(
         &self,
         data: &mut Data,
-        target_mount: &Mount,
         source: &Opened,
-        target: BorrowedFd<'_>,
-        parent: &EntryStat,
+        target: Written<'_>,
     ) -> Result<Option<(Snapshot, manifest::Read)>, Failure> {
         let mut stat = source.stat;
         let source_fd = source.fd.as_fd();
@@ -339,30 +377,10 @@ impl Copy {
         let source_mount = self.recording.then(|| Mount::new(self.fs, source_fd));
         for attempt in 0..2 {
             if attempt > 0 {
-                self.fs.set_len(target, 0)?;
+                self.fs.set_len(target.fd, 0)?;
             }
-            let counted = attempt == 0;
-            let now = manifest::now();
-            let unsettled = source_mount.and_then(|mount| manifest::unsettled(&stat, &mount, now));
-            // The copy takes the source's modification time, which a file put
-            // in its place within a tick of the destination's clock can share.
-            let copy_unsettled =
-                self.recording && manifest::unsettled(&stat, target_mount, now).is_some();
-            let (digest, end) = if unsettled.is_some() || copy_unsettled {
-                let (digest, end) =
-                    self.copy_digested(data, (source_fd, &stat), target, counted)?;
-                (Some(digest), Some(end))
-            } else {
-                let end = self.copy_data(
-                    data,
-                    target_mount,
-                    (source_fd, &stat, source_mount.as_ref()),
-                    target,
-                    parent,
-                    counted,
-                )?;
-                (None, end)
-            };
+            let from = (source_fd, &stat, source_mount.as_ref());
+            let pass = self.copy_once(data, from, (target, attempt == 0))?;
             let snapshot = Snapshot::read(self.fs, source_fd, &stat)?;
             if !self.recording {
                 let read = manifest::Read {
@@ -372,33 +390,40 @@ impl Copy {
                 };
                 return Ok(Some((snapshot, read)));
             }
-            let read = self.fs.stat_fd(source_fd)?;
-            // A rewrite within one tick of a coarse clock keeps the times, not
-            // always the size the copy read up to. Virtual files report none.
-            let whole =
-                end.is_none_or(|end| end == read.size || (stat.size == 0 && read.size == 0));
-            if !manifest::changed(&stat, &read) && whole {
-                let read = manifest::Read {
-                    stat: read,
-                    contents: digest
-                        .zip(unsettled)
-                        .map(|(digest, unsettled)| manifest::Contents::new(digest, unsettled)),
-                    copied: digest,
-                };
-                return Ok(Some((snapshot, read)));
+            match settled_read(&stat, self.fs.stat_fd(source_fd)?, pass) {
+                Ok(read) => return Ok(Some((snapshot, read))),
+                Err(read) => stat = read,
             }
-            stat = read;
         }
         Ok(None)
     }
 
+    fn copy_once(
+        &self,
+        data: &mut Data,
+        (source_fd, stat, source_mount): (BorrowedFd<'_>, &EntryStat, Option<&Mount>),
+        (target, counted): (Written<'_>, bool),
+    ) -> Result<Pass, Failure> {
+        let now = manifest::now();
+        let unsettled = source_mount.and_then(|mount| manifest::unsettled(stat, mount, now));
+        // The copy takes the source's modification time, which a file put
+        // in its place within a tick of the destination's clock can share.
+        let copy_unsettled =
+            self.recording && manifest::unsettled(stat, target.mount, now).is_some();
+        if unsettled.is_some() || copy_unsettled {
+            let (digest, end) =
+                self.copy_digested(data, (source_fd, stat), (target.fd, counted))?;
+            return Ok((Some(digest), Some(end), unsettled));
+        }
+        let end = self.copy_data(data, (source_fd, stat, source_mount), (target, counted))?;
+        Ok((None, end, unsettled))
+    }
+
     pub(super) fn apply_metadata(
         &self,
-        fd: BorrowedFd<'_>,
-        created: &EntryStat,
+        (fd, created): (BorrowedFd<'_>, &EntryStat),
         snapshot: &Snapshot,
-        parent: &EntryStat,
-        mount: &Mount,
+        (parent, mount): (&EntryStat, &Mount),
     ) -> Result<(), Failure> {
         snapshot.apply(self.fs, fd, created, parent, mount, &self.refused_xattrs)?;
         let stat = self.fs.stat_fd(fd)?;
@@ -447,58 +472,19 @@ impl Copy {
     /// its times again: always on NFSv4, and where a check finds them lost.
     pub(super) fn settle_times(
         &self,
-        entry: Entry<'_>,
-        identity: LocalFileIdentity,
+        (entry, identity): (Entry<'_>, LocalFileIdentity),
         snapshot: &Snapshot,
         mount: &Mount,
     ) -> Result<(), Failure> {
-        let lost = match mount.family {
-            Family::Nfs4 => true,
-            Family::Fuse | Family::Smb => match self.fs.stat(entry, true) {
-                Ok(current) if snapshot.times_match(&current) => {
-                    // Times moved by less than the check notices stay, so the
-                    // copy is known by them from now on.
-                    if mount.may_be(identity, &current) {
-                        self.settle_state(identity, &current);
-                    }
-                    false
-                }
-                Ok(_) => true,
-                Err(error) if is_fatal(error) => return Err(error.into()),
-                Err(_) => false,
-            },
-            _ => false,
-        };
-        if !lost {
+        if !self.times_lost((entry, identity), snapshot, mount)? {
             return Ok(());
         }
         let fs = self.fs;
-        let reopened = match fs.open_source(entry, false) {
-            // A mode that gives the owner no read, as a copy of another
-            // user's file readable through its group or others may have.
-            Err(Errno::ACCESS) => fs.open_write(entry).and_then(|fd| {
-                let stat = fs.stat_fd(fd.as_fd())?;
-                Ok(Some((fd, stat)))
-            }),
-            opened => opened,
-        };
-        let reopened = match reopened {
+        let reopened = match reopen_for_times(fs, entry) {
             Ok(Some((fd, stat))) if mount.may_be(identity, &stat) => fd,
             // Setting times by name needs only ownership.
             Err(Errno::ACCESS) => {
-                return match fs.stat(entry, true) {
-                    Ok(current) if mount.may_be(identity, &current) => {
-                        snapshot.apply_times_at(fs, entry)?;
-                        if let Ok(settled) = fs.stat(entry, true)
-                            && mount.may_be(identity, &settled)
-                        {
-                            self.settle_state(identity, &settled);
-                        }
-                        Ok(())
-                    }
-                    Err(error) if is_fatal(error) => Err(error.into()),
-                    _ => Ok(()),
-                };
+                return self.settle_times_by_name((entry, identity), snapshot, mount);
             }
             Err(error) if is_fatal(error) => return Err(error.into()),
             _ => return Ok(()),
@@ -507,6 +493,53 @@ impl Copy {
         // The copy is known by the times it is left with.
         self.settle_state(identity, &fs.stat_fd(reopened.as_fd())?);
         match fs.close(reopened) {
+            Err(error) if is_fatal(error) => Err(error.into()),
+            _ => Ok(()),
+        }
+    }
+
+    fn times_lost(
+        &self,
+        (entry, identity): (Entry<'_>, LocalFileIdentity),
+        snapshot: &Snapshot,
+        mount: &Mount,
+    ) -> Result<bool, Failure> {
+        match mount.family {
+            Family::Nfs4 => Ok(true),
+            Family::Fuse | Family::Smb => match self.fs.stat(entry, true) {
+                Ok(current) if snapshot.times_match(&current) => {
+                    // Times moved by less than the check notices stay, so the
+                    // copy is known by them from now on.
+                    if mount.may_be(identity, &current) {
+                        self.settle_state(identity, &current);
+                    }
+                    Ok(false)
+                }
+                Ok(_) => Ok(true),
+                Err(error) if is_fatal(error) => Err(error.into()),
+                Err(_) => Ok(false),
+            },
+            _ => Ok(false),
+        }
+    }
+
+    fn settle_times_by_name(
+        &self,
+        (entry, identity): (Entry<'_>, LocalFileIdentity),
+        snapshot: &Snapshot,
+        mount: &Mount,
+    ) -> Result<(), Failure> {
+        let fs = self.fs;
+        match fs.stat(entry, true) {
+            Ok(current) if mount.may_be(identity, &current) => {
+                snapshot.apply_times_at(fs, entry)?;
+                if let Ok(settled) = fs.stat(entry, true)
+                    && mount.may_be(identity, &settled)
+                {
+                    self.settle_state(identity, &settled);
+                }
+                Ok(())
+            }
             Err(error) if is_fatal(error) => Err(error.into()),
             _ => Ok(()),
         }

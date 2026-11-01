@@ -104,11 +104,8 @@ pub(super) async fn following<T: Send + 'static>(
         let copy = Copy::new(
             fs(),
             source.name.clone(),
-            cancelled,
-            counters,
-            true,
-            options,
-            Deadline::default(),
+            (cancelled, counters, true),
+            (options, Deadline::default()),
         );
         let value = work(&copy, &source).map_err(|failure| failure.into_error(&source.name));
         let manifest = source.recorded_in.map(|root| {
@@ -145,17 +142,15 @@ pub(in crate::adapters::local_operations) async fn copy_from_stage(
     };
     let identity = staged.identity;
     let copied = run_cancellable(cancellable, move |cancelled| {
+        let options = Options {
+            durable,
+            ..Options::default()
+        };
         let copy = Copy::new(
             fs(),
             name.clone(),
-            cancelled,
-            Arc::default(),
-            false,
-            Options {
-                durable,
-                ..Options::default()
-            },
-            Deadline::default(),
+            (cancelled, Arc::default(), false),
+            (options, Deadline::default()),
         );
         let parent = source.parent.clone();
         from_stage(&copy, &source, identity, &parent, &name)

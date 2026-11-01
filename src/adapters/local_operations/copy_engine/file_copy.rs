@@ -124,7 +124,15 @@ impl<'a> FileCopy<'a> {
     ) -> Result<Snapshot, Failure> {
         let (snapshot, read) = self
             .copy
-            .copy_file(&mut self.data, &self.target, source, target, parent)?
+            .copy_file(
+                &mut self.data,
+                source,
+                Written {
+                    fd: target,
+                    parent,
+                    mount: &self.target,
+                },
+            )?
             .ok_or(Failure::Changed)?;
         self.read = Some(read);
         Ok(snapshot)
@@ -179,8 +187,11 @@ impl<'a> FileCopy<'a> {
         let fs = self.copy.fs;
         let snapshot = self.read_into(source, tmpfile.as_fd(), parent)?;
         let created = fs.stat_fd(tmpfile.as_fd())?;
-        self.copy
-            .apply_metadata(tmpfile.as_fd(), &created, &snapshot, parent, &self.target)?;
+        self.copy.apply_metadata(
+            (tmpfile.as_fd(), &created),
+            &snapshot,
+            (parent, &self.target),
+        )?;
         self.copy.sync_written(tmpfile.as_fd(), &self.target)?;
         self.copy.check_cancelled()?;
         let name = match self.link(tmpfile.as_fd(), target) {
@@ -234,15 +245,22 @@ impl<'a> FileCopy<'a> {
             .copy
             .copy_data(
                 &mut self.data,
-                &self.target,
                 (tmpfile.as_fd(), tmpfile_stat, Some(&self.target)),
-                fd.as_fd(),
-                parent,
-                false,
+                (
+                    Written {
+                        fd: fd.as_fd(),
+                        parent,
+                        mount: &self.target,
+                    },
+                    false,
+                ),
             )
             .and_then(|_| {
-                self.copy
-                    .apply_metadata(fd.as_fd(), &stage.created, snapshot, parent, &self.target)
+                self.copy.apply_metadata(
+                    (fd.as_fd(), &stage.created),
+                    snapshot,
+                    (parent, &self.target),
+                )
             });
         drop(tmpfile);
         match copied {
@@ -265,11 +283,9 @@ impl<'a> FileCopy<'a> {
             .read_into(source, fd.as_fd(), parent)
             .and_then(|snapshot| {
                 self.copy.apply_metadata(
-                    fd.as_fd(),
-                    &stage.created,
+                    (fd.as_fd(), &stage.created),
                     &snapshot,
-                    parent,
-                    &self.target,
+                    (parent, &self.target),
                 )?;
                 Ok(snapshot)
             });
@@ -308,8 +324,7 @@ impl<'a> FileCopy<'a> {
             .and_then(|()| fs.close(fd).map_err(Failure::Os))
             .and_then(|()| {
                 self.copy.settle_times(
-                    self.at(&stage.name),
-                    stage.created.identity,
+                    (self.at(&stage.name), stage.created.identity),
                     snapshot,
                     &self.target,
                 )
@@ -382,8 +397,18 @@ impl<'a> FileCopy<'a> {
         };
         self.create(name, parent, |file, fd| {
             let from = (source.fd.as_fd(), &source.stat, None);
-            file.copy
-                .copy_data(&mut file.data, &file.target, from, fd, parent, false)?;
+            file.copy.copy_data(
+                &mut file.data,
+                from,
+                (
+                    Written {
+                        fd,
+                        parent,
+                        mount: &file.target,
+                    },
+                    false,
+                ),
+            )?;
             Ok(snapshot)
         })
     }
@@ -409,11 +434,11 @@ impl<'a> FileCopy<'a> {
             let written = write(self, fd.as_fd())?;
             let snapshot: &Snapshot = written.borrow();
             self.copy
-                .apply_metadata(fd.as_fd(), &created, snapshot, parent, &self.target)?;
+                .apply_metadata((fd.as_fd(), &created), snapshot, (parent, &self.target))?;
             self.copy.sync_written(fd.as_fd(), &self.target)?;
             fs.close(fd)?;
             self.copy
-                .settle_times(target, created.identity, snapshot, &self.target)
+                .settle_times((target, created.identity), snapshot, &self.target)
         })(fd);
         match filled {
             Ok(()) => Ok(created.identity),

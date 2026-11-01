@@ -24,7 +24,8 @@ use rustix::{
 };
 
 use super::{
-    Barrier, Copy, Created, Failure, Mount, Placing, Source, best_effort, creation_failure,
+    Barrier, Copy, Created, Failure, Mount, Placing, Source, Written, best_effort,
+    creation_failure,
     data::Data,
     direct_folder, from_stage, is_fatal, is_unsupported,
     links::{self, Links, Role},
@@ -1153,15 +1154,22 @@ impl File {
         // renames an open file aside instead.
         let written = (|fd: OwnedFd| -> Result<Option<manifest::Read>, Failure> {
             let parent = &self.parent;
-            let Some((snapshot, read)) =
-                copy.copy_file(data, &self.mount, &source, fd.as_fd(), parent)?
+            let Some((snapshot, read)) = copy.copy_file(
+                data,
+                &source,
+                Written {
+                    fd: fd.as_fd(),
+                    parent,
+                    mount: &self.mount,
+                },
+            )?
             else {
                 return Ok(None);
             };
-            copy.apply_metadata(fd.as_fd(), &created, &snapshot, parent, &self.mount)?;
+            copy.apply_metadata((fd.as_fd(), &created), &snapshot, (parent, &self.mount))?;
             copy.sync_written(fd.as_fd(), &self.mount)?;
             fs.close(fd)?;
-            copy.settle_times(target, created.identity, &snapshot, &self.mount)?;
+            copy.settle_times((target, created.identity), &snapshot, &self.mount)?;
             Ok(Some(read))
         })(fd);
         if !matches!(written, Ok(Some(_))) {
