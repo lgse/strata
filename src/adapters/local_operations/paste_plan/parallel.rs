@@ -290,7 +290,12 @@ async fn transfer_planned(
     if *moving {
         let source = gio::File::for_path(&plan.source_path);
         let target = gio::File::for_path(&plan.written_path);
-        return move_owing(source, target, taken, cancellable.clone(), copying.clone()).await;
+        return move_owing(
+            source,
+            target,
+            Moving::new(taken, cancellable.clone(), copying.clone()),
+        )
+        .await;
     }
     let options = copy_engine::Options {
         names: copying.names.clone(),

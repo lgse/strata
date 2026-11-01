@@ -211,9 +211,11 @@ impl<'a> Sequential<'a> {
         move_owing(
             item.source.clone(),
             item.target.clone(),
-            transfer.taken,
-            plan.cancellable.clone(),
-            plan.copying.clone(),
+            Moving::new(
+                transfer.taken,
+                plan.cancellable.clone(),
+                plan.copying.clone(),
+            ),
         )
         .await
         .map(|moved| (moved.target, moved.owed))

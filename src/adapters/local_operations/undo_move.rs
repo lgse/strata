@@ -240,9 +240,7 @@ impl UndoMove {
             return move_owing(
                 source,
                 target,
-                Taken::Fail,
-                self.cancellable.clone(),
-                copying,
+                Moving::new(Taken::Fail, self.cancellable.clone(), copying),
             )
             .await
             .map(|moved| moved.owed);

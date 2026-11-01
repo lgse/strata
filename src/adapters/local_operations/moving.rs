@@ -2,6 +2,12 @@
 
 use super::*;
 
+mod errors;
+mod native;
+
+pub(super) use errors::*;
+pub(super) use native::*;
+
 pub(super) enum Moved {
     Done(gio::File),
     Copy,
@@ -36,15 +42,39 @@ pub(super) struct Transferred {
     pub(super) owed: Owed,
 }
 
-pub(super) async fn move_local_owing(
+/// A move of one item, and how it is tried before it falls back to a copy.
+pub(super) struct Moving {
+    pub(super) taken: Taken,
+    pub(super) cancellable: gio::Cancellable,
+    pub(super) copying: Copying,
+    pub(super) attempt_move: MoveAttempt,
+    pub(super) remote_copy: RemoteCopy,
+}
+
+impl Moving {
+    pub(super) fn new(taken: Taken, cancellable: gio::Cancellable, copying: Copying) -> Self {
+        Self {
+            attempt_move: attempt_move(copying.progress.clone()),
+            remote_copy: remote_copy(copying.clone()),
+            taken,
+            cancellable,
+            copying,
+        }
+    }
+}
+
+pub(super) async fn move_owing(
     source: gio::File,
     target: gio::File,
-    taken: Taken,
-    cancellable: gio::Cancellable,
-    copying: Copying,
-    attempt_move: MoveAttempt,
-    remote_copy: RemoteCopy,
+    moving: Moving,
 ) -> Result<Transferred, glib::Error> {
+    let Moving {
+        taken,
+        cancellable,
+        copying,
+        attempt_move,
+        remote_copy,
+    } = moving;
     if let Moved::Done(target) =
         attempt_move(source.clone(), target.clone(), taken, cancellable.clone()).await?
     {
@@ -54,78 +84,22 @@ pub(super) async fn move_local_owing(
             owed: Owed::default(),
         });
     }
-    let Copying {
-        progress, names, ..
-    } = copying;
     let mut owed = Owed::default();
     if let Some(target_path) = native_path(&target) {
         owed.barrier = Some(copy_engine::barrier(split_local_path(&target_path)?.0).await?);
     }
+    let copy = MoveCopy {
+        taken,
+        cancellable,
+        copying,
+        remote_copy,
+    };
     let (target, reported, deletion) = match (native_path(&source), native_path(&target)) {
         (Some(source_path), Some(target_path)) => {
-            let options = copy_engine::Options {
-                names,
-                manifest: true,
-                durable: true,
-                ..copy_engine::Options::default()
-            };
-            let copied = copy_engine::copy_local(
-                source_path,
-                copy_engine::Destination::New(target_path.clone(), taken),
-                options,
-                progress.clone(),
-                &cancellable,
-            )
-            .await?;
-            let target = gio::File::for_path(target_path.with_file_name(copied.name));
-            let deletion = match copied.manifest {
-                Some(sources) => Deletion::Sources(source, sources),
-                None => Deletion::Source(source, Vec::new()),
-            };
-            (target, copied.reported, deletion)
+            copy.local(source, source_path, target_path).await?
         }
-        // Recorded before GIO copies it, so a change during the copy shows.
-        (Some(source_path), None) => {
-            let sources = copy_engine::snapshot(source_path.clone(), &cancellable).await?;
-            let left = LeftOut::default();
-            let target = remote_copy(
-                source.clone(),
-                target,
-                taken,
-                cancellable.clone(),
-                left.clone(),
-            )
-            .await?;
-            left.keep_in(&sources, &source_path);
-            (
-                target,
-                Reported::default(),
-                Deletion::Sources(source, sources),
-            )
-        }
-        _ => {
-            let left = LeftOut::default();
-            let target = copy_new_recursively_on_filesystem(
-                source.clone(),
-                target,
-                taken,
-                cancellable.clone(),
-                progress.clone(),
-                names,
-                Some(left.clone()),
-            )
-            .await?;
-            if let Some(path) = native_path(&target)
-                && owed
-                    .barrier
-                    .as_ref()
-                    .is_some_and(copy_engine::Barrier::syncs_each_file)
-            {
-                copy_engine::sync_files(vec![path], &cancellable).await?;
-            }
-            let kept = left.sources();
-            (target, Reported::default(), Deletion::Source(source, kept))
-        }
+        (Some(source_path), None) => copy.to_remote(source, source_path, target).await?,
+        _ => copy.through_gio(source, target, &owed).await?,
     };
     owed.owe(deletion);
     Ok(Transferred {
@@ -133,6 +107,99 @@ pub(super) async fn move_local_owing(
         reported,
         owed,
     })
+}
+
+/// The copy a move falls back to, and what deleting its source then owes.
+struct MoveCopy {
+    taken: Taken,
+    cancellable: gio::Cancellable,
+    copying: Copying,
+    remote_copy: RemoteCopy,
+}
+
+type MoveCopied = (gio::File, Reported, Deletion);
+
+impl MoveCopy {
+    async fn local(
+        self,
+        source: gio::File,
+        source_path: PathBuf,
+        target_path: PathBuf,
+    ) -> Result<MoveCopied, glib::Error> {
+        let options = copy_engine::Options {
+            names: self.copying.names,
+            manifest: true,
+            durable: true,
+            ..copy_engine::Options::default()
+        };
+        let copied = copy_engine::copy_local(
+            source_path,
+            copy_engine::Destination::New(target_path.clone(), self.taken),
+            options,
+            self.copying.progress.clone(),
+            &self.cancellable,
+        )
+        .await?;
+        let target = gio::File::for_path(target_path.with_file_name(copied.name));
+        let deletion = match copied.manifest {
+            Some(sources) => Deletion::Sources(source, sources),
+            None => Deletion::Source(source, Vec::new()),
+        };
+        Ok((target, copied.reported, deletion))
+    }
+
+    /// Recorded before GIO copies it, so a change during the copy shows.
+    async fn to_remote(
+        self,
+        source: gio::File,
+        source_path: PathBuf,
+        target: gio::File,
+    ) -> Result<MoveCopied, glib::Error> {
+        let sources = copy_engine::snapshot(source_path.clone(), &self.cancellable).await?;
+        let left = LeftOut::default();
+        let target = (self.remote_copy)(
+            source.clone(),
+            target,
+            self.taken,
+            self.cancellable.clone(),
+            left.clone(),
+        )
+        .await?;
+        left.keep_in(&sources, &source_path);
+        Ok((
+            target,
+            Reported::default(),
+            Deletion::Sources(source, sources),
+        ))
+    }
+
+    async fn through_gio(
+        self,
+        source: gio::File,
+        target: gio::File,
+        owed: &Owed,
+    ) -> Result<MoveCopied, glib::Error> {
+        let left = LeftOut::default();
+        let target = copy_new_recursively_on_filesystem(
+            source.clone(),
+            target,
+            self.taken,
+            self.cancellable.clone(),
+            self.copying.progress.clone(),
+            self.copying.names,
+            Some(left.clone()),
+        )
+        .await?;
+        let syncs_each_file = owed
+            .barrier
+            .as_ref()
+            .is_some_and(copy_engine::Barrier::syncs_each_file);
+        if let Some(path) = native_path(&target).filter(|_| syncs_each_file) {
+            copy_engine::sync_files(vec![path], &self.cancellable).await?;
+        }
+        let kept = left.sources();
+        Ok((target, Reported::default(), Deletion::Source(source, kept)))
+    }
 }
 
 #[cfg(test)]
@@ -146,16 +213,14 @@ pub(super) async fn move_local_with_progress(
     remote_copy: RemoteCopy,
 ) -> Result<gio::File, glib::Error> {
     let progress = copying.progress.clone();
-    let moved = move_local_owing(
-        source,
-        target,
+    let moving = Moving {
         taken,
-        cancellable.clone(),
+        cancellable: cancellable.clone(),
         copying,
         attempt_move,
         remote_copy,
-    )
-    .await?;
+    };
+    let moved = move_owing(source, target, moving).await?;
     moved.owed.settle(progress.as_deref(), &cancellable).await?;
     Ok(moved.target)
 }
@@ -208,232 +273,6 @@ pub(super) async fn move_local_with(
     .await
 }
 
-/// Standalone reason for a placement failure, for a `…: %{error}` slot.
-pub(super) fn placement_reason(error: PlaceError) -> String {
-    match error {
-        PlaceError::Exists => crate::i18n::tr("An item with that name already exists"),
-        PlaceError::InvalidName => crate::i18n::tr(INVALID_NAME_REASON),
-        PlaceError::IntoItself => crate::i18n::tr("Can\u{2019}t put a folder inside itself"),
-        PlaceError::Changed => {
-            crate::i18n::tr("The target changed while the operation was in progress")
-        }
-        PlaceError::Unconfirmed => crate::i18n::tr(UNCONFIRMED_REASON),
-        PlaceError::CrossDevice => os_error_text(rustix::io::Errno::XDEV),
-        PlaceError::Unsupported => crate::i18n::tr(UNSUPPORTED_REASON),
-        PlaceError::Io(error) => os_error_text(error),
-    }
-}
-
-pub(super) fn placement_error_kind(error: PlaceError) -> gio::IOErrorEnum {
-    match error {
-        PlaceError::Exists => gio::IOErrorEnum::Exists,
-        PlaceError::InvalidName => gio::IOErrorEnum::InvalidFilename,
-        _ => gio::IOErrorEnum::Failed,
-    }
-}
-
-/// A placement failure as a complete message about `name`, using `template`
-/// (with `%{name}` and `%{error}`) unless the failure has its own sentence.
-pub(super) fn placement_failure(
-    error: PlaceError,
-    name: &str,
-    template: fn(&str, &str) -> String,
-) -> glib::Error {
-    let message = match error {
-        PlaceError::IntoItself => placement_reason(error),
-        PlaceError::Changed => rust_i18n::t!(
-            "%{name} changed while the operation was in progress",
-            name = name
-        )
-        .into_owned(),
-        error => template(
-            name,
-            &crate::services::error_detail(placement_reason(error)),
-        ),
-    };
-    io_error(message)
-}
-
-pub(super) fn could_not_move(name: &str, error: &str) -> String {
-    rust_i18n::t!(
-        "Could not move %{name}: %{error}",
-        name = name,
-        error = error
-    )
-    .into_owned()
-}
-
-pub(super) async fn rename_native(
-    source: PathBuf,
-    target: PathBuf,
-    cancellable: &gio::Cancellable,
-) -> Result<(), glib::Error> {
-    let (Some(source_parent), Some(source_name), Some(target_parent), Some(target_name)) = (
-        source.parent().map(Path::to_path_buf),
-        source.file_name().map(OsStr::to_os_string),
-        target.parent().map(Path::to_path_buf),
-        target.file_name().map(OsStr::to_os_string),
-    ) else {
-        return Err(translated_io_error("Invalid move destination"));
-    };
-    let stopped = cancellable.clone();
-    run_local_fs_step(move || {
-        let source_dir = open_local_parent_directory(&source_parent)?;
-        let target_dir = if target_parent == source_parent {
-            None
-        } else {
-            Some(open_local_parent_directory(&target_parent)?)
-        };
-        let from = Entry::new(&source_dir, &source_name);
-        let to = Entry::new(target_dir.as_ref().unwrap_or(&source_dir), &target_name);
-        let Ok(renamed) = deferred_close::retry_folder_rename(
-            fs(),
-            from,
-            &Deadline::default(),
-            &|| stopped.is_cancelled(),
-            |failure| {
-                matches!(
-                    failure,
-                    RenameFailure::Place(PlaceError::Io(rustix::io::Errno::ACCESS))
-                )
-            },
-            || placement::rename_in_place(fs(), from, to),
-        ) else {
-            return Ok(Err(cancelled_local_operation()));
-        };
-        Ok(renamed.map(drop).map_err(|failure| match failure {
-            RenameFailure::Place(error) => still_open_rename(from, error)
-                .map_or_else(|| rename_failure_error(failure, &source, &target), io_error),
-            failure => rename_failure_error(failure, &source, &target),
-        }))
-    })
-    .await?
-}
-
-pub(super) fn rename_failure_error(
-    failure: RenameFailure,
-    source: &Path,
-    target: &Path,
-) -> glib::Error {
-    let name = |path: &Path| {
-        path.file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned()
-    };
-    match failure {
-        RenameFailure::Place(PlaceError::Exists) => glib::Error::new(
-            gio::IOErrorEnum::Exists,
-            &rust_i18n::t!("“%{name}” already exists", name = name(target)),
-        ),
-        RenameFailure::Place(error) => placement_error(error),
-        RenameFailure::Stranded { temporary, error } => io_error(rust_i18n::t!(
-            "Could not rename “%{name}”; it was left as “%{temporary}”: %{error}",
-            name = name(source),
-            temporary = temporary.to_string_lossy(),
-            error = crate::services::error_detail(placement_reason(error))
-        )),
-    }
-}
-
-pub(super) fn move_local_path(
-    source_path: PathBuf,
-    target_path: PathBuf,
-    taken: Taken,
-    cancellable: gio::Cancellable,
-) -> Pin<Box<dyn Future<Output = Result<Moved, glib::Error>>>> {
-    Box::pin(async move {
-        if cancellable.is_cancelled() {
-            return Err(cancelled_local_operation());
-        }
-        let Some(source_parent_path) = source_path.parent().map(Path::to_path_buf) else {
-            return Err(translated_io_error("Cannot move the filesystem root"));
-        };
-        let Some(source_name) = source_path.file_name().map(OsStr::to_os_string) else {
-            return Err(translated_io_error("Invalid move source"));
-        };
-        let Some(target_parent_path) = target_path.parent().map(Path::to_path_buf) else {
-            return Err(translated_io_error(
-                "The move destination has no parent directory",
-            ));
-        };
-        let Some(target_name) = target_path.file_name().map(OsStr::to_os_string) else {
-            return Err(translated_io_error("Invalid move destination"));
-        };
-
-        let display_name = source_name.to_string_lossy().into_owned();
-        let stopped = cancellable.clone();
-        run_local_fs_step(move || {
-            let source_parent = open_local_parent_directory(&source_parent_path)?;
-            let target_parent = open_local_parent_directory(&target_parent_path)?;
-            let from = Entry::new(&source_parent, &source_name);
-            let moved = || {
-                let is_directory = match taken {
-                    Taken::Fail => false,
-                    Taken::Number => match fs().stat(from, false) {
-                        Ok(stat) => stat.is_directory(),
-                        Err(error) => return Ok(Err(PlaceError::Io(error))),
-                    },
-                };
-                let limit = || mount_profile::name_limit(fs(), target_parent.as_fd());
-                let deadline = Deadline::default();
-                for name in taken.names(&target_name, is_directory, limit) {
-                    let to = Entry::new(&target_parent, &name);
-                    let placed = deferred_close::retry_folder_rename(
-                        fs(),
-                        from,
-                        &deadline,
-                        &|| stopped.is_cancelled(),
-                        |error| matches!(error, PlaceError::Io(rustix::io::Errno::ACCESS)),
-                        || placement::place(fs(), from, to, None),
-                    )?;
-                    if taken == Taken::Number && matches!(placed, Err(PlaceError::Exists)) {
-                        continue;
-                    }
-                    return Ok(match placed {
-                        Ok(_) => Ok(Moved::Done(gio::File::for_path(
-                            target_parent_path.join(&name),
-                        ))),
-                        Err(PlaceError::CrossDevice | PlaceError::Unsupported) => {
-                            match fs().stat(from, false) {
-                                Ok(stat)
-                                    if stat.is_directory()
-                                        && placement::contains(fs(), stat.identity, to.dir)
-                                            != Some(false) =>
-                                {
-                                    Err(PlaceError::IntoItself)
-                                }
-                                Ok(_) => Ok(Moved::Copy),
-                                Err(error) => Err(PlaceError::Io(error)),
-                            }
-                        }
-                        Err(error) => Err(error),
-                    });
-                }
-                Ok(Err(PlaceError::Exists))
-            };
-            Ok(match moved() {
-                Ok(moved) => moved.map_err(|error| match still_open_rename(from, error) {
-                    Some(reason) => io_error(could_not_move(
-                        &display_name,
-                        &crate::services::error_detail(reason),
-                    )),
-                    None => placement_failure(error, &display_name, could_not_move),
-                }),
-                Err(WaitCancelled) => Err(cancelled_local_operation()),
-            })
-        })
-        .await?
-    })
-}
-
-pub(super) fn still_open_rename(from: Entry<'_>, error: PlaceError) -> Option<String> {
-    match error {
-        PlaceError::Io(errno) => holders::refused_rename(fs(), from, errno),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 pub(super) async fn move_local(
     source: gio::File,
@@ -458,20 +297,6 @@ pub(super) async fn move_local(
         remote_copy(copying),
     )
     .await
-}
-
-pub(super) async fn move_owing(
-    source: gio::File,
-    target: gio::File,
-    taken: Taken,
-    cancellable: gio::Cancellable,
-    copying: Copying,
-) -> Result<Transferred, glib::Error> {
-    let (attempt, remote) = (
-        attempt_move(copying.progress.clone()),
-        remote_copy(copying.clone()),
-    );
-    move_local_owing(source, target, taken, cancellable, copying, attempt, remote).await
 }
 
 pub(super) fn attempt_move(progress: Option<Rc<TransferProgressTracker>>) -> MoveAttempt {
