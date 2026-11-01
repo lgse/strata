@@ -6146,57 +6146,6 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   outline-offset: -2px;
 }
 
-menubutton.list-navigation-history {
-  margin-left: -3px;
-}
-
-menubutton.list-navigation-history > button {
-  background: transparent;
-  border: none;
-  border-radius: 5px;
-  box-shadow: none;
-  color: @strata_text;
-  min-height: 24px;
-  min-width: 0;
-  padding: 4px 1px;
-  transition: background 160ms ease-out, color 160ms ease-out;
-}
-
-menubutton.list-navigation-history > button image {
-  opacity: 0.55;
-}
-
-menubutton.list-navigation-history:disabled > button {
-  opacity: 0.35;
-}
-
-menubutton.list-navigation-history:disabled > button image {
-  opacity: 1;
-}
-
-menubutton.list-navigation-history:not(:disabled) > button:hover,
-menubutton.list-navigation-history > button:checked {
-  background: alpha(@strata_accent, 0.15);
-  color: @strata_text;
-}
-
-menubutton.list-navigation-history:not(:disabled) > button:hover image,
-menubutton.list-navigation-history > button:active image,
-menubutton.list-navigation-history > button:checked image,
-menubutton.list-navigation-history > button:focus-visible image {
-  opacity: 1;
-}
-
-menubutton.list-navigation-history > button:active {
-  background: alpha(@strata_accent, 0.22);
-  color: @strata_accent;
-}
-
-menubutton.list-navigation-history > button:focus-visible {
-  outline: 2px solid @strata_accent;
-  outline-offset: -2px;
-}
-
 .history-menu {
   min-width: 220px;
 }

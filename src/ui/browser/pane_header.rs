@@ -7,7 +7,10 @@ use crate::ui::controls::{
     DefaultActions, check_menu_option, menu_action_with_detail, menu_option,
 };
 use crate::ui::focus_navigation::vim_focus_direction;
-use crate::ui::keys::{self, bindings::BACKSPACE};
+use crate::ui::keys::{
+    self,
+    bindings::{BACKSPACE, CONTEXT_MENU},
+};
 use crate::ui::preferences::PreferenceManager;
 use gtk::gdk::ModifierType as Modifiers;
 use gtk::glib;
@@ -95,10 +98,18 @@ fn install_menu_keys(popover: &gtk::Popover) {
     popover.add_controller(keys);
 }
 
-/// The chevron beside Back: lists the back history, most recent first, and
-/// jumps to a chosen entry in one step.
-pub(in crate::ui) fn back_history_menu(browser: &Rc<Browser>) -> gtk::MenuButton {
+/// Right-click, long-press, or the context-menu key on Back lists the back
+/// history, most recent first, and jumps to a chosen entry in one step.
+pub(in crate::ui) fn attach_back_history(browser: &Rc<Browser>, back: &gtk::Button) {
+    super::super::shortcut_reference::follow_description(
+        back,
+        "Right-click, hold, or press %{keys} to list the back history",
+        keys::Keys::One(CONTEXT_MENU.shown()),
+    );
     let locations = browser.back_locations();
+    if locations.is_empty() {
+        return;
+    }
     let content = crate::ui::accessibility::menu_box();
     content.add_css_class("column-menu");
     content.add_css_class("history-menu");
@@ -141,20 +152,46 @@ pub(in crate::ui) fn back_history_menu(browser: &Rc<Browser>) -> gtk::MenuButton
     }
     popover.set_child(Some(&content));
     install_menu_keys(&popover);
+    popover.set_parent(back);
+    // A plain button does not unparent an attached popover when it is disposed.
+    let attached = popover.clone();
+    back.connect_destroy(move |_| attached.unparent());
 
-    let button = gtk::MenuButton::builder()
-        .popover(&popover)
-        .sensitive(!locations.is_empty())
+    let popup = {
+        let popover = popover.downgrade();
+        move || {
+            if let Some(popover) = popover.upgrade() {
+                popover.popup();
+            }
+        }
+    };
+    let secondary = gtk::GestureClick::builder()
+        .button(gtk::gdk::BUTTON_SECONDARY)
         .build();
-    button.add_css_class("list-navigation-history");
-    button.set_child(Some(&crate::assets::primary_icon(
-        crate::assets::icons::CHEVRON_DOWN,
-        12,
-    )));
-    crate::ui::accessibility::set_tooltip_and_label(&button, &crate::i18n::tr("Back history"));
-    button.set_valign(gtk::Align::Center);
-    button.set_cursor_from_name(Some("pointer"));
-    button
+    let popup_on_secondary = popup.clone();
+    secondary.connect_pressed(move |gesture, _, _, _| {
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+        popup_on_secondary();
+    });
+    back.add_controller(secondary);
+    // Claiming the sequence denies the button's own click, so releasing does not go back.
+    let hold = gtk::GestureLongPress::builder().touch_only(false).build();
+    let popup_on_hold = popup.clone();
+    hold.connect_pressed(move |gesture, _, _| {
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+        popup_on_hold();
+    });
+    back.add_controller(hold);
+    let key = gtk::EventControllerKey::new();
+    keys::on_press(&key, move |_, press| {
+        if press.is(CONTEXT_MENU) {
+            popup();
+            glib::Propagation::Stop
+        } else {
+            glib::Propagation::Proceed
+        }
+    });
+    back.add_controller(key);
 }
 
 pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gtk::MenuButton {

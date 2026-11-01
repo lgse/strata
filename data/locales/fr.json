@@ -131,7 +131,6 @@
   "BUILD": "COMPILATION",
   "Back": "Précédent",
   "Back (%{keys})": "Précédent (%{keys})",
-  "Back history": "Emplacements précédents",
   "Back to palette": "Retour à la palette",
   "Background": "Arrière-plan",
   "Background jobs are still active": "Des tâches d’arrière-plan sont encore actives",

@@ -475,6 +475,11 @@ fn default_navigation(mode: BrowserMode) -> Vec<Shortcut> {
                 "Focus the visible sidebar",
             ),
             row(One(BACKSPACE.shown()), "Go to the parent folder"),
+            within(
+                "%{keys} on the Back button",
+                One(CONTEXT_MENU.shown()),
+                "List the back history (also right-click or hold)",
+            ),
             row(
                 Any(shown![
                     THUMBNAILS_LARGER.alternate(0),
@@ -547,6 +552,11 @@ fn default_navigation(mode: BrowserMode) -> Vec<Shortcut> {
         row(
             Any(shown![HISTORY_BACK, HISTORY_FORWARD]),
             "Back / forward in history",
+        ),
+        within(
+            "%{keys} on the Back button",
+            One(CONTEXT_MENU.shown()),
+            "List the back history (also right-click or hold)",
         ),
         row(One(PARENT_FOLDER.shown()), "Go to the parent folder"),
         row(One(HOME_FOLDER.shown()), "Go to Home"),
