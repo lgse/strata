@@ -190,7 +190,7 @@ jobs:
 
       - name: Download an unpublished candidate environment
         if: needs.quality-build.outputs.candidate == 'true'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: quality-environment-${{ github.run_attempt }}
           path: target/quality-environment
@@ -200,7 +200,7 @@ jobs:
         run: zstd -dc target/quality-environment/image.tar.zst | docker load
 
       - name: Download this attempt's test binaries and plan
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: quality-bundle-${{ github.run_attempt }}
           path: target/quality-bundle
@@ -241,13 +241,13 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download the quality plan
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: quality-plan-${{ github.run_attempt }}
           path: target/quality-bundle
 
       - name: Download all quality reports
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: quality-report-${{ github.run_attempt }}-*
           path: target/quality-reports
@@ -275,7 +275,7 @@ jobs:
 
       - name: Download an unpublished candidate environment
         if: needs.quality-build.outputs.candidate == 'true'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: quality-environment-${{ github.run_attempt }}
           path: target/quality-environment
