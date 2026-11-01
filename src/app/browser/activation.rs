@@ -7,6 +7,7 @@ use crate::{
     services::{ArchiveFormat, DirectoryChange},
 };
 
+use super::columns::Descent;
 use super::{Browser, BrowserEvent, LoadSelection, load_selection};
 
 impl Browser {
@@ -83,7 +84,7 @@ impl Browser {
             // Do not start another asynchronous validation that can outlive inline rename.
             self.bump_navigation_generation();
             self.close_peek();
-            self.descend_validated(depth, entry.location, LoadSelection::Nothing, false);
+            self.descend_validated(Descent::new(depth, entry.location, LoadSelection::Nothing));
             self.select(depth, position);
         } else {
             self.close_column(depth + 1);
@@ -185,12 +186,8 @@ impl Browser {
             if self.is_open_child(depth, &entry.location) {
                 self.focus_child();
             } else {
-                self.descend_with_selection(
-                    depth,
-                    entry.location,
-                    load_selection(select_first),
-                    false,
-                );
+                let selection = load_selection(select_first);
+                self.descend_with_selection(Descent::new(depth, entry.location, selection));
             }
         } else if self.should_extract_on_activate(&entry) {
             self.emit(BrowserEvent::ExtractRequested { entry });

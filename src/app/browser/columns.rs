@@ -2,7 +2,11 @@
 
 use std::rc::{Rc, Weak};
 
-use crate::{app::navigation::NavigationPath, model::Location, services::DirectoryRequest};
+use crate::{
+    app::navigation::NavigationPath,
+    model::Location,
+    services::{DirectoryRequest, LocationValidationError},
+};
 
 use super::{
     Browser, BrowserEvent, LoadSelection, PEEK_MAX_ENTRIES, PEEK_TIME_BUDGET, SelectionUpdate,
@@ -11,66 +15,45 @@ use super::{
 
 impl Browser {
     pub fn descend(self: &Rc<Self>, parent_depth: usize, location: Location) {
-        self.descend_with_selection(parent_depth, location, LoadSelection::Nothing, false);
+        self.descend_with_selection(Descent::new(parent_depth, location, LoadSelection::Nothing));
     }
 
     pub fn show_child(self: &Rc<Self>, parent_depth: usize, location: Location) {
-        self.descend_with_selection(parent_depth, location, LoadSelection::Nothing, true);
+        let descent = Descent::new(parent_depth, location, LoadSelection::Nothing);
+        self.descend_with_selection(descent.keeping_parent_active());
     }
 
-    pub(super) fn descend_with_selection(
-        self: &Rc<Self>,
-        parent_depth: usize,
-        location: Location,
-        selection: LoadSelection,
-        keep_parent_active: bool,
-    ) {
+    pub(super) fn descend_with_selection(self: &Rc<Self>, descent: Descent) {
         let _update = self.navigation_update();
         self.cancel_deferred_reveal();
         self.bump_navigation_generation();
-        if self.is_open_child(parent_depth, &location) {
+        if self.is_open_child(descent.parent_depth, &descent.location) {
             return;
         }
         self.close_peek();
-        if keep_parent_active {
-            self.descend_validated(parent_depth, location, selection, keep_parent_active);
+        if descent.keep_parent_active {
+            self.descend_validated(descent);
             return;
         }
+        self.validate_descent(descent);
+    }
 
+    fn validate_descent(self: &Rc<Self>, descent: Descent) {
         let generation = self.bump_navigation_generation();
         if self.navigation_generation() != generation {
             return;
         }
         self.navigation_lifecycle.pending.set(Some(generation));
         let weak = Rc::downgrade(self);
-        let pending_location = location.clone();
-        let parent_location = self.location_at(parent_depth);
+        let location = descent.location.clone();
+        let pending = PendingDescent {
+            generation,
+            parent_location: self.location_at(descent.parent_depth),
+            descent,
+        };
         let emit = Rc::new(move |result| {
-            let Some(browser) = weak.upgrade() else {
-                return;
-            };
-            let _update = browser.navigation_update();
-            if !browser.finish_navigation_validation(generation) {
-                return;
-            }
-            if browser.location_at(parent_depth) != parent_location {
-                return;
-            }
-            match result {
-                Err(error) => {
-                    browser.emit(BrowserEvent::NavigationRejected {
-                        parent_depth,
-                        location: pending_location.clone(),
-                        error,
-                    });
-                    browser.focus_active();
-                }
-                Ok(()) => browser.descend_validated(
-                    parent_depth,
-                    pending_location.clone(),
-                    selection.clone(),
-                    false,
-                ),
+            if let Some(browser) = weak.upgrade() {
+                browser.finish_descent_validation(&pending, result);
             }
         });
         let load = self.source.validate_location_async(location, emit);
@@ -79,13 +62,39 @@ impl Browser {
         }
     }
 
-    pub(super) fn descend_validated(
+    fn finish_descent_validation(
         self: &Rc<Self>,
-        parent_depth: usize,
-        location: Location,
-        selection: LoadSelection,
-        keep_parent_active: bool,
+        pending: &PendingDescent,
+        result: Result<(), LocationValidationError>,
     ) {
+        let _update = self.navigation_update();
+        if !self.finish_navigation_validation(pending.generation) {
+            return;
+        }
+        let descent = &pending.descent;
+        if self.location_at(descent.parent_depth) != pending.parent_location {
+            return;
+        }
+        match result {
+            Err(error) => {
+                self.emit(BrowserEvent::NavigationRejected {
+                    parent_depth: descent.parent_depth,
+                    location: descent.location.clone(),
+                    error,
+                });
+                self.focus_active();
+            }
+            Ok(()) => self.descend_validated(descent.clone()),
+        }
+    }
+
+    pub(super) fn descend_validated(self: &Rc<Self>, descent: Descent) {
+        let Descent {
+            parent_depth,
+            location,
+            selection,
+            keep_parent_active,
+        } = descent;
         if !self.source.allows_navigation(&location) || self.location_at(parent_depth).is_none() {
             return;
         }
@@ -376,4 +385,40 @@ impl Browser {
             });
         }
     }
+}
+
+/// Opening `location` as the column after `parent_depth`.
+#[derive(Clone)]
+pub(super) struct Descent {
+    parent_depth: usize,
+    location: Location,
+    selection: LoadSelection,
+    /// Keeps focus in the parent and skips validating the folder first.
+    keep_parent_active: bool,
+}
+
+impl Descent {
+    pub(super) fn new(parent_depth: usize, location: Location, selection: LoadSelection) -> Self {
+        Self {
+            parent_depth,
+            location,
+            selection,
+            keep_parent_active: false,
+        }
+    }
+
+    fn keeping_parent_active(self) -> Self {
+        Self {
+            keep_parent_active: true,
+            ..self
+        }
+    }
+}
+
+/// A descent waiting for its folder to validate, dropped when the
+/// navigation moved on or the parent column changed.
+struct PendingDescent {
+    generation: u64,
+    parent_location: Option<Location>,
+    descent: Descent,
 }

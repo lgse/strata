@@ -7,6 +7,7 @@ use crate::{
     services::{LocationValidationError, RequestId},
 };
 
+use super::columns::Descent;
 use super::location_input::{
     is_relative_path_input, join_relative, location_from_input, unsupported_shorthand_message,
 };
@@ -69,57 +70,15 @@ impl Browser {
         }
         self.navigation_lifecycle.pending.set(Some(generation));
         let weak = Rc::downgrade(self);
-        let pending_location = location.clone();
+        let pending = PendingNavigation {
+            generation,
+            location: location.clone(),
+            select_first,
+            reveal,
+        };
         let emit = Rc::new(move |result| {
-            let Some(browser) = weak.upgrade() else {
-                return;
-            };
-            let _update = browser.navigation_update();
-            if !browser.finish_navigation_validation(generation) {
-                return;
-            }
-            match result {
-                Ok(()) if reveal.is_empty() => {
-                    browser.navigate_with_selection(pending_location.clone(), select_first);
-                }
-                Ok(()) => {
-                    browser.reveal_validated(pending_location.clone(), reveal.clone());
-                }
-                Err(LocationValidationError::NotDirectory) => match pending_location.parent() {
-                    Some(parent) => {
-                        browser
-                            .preview_revealed_location
-                            .replace(Some(pending_location.clone()));
-                        browser.navigate_validated_inner(
-                            parent,
-                            false,
-                            vec![pending_location.clone()],
-                        );
-                    }
-                    None => browser.emit(BrowserEvent::LocationNavigationRejected {
-                        location: pending_location.clone(),
-                        error: LocationValidationError::NotDirectory,
-                    }),
-                },
-                Err(error) => {
-                    if !reveal.is_empty()
-                        && matches!(
-                            error,
-                            LocationValidationError::NotMounted(_)
-                                | LocationValidationError::Mountable(_)
-                        )
-                    {
-                        browser
-                            .deferred_reveal
-                            .replace(Some((pending_location.clone(), reveal.clone())));
-                    } else {
-                        browser.preview_revealed_location.take();
-                    }
-                    browser.emit(BrowserEvent::LocationNavigationRejected {
-                        location: pending_location.clone(),
-                        error,
-                    });
-                }
+            if let Some(browser) = weak.upgrade() {
+                browser.finish_location_validation(&pending, result);
             }
         });
         let load = self.source.validate_location_async(location, emit);
@@ -130,6 +89,61 @@ impl Browser {
 
     /// Navigates directly for native paths and validates URI locations first so mountable
     /// locations can be mounted by the UI before loading them.
+    fn finish_location_validation(
+        self: &Rc<Self>,
+        pending: &PendingNavigation,
+        result: Result<(), LocationValidationError>,
+    ) {
+        let _update = self.navigation_update();
+        if !self.finish_navigation_validation(pending.generation) {
+            return;
+        }
+        let location = &pending.location;
+        match result {
+            Ok(()) if pending.reveal.is_empty() => {
+                self.navigate_with_selection(location.clone(), pending.select_first);
+            }
+            Ok(()) => {
+                self.reveal_validated(location.clone(), pending.reveal.clone());
+            }
+            Err(LocationValidationError::NotDirectory) => self.reveal_in_parent(location),
+            Err(error) => self.reject_navigation(pending, error),
+        }
+    }
+
+    /// A file opens its folder with the file revealed.
+    fn reveal_in_parent(self: &Rc<Self>, location: &Location) {
+        match location.parent() {
+            Some(parent) => {
+                self.preview_revealed_location
+                    .replace(Some(location.clone()));
+                self.navigate_validated_inner(parent, false, vec![location.clone()]);
+            }
+            None => self.emit(BrowserEvent::LocationNavigationRejected {
+                location: location.clone(),
+                error: LocationValidationError::NotDirectory,
+            }),
+        }
+    }
+
+    /// A reveal into a folder that still needs mounting waits for it.
+    fn reject_navigation(&self, pending: &PendingNavigation, error: LocationValidationError) {
+        let awaits_mount = matches!(
+            error,
+            LocationValidationError::NotMounted(_) | LocationValidationError::Mountable(_)
+        );
+        if !pending.reveal.is_empty() && awaits_mount {
+            self.deferred_reveal
+                .replace(Some((pending.location.clone(), pending.reveal.clone())));
+        } else {
+            self.preview_revealed_location.take();
+        }
+        self.emit(BrowserEvent::LocationNavigationRejected {
+            location: pending.location.clone(),
+            error,
+        });
+    }
+
     pub(crate) fn navigate_location(self: &Rc<Self>, location: Location, select_first: bool) {
         if location.native_path().is_some() {
             self.navigate_with_selection(location, select_first);
@@ -260,12 +274,8 @@ impl Browser {
         if self.is_open_child(parent_depth, &directory) {
             self.reveal_locations(directory, targets);
         } else {
-            self.descend_with_selection(
-                parent_depth,
-                directory,
-                LoadSelection::Target(targets),
-                false,
-            );
+            let selection = LoadSelection::Target(targets);
+            self.descend_with_selection(Descent::new(parent_depth, directory, selection));
         }
     }
 
@@ -357,4 +367,13 @@ impl Browser {
         });
         self.start_load(0, location, request_id);
     }
+}
+
+/// A navigation waiting for its location to validate; `reveal` lists the
+/// entries to select once it opens.
+struct PendingNavigation {
+    generation: u64,
+    location: Location,
+    select_first: bool,
+    reveal: Vec<Location>,
 }
