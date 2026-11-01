@@ -783,7 +783,8 @@ fn request(method: &str, paths: Vec<String>, background: bool) -> Request {
         context: None,
     }
 }
-fn outcome_status(outcome: &protocol::Outcome) -> String {
+fn outcome_status(reply: &protocol::Reply) -> Option<String> {
+    let outcome = reply.outcome.as_ref()?;
     let mut status = match outcome.status {
         OutcomeStatus::Accepted => "Accepted",
         OutcomeStatus::Rejected => "Rejected",
@@ -801,11 +802,11 @@ fn outcome_status(outcome: &protocol::Outcome) -> String {
     if let Some(job) = &outcome.job {
         status.push_str(&format!("\nJob: {job}"));
     }
-    status
+    Some(status)
 }
 fn activation_summary(provider: &str, reply: protocol::Reply) -> String {
-    let message = match &reply.outcome {
-        Some(outcome) => format!("{}\n\n{}", outcome_status(outcome), reply.message),
+    let message = match outcome_status(&reply) {
+        Some(status) => format!("{status}\n\n{}", reply.message),
         None => reply.message,
     };
     format!(
