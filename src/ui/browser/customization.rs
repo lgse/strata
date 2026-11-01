@@ -132,7 +132,7 @@ fn build_customize_layout(is_directory: bool, item_name: &str) -> ModalLayout {
 
 fn append_preview(
     body: &gtk::Box,
-    path: &PathBuf,
+    path: &std::path::Path,
     item_name: &str,
     fallback_icon: &'static str,
 ) -> gtk::Image {

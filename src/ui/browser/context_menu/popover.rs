@@ -109,6 +109,8 @@ fn present_context_popover(
     popover.present();
 }
 
+type WeakContextTrigger = Weak<dyn Fn(f64, f64, Option<&gtk::GestureClick>) -> bool>;
+
 type InstalledRetarget =
     Rc<RefCell<Option<(glib::WeakRef<gtk::Widget>, gtk::EventControllerLegacy)>>>;
 
@@ -136,7 +138,7 @@ fn retarget_controller(
     popover: &gtk::Popover,
     widget: &gtk::Widget,
     root: &gtk::Widget,
-    reopen: Weak<dyn Fn(f64, f64, Option<&gtk::GestureClick>) -> bool>,
+    reopen: WeakContextTrigger,
 ) -> gtk::EventControllerLegacy {
     let input = gtk::EventControllerLegacy::new();
     input.set_propagation_phase(gtk::PropagationPhase::Capture);
