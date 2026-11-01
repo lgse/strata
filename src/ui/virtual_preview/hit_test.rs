@@ -52,10 +52,10 @@ pub(super) fn point_at(
 }
 
 /// The row under `y`, or the closest one when `y` falls between rows.
-fn row_nearest<'a, T>(
-    rows: &'a [(usize, T, gtk::graphene::Rect)],
+fn row_nearest<T>(
+    rows: &[(usize, T, gtk::graphene::Rect)],
     y: f32,
-) -> Option<&'a (usize, T, gtk::graphene::Rect)> {
+) -> Option<&(usize, T, gtk::graphene::Rect)> {
     rows.iter()
         .find(|(_, _, bounds)| bounds.y() <= y && y <= bounds.y() + bounds.height())
         .or_else(|| {
