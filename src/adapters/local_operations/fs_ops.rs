@@ -421,10 +421,13 @@ fn timespec((seconds, nanoseconds): (i64, u32)) -> rustix::fs::Timespec {
     }
 }
 
-fn read_sized(mut read: impl FnMut(&mut [u8]) -> Result<usize, Errno>) -> Result<Vec<u8>, Errno> {
+fn read_sized(
+    mut query_size: impl FnMut() -> Result<usize, Errno>,
+    mut read: impl FnMut(&mut [u8]) -> Result<usize, Errno>,
+) -> Result<Vec<u8>, Errno> {
     let mut attempts = 0;
     loop {
-        let size = read(&mut [])?;
+        let size = query_size()?;
         if size == 0 {
             return Ok(Vec::new());
         }
@@ -767,7 +770,10 @@ impl FsOps for System {
 
     fn xattr_names(&self, fd: BorrowedFd<'_>) -> Result<Vec<OsString>, Errno> {
         assert_off_main_thread();
-        let list = read_sized(|buffer| rustix::fs::flistxattr(fd, buffer))?;
+        let list = read_sized(
+            || rustix::fs::flistxattr_query(fd),
+            |buffer| rustix::fs::flistxattr(fd, buffer),
+        )?;
         Ok(list
             .split(|byte| *byte == 0)
             .filter(|name| !name.is_empty())
@@ -777,7 +783,10 @@ impl FsOps for System {
 
     fn get_xattr(&self, fd: BorrowedFd<'_>, name: &OsStr) -> Result<Vec<u8>, Errno> {
         assert_off_main_thread();
-        read_sized(|buffer| rustix::fs::fgetxattr(fd, name, buffer))
+        read_sized(
+            || rustix::fs::fgetxattr_query(fd, name),
+            |buffer| rustix::fs::fgetxattr(fd, name, buffer),
+        )
     }
 
     fn set_xattr(&self, fd: BorrowedFd<'_>, name: &OsStr, value: &[u8]) -> Result<(), Errno> {
