@@ -71,7 +71,9 @@ pub(super) fn unsupported_shorthand_message(input: &str) -> Option<&'static str>
     // A bare `//host/share` has no scheme, so it is not a valid URI (unlike
     // `smb://host/share`, which `is_uri_like` already accepts untouched).
     let looks_like_bare_network_shorthand = input.starts_with("//") && !is_uri_like(input);
-    if looks_like_unc || looks_like_bare_network_shorthand || looks_like_scp_shorthand(input) {
+    let unsupported =
+        looks_like_unc || looks_like_bare_network_shorthand || looks_like_scp_shorthand(input);
+    if unsupported {
         Some(
             "UNC paths (\\\\host\\share) and SCP-style addresses (user@host:path) aren't \
              supported. Use a URI instead, such as smb://host/share, sftp://host/path, \
