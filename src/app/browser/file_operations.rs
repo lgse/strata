@@ -6,9 +6,10 @@ use crate::{
     model::{FileEntry, Location},
     services::{
         ArchiveFormat, CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest,
-        ExtractRequest, MoveRecord, OperationEvent, OperationRequestId, PasteItem, PasteRequest,
-        PlaceEntryRequest, RenameRecord, RenameRequest, RestoreRequest, RestoreSource,
-        RestoreTrashItem, TransferConflict, TransferReport, TypedPath, validate_basename,
+        ExtractRequest, MoveRecord, OperationEvent, OperationProvider, OperationRequestId,
+        PasteItem, PasteRequest, PlaceEntryRequest, RenameRecord, RenameRequest, RestoreRequest,
+        RestoreSource, RestoreTrashItem, TransferConflict, TransferReport, TypedPath,
+        validate_basename,
     },
 };
 
@@ -40,38 +41,13 @@ impl Browser {
         self.rename_operation.set(Some(request_id));
         let refresh_locations = entry.location.parent().into_iter().collect();
         let emit = self.operation_callback(request_id, true, refresh_locations);
-        let mut renamed = entry.clone();
-        let new_location = entry
-            .location
-            .parent()
-            .and_then(|parent| parent.child(std::ffi::OsStr::new(&new_name)));
-        renamed.native_name = std::ffi::OsString::from(&new_name);
-        renamed.display_name = new_name.clone();
-        renamed.is_hidden = new_name.starts_with('.');
-        let old_location = entry.location.clone();
-        let original_native_name = entry.native_name.clone();
-        let original_display_name = entry.display_name.clone();
-        let original_is_hidden = entry.is_hidden;
+        let pending = PendingRename::new(&entry, &new_name);
         let weak = Rc::downgrade(self);
         let publish = Rc::new(move |event: OperationEvent| {
             if matches!(&event, OperationEvent::Renamed { request_id: id } if *id == request_id)
                 && let Some(browser) = weak.upgrade()
-                && let Some(location) = new_location.as_ref()
-                && location != &old_location
             {
-                browser.publish_relocation(&old_location, location);
-                if browser.is_current_operation(request_id) {
-                    push_pending_undo(UndoEntry::Rename(RenameRecord {
-                        original: old_location.clone(),
-                        current: location.clone(),
-                        native_name: original_native_name.clone(),
-                        display_name: original_display_name.clone(),
-                        is_hidden: original_is_hidden,
-                    }));
-                    let mut renamed = renamed.clone();
-                    renamed.location = location.clone();
-                    browser.publish_rename(&old_location, renamed);
-                }
+                browser.publish_completed_rename(request_id, &pending);
             }
             emit(event);
         });
@@ -122,7 +98,12 @@ impl Browser {
                     request_id: id,
                     placed,
                 } if *id == request_id => {
-                    browser.publish_placement(request_id, &original, placed, new_item);
+                    let placement = Placement {
+                        original: &original,
+                        placed,
+                        new_item,
+                    };
+                    browser.publish_placement(request_id, placement);
                 }
                 _ => browser
                     .state
@@ -144,13 +125,34 @@ impl Browser {
         Some(request_id)
     }
 
-    pub(super) fn publish_placement(
+    fn publish_completed_rename(
         self: &Rc<Self>,
         request_id: OperationRequestId,
-        original: &Location,
-        placed: &[Location],
-        new_item: bool,
+        pending: &PendingRename,
     ) {
+        let Some(location) = pending.moved_to() else {
+            return;
+        };
+        let old_location = &pending.original.location;
+        self.publish_relocation(old_location, location);
+        if self.is_current_operation(request_id) {
+            push_pending_undo(UndoEntry::Rename(pending.record(location)));
+            let mut renamed = pending.renamed.clone();
+            renamed.location = location.clone();
+            self.publish_rename(old_location, renamed);
+        }
+    }
+
+    fn publish_placement(
+        self: &Rc<Self>,
+        request_id: OperationRequestId,
+        placement: Placement<'_>,
+    ) {
+        let Placement {
+            original,
+            placed,
+            new_item,
+        } = placement;
         let (Some(outermost), Some(current)) = (placed.first(), placed.last()) else {
             return;
         };
@@ -205,39 +207,7 @@ impl Browser {
         name: String,
         unique_name: bool,
     ) {
-        if parent.is_recent_location() {
-            return;
-        }
-        if let Err(message) = validate_basename(&name) {
-            self.emit(BrowserEvent::OperationFailed {
-                message: crate::i18n::tr(message),
-                password_failure: None,
-                report: TransferReport::default(),
-            });
-            return;
-        }
-        let Some(provider) = self.operation_provider.borrow().clone() else {
-            self.emit(BrowserEvent::OperationFailed {
-                message: crate::i18n::tr("File operations are unavailable"),
-                password_failure: None,
-                report: TransferReport::default(),
-            });
-            return;
-        };
-        let Some(request_id) = self.try_begin_operation() else {
-            return;
-        };
-        let refresh_parent = parent.clone();
-        let load = provider.create_directory(
-            CreateDirectoryRequest {
-                id: request_id,
-                parent,
-                name,
-                unique_name,
-            },
-            self.operation_callback(request_id, false, HashSet::from([refresh_parent])),
-        );
-        self.install_operation_load(request_id, load);
+        self.create_entry(NewEntry::new(parent, name, unique_name, true));
     }
 
     pub fn create_exact_entry(self: &Rc<Self>, parent: Location, name: String, directory: bool) {
@@ -258,38 +228,48 @@ impl Browser {
         name: String,
         unique_name: bool,
     ) {
-        if parent.is_recent_location() {
+        self.create_entry(NewEntry::new(parent, name, unique_name, false));
+    }
+
+    fn create_entry(self: &Rc<Self>, entry: NewEntry) {
+        if entry.parent.is_recent_location() {
             return;
         }
-        if let Err(message) = validate_basename(&name) {
-            self.emit(BrowserEvent::OperationFailed {
-                message: crate::i18n::tr(message),
-                password_failure: None,
-                report: TransferReport::default(),
-            });
+        if let Err(message) = validate_basename(&entry.name) {
+            self.emit_operation_failed(crate::i18n::tr(message));
             return;
         }
-        let Some(provider) = self.operation_provider.borrow().clone() else {
-            self.emit(BrowserEvent::OperationFailed {
-                message: crate::i18n::tr("File operations are unavailable"),
-                password_failure: None,
-                report: TransferReport::default(),
-            });
+        let Some(provider) = self.available_operation_provider() else {
             return;
         };
         let Some(request_id) = self.try_begin_operation() else {
             return;
         };
-        let refresh_parent = parent.clone();
-        let load = provider.create_file(
-            CreateFileRequest {
+        let refresh = HashSet::from([entry.parent.clone()]);
+        let NewEntry {
+            parent,
+            name,
+            unique_name,
+            directory,
+        } = entry;
+        let emit = self.operation_callback(request_id, false, refresh);
+        let load = if directory {
+            let request = CreateDirectoryRequest {
                 id: request_id,
                 parent,
                 name,
                 unique_name,
-            },
-            self.operation_callback(request_id, false, HashSet::from([refresh_parent])),
-        );
+            };
+            provider.create_directory(request, emit)
+        } else {
+            let request = CreateFileRequest {
+                id: request_id,
+                parent,
+                name,
+                unique_name,
+            };
+            provider.create_file(request, emit)
+        };
         self.install_operation_load(request_id, load);
     }
 
@@ -300,7 +280,8 @@ impl Browser {
         move_sources: bool,
         reveal: bool,
     ) {
-        self.start_transfer(destination, items, move_sources, reveal, false);
+        let transfer = Transfer::new(destination, items, move_sources, reveal);
+        self.start_transfer(transfer, false);
     }
 
     pub fn transfer_replacing_cursor(
@@ -310,26 +291,21 @@ impl Browser {
         move_sources: bool,
         reveal: bool,
     ) {
-        self.start_transfer(destination, items, move_sources, reveal, true);
+        let transfer = Transfer::new(destination, items, move_sources, reveal);
+        self.start_transfer(transfer, true);
     }
 
-    pub(super) fn start_transfer(
-        self: &Rc<Self>,
-        destination: Location,
-        items: Vec<PasteItem>,
-        move_sources: bool,
-        reveal: bool,
-        replace_cursor: bool,
-    ) {
+    fn start_transfer(self: &Rc<Self>, transfer: Transfer, replace_cursor: bool) {
+        let Transfer {
+            destination,
+            items,
+            move_sources,
+            reveal,
+        } = transfer;
         if items.is_empty() || destination.is_recent_location() {
             return;
         }
-        let Some(provider) = self.operation_provider.borrow().clone() else {
-            self.emit(BrowserEvent::OperationFailed {
-                message: crate::i18n::tr("File operations are unavailable"),
-                password_failure: None,
-                report: TransferReport::default(),
-            });
+        let Some(provider) = self.available_operation_provider() else {
             return;
         };
         let Some(request_id) = self.try_begin_operation() else {
@@ -393,21 +369,12 @@ impl Browser {
         self.delete_to(entries, destination);
     }
 
-    pub(super) fn delete_to(
-        self: &Rc<Self>,
-        entries: Vec<FileEntry>,
-        destination: OperationDestination,
-    ) {
+    fn delete_to(self: &Rc<Self>, entries: Vec<FileEntry>, destination: OperationDestination) {
         let permanent = !matches!(destination, OperationDestination::Trash);
         if entries.is_empty() {
             return;
         }
-        let Some(provider) = self.operation_provider.borrow().clone() else {
-            self.emit(BrowserEvent::OperationFailed {
-                message: crate::i18n::tr("File operations are unavailable"),
-                password_failure: None,
-                report: TransferReport::default(),
-            });
+        let Some(provider) = self.available_operation_provider() else {
             return;
         };
         let total = entries.len();
@@ -440,12 +407,7 @@ impl Browser {
         if items.is_empty() {
             return;
         }
-        let Some(provider) = self.operation_provider.borrow().clone() else {
-            self.emit(BrowserEvent::OperationFailed {
-                message: crate::i18n::tr("File operations are unavailable"),
-                password_failure: None,
-                report: TransferReport::default(),
-            });
+        let Some(provider) = self.available_operation_provider() else {
             return;
         };
         let total = items.len();
@@ -476,12 +438,7 @@ impl Browser {
         if entries.is_empty() {
             return;
         }
-        let Some(provider) = self.operation_provider.borrow().clone() else {
-            self.emit(BrowserEvent::OperationFailed {
-                message: crate::i18n::tr("File operations are unavailable"),
-                password_failure: None,
-                report: TransferReport::default(),
-            });
+        let Some(provider) = self.available_operation_provider() else {
             return;
         };
         let Some(request_id) = self.try_begin_operation() else {
@@ -514,12 +471,7 @@ impl Browser {
         created_destination: bool,
         password: Option<String>,
     ) {
-        let Some(provider) = self.operation_provider.borrow().clone() else {
-            self.emit(BrowserEvent::OperationFailed {
-                message: crate::i18n::tr("File operations are unavailable"),
-                password_failure: None,
-                report: TransferReport::default(),
-            });
+        let Some(provider) = self.available_operation_provider() else {
             return;
         };
         let Some(request_id) = self.try_begin_operation() else {
@@ -537,5 +489,107 @@ impl Browser {
             self.operation_callback(request_id, false, HashSet::new()),
         );
         self.install_operation_load(request_id, load);
+    }
+
+    /// The operation provider, or a reported failure when there is none.
+    fn available_operation_provider(&self) -> Option<Rc<dyn OperationProvider>> {
+        let provider = self.operation_provider.borrow().clone();
+        if provider.is_none() {
+            self.emit_operation_failed(crate::i18n::tr("File operations are unavailable"));
+        }
+        provider
+    }
+
+    fn emit_operation_failed(&self, message: String) {
+        self.emit(BrowserEvent::OperationFailed {
+            message,
+            password_failure: None,
+            report: TransferReport::default(),
+        });
+    }
+}
+
+/// A rename in flight: the entry as listed, and as it will read once renamed.
+struct PendingRename {
+    original: FileEntry,
+    renamed: FileEntry,
+    new_location: Option<Location>,
+}
+
+impl PendingRename {
+    fn new(entry: &FileEntry, new_name: &str) -> Self {
+        let mut renamed = entry.clone();
+        renamed.native_name = std::ffi::OsString::from(new_name);
+        renamed.display_name = new_name.to_owned();
+        renamed.is_hidden = new_name.starts_with('.');
+        Self {
+            original: entry.clone(),
+            renamed,
+            new_location: entry
+                .location
+                .parent()
+                .and_then(|parent| parent.child(std::ffi::OsStr::new(new_name))),
+        }
+    }
+
+    /// Where the item went, unless the rename kept its location.
+    fn moved_to(&self) -> Option<&Location> {
+        self.new_location
+            .as_ref()
+            .filter(|location| **location != self.original.location)
+    }
+
+    fn record(&self, current: &Location) -> RenameRecord {
+        RenameRecord {
+            original: self.original.location.clone(),
+            current: current.clone(),
+            native_name: self.original.native_name.clone(),
+            display_name: self.original.display_name.clone(),
+            is_hidden: self.original.is_hidden,
+        }
+    }
+}
+
+/// Where a placed item went: the typed path's folders from outermost to the
+/// item itself.
+struct Placement<'a> {
+    original: &'a Location,
+    placed: &'a [Location],
+    new_item: bool,
+}
+
+struct NewEntry {
+    parent: Location,
+    name: String,
+    unique_name: bool,
+    directory: bool,
+}
+
+impl NewEntry {
+    fn new(parent: Location, name: String, unique_name: bool, directory: bool) -> Self {
+        Self {
+            parent,
+            name,
+            unique_name,
+            directory,
+        }
+    }
+}
+
+struct Transfer {
+    destination: Location,
+    items: Vec<PasteItem>,
+    move_sources: bool,
+    reveal: bool,
+}
+
+impl Transfer {
+    fn new(destination: Location, items: Vec<PasteItem>, move_sources: bool, reveal: bool) -> Self {
+        Self {
+            destination,
+            items,
+            move_sources,
+            reveal,
+        }
     }
 }
