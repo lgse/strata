@@ -1,24 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-use std::{
-    fs,
-    io::{self, Read, Seek},
-    os::fd::RawFd,
-    path::Path,
-    process::{Child, Command, Output, Stdio},
-    sync::mpsc,
-    thread,
-    time::{Duration, Instant},
-};
-
-use gdk_pixbuf::prelude::*;
-use gtk::gio;
+#[cfg(feature = "rar")]
+use std::io;
+use std::{fs, io::Read, os::fd::RawFd, path::Path, process::Command, time::Duration};
 
 use crate::{
     adapters::{encode_archive_result, list_archive_entries_direct},
-    sandbox::{
-        DocumentFormat, FILE_SIZE_LIMIT_BYTES, MAX_OUTPUT_BYTES, MediaPreviewBackend, PdfRenderSize,
-    },
+    sandbox::{MAX_OUTPUT_BYTES, MediaPreviewBackend},
     services::{ArchiveFormat, MediaPreviewSize},
 };
 
@@ -26,15 +14,85 @@ mod appimage;
 pub(crate) mod archive_cover;
 #[cfg(feature = "rar")]
 mod archive_rar;
+mod browser;
 mod document_media;
 mod image_conversion;
 mod isobmff;
 mod media;
 mod model;
+mod operations;
+mod pdf;
+mod process;
+mod raster;
 mod raw_metadata;
 mod route;
 
-const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(20);
+pub(crate) use browser::browser_render;
+#[cfg(test)]
+use pdf::{bounded_surface_dimensions, pdf_render_request};
+pub(crate) use process::run_command_with_timeout;
+use process::{bounded_output, bounded_output_with_timeout, read_limited, stop_child};
+use raster::render_raw;
+#[cfg(test)]
+use raster::{
+    exceeds_decoded_frame_budget, image_dimensions, read_exif_thumbnail, read_png_dimensions,
+    render_camera_raw, render_camera_raw_preview, render_pixbuf, render_simple_dcraw,
+    scale_embedded_thumbnail,
+};
+
+fn parse_descriptor(descriptor: &str) -> Result<RawFd, String> {
+    descriptor
+        .parse::<RawFd>()
+        .ok()
+        .filter(|fd| *fd >= 0)
+        .ok_or_else(|| "Invalid preview helper secret descriptor".to_owned())
+}
+
+fn read_password(descriptor: RawFd) -> Result<String, String> {
+    let secret = read_secret_fd(descriptor)?;
+    if secret.len() > crate::adapters::MAX_ARCHIVE_PASSWORD_BYTES {
+        return Err("Archive password is too long.".to_owned());
+    }
+    String::from_utf8(secret).map_err(|_| "Archive password is not valid text.".to_owned())
+}
+
+#[cfg(feature = "rar")]
+fn extract_rar(input: &str, rest: &[String]) -> Result<(), String> {
+    let password = match rest {
+        [] => None,
+        [descriptor] => Some(read_password(parse_descriptor(descriptor)?)?),
+        _ => return Err("Invalid preview helper arguments".to_owned()),
+    };
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+    archive_rar::run(Path::new(input), password.as_deref(), &mut stdout)
+}
+
+/// Splits the trailing seek position off a media preview's arguments.
+fn split_start_tick(arguments: &[String]) -> Result<(&[String], u32), String> {
+    match arguments {
+        [operation, ..]
+            if matches!(operation.as_str(), "preview-media" | "preview-audio")
+                && arguments.len() == 6 =>
+        {
+            let start_tick = arguments[5]
+                .parse::<u32>()
+                .map_err(|_| "Invalid media seek position".to_owned())?;
+            Ok((&arguments[..5], start_tick))
+        }
+        _ => Ok((arguments, 0)),
+    }
+}
+
+fn secret_descriptor(arguments: &[String]) -> Result<Option<RawFd>, String> {
+    match arguments {
+        [operation, ..] if operation == "archive-list" && arguments.len() == 6 => {
+            parse_descriptor(&arguments[5]).map(Some)
+        }
+        _ if arguments.len() == 5 => Ok(None),
+        _ => Err("Invalid preview helper arguments".to_owned()),
+    }
+}
 
 pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     #[cfg(not(feature = "rar"))]
@@ -51,228 +109,27 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     if let [operation, input, rest @ ..] = arguments
         && operation == "extract-rar"
     {
-        let password = match rest {
-            [] => None,
-            [descriptor] => {
-                let descriptor = descriptor
-                    .parse::<RawFd>()
-                    .ok()
-                    .filter(|fd| *fd >= 0)
-                    .ok_or_else(|| "Invalid preview helper secret descriptor".to_owned())?;
-                let secret = read_secret_fd(descriptor)?;
-                if secret.len() > crate::adapters::MAX_ARCHIVE_PASSWORD_BYTES {
-                    return Err("Archive password is too long.".to_owned());
-                }
-                Some(
-                    String::from_utf8(secret)
-                        .map_err(|_| "Archive password is not valid text.".to_owned())?,
-                )
-            }
-            _ => return Err("Invalid preview helper arguments".to_owned()),
-        };
-        let stdout = io::stdout();
-        let mut stdout = stdout.lock();
-        return archive_rar::run(Path::new(input), password.as_deref(), &mut stdout);
+        return extract_rar(input, rest);
     }
-    let (arguments, start_tick) = match arguments {
-        [operation, ..]
-            if matches!(operation.as_str(), "preview-media" | "preview-audio")
-                && arguments.len() == 6 =>
-        {
-            (
-                &arguments[..5],
-                arguments[5]
-                    .parse::<u32>()
-                    .map_err(|_| "Invalid media seek position".to_owned())?,
-            )
-        }
-        _ => (arguments, 0),
-    };
-    let secret_fd = match arguments {
-        [operation, ..] if operation == "archive-list" && arguments.len() == 6 => Some(
-            arguments[5]
-                .parse::<RawFd>()
-                .ok()
-                .filter(|fd| *fd >= 0)
-                .ok_or_else(|| "Invalid preview helper secret descriptor".to_owned())?,
-        ),
-        _ if arguments.len() == 5 => None,
-        _ => return Err("Invalid preview helper arguments".to_owned()),
-    };
+    let (arguments, start_tick) = split_start_tick(arguments)?;
+    let secret_fd = secret_descriptor(arguments)?;
     let [operation, input, output, value, media_backend] = &arguments[..5] else {
         return Err("Invalid preview helper arguments".to_owned());
     };
-    let input = Path::new(input);
-    let output = Path::new(output);
-    let media_backend = MediaPreviewBackend::from_argument(media_backend)
-        .ok_or_else(|| "Invalid media preview backend".to_owned())?;
-    if matches!(operation.as_str(), "inspect-image" | "convert-image") {
-        return image_conversion::run(input, output, operation == "convert-image");
-    }
-    if operation == "preview-media" || operation == "preview-audio" {
-        let audio_only = operation == "preview-audio";
-        return media::run(input, output, value, media_backend, start_tick, audio_only);
-    }
-    if operation == "audio-peaks" {
-        return media::run_peaks(input, output);
-    }
-    if operation == "video-storyboard" {
-        let cell_edge = value
-            .parse::<u32>()
-            .map_err(|_| "Invalid storyboard cell size".to_owned())?;
-        return media::run_storyboard(input, output, cell_edge);
-    }
-    if operation == "audio-tags" {
-        return fs::write(output, media::audio_tags(input)?).map_err(|error| error.to_string());
-    }
-    if operation == "preview-workbook" {
-        let table = crate::services::table::read_workbook(input)?;
-        let bytes = serde_json::to_vec(&table).map_err(|e| e.to_string())?;
-        if bytes.len() as u64 > MAX_OUTPUT_BYTES {
-            return Err("Table output budget exceeded".into());
-        }
-        return fs::write(output, bytes).map_err(|e| e.to_string());
-    }
-    if operation == "preview-document" {
-        let document =
-            match DocumentFormat::from_argument(value).ok_or("Invalid document format")? {
-                DocumentFormat::Docx => crate::services::docx::read_document(input)?,
-                DocumentFormat::Odt => crate::services::odt::read_document(input)?,
-            };
-        let bytes = serde_json::to_vec(&document).map_err(|e| e.to_string())?;
-        if bytes.len() as u64 > MAX_OUTPUT_BYTES {
-            return Err("Document output budget exceeded".into());
-        }
-        return fs::write(output, bytes).map_err(|e| e.to_string());
-    }
-    if operation == "media-metadata" {
-        return write_media_metadata(input, output);
-    }
-    if operation == "raw-metadata" {
-        return fs::write(output, raw_metadata::read(input)?).map_err(|error| error.to_string());
-    }
-    if operation == "archive-list" {
-        return run_archive_list(input, output, value, secret_fd);
-    }
-    let numeric_value = || {
-        value
-            .parse::<i32>()
-            .map_err(|_| "Invalid preview helper size or page".to_owned())
+    let request = operations::Request {
+        operation,
+        input: Path::new(input),
+        output: Path::new(output),
+        value,
+        media_backend: MediaPreviewBackend::from_argument(media_backend)
+            .ok_or_else(|| "Invalid media preview backend".to_owned())?,
+        start_tick,
+        secret_fd,
     };
-    let mut text_layer_bytes = None;
-    let (png, metadata) = match operation.as_str() {
-        "thumbnail-image" => (render_raw(input, numeric_value()?.clamp(16, 256))?, None),
-        "thumbnail-raw" => (
-            render_camera_raw(input, numeric_value()?.clamp(16, 256))?,
-            None,
-        ),
-        "preview-raw" => (render_camera_raw_preview(input, 800)?, None),
-        "thumbnail-pdf" => (
-            render_pdf_thumbnail(input, numeric_value()?.clamp(16, 256))?,
-            None,
-        ),
-        "thumbnail-video" => (render_media(input, numeric_value()?.clamp(16, 256))?, None),
-        "audio-cover" => {
-            let cover = media::cover(input, 800)?;
-            (
-                if cover.is_empty() {
-                    b"null".to_vec()
-                } else {
-                    cover
-                },
-                None,
-            )
-        }
-        "thumbnail-appimage" => (
-            appimage::render(input, numeric_value()?.clamp(16, 256))?,
-            None,
-        ),
-        "thumbnail-model" => (
-            model::thumbnail(
-                input,
-                crate::services::ModelFormat::from_argument(value).ok_or("Invalid model format")?,
-                (256, 256),
-                &|_| {},
-            )?,
-            None,
-        ),
-        "thumbnail-cover" => (
-            archive_cover::thumbnail(
-                input,
-                crate::sandbox::CoverFormat::from_argument(value).ok_or("Invalid cover format")?,
-            )?,
-            None,
-        ),
-        "preview-cover" => (
-            archive_cover::render(
-                input,
-                crate::sandbox::CoverFormat::from_argument(value).ok_or("Invalid cover format")?,
-                800,
-            )?,
-            None,
-        ),
-        "preview-image" | "document-image" => (document_media::image(input, 800)?, None),
-        "document-mermaid" => (document_media::mermaid(input)?, None),
-        "document-math" => (document_media::math(input, true)?, None),
-        "document-inline-math" => (document_media::math(input, false)?, None),
-        "preview-pdf" => {
-            let (page, size) = pdf_render_request(value)?;
-            let uri = gio::File::for_path(input).uri();
-            let document = poppler::Document::from_file(&uri, None).map_err(|error| {
-                if error.matches(poppler::Error::Encrypted)
-                    && let Ok(bytes) =
-                        serde_json::to_vec(&crate::sandbox::PdfPreviewError::PasswordProtected)
-                {
-                    let _ = fs::write(output.with_file_name("result.error"), bytes);
-                }
-                error.to_string()
-            })?;
-            let (png, page, pages, text_layer) = render_pdf_page(&document, page, size)?;
-            text_layer_bytes = text_layer;
-            (png, Some(format!("{page} {pages}")))
-        }
-        "preview-route" => match route::render(input, value) {
-            Ok(bytes) => (bytes, None),
-            Err(message) => {
-                let _ = fs::write(output.with_file_name("result.error"), message.as_bytes());
-                return Err(message);
-            }
-        },
-        "preview-model" => {
-            let progress = |stage| {
-                if let Ok(bytes) = serde_json::to_vec(&stage) {
-                    let pending = output.with_file_name("result.progress.tmp");
-                    if fs::write(&pending, bytes).is_ok() {
-                        let _ = fs::rename(pending, output.with_file_name("result.progress"));
-                    }
-                }
-            };
-            let rendered = match model::render_reporting(input, value, &progress) {
-                Ok(result) => result,
-                Err(message) => {
-                    let _ = fs::write(output.with_file_name("result.error"), message.as_bytes());
-                    return Err(message);
-                }
-            };
-            fs::write(
-                output.with_file_name("result.model"),
-                serde_json::to_vec(&rendered.mesh).map_err(|error| error.to_string())?,
-            )
-            .map_err(|error| error.to_string())?;
-            (rendered.png, None)
-        }
-        _ => return Err("Unknown preview helper operation".to_owned()),
-    };
-    fs::write(output, png).map_err(|error| error.to_string())?;
-    if let Some(metadata) = metadata {
-        fs::write(output.with_file_name("result.meta"), metadata)
-            .map_err(|error| error.to_string())?;
+    if let Some(result) = operations::write(&request) {
+        return result;
     }
-    if let Some(text_layer) = text_layer_bytes {
-        fs::write(output.with_file_name("result.text"), text_layer)
-            .map_err(|error| error.to_string())?;
-    }
-    Ok(())
+    operations::render(&request)?.write(request.output)
 }
 
 fn run_archive_list(
@@ -281,8 +138,6 @@ fn run_archive_list(
     format: &str,
     secret_fd: Option<RawFd>,
 ) -> Result<(), String> {
-    use crate::adapters::MAX_ARCHIVE_PASSWORD_BYTES;
-
     let format = match format {
         "zip" => ArchiveFormat::Zip,
         "7z" => ArchiveFormat::SevenZ,
@@ -290,19 +145,7 @@ fn run_archive_list(
         "tar.gz" => ArchiveFormat::TarGz,
         _ => return Err("Unknown archive format for preview.".to_owned()),
     };
-    let password = match secret_fd {
-        None => None,
-        Some(descriptor) => {
-            let secret = read_secret_fd(descriptor)?;
-            if secret.len() > MAX_ARCHIVE_PASSWORD_BYTES {
-                return Err("Archive password is too long.".to_owned());
-            }
-            Some(
-                String::from_utf8(secret)
-                    .map_err(|_| "Archive password is not valid text.".to_owned())?,
-            )
-        }
-    };
+    let password = secret_fd.map(read_password).transpose()?;
     // The parent cancels the helper by terminating its process group.
     let cancelled = std::sync::atomic::AtomicBool::new(false);
     let result = list_archive_entries_direct(input, format, password.as_deref(), &cancelled);
@@ -402,584 +245,6 @@ fn read_media_metadata(input: &Path) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-pub(crate) fn browser_render(
-    input: &Path,
-    operation: crate::sandbox::browser::wire::Operation,
-) -> crate::sandbox::browser::wire::Response {
-    use crate::sandbox::browser::wire::{Operation, Response};
-    let mut response = Response::default();
-    let dimensions = || image_dimensions(input);
-    let encode_dimensions =
-        |(width, height)| video_stream_metadata(width, height).unwrap_or_default();
-    match operation {
-        Operation::Image => {
-            // glycin's nested sandbox cannot run here; use resvg first.
-            if let Some(source) = svg_source(input)
-                && let Ok(rendered) = document_media::svg(&source, 256)
-            {
-                response.metadata = encode_dimensions((rendered.width, rendered.height));
-                response.png = rendered.png;
-            }
-            if response.png.is_empty() {
-                let size = dimensions();
-                let oversized = size.is_some_and(|(w, h)| exceeds_decoded_frame_budget(w, h));
-                if let Some(size) = size {
-                    response.metadata = encode_dimensions(size);
-                    if !oversized {
-                        response.png =
-                            render_pixbuf(input, 256.min(size.0.max(size.1)), Some(size))
-                                .unwrap_or_default();
-                    } else if let Some(png) = render_oversized(input, 256) {
-                        response.png = png;
-                    }
-                }
-                if response.png.is_empty() && !oversized {
-                    response.png = render_imagemagick(input, 256)
-                        .or_else(|_| render_dcraw(input, 256))
-                        .unwrap_or_default();
-                }
-            }
-        }
-        Operation::Raw => response.png = render_camera_raw(input, 256).unwrap_or_default(),
-        Operation::Pdf => response.png = render_pdf_thumbnail(input, 256).unwrap_or_default(),
-        Operation::Video => response.png = render_media(input, 256).unwrap_or_default(),
-        Operation::ThreeMfThumbnail | Operation::FreeCadThumbnail | Operation::GcodeThumbnail => {
-            let format = match operation {
-                Operation::ThreeMfThumbnail => crate::services::ModelFormat::ThreeMf,
-                Operation::GcodeThumbnail => crate::services::ModelFormat::Gcode,
-                _ => crate::services::ModelFormat::FreeCad,
-            };
-            response.png = model::thumbnail(input, format, (256, 256), &|_| {}).unwrap_or_default();
-        }
-        Operation::ImageMetadata => {
-            response.metadata = svg_source(input)
-                .and_then(|source| document_media::svg_dimensions(&source))
-                .map(encode_dimensions)
-                .or_else(|| dimensions().map(encode_dimensions))
-                .or_else(|| read_media_metadata(input).ok())
-                .unwrap_or_default();
-        }
-        Operation::MediaMetadata => {
-            response.metadata = read_media_metadata(input).unwrap_or_default()
-        }
-        Operation::PreviewImage => {
-            response.png = document_media::image(input, 800).unwrap_or_default();
-        }
-        Operation::PreviewRaw => {
-            response.png = render_camera_raw_preview(input, 800).unwrap_or_default();
-        }
-        Operation::RawMetadata => response.metadata = raw_metadata::read(input).unwrap_or_default(),
-        Operation::DocumentMermaid => {
-            response.png = document_media::mermaid(input).unwrap_or_default();
-        }
-        Operation::DocumentMath => {
-            response.png = document_media::math(input, true).unwrap_or_default();
-        }
-        Operation::DocumentMathInline => {
-            response.png = document_media::math(input, false).unwrap_or_default();
-        }
-    }
-    response
-}
-
-const RGBA_CHANNELS: u64 = 4;
-const MAX_DECODED_PIXELS: u64 = FILE_SIZE_LIMIT_BYTES / RGBA_CHANNELS;
-
-pub(crate) fn exceeds_decoded_frame_budget(width: i32, height: i32) -> bool {
-    let width = u64::try_from(width).unwrap_or(0);
-    let height = u64::try_from(height).unwrap_or(0);
-    width.saturating_mul(height) > MAX_DECODED_PIXELS
-}
-
-fn read_jpeg_dimensions<R: io::Read + io::Seek>(reader: &mut R) -> Option<(i32, i32)> {
-    let mut header = [0u8; 2];
-    reader.read_exact(&mut header).ok()?;
-    if header != [0xFF, 0xD8] {
-        return None;
-    }
-    let mut byte = [0u8; 1];
-    loop {
-        loop {
-            reader.read_exact(&mut byte).ok()?;
-            if byte[0] == 0xFF {
-                break;
-            }
-        }
-        loop {
-            reader.read_exact(&mut byte).ok()?;
-            if byte[0] != 0xFF {
-                break;
-            }
-        }
-        let marker = byte[0];
-        if marker == 0xDA || marker == 0xD9 {
-            return None;
-        }
-        if (0xD0..=0xD8).contains(&marker) || marker == 0x01 {
-            continue;
-        }
-        let mut len_buf = [0u8; 2];
-        reader.read_exact(&mut len_buf).ok()?;
-        let length = u16::from_be_bytes(len_buf) as usize;
-        if length < 2 {
-            return None;
-        }
-        if matches!(marker, 0xC0..=0xC3 | 0xC5..=0xC7 | 0xC9..=0xCB | 0xCD..=0xCF) {
-            let mut sof_buf = [0u8; 5];
-            reader.read_exact(&mut sof_buf).ok()?;
-            let height = i32::from(u16::from_be_bytes([sof_buf[1], sof_buf[2]]));
-            let width = i32::from(u16::from_be_bytes([sof_buf[3], sof_buf[4]]));
-            if width > 0 && height > 0 {
-                return Some((width, height));
-            }
-            return None;
-        }
-        reader
-            .seek(io::SeekFrom::Current((length - 2) as i64))
-            .ok()?;
-    }
-}
-
-fn read_png_dimensions<R: io::Read>(reader: &mut R) -> Option<(i32, i32)> {
-    let mut buf = [0u8; 24];
-    reader.read_exact(&mut buf).ok()?;
-    if &buf[0..8] != b"\x89PNG\r\n\x1a\n" || &buf[12..16] != b"IHDR" {
-        return None;
-    }
-    let width = i32::try_from(u32::from_be_bytes(buf[16..20].try_into().ok()?)).ok()?;
-    let height = i32::try_from(u32::from_be_bytes(buf[20..24].try_into().ok()?)).ok()?;
-    if width > 0 && height > 0 {
-        Some((width, height))
-    } else {
-        None
-    }
-}
-
-fn read_gif_dimensions<R: io::Read>(reader: &mut R) -> Option<(i32, i32)> {
-    let mut buf = [0u8; 10];
-    reader.read_exact(&mut buf).ok()?;
-    if &buf[0..6] != b"GIF87a" && &buf[0..6] != b"GIF89a" {
-        return None;
-    }
-    let width = i32::from(u16::from_le_bytes([buf[6], buf[7]]));
-    let height = i32::from(u16::from_le_bytes([buf[8], buf[9]]));
-    if width > 0 && height > 0 {
-        Some((width, height))
-    } else {
-        None
-    }
-}
-
-fn image_dimensions(path: &Path) -> Option<(i32, i32)> {
-    if let Ok(file) = fs::File::open(path) {
-        let mut reader = io::BufReader::new(file);
-        if let Some(dimensions) = read_jpeg_dimensions(&mut reader) {
-            return Some(dimensions);
-        }
-        let _ = reader.seek(io::SeekFrom::Start(0));
-        if let Some(dimensions) = read_png_dimensions(&mut reader) {
-            return Some(dimensions);
-        }
-        let _ = reader.seek(io::SeekFrom::Start(0));
-        if let Some(dimensions) = read_gif_dimensions(&mut reader) {
-            return Some(dimensions);
-        }
-        if let Some(dimensions) = isobmff::dimensions(&mut reader) {
-            return Some(dimensions);
-        }
-    }
-    gdk_pixbuf::Pixbuf::file_info(path)
-        .filter(|(_, width, height)| *width > 0 && *height > 0)
-        .map(|(_, width, height)| (width, height))
-}
-
-fn render_pixbuf(
-    path: &Path,
-    size: i32,
-    dimensions: Option<(i32, i32)>,
-) -> Result<Vec<u8>, String> {
-    if let Some((width, height)) = dimensions
-        && exceeds_decoded_frame_budget(width, height)
-    {
-        return Err("Image dimensions exceed the decoded frame budget".to_owned());
-    }
-    gdk_pixbuf::Pixbuf::from_file_at_scale(path, size, size, true)
-        .map_err(|error| error.to_string())?
-        .save_to_bufferv("png", &[("compression", "1")])
-        .map_err(|error| error.to_string())
-}
-
-fn render_raw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
-    // Preserve small sources so the preview can bound upscaling by their native dimensions.
-    let info = image_dimensions(path);
-    if let Some((width, height)) = info
-        && width > 0
-        && height > 0
-    {
-        if exceeds_decoded_frame_budget(width, height) {
-            return render_oversized(path, size)
-                .ok_or_else(|| "Image dimensions exceed the decoded frame budget".to_owned());
-        }
-        return render_pixbuf(path, size.min(width.max(height)), info)
-            .or_else(|_| render_imagemagick(path, size))
-            .or_else(|_| render_dcraw(path, size));
-    }
-    render_imagemagick(path, size).or_else(|_| render_dcraw(path, size))
-}
-
-fn render_camera_raw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
-    let dimensions = image_dimensions(path);
-    if let Some((width, height)) = dimensions
-        && exceeds_decoded_frame_budget(width, height)
-    {
-        return read_exif_thumbnail(path, size)
-            .or_else(|| render_dcraw(path, size).ok())
-            .ok_or_else(|| "Image dimensions exceed the decoded frame budget".to_owned());
-    }
-    // Prefer the camera JPEG so ImageMagick does not demosaic.
-    render_dcraw(path, size)
-        .or_else(|_| render_pixbuf(path, size, dimensions))
-        .or_else(|_| render_imagemagick(path, size))
-}
-
-fn render_camera_raw_preview(path: &Path, size: i32) -> Result<Vec<u8>, String> {
-    let dimensions = image_dimensions(path);
-    let pixbuf_sees_thumbnail = dimensions.is_some_and(|(width, height)| width.max(height) < size);
-    if !pixbuf_sees_thumbnail {
-        return render_camera_raw(path, size);
-    }
-    render_dcraw(path, size)
-        .or_else(|_| render_imagemagick(path, size))
-        .or_else(|_| render_pixbuf(path, size, dimensions))
-}
-
-fn render_oversized(path: &Path, size: i32) -> Option<Vec<u8>> {
-    let thumbnail = read_exif_thumbnail(path, size);
-    let covers_size = thumbnail
-        .as_deref()
-        .and_then(|png| read_png_dimensions(&mut io::Cursor::new(png)))
-        .is_some_and(|(width, height)| width.max(height) >= size);
-    if covers_size {
-        return thumbnail;
-    }
-    render_reduced_jpeg(path, size).or(thumbnail)
-}
-
-fn render_reduced_jpeg(path: &Path, size: i32) -> Option<Vec<u8>> {
-    let file = fs::File::open(path).ok()?;
-    read_jpeg_dimensions(&mut io::BufReader::new(file))?;
-    render_imagemagick(path, size).ok()
-}
-
-fn read_exif_thumbnail(path: &Path, size: i32) -> Option<Vec<u8>> {
-    let file = fs::File::open(path).ok()?;
-    let mut reader = io::BufReader::new(file);
-    let exif = exif::Reader::new()
-        .continue_on_error(true)
-        .read_from_container(&mut reader)
-        .or_else(|error| error.distill_partial_result(|_| {}))
-        .ok()?;
-    let offset = exif
-        .get_field(exif::Tag::JPEGInterchangeFormat, exif::In::THUMBNAIL)
-        .and_then(|field| field.value.get_uint(0))? as usize;
-    let len = exif
-        .get_field(exif::Tag::JPEGInterchangeFormatLength, exif::In::THUMBNAIL)
-        .and_then(|field| field.value.get_uint(0))? as usize;
-    let end = offset.checked_add(len)?;
-    let data = exif.buf().get(offset..end)?;
-    scale_embedded_thumbnail(data, size).ok()
-}
-
-fn render_imagemagick(path: &Path, size: i32) -> Result<Vec<u8>, String> {
-    for executable in ["magick", "convert"] {
-        let output = bounded_output(
-            Command::new(executable)
-                .args(["-limit", "area"])
-                .arg(MAX_DECODED_PIXELS.to_string())
-                .args(["-limit", "disk", "0", "-define"])
-                .arg(format!("jpeg:size={size}x{size}"))
-                .arg(path)
-                .args(["-auto-orient", "-thumbnail"])
-                .arg(format!("{size}x{size}>"))
-                .arg("png:-"),
-            MAX_OUTPUT_BYTES,
-        );
-        if let Ok(output) = output
-            && output.status.success()
-            && !output.stdout.is_empty()
-        {
-            return Ok(output.stdout);
-        }
-    }
-    Err("No RAW image renderer succeeded".to_owned())
-}
-
-// LibRaw's dcraw_emu does not support `-e`; `-c` is a threshold, not stdout.
-fn render_dcraw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
-    let classic = bounded_output(
-        Command::new("dcraw").args(["-e", "-c"]).arg(path),
-        MAX_OUTPUT_BYTES,
-    );
-    if let Ok(output) = classic
-        && output.status.success()
-        && !output.stdout.is_empty()
-        && let Ok(png) = scale_embedded_thumbnail(&output.stdout, size)
-    {
-        return Ok(png);
-    }
-    render_simple_dcraw(path, size)
-}
-
-fn render_simple_dcraw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
-    use std::os::unix::fs::symlink;
-
-    // Writes `<file>.thumb.jpg` next to the input, which is a read-only bind.
-    let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
-    let staging = directory.path().join("raw-thumb");
-    symlink(path, &staging).map_err(|error| error.to_string())?;
-    let status = Command::new("simple_dcraw")
-        .arg("-e")
-        .arg(&staging)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(|error| error.to_string())?;
-    if !status.success() {
-        return Err("simple_dcraw failed".to_owned());
-    }
-    for thumb in ["raw-thumb.thumb.jpg", "raw-thumb.thumb.ppm"] {
-        let Ok(file) = fs::File::open(directory.path().join(thumb)) else {
-            continue;
-        };
-        let Ok(data) = read_limited(file, MAX_OUTPUT_BYTES) else {
-            continue;
-        };
-        if data.is_empty() {
-            continue;
-        }
-        if let Ok(png) = scale_embedded_thumbnail(&data, size) {
-            return Ok(png);
-        }
-    }
-    Err("simple_dcraw produced no thumbnail".to_owned())
-}
-
-fn scale_embedded_thumbnail(data: &[u8], size: i32) -> Result<Vec<u8>, String> {
-    let dimensions = read_jpeg_dimensions(&mut io::Cursor::new(data))
-        .or_else(|| read_png_dimensions(&mut io::Cursor::new(data)))
-        .or_else(|| read_gif_dimensions(&mut io::Cursor::new(data)));
-    if dimensions.is_some_and(|(width, height)| exceeds_decoded_frame_budget(width, height)) {
-        return Err("Embedded thumbnail exceeds the decoded frame budget".to_owned());
-    }
-    scale_embedded_thumbnail_pixbuf(data, size).or_else(|_| render_imagemagick_bytes(data, size))
-}
-
-fn scale_embedded_thumbnail_pixbuf(data: &[u8], size: i32) -> Result<Vec<u8>, String> {
-    let loader = gdk_pixbuf::PixbufLoader::new();
-    loader
-        .write(data)
-        .and_then(|()| loader.close())
-        .map_err(|error| error.to_string())?;
-    let pixbuf = loader
-        .pixbuf()
-        .ok_or_else(|| "Unable to decode embedded thumbnail".to_owned())?;
-    let pixbuf = pixbuf.apply_embedded_orientation().unwrap_or(pixbuf);
-    let width = pixbuf.width().max(1);
-    let height = pixbuf.height().max(1);
-    let scale = (f64::from(size) / f64::from(width))
-        .min(f64::from(size) / f64::from(height))
-        .min(1.0);
-    let target_width = (f64::from(width) * scale).round().max(1.0) as i32;
-    let target_height = (f64::from(height) * scale).round().max(1.0) as i32;
-    let pixbuf = if target_width == width && target_height == height {
-        pixbuf
-    } else {
-        pixbuf
-            .scale_simple(
-                target_width,
-                target_height,
-                gdk_pixbuf::InterpType::Bilinear,
-            )
-            .ok_or_else(|| "Unable to scale embedded thumbnail".to_owned())?
-    };
-    pixbuf
-        .save_to_bufferv("png", &[("compression", "1")])
-        .map_err(|error| error.to_string())
-}
-
-fn render_imagemagick_bytes(data: &[u8], size: i32) -> Result<Vec<u8>, String> {
-    use std::io::Write;
-    if data.len() as u64 > MAX_OUTPUT_BYTES {
-        return Err("Embedded thumbnail exceeds the input budget".to_owned());
-    }
-    let mut input = tempfile::NamedTempFile::new().map_err(|error| error.to_string())?;
-    input.write_all(data).map_err(|error| error.to_string())?;
-    render_imagemagick(input.path(), size)
-}
-
-fn render_pdf_thumbnail(path: &Path, size: i32) -> Result<Vec<u8>, String> {
-    let uri = gio::File::for_path(path).uri();
-    let document = poppler::Document::from_file(&uri, None).map_err(|error| error.to_string())?;
-    let page = document
-        .page(0)
-        .ok_or_else(|| "This PDF has no pages".to_owned())?;
-    let (page_width, page_height) = page.size();
-    if page_width <= 0.0 || page_height <= 0.0 {
-        return Err("The PDF page has invalid dimensions".to_owned());
-    }
-    let (width, height, scale) = bounded_surface_dimensions(
-        page_width,
-        page_height,
-        f64::from(size),
-        f64::from(size),
-        f64::from(size * size),
-    );
-    render_pdf_surface(&page, width, height, scale)
-}
-
-type PdfPageRender = (Vec<u8>, i32, i32, Option<Vec<u8>>);
-
-fn render_pdf_page(
-    document: &poppler::Document,
-    requested_page: i32,
-    size: PdfRenderSize,
-) -> Result<PdfPageRender, String> {
-    let pages = document.n_pages();
-    if pages <= 0 {
-        return Err("This PDF has no pages".to_owned());
-    }
-    let page_index = requested_page.clamp(0, pages - 1);
-    let page = document
-        .page(page_index)
-        .ok_or_else(|| "Unable to load that PDF page".to_owned())?;
-    let size = PdfRenderSize::new(size.width, size.height);
-    let (_, _, max_pixels) = size.image_limits();
-    let (page_width, page_height) = page.size();
-    if page_width <= 0.0 || page_height <= 0.0 {
-        return Err("The PDF page has invalid dimensions".to_owned());
-    }
-    let (width, height, scale) = bounded_surface_dimensions(
-        page_width,
-        page_height,
-        f64::from(size.width),
-        f64::from(size.height),
-        max_pixels as f64,
-    );
-    let png = render_pdf_surface(&page, width, height, scale)?;
-    let text_layer = pdf_text_layer(&page, width, height, scale);
-    Ok((png, page_index, pages, text_layer))
-}
-
-// poppler-rs does not bind poppler_page_get_text_layout, so the glyph boxes come
-// through FFI; the returned array is g_malloc'd and freed here.
-#[expect(
-    unsafe_code,
-    reason = "poppler-rs exposes no safe binding for poppler_page_get_text_layout"
-)]
-fn pdf_text_layer(page: &poppler::Page, width: i32, height: i32, scale: f64) -> Option<Vec<u8>> {
-    use glib::translate::ToGlibPtr;
-
-    let text = page.text()?;
-    if text.is_empty() {
-        return None;
-    }
-    let mut rects = std::ptr::null_mut();
-    let mut count = 0u32;
-    // SAFETY: page is a valid PopplerPage; rects/count are valid out-pointers.
-    let ok = unsafe {
-        poppler::ffi::poppler_page_get_text_layout(page.to_glib_none().0, &mut rects, &mut count)
-    };
-    if ok == glib::ffi::GFALSE || rects.is_null() {
-        return None;
-    }
-    // SAFETY: on success poppler returned a g_malloc'd array of count rectangles.
-    let layout = unsafe { std::slice::from_raw_parts(rects, count as usize) };
-    let glyphs: Vec<[f32; 4]> = layout
-        .iter()
-        .map(|rect| {
-            [
-                (rect.x1 * scale) as f32,
-                (rect.y1 * scale) as f32,
-                (rect.x2 * scale) as f32,
-                (rect.y2 * scale) as f32,
-            ]
-        })
-        .collect();
-    // SAFETY: rects came from g_malloc and is freed exactly once here.
-    unsafe { glib::ffi::g_free(rects.cast()) };
-    if glyphs.len() != text.chars().count() {
-        return None;
-    }
-    let layer = crate::services::PdfTextLayer {
-        width: width as f32,
-        height: height as f32,
-        text: text.to_string(),
-        glyphs,
-    };
-    serde_json::to_vec(&layer)
-        .ok()
-        .filter(|bytes| bytes.len() as u64 <= crate::sandbox::MAX_TEXT_LAYER_BYTES)
-}
-
-fn render_pdf_surface(
-    page: &poppler::Page,
-    width: i32,
-    height: i32,
-    scale: f64,
-) -> Result<Vec<u8>, String> {
-    let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, width, height)
-        .map_err(|error| error.to_string())?;
-    let context = cairo::Context::new(&surface).map_err(|error| error.to_string())?;
-    context.set_source_rgb(1.0, 1.0, 1.0);
-    context.paint().map_err(|error| error.to_string())?;
-    context.scale(scale, scale);
-    page.render(&context);
-    surface.flush();
-    let mut png = Vec::new();
-    surface
-        .write_to_png(&mut png)
-        .map_err(|error| error.to_string())?;
-    Ok(png)
-}
-
-fn bounded_surface_dimensions(
-    source_width: f64,
-    source_height: f64,
-    max_width: f64,
-    max_height: f64,
-    max_pixels: f64,
-) -> (i32, i32, f64) {
-    let requested_scale = (max_width / source_width)
-        .min(max_height / source_height)
-        .min((max_pixels / (source_width * source_height)).sqrt());
-    // Rounding both dimensions up can push the result beyond max_pixels, causing the parent to
-    // reject an otherwise valid render. Round down and derive the final scale from the integer
-    // surface so the page still fits without clipping.
-    let width = (source_width * requested_scale).floor().max(1.0) as i32;
-    let height = (source_height * requested_scale).floor().max(1.0) as i32;
-    let scale = (f64::from(width) / source_width).min(f64::from(height) / source_height);
-    (width, height, scale)
-}
-
-fn pdf_render_request(value: &str) -> Result<(i32, PdfRenderSize), String> {
-    let (page, dimensions) = value
-        .split_once(':')
-        .ok_or_else(|| "Invalid PDF preview request".to_owned())?;
-    let page = page
-        .parse::<i32>()
-        .map_err(|_| "Invalid PDF preview page".to_owned())?;
-    let (width, height) = dimensions
-        .split_once('x')
-        .ok_or_else(|| "Invalid PDF preview dimensions".to_owned())?;
-    let parse = |dimension: &str| {
-        dimension
-            .parse::<i32>()
-            .map_err(|_| "Invalid PDF preview dimensions".to_owned())
-    };
-    Ok((page, PdfRenderSize::new(parse(width)?, parse(height)?)))
-}
-
 fn media_preview_size(value: &str) -> Result<MediaPreviewSize, String> {
     if value == "0" {
         return Ok(MediaPreviewSize::new(1280, 1280));
@@ -993,116 +258,6 @@ fn media_preview_size(value: &str) -> Result<MediaPreviewSize, String> {
             .map_err(|_| "Invalid media preview dimensions".to_owned())
     };
     Ok(MediaPreviewSize::new(parse(width)?, parse(height)?))
-}
-
-fn bounded_output_with_timeout(
-    command: &mut Command,
-    max_bytes: u64,
-    timeout: Duration,
-) -> io::Result<Option<Output>> {
-    if timeout.is_zero() {
-        return Ok(None);
-    }
-    let mut child = command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| io::Error::other("Unable to capture provider output"))?;
-    let (sender, receiver) = mpsc::sync_channel(1);
-    let reader = thread::spawn(move || {
-        let mut data = Vec::new();
-        let result = stdout
-            .take(max_bytes.saturating_add(1))
-            .read_to_end(&mut data)
-            .map(|_| data);
-        let _sent = sender.send(result);
-    });
-    let deadline = Instant::now() + timeout;
-    let mut status = None;
-    let mut output = None;
-    loop {
-        if status.is_none() {
-            match child.try_wait() {
-                Ok(current) => status = current,
-                Err(error) => {
-                    stop_child(&mut child);
-                    let _joined = reader.join();
-                    return Err(error);
-                }
-            }
-        }
-        if output.is_none() {
-            match receiver.try_recv() {
-                Ok(Ok(data)) if data.len() as u64 > max_bytes => {
-                    stop_child(&mut child);
-                    let _joined = reader.join();
-                    return Err(io::Error::other(
-                        "Preview provider output exceeded its limit",
-                    ));
-                }
-                Ok(Ok(data)) => output = Some(data),
-                Ok(Err(error)) => {
-                    stop_child(&mut child);
-                    let _joined = reader.join();
-                    return Err(error);
-                }
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    stop_child(&mut child);
-                    let _joined = reader.join();
-                    return Err(io::Error::other("Unable to read provider output"));
-                }
-                Err(mpsc::TryRecvError::Empty) => {}
-            }
-        }
-        if let Some(status) = status
-            && let Some(stdout) = output.take()
-        {
-            let _joined = reader.join();
-            return Ok(Some(Output {
-                status,
-                stdout,
-                stderr: Vec::new(),
-            }));
-        }
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            stop_child(&mut child);
-            let _joined = reader.join();
-            return Ok(None);
-        }
-        thread::sleep(PROCESS_POLL_INTERVAL.min(remaining));
-    }
-}
-
-fn stop_child(child: &mut Child) {
-    let _killed = child.kill();
-    let _waited = child.wait();
-}
-
-pub(crate) fn run_command_with_timeout(
-    command: &mut Command,
-    timeout: Duration,
-) -> io::Result<bool> {
-    if timeout.is_zero() {
-        return Ok(false);
-    }
-    let mut child = command.spawn()?;
-    let deadline = Instant::now() + timeout;
-    loop {
-        if let Some(status) = child.try_wait()? {
-            return Ok(status.success());
-        }
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            stop_child(&mut child);
-            return Ok(false);
-        }
-        thread::sleep(PROCESS_POLL_INTERVAL.min(remaining));
-    }
 }
 
 fn render_media(path: &Path, size: i32) -> Result<Vec<u8>, String> {
@@ -1151,46 +306,6 @@ fn render_media(path: &Path, size: i32) -> Result<Vec<u8>, String> {
         return Err("Empty media thumbnail".into());
     }
     Ok(png)
-}
-
-fn read_limited(reader: impl Read, max_bytes: u64) -> io::Result<Vec<u8>> {
-    let mut data = Vec::new();
-    reader
-        .take(max_bytes.saturating_add(1))
-        .read_to_end(&mut data)?;
-    if data.len() as u64 > max_bytes {
-        return Err(io::Error::other(
-            "Preview provider output exceeded its limit",
-        ));
-    }
-    Ok(data)
-}
-
-fn bounded_output(command: &mut Command, max_bytes: u64) -> io::Result<Output> {
-    let mut child = command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()?;
-    let read = child
-        .stdout
-        .take()
-        .ok_or_else(|| io::Error::other("Unable to capture provider output"))
-        .and_then(|stdout| read_limited(stdout, max_bytes));
-    let stdout = match read {
-        Ok(stdout) => stdout,
-        Err(error) => {
-            let _killed = child.kill();
-            let _waited = child.wait();
-            return Err(error);
-        }
-    };
-    let status = child.wait()?;
-    Ok(Output {
-        status,
-        stdout,
-        stderr: Vec::new(),
-    })
 }
 
 #[cfg(test)]
