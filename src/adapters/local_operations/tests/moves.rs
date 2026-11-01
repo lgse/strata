@@ -20,6 +20,7 @@ mod identity;
 mod inodes;
 mod left_out;
 mod local_moves;
+mod renumbered;
 mod ticks;
 
 fn paste_move(
