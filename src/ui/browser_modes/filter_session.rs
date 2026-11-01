@@ -5,7 +5,9 @@
 
 use gtk::prelude::*;
 
-use super::{ModeViews, filter::pane_filter_focus, focus::widget_has_focus, pane::focus_pane_surface};
+use super::{
+    ModeViews, filter::pane_filter_focus, focus::widget_has_focus, pane::focus_pane_surface,
+};
 use crate::{
     model::FileEntry,
     ui::{
@@ -79,9 +81,7 @@ impl ModeViews {
         self.visible_panes()
             .into_iter()
             .filter_map(|pane| pane.filter_entry.as_ref())
-            .any(|entry| {
-                entry.text().is_empty() && widget_has_focus(entry, focused.as_ref())
-            })
+            .any(|entry| entry.text().is_empty() && widget_has_focus(entry, focused.as_ref()))
     }
 
     pub fn show_filter_with_query(&self, query: Option<&str>) -> bool {

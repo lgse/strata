@@ -50,7 +50,9 @@ impl IconsCard {
 
     pub(super) fn show_entry(&self, item: &gtk::ListItem, entry: &FileEntry, look: &CardLook) {
         set_icons_entry_details(&self.card, entry);
-        let pending_name = look.state.and_then(|state| state.pending_rename_name(entry));
+        let pending_name = look
+            .state
+            .and_then(|state| state.pending_rename_name(entry));
         let shown_name = pending_name.as_deref().unwrap_or(&entry.display_name);
         if self.label.text().as_deref() != Some(shown_name) {
             self.label.set_text(Some(shown_name));

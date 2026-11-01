@@ -32,7 +32,8 @@ pub(in crate::ui) fn filtered_file_click(
     previews: bool,
     files: ClickCount,
 ) -> FilteredFileClick {
-    let opens_directly = files == ClickCount::One && !chooser && !is_trash_location(&entry.location);
+    let opens_directly =
+        files == ClickCount::One && !chooser && !is_trash_location(&entry.location);
     if opens_directly {
         FilteredFileClick::Open
     } else if previews && crate::ui::preview::entry_supports_quick_preview(entry) {

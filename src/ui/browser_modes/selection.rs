@@ -73,7 +73,8 @@ impl SelectionSync {
         if self.syncing.get() {
             return;
         }
-        let (Some(sections), Some(browser)) = (self.owner.sections.upgrade(), self.browser.upgrade())
+        let (Some(sections), Some(browser)) =
+            (self.owner.sections.upgrade(), self.browser.upgrade())
         else {
             return;
         };

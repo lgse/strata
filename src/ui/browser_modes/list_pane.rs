@@ -11,6 +11,7 @@ use gtk::{gio, prelude::*};
 
 use super::{
     BrowserMode, column_options,
+    context_menu::install_section_context_menu,
     drag_drop::install_mode_directory_drop_target,
     filter::{PaneFilter, attach_in_place, filter_controls},
     grouped_model::GroupedModel,
@@ -24,7 +25,6 @@ use super::{
     },
     pane_header::{ContentActions, list_navigation},
     scroll_settle::install_scroll_refresh,
-    context_menu::install_section_context_menu,
     selection::{SectionOwner, connect_selection},
     source_index::{PanePositions, SourceIndexMap},
     type_groups::{TypeGroupSorter, pane_type_group_sorter, type_group_header_factory},
@@ -137,10 +137,7 @@ impl ListActions {
             &table.bound_items,
         );
         let columns_menu = gtk::MenuButton::builder().popover(&columns_popover).build();
-        crate::ui::accessibility::set_tooltip_and_label(
-            &columns_menu,
-            &crate::i18n::tr("Columns"),
-        );
+        crate::ui::accessibility::set_tooltip_and_label(&columns_menu, &crate::i18n::tr("Columns"));
         columns_menu.set_child(Some(&crate::assets::chrome_icon(
             crate::assets::icons::COLUMNS,
         )));
@@ -204,8 +201,7 @@ impl ListListing<'_> {
         header: &gtk::Box,
         content: ContentActions,
     ) -> PaneListing {
-        let view_model =
-            GroupedModel::new(&self.filter.model, sorter.map(|sorter| &sorter.sorter));
+        let view_model = GroupedModel::new(&self.filter.model, sorter.map(|sorter| &sorter.sorter));
         let view_model = view_model.upcast::<gio::ListModel>();
         let view_index = SourceIndexMap::watch(&view_model);
         let selection = gtk::MultiSelection::new(Some(view_model.clone()));
@@ -248,9 +244,9 @@ impl ListListing<'_> {
         sections.borrow_mut().push(section.clone());
         let scroll = self.listing_scroll(&view, &section, scrolling, &sections);
         let (table_scroll, marquee, targets) = self.table_scroll(&view, scroll, header);
-        let search =
-            self.filter
-                .wrap_search(&table_scroll, self.inputs, SearchPresentation::Rows);
+        let search = self
+            .filter
+            .wrap_search(&table_scroll, self.inputs, SearchPresentation::Rows);
         PaneListing {
             section,
             sections,

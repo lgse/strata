@@ -165,7 +165,12 @@ pub(super) struct DragStart<'a> {
 }
 
 impl ItemDragDrop {
-    pub(super) fn install(&self, row: &impl IsA<gtk::Widget>, item: &gtk::ListItem, start: DragStart) {
+    pub(super) fn install(
+        &self,
+        row: &impl IsA<gtk::Widget>,
+        item: &gtk::ListItem,
+        start: DragStart,
+    ) {
         if self.transfer.borrow().is_none() {
             return;
         }
@@ -414,4 +419,3 @@ pub(super) fn install_list_drag_drop(
         },
     );
 }
-

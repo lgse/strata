@@ -15,9 +15,7 @@ use super::{
         detach_pane_models, install_pane_surface,
     },
 };
-use crate::{
-    app::BrowserColumnSnapshot, model::SortKey, ui::preferences::PreferenceManager,
-};
+use crate::{app::BrowserColumnSnapshot, model::SortKey, ui::preferences::PreferenceManager};
 
 impl ModeViews {
     pub fn cancel_pending_restore(&mut self) {
@@ -107,7 +105,12 @@ impl ModeViews {
     }
 
     /// The List pane already shows this folder with its grouping and sort.
-    fn list_pane_is_current(&self, pane: &Pane, depth: usize, snapshot: &BrowserColumnSnapshot) -> bool {
+    fn list_pane_is_current(
+        &self,
+        pane: &Pane,
+        depth: usize,
+        snapshot: &BrowserColumnSnapshot,
+    ) -> bool {
         if !pane.shows(depth, &snapshot.location) {
             return false;
         }

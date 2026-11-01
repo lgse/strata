@@ -30,8 +30,8 @@ use crate::{
     model::Location,
     ui::{
         browser::{self, ClipboardMarks, ViewState},
-        icons_cell,
         enter_target::EnterTarget,
+        icons_cell,
         inline_search::SearchPresentation,
         loading_skeleton,
         preferences::PreferenceManager,
@@ -203,7 +203,9 @@ fn icons_scroll(
         marks: context.marks.clone(),
         depth: context.depth,
     };
-    install_scroll_refresh(&scroll, context.scrolling.clone(), move || refresh.refresh());
+    install_scroll_refresh(&scroll, context.scrolling.clone(), move || {
+        refresh.refresh()
+    });
     let width_view = section.view.downgrade();
     let width_context = Rc::downgrade(context);
     after_icons_viewport_width_changes(&scroll, move |width| {
@@ -259,7 +261,11 @@ impl IconsScrollRefresh {
     }
 }
 
-fn connect_thumbnail_size(menu: &ThumbnailSizeMenu, context: &Rc<IconsContext>, stack: &gtk::Stack) {
+fn connect_thumbnail_size(
+    menu: &ThumbnailSizeMenu,
+    context: &Rc<IconsContext>,
+    stack: &gtk::Stack,
+) {
     let change = ThumbnailSizeChange {
         value: menu.value.clone(),
         thumbnail_size: context.thumbnail_size.clone(),
@@ -423,7 +429,9 @@ fn ensure_icons_card_slot(card: &gtk::Box, thumbnail_size: i32) {
 /// The Icons grid of the pane's loading page, when it shows one.
 fn loading_grid(pane: &Pane) -> Option<gtk::GridView> {
     let loading = pane.stack.child_by_name(loading_skeleton::LOADING_PAGE)?;
-    let scroll = loading.first_child().and_downcast::<gtk::ScrolledWindow>()?;
+    let scroll = loading
+        .first_child()
+        .and_downcast::<gtk::ScrolledWindow>()?;
     scroll.child().and_downcast::<gtk::GridView>()
 }
 

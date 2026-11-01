@@ -148,7 +148,12 @@ impl PaneFilter {
         };
         self.entry.connect_activate(move |_| activation.activate());
         if let Some(enter_target) = &self.enter_target {
-            connect_in_place_down(&self.entry, enter_target, &section.view, inputs.state.clone());
+            connect_in_place_down(
+                &self.entry,
+                enter_target,
+                &section.view,
+                inputs.state.clone(),
+            );
         }
     }
 
@@ -204,7 +209,11 @@ impl FilterActivation {
 /// The in-place filter's target, for a pane whose filter narrows the listing itself
 /// rather than showing search results in its place. Its selection is the listing's
 /// own: a new query only stops that selection from counting as the user's pick.
-fn in_place_enter_target(entry: &gtk::Entry, browser: &Browser, depth: usize) -> Option<EnterTarget> {
+fn in_place_enter_target(
+    entry: &gtk::Entry,
+    browser: &Browser,
+    depth: usize,
+) -> Option<EnterTarget> {
     let searches = browser
         .location_at(depth)
         .is_some_and(|location| location.native_path().is_some());

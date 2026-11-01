@@ -10,9 +10,7 @@ use std::{
 
 use gtk::{glib, prelude::*};
 
-use super::{
-    BrowserMode, ModeViews, column_options, list_factory::ListRow, pane::BoundItems,
-};
+use super::{BrowserMode, ModeViews, column_options, list_factory::ListRow, pane::BoundItems};
 use crate::{
     app::Browser,
     ui::preferences::{ListColumnId, ListColumns, PreferenceManager},

@@ -118,7 +118,8 @@ impl HeadingCells<'_> {
         label.set_hexpand(true);
         label.set_ellipsize(gtk::pango::EllipsizeMode::End);
         label.set_max_width_chars(1);
-        let arrow = crate::assets::primary_icon(direction_icon(self.preferences.sort_direction), 12);
+        let arrow =
+            crate::assets::primary_icon(direction_icon(self.preferences.sort_direction), 12);
         arrow.set_visible(key.is_some_and(|k| self.preferences.sort_key == k));
         row.append(&label);
         row.append(&arrow);
@@ -183,7 +184,11 @@ fn next_direction(current: (SortKey, SortDirection), key: SortKey) -> SortDirect
     }
 }
 
-fn install_column_reorder(headings: &gtk::Box, columns: &ListColumnLayout, bound_items: &BoundItems) {
+fn install_column_reorder(
+    headings: &gtk::Box,
+    columns: &ListColumnLayout,
+    bound_items: &BoundItems,
+) {
     let drag = gtk::GestureDrag::new();
     drag.set_name(Some("column-drag"));
     drag.set_button(1);

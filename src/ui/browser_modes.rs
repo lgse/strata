@@ -66,23 +66,23 @@ mod thumbnail_size;
 mod type_groups;
 
 use clicks::{SlowClickRename, install_modified_selection_click, install_preview_click};
-pub(crate) use density::browser_density_custom_css;
 pub(super) use density::DensityScale;
+pub(crate) use density::browser_density_custom_css;
 pub use density::{BrowserDensity, FrameDensity};
 use drag_drop::{install_folder_peek, install_list_drag_drop};
 pub(crate) use filter::filter_controls;
-pub(super) use search_options::{FilteredFileClick, filtered_file_click};
+use focus::{collection_keeps_cursor, focus_bound_cursor, focus_collection_item};
 pub(super) use icons_controls::disable_scale_long_press_zoom;
 use icons_pane::{DEFAULT_ICONS_THUMBNAIL_SIZE, configure_icons_density};
 use list_columns::{ListColumnLayout, apply_columns_layout, register_list_column_cell};
 use list_pane::{assemble_list_row, list_row_parts};
-pub(super) use metadata::{entry_size, icon_details_need_fill};
 use metadata::{entry_mode, entry_type, metadata_fill_position, set_label_if_changed};
-use focus::{collection_keeps_cursor, focus_bound_cursor, focus_collection_item};
+pub(super) use metadata::{entry_size, icon_details_need_fill};
 use pane::{
     BoundModeItem, Pane, PaneSection, bound_edit, focus_pane_surface, install_edit_unbind,
     refresh_mark_pane, register_bound_mode_item, set_mode_mark_style,
 };
+pub(super) use search_options::{FilteredFileClick, filtered_file_click};
 use selection::{reset_native_range_origin, scroll_collection_to, set_selections};
 use source_index::{PanePositions, SourceIndexMap, view_position_for_source};
 pub(super) use thumbnail_size::ThumbnailResize;

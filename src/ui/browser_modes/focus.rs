@@ -389,7 +389,10 @@ impl DeferredCursorFocus {
     }
 }
 
-pub(super) fn widget_has_focus(widget: &impl IsA<gtk::Widget>, focused: Option<&gtk::Widget>) -> bool {
+pub(super) fn widget_has_focus(
+    widget: &impl IsA<gtk::Widget>,
+    focused: Option<&gtk::Widget>,
+) -> bool {
     widget.has_focus()
         || focused.is_some_and(|focused| {
             focused == widget.as_ref() || focused.is_ancestor(widget.as_ref())

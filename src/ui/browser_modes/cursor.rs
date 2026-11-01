@@ -15,7 +15,12 @@ use super::{
 use crate::model::Location;
 
 impl ModeViews {
-    pub(in crate::ui) fn page_target(&self, depth: usize, direction: i32, page: usize) -> Option<usize> {
+    pub(in crate::ui) fn page_target(
+        &self,
+        depth: usize,
+        direction: i32,
+        page: usize,
+    ) -> Option<usize> {
         let pane = self.visible_pane(depth)?;
         let sections = pane.item_sections();
         let count: usize = sections

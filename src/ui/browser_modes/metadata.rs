@@ -28,7 +28,10 @@ pub(super) fn metadata_fill_position(
     position.filter(|_| {
         let mode_unknown = include_mode && entry.mode == MetadataValue::Unknown;
         let details_unknown = include_icon_details && icon_details_need_fill(entry);
-        browser::metadata_needs_fill(entry) || mode_unknown || entry.is_directory() || details_unknown
+        browser::metadata_needs_fill(entry)
+            || mode_unknown
+            || entry.is_directory()
+            || details_unknown
     })
 }
 

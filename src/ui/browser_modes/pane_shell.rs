@@ -10,7 +10,10 @@ use std::{
 
 use gtk::prelude::*;
 
-use super::{BrowserMode, ClickActivation, TransferHandlerSlot, source_index::{PanePositions, SourceIndexMap}};
+use super::{
+    BrowserMode, ClickActivation, TransferHandlerSlot,
+    source_index::{PanePositions, SourceIndexMap},
+};
 use crate::{
     app::Browser,
     model::Location,
@@ -86,7 +89,11 @@ pub(super) struct PaneBase {
 impl PaneBase {
     /// Adds the chrome around the listing and wires the pane surface as a drop zone.
     pub(super) fn prepare_listing(&self, inputs: &PaneBuild, filter_revealer: &gtk::Revealer) {
-        if self.location.as_ref().is_some_and(Location::is_administrator) {
+        if self
+            .location
+            .as_ref()
+            .is_some_and(Location::is_administrator)
+        {
             self.shell.insert_child_after(
                 &crate::ui::browser::administrator_notice(),
                 Some(&self.not_responding),
@@ -286,4 +293,3 @@ impl CollectionActivation {
         }
     }
 }
-

@@ -172,4 +172,3 @@ pub(super) fn clear_box(container: &gtk::Box) {
         container.remove(&child);
     }
 }
-

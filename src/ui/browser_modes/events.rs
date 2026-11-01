@@ -171,7 +171,12 @@ impl ModeViews {
         })
     }
 
-    fn section_holds_cursor(&self, pane: &Pane, section: &PaneSection, target: Option<usize>) -> bool {
+    fn section_holds_cursor(
+        &self,
+        pane: &Pane,
+        section: &PaneSection,
+        target: Option<usize>,
+    ) -> bool {
         let Some(focused) = section.view.root().and_then(|root| root.focus()) else {
             return false;
         };

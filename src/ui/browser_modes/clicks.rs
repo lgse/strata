@@ -137,9 +137,7 @@ impl PreviewClick {
         } = clicked;
         let is_directory = entry.is_directory();
         if should_activate_filtered_pointer(release.press_count, &self.filter_query) {
-            release
-                .gesture
-                .set_state(gtk::EventSequenceState::Claimed);
+            release.gesture.set_state(gtk::EventSequenceState::Claimed);
             browser.select(self.depth, *position);
             self.open_filtered(clicked);
         } else if should_activate_pointer_click(
@@ -148,9 +146,7 @@ impl PreviewClick {
             self.activation.get(),
         ) {
             if !browser.is_chooser_mode() || is_directory {
-                release
-                    .gesture
-                    .set_state(gtk::EventSequenceState::Claimed);
+                release.gesture.set_state(gtk::EventSequenceState::Claimed);
                 browser.activate_in_place(self.depth, *position);
             }
         } else if self.starts_slow_rename(release, clicked) {
@@ -188,8 +184,8 @@ impl PreviewClick {
                 | gdk::ModifierType::SUPER_MASK
                 | gdk::ModifierType::META_MASK,
         );
-        let renames_here = !clicked.browser.is_chooser_mode()
-            && !is_trash_location(&clicked.entry.location);
+        let renames_here =
+            !clicked.browser.is_chooser_mode() && !is_trash_location(&clicked.entry.location);
         release.press_count == 1 && plain && self.slow_click.was_sole_selection() && renames_here
     }
 
@@ -298,9 +294,13 @@ impl SelectionClick {
             positions: self.positions.clone(),
             depth: self.depth,
         };
-        collection_interaction::install_row_middle_click(widget, item, move |position, modifiers| {
-            middle.clicked(position, modifiers);
-        });
+        collection_interaction::install_row_middle_click(
+            widget,
+            item,
+            move |position, modifiers| {
+                middle.clicked(position, modifiers);
+            },
+        );
         let item = item.downgrade();
         let weak_state_for_cancel = self.state.clone();
         click.connect_pressed(move |gesture, _, x, y| {

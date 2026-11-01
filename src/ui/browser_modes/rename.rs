@@ -296,7 +296,11 @@ fn rename_target(pane: &Pane, source_position: usize) -> Option<RenameTarget> {
 }
 
 /// The rendered item at `position`, once it is laid out where an editor can open.
-fn editable_item(pane: &Pane, section: &PaneSection, position: u32) -> Option<(EditWidgets, gtk::Widget)> {
+fn editable_item(
+    pane: &Pane,
+    section: &PaneSection,
+    position: u32,
+) -> Option<(EditWidgets, gtk::Widget)> {
     section.bound_items.borrow().iter().find_map(|bound| {
         if bound.item.upgrade()?.position() != position {
             return None;

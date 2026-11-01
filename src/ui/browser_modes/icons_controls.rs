@@ -28,7 +28,11 @@ pub(super) struct IconsControls {
     pub(super) content: ContentActions,
 }
 
-pub(super) fn icons_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> IconsControls {
+pub(super) fn icons_controls(
+    browser: &Rc<Browser>,
+    depth: usize,
+    thumbnail_size: i32,
+) -> IconsControls {
     let leading = list_navigation(browser);
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     actions.add_css_class("icons-header-actions");

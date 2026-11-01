@@ -339,4 +339,3 @@ pub(super) fn collection_with_marquee(
     });
     (overlay, marquee, targets)
 }
-
