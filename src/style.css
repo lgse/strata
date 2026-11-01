@@ -2629,10 +2629,10 @@ scrollbar.horizontal > range > trough > slider {
   -gtk-icon-filter: opacity(0.65);
 }
 
-/* Sized from the theme like .sidebar-device-action; the margin matches the device row's
-   right padding, so the chevron centres over the eject buttons. */
+/* Sized from the theme like .sidebar-device-action. The margin is the device row's 2px
+   right padding plus 1px, which optically centres the chevron over the eject buttons. */
 .sidebar-heading-chevron {
-  margin-right: 2px;
+  margin-right: 3px;
 }
 
 /* Left padding comes from the theme so the title starts where the row icons do. */
