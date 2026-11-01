@@ -1247,7 +1247,8 @@ impl SectionHeader {
         } else {
             self.toggle.add_css_class("expanded");
         }
-        self.badge.set_visible(collapsed);
+        self.badge
+            .set_visible(collapsed && self.item_count.get() > 0);
         self.toggle
             .update_state(&[gtk::accessible::State::Expanded(Some(!collapsed))]);
     }
@@ -2547,22 +2548,27 @@ impl SidebarState {
     fn append_separator(&self) {
         let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
         separator.add_css_class("sidebar-separator");
+        separator.add_css_class("sidebar-section-separator");
         self.widget.append(&separator);
     }
 
     fn append_section_header(self: &Rc<Self>, section: SidebarSection) -> SectionHeader {
         let title = crate::i18n::tr(section.title());
-        let chevron = crate::assets::primary_icon(crate::assets::icons::CHEVRON_RIGHT, 14);
         let label = gtk::Label::new(Some(&title));
         label.add_css_class("sidebar-heading");
         label.set_xalign(0.0);
-        label.set_hexpand(true);
+        let rule = gtk::Separator::new(gtk::Orientation::Horizontal);
+        rule.add_css_class("sidebar-heading-rule");
+        rule.set_hexpand(true);
+        rule.set_valign(gtk::Align::Center);
         let badge = gtk::Label::new(None);
         badge.add_css_class("sidebar-heading-count");
-        let content = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-        content.append(&chevron);
+        let chevron = crate::assets::primary_icon(crate::assets::icons::CHEVRON_RIGHT, 14);
+        let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         content.append(&label);
+        content.append(&rule);
         content.append(&badge);
+        content.append(&chevron);
         let toggle = gtk::Button::builder()
             .child(&content)
             .has_frame(false)
