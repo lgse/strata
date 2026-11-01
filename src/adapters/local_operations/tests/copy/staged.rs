@@ -195,23 +195,36 @@ fn reusing_stage_inodes(before: (Op, &'static str, usize, Racer)) -> Quirks {
     }
 }
 
+/// Replaces the only file stage beneath `stage_root` with a folder,
+/// holding `copied.txt` with `foreign` contents when given.
+fn stage_swapped_for_a_folder(stage_root: PathBuf, foreign: Option<&'static [u8]>) -> Racer {
+    Box::new(move || {
+        let stage = only_stage(&stage_root);
+        fs::remove_file(&stage).expect("remove file stage");
+        fs::create_dir(&stage).expect("replace stage with directory");
+        if let Some(foreign) = foreign {
+            fs::write(stage.join("copied.txt"), foreign).expect("populate");
+        }
+    })
+}
+
+fn file_stage_at(root: &Path) -> Result<(StagedSibling, PathBuf), Box<dyn Error>> {
+    let staged = stage(root, false)?;
+    let staged_path = root.join(&staged.name);
+    Ok((staged, staged_path))
+}
+
 #[test]
 fn a_stage_left_after_the_exclusive_copy_is_reported() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
     let root = tempfile::tempdir()?;
-    let stage_root = root.path().to_path_buf();
-    let racer: Racer = Box::new(move || {
-        let stage = only_stage(&stage_root);
-        fs::remove_file(&stage).expect("remove file stage");
-        fs::create_dir(&stage).expect("replace stage with directory");
-    });
+    let racer = stage_swapped_for_a_folder(root.path().to_path_buf(), None);
     // Two stats decide publication; the third is the discard.
     let _scope = FsQuirks::install(
         root.path(),
         reusing_stage_inodes((Op::Stat, ".strata-copy-*", 2, racer)),
     );
-    let staged = stage(root.path(), false)?;
-    let staged_path = root.path().join(&staged.name);
+    let (staged, staged_path) = file_stage_at(root.path())?;
     fs::write(&staged_path, b"copied")?;
     let target = root.path().join("target");
 
@@ -233,19 +246,12 @@ fn a_stage_swapped_before_publication_is_neither_published_nor_deleted()
 -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
     let root = tempfile::tempdir()?;
-    let stage_root = root.path().to_path_buf();
-    let racer: Racer = Box::new(move || {
-        let stage = only_stage(&stage_root);
-        fs::remove_file(&stage).expect("remove file stage");
-        fs::create_dir(&stage).expect("replace stage with directory");
-        fs::write(stage.join("copied.txt"), b"foreign data").expect("populate");
-    });
+    let racer = stage_swapped_for_a_folder(root.path().to_path_buf(), Some(b"foreign data"));
     let _scope = FsQuirks::install(
         root.path(),
         reusing_stage_inodes((Op::Rename, ".strata-copy-*", 0, racer)),
     );
-    let staged = stage(root.path(), false)?;
-    let staged_path = root.path().join(&staged.name);
+    let (staged, staged_path) = file_stage_at(root.path())?;
     let target = root.path().join("target");
 
     let error = publish(staged, &target).expect_err("a swapped stage is refused");
@@ -336,45 +342,48 @@ fn a_symlink_child_never_overwrites_an_existing_entry() -> Result<(), Box<dyn Er
     Ok(())
 }
 
+fn check_read_only_xattrs(directory: bool, mode: u32) -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    if directory {
+        fs::create_dir(&source)?;
+        fs::write(source.join("inside.txt"), b"contents")?;
+    } else {
+        fs::write(&source, b"contents")?;
+    }
+    rustix::fs::setxattr(
+        &source,
+        "user.strata-test",
+        b"metadata",
+        rustix::fs::XattrFlags::empty(),
+    )?;
+    fs::set_permissions(&source, fs::Permissions::from_mode(mode))?;
+
+    let copied = glib::MainContext::default().block_on(copy_new_recursively(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+    ));
+
+    let copied_mode = fs::metadata(&target).map(|metadata| metadata.mode() & 0o7777);
+    let mut value = [0u8; 32];
+    let xattr = rustix::fs::getxattr(&target, "user.strata-test", &mut value[..]);
+    for path in [&source, &target].into_iter().filter(|path| path.is_dir()) {
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755))?;
+    }
+    copied?;
+    assert_eq!(copied_mode?, mode, "{directory}");
+    assert_eq!(&value[..xattr?], b"metadata", "{directory}");
+    Ok(())
+}
+
 #[test]
 fn read_only_items_keep_their_xattrs() -> Result<(), Box<dyn Error>> {
-    use std::os::unix::fs::{MetadataExt, PermissionsExt};
     let _serial = serial()?;
     for (directory, mode) in [(false, 0o444), (true, 0o555)] {
-        let root = tempfile::tempdir()?;
-        let source = root.path().join("source");
-        let target = root.path().join("target");
-        if directory {
-            fs::create_dir(&source)?;
-            fs::write(source.join("inside.txt"), b"contents")?;
-        } else {
-            fs::write(&source, b"contents")?;
-        }
-        rustix::fs::setxattr(
-            &source,
-            "user.strata-test",
-            b"metadata",
-            rustix::fs::XattrFlags::empty(),
-        )?;
-        fs::set_permissions(&source, fs::Permissions::from_mode(mode))?;
-
-        let copied = glib::MainContext::default().block_on(copy_new_recursively(
-            gio::File::for_path(&source),
-            gio::File::for_path(&target),
-            gio::Cancellable::new(),
-        ));
-
-        let copied_mode = fs::metadata(&target).map(|metadata| metadata.mode() & 0o7777);
-        let mut value = [0u8; 32];
-        let xattr = rustix::fs::getxattr(&target, "user.strata-test", &mut value[..]);
-        for path in [&source, &target] {
-            if path.is_dir() {
-                fs::set_permissions(path, fs::Permissions::from_mode(0o755))?;
-            }
-        }
-        copied?;
-        assert_eq!(copied_mode?, mode, "{directory}");
-        assert_eq!(&value[..xattr?], b"metadata", "{directory}");
+        check_read_only_xattrs(directory, mode)?;
     }
     Ok(())
 }
