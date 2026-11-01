@@ -55,18 +55,19 @@ impl Browser {
             .is_some_and(|monitor| monitor.state.get() == MonitorState::Active)
     }
 
+    fn open_locations(&self) -> Vec<(usize, Location)> {
+        let state = self.state.borrow();
+        let mut locations = Vec::new();
+        let mut depth = 0;
+        while let Some(location) = state.location_at(depth) {
+            locations.push((depth, location));
+            depth += 1;
+        }
+        locations
+    }
+
     pub(super) fn refresh_columns_at_or_below(self: &Rc<Self>, roots: &HashSet<Location>) {
-        let open_locations = {
-            let state = self.state.borrow();
-            let mut locations = Vec::new();
-            let mut depth = 0;
-            while let Some(location) = state.location_at(depth) {
-                locations.push((depth, location));
-                depth += 1;
-            }
-            locations
-        };
-        for (depth, location) in open_locations {
+        for (depth, location) in self.open_locations() {
             let affected = location_or_ancestor_is_affected(&location, roots)
                 || roots
                     .iter()
@@ -84,54 +85,38 @@ impl Browser {
         locations: &[Location],
         rescanning: &[usize],
     ) {
-        let open_locations = {
-            let state = self.state.borrow();
-            let mut open = Vec::new();
-            let mut depth = 0;
-            while let Some(location) = state.location_at(depth) {
-                open.push((depth, location));
-                depth += 1;
-            }
-            open
-        };
-        let mut by_folder = HashMap::<_, Vec<_>>::new();
-        for location in locations {
-            if let Some(parent) = deletion_parent_location(location) {
-                by_folder.entry(parent).or_default().push(location.clone());
-            }
-        }
+        let open_locations = self.open_locations();
+        let by_folder = group_by_deletion_parent(locations);
         for (depth, watched) in open_locations {
-            let removed = if watched.is_recent_root() || watched.is_camera_photo_root() {
-                if locations.len() > MAX_INCREMENTAL_OPERATION_UPDATES {
-                    if !rescanning.contains(&depth) {
-                        self.refresh_column(depth);
-                    }
-                    continue;
+            let aggregate = watched.is_recent_root() || watched.is_camera_photo_root();
+            if aggregate && locations.len() > MAX_INCREMENTAL_OPERATION_UPDATES {
+                if !rescanning.contains(&depth) {
+                    self.refresh_column(depth);
                 }
-                locations
-                    .iter()
-                    .filter(|location| {
-                        watched.is_recent_root() || watched.contains_camera_photo_location(location)
-                    })
-                    .cloned()
-                    .collect()
-            } else {
-                by_folder.get(&watched).cloned().unwrap_or_default()
-            };
-            if removed.is_empty() {
                 continue;
             }
-            let focused_was_removed =
-                self.focused_item()
-                    .is_some_and(|(focused_depth, _, entry)| {
-                        focused_depth == depth && removed.contains(&entry.location)
-                    });
-            let application = self
-                .state
-                .borrow_mut()
-                .apply_removals_batch(depth, &watched, removed);
-            self.publish_live_change(depth, application, focused_was_removed);
+            let removed = match aggregate {
+                true => aggregated_removals(&watched, locations),
+                false => by_folder.get(&watched).cloned().unwrap_or_default(),
+            };
+            self.remove_listed(depth, &watched, removed);
         }
+    }
+
+    fn remove_listed(self: &Rc<Self>, depth: usize, watched: &Location, removed: Vec<Location>) {
+        if removed.is_empty() {
+            return;
+        }
+        let focused_was_removed = self
+            .focused_item()
+            .is_some_and(|(focused_depth, _, entry)| {
+                focused_depth == depth && removed.contains(&entry.location)
+            });
+        let application = self
+            .state
+            .borrow_mut()
+            .apply_removals_batch(depth, watched, removed);
+        self.publish_live_change(depth, application, focused_was_removed);
     }
 
     pub fn retry_column(self: &Rc<Self>, depth: usize) {
@@ -139,15 +124,20 @@ impl Browser {
     }
 
     pub(super) fn refresh_column(self: &Rc<Self>, depth: usize) {
-        if (self.settled(depth) || self.preserving_refreshes.borrow().contains(&depth))
-            && self.location_at(depth).is_some_and(|location| {
-                self.source.responsiveness(&location) != Responsiveness::Answering
-            })
-        {
+        if self.keeps_listing_on_refresh(depth) {
             self.refresh_keeping_listing(depth, false);
             return;
         }
         self.refresh_column_with_reveal(depth, None);
+    }
+
+    /// A listed column whose source is not answering keeps its entries while it reloads.
+    fn keeps_listing_on_refresh(&self, depth: usize) -> bool {
+        let listed = self.settled(depth) || self.preserving_refreshes.borrow().contains(&depth);
+        listed
+            && self.location_at(depth).is_some_and(|location| {
+                self.source.responsiveness(&location) != Responsiveness::Answering
+            })
     }
 
     pub(crate) fn refresh_operation_columns(self: &Rc<Self>, depths: &[usize]) {
@@ -298,4 +288,25 @@ pub(super) fn deletion_parent_location(location: &Location) -> Option<Location> 
     } else {
         location.parent()
     }
+}
+
+fn group_by_deletion_parent(locations: &[Location]) -> HashMap<Location, Vec<Location>> {
+    let mut by_folder = HashMap::<_, Vec<_>>::new();
+    for location in locations {
+        if let Some(parent) = deletion_parent_location(location) {
+            by_folder.entry(parent).or_default().push(location.clone());
+        }
+    }
+    by_folder
+}
+
+/// Recent lists every removed item; a camera view lists those under it.
+fn aggregated_removals(watched: &Location, locations: &[Location]) -> Vec<Location> {
+    locations
+        .iter()
+        .filter(|location| {
+            watched.is_recent_root() || watched.contains_camera_photo_location(location)
+        })
+        .cloned()
+        .collect()
 }
