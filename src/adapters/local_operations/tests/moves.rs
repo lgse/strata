@@ -7,11 +7,12 @@ use std::{
 
 use rustix::io::Errno;
 
-use super::fs_quirks::{NameOpens, Op, Support, hold};
+use super::fs_quirks::{NameOpens, Op, Racer, Support, hold};
 use super::*;
 use crate::adapters::volume::{Family, mount_capabilities};
 use crate::services::{Holder, KeptCause, KeptItem, SpecialKind, TransferReport};
 
+mod across_volumes;
 mod changed;
 mod deletion;
 mod flushing;
@@ -96,6 +97,9 @@ fn destination_for(
     Ok((destination, scope))
 }
 
+/// A racer run before or after a call on a name.
+type Before = (Op, &'static str, usize, Racer);
+
 const MOVES: [TransferConflict; 3] = [
     TransferConflict::FailIfExists,
     TransferConflict::Merge,
@@ -161,4 +165,60 @@ fn wait_for_a_later_change_time(probe: &Path, than: &fs::Metadata) {
         }
     }
     fs::remove_file(probe).expect("remove the probe");
+}
+
+/// Each `(path, contents)` beneath `root` reads as its contents.
+fn assert_files<C: AsRef<[u8]>>(root: &Path, files: &[(&str, C)], row: &str) -> io::Result<()> {
+    for (path, contents) in files {
+        assert_eq!(
+            fs::read(root.join(path))?,
+            contents.as_ref(),
+            "{row}: {path}"
+        );
+    }
+    Ok(())
+}
+
+fn assert_pasted(events: &RefCell<Vec<OperationEvent>>, row: &str) {
+    assert!(
+        matches!(
+            terminal_transfer(&events.borrow()),
+            Some(OperationEvent::Pasted { .. })
+        ),
+        "{row}: {:?}",
+        events.borrow()
+    );
+}
+
+/// An hour before now, in seconds since the epoch: settled times a rewrite
+/// shows in on any kernel.
+fn an_hour_ago() -> Result<u64, Box<dyn Error>> {
+    Ok(SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_secs()
+        - 3600)
+}
+
+/// Sets the access and modification times of `path` back to the
+/// modification time `before` recorded.
+fn put_times_back(path: &Path, before: &fs::Metadata) -> rustix::io::Result<()> {
+    let modified = rustix::fs::Timespec {
+        tv_sec: before.mtime(),
+        tv_nsec: before.mtime_nsec(),
+    };
+    rustix::fs::utimensat(
+        rustix::fs::CWD,
+        path,
+        &rustix::fs::Timestamps {
+            last_access: modified,
+            last_modification: modified,
+        },
+        rustix::fs::AtFlags::empty(),
+    )
+}
+
+/// What the move reported kept at the source, in path order.
+fn kept_in_order(mut kept: Vec<KeptItem>) -> Vec<KeptItem> {
+    kept.sort_by_key(|item| item.location.native_path().map(Path::to_path_buf));
+    kept
 }
