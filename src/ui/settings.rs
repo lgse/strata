@@ -29,6 +29,7 @@ mod bindings;
 mod diagnostics;
 mod exclusions;
 mod general;
+pub(crate) use general::abbreviate_home;
 mod install_command;
 mod integrations;
 mod keyboard;

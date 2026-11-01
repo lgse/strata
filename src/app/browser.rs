@@ -2270,8 +2270,16 @@ impl Browser {
                 .is_some_and(|parent| self.source.allows_navigation(&parent))
     }
 
+    pub fn back_locations(&self) -> Vec<Location> {
+        self.state.borrow().back_locations()
+    }
+
     pub fn back(self: &Rc<Self>) {
-        let target = self.state.borrow_mut().go_back();
+        self.back_to(1);
+    }
+
+    pub fn back_to(self: &Rc<Self>, steps: usize) {
+        let target = self.state.borrow_mut().go_back_to(steps);
         if let Some(target) = target {
             self.restore_path(target);
         }

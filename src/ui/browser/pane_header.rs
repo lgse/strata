@@ -3,7 +3,9 @@
 use crate::app::Browser;
 use crate::model::{FolderSort, SortDirection, SortKey};
 use crate::ui::browser::ViewState;
-use crate::ui::controls::{DefaultActions, check_menu_option, menu_option};
+use crate::ui::controls::{
+    DefaultActions, check_menu_option, menu_action_with_detail, menu_option,
+};
 use crate::ui::focus_navigation::vim_focus_direction;
 use crate::ui::keys::{self, bindings::BACKSPACE};
 use crate::ui::preferences::PreferenceManager;
@@ -69,6 +71,89 @@ pub(in crate::ui) fn pane_refresh_button(browser: &Rc<Browser>, depth: usize) ->
         }
     });
     crate::ui::tenxer_mode::hide_while_enabled(&button);
+    button
+}
+
+/// Backspace closes the menu and vim keys move between its items.
+fn install_menu_keys(popover: &gtk::Popover) {
+    let keys = gtk::EventControllerKey::new();
+    keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    keys::on_press(&keys, |controller, press| {
+        let Some(popover) = controller.widget().and_downcast::<gtk::Popover>() else {
+            return glib::Propagation::Proceed;
+        };
+        if press.is(BACKSPACE.ignoring(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)) {
+            popover.popdown();
+            glib::Propagation::Stop
+        } else if let Some(direction) = vim_focus_direction(press) {
+            popover.child_focus(direction);
+            glib::Propagation::Stop
+        } else {
+            glib::Propagation::Proceed
+        }
+    });
+    popover.add_controller(keys);
+}
+
+/// The chevron beside Back: lists the back history, most recent first, and
+/// jumps to a chosen entry in one step.
+pub(in crate::ui) fn back_history_menu(browser: &Rc<Browser>) -> gtk::MenuButton {
+    let locations = browser.back_locations();
+    let content = crate::ui::accessibility::menu_box();
+    content.add_css_class("column-menu");
+    content.add_css_class("history-menu");
+    let heading = gtk::Label::new(Some(&crate::i18n::tr("BACK TO")));
+    heading.set_xalign(0.0);
+    heading.add_css_class("menu-heading");
+    content.append(&heading);
+    let popover = gtk::Popover::builder()
+        .has_arrow(false)
+        .halign(gtk::Align::Start)
+        .position(gtk::PositionType::Bottom)
+        .build();
+    popover.add_css_class("column-popover");
+    crate::ui::scrolling::popover::dismiss_on_outside_scroll(&popover);
+    let popover_weak = popover.downgrade();
+    let home = glib::home_dir();
+    for (index, location) in locations.iter().enumerate() {
+        let path = location
+            .native_path()
+            .map(crate::ui::settings::abbreviate_home)
+            .unwrap_or_else(|| location.display_path());
+        let name = if location.native_path() == Some(home.as_path()) {
+            "~".to_owned()
+        } else {
+            location.display_name()
+        };
+        let option = menu_action_with_detail(&name, &path);
+        crate::ui::accessibility::describe_menu_item(&option, &name, &path);
+        let weak_browser = Rc::downgrade(browser);
+        let popover_weak = popover_weak.clone();
+        option.connect_clicked(move |_| {
+            if let Some(popover) = popover_weak.upgrade() {
+                popover.popdown();
+            }
+            if let Some(browser) = weak_browser.upgrade() {
+                browser.back_to(index + 1);
+            }
+        });
+        content.append(&option);
+    }
+    popover.set_child(Some(&content));
+    install_menu_keys(&popover);
+
+    let button = gtk::MenuButton::builder()
+        .popover(&popover)
+        .sensitive(!locations.is_empty())
+        .build();
+    button.add_css_class("list-navigation-history");
+    button.set_child(Some(&crate::assets::primary_icon(
+        crate::assets::icons::CHEVRON_DOWN,
+        12,
+    )));
+    crate::ui::accessibility::set_tooltip_and_label(&button, &crate::i18n::tr("Back history"));
+    button.set_valign(gtk::Align::Center);
+    button.set_cursor_from_name(Some("pointer"));
     button
 }
 
@@ -163,23 +248,7 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
     content.append(folder_actions.widget());
 
     popover.set_child(Some(&content));
-    let keys = gtk::EventControllerKey::new();
-    keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-    keys::on_press(&keys, |controller, press| {
-        let Some(popover) = controller.widget().and_downcast::<gtk::Popover>() else {
-            return glib::Propagation::Proceed;
-        };
-        if press.is(BACKSPACE.ignoring(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)) {
-            popover.popdown();
-            glib::Propagation::Stop
-        } else if let Some(direction) = vim_focus_direction(press) {
-            popover.child_focus(direction);
-            glib::Propagation::Stop
-        } else {
-            glib::Propagation::Proceed
-        }
-    });
-    popover.add_controller(keys);
+    install_menu_keys(&popover);
     let weak_browser = Rc::downgrade(browser);
     let checks = selected_checks.clone();
     popover.connect_map(move |_| {

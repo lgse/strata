@@ -382,7 +382,9 @@ fn history_button(fixture: &KeyboardFixture, index: usize) -> Result<gtk::Button
             && button
                 .parent()
                 .is_some_and(|parent| parent.has_css_class("list-navigation"))
-            && std::iter::successors(button.prev_sibling(), |widget| widget.prev_sibling()).count()
+            && std::iter::successors(button.prev_sibling(), |widget| widget.prev_sibling())
+                .filter(|widget| widget.has_css_class("list-navigation-button"))
+                .count()
                 == index
     })
     .ok_or_else(|| format!("setup: no history button {index} in the pane header"))

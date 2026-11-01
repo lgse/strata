@@ -1,0 +1,23 @@
+{"scenario":"back-history-dropdown","modes":["icons","list"]}
+{"wait":{"entries":{"contains":["documents","pictures"]},"dir":"$root"},"message":"the fixture listed"}
+{"expect":{"absent":{"role":"toggle button","name":"Back history","states":["sensitive"]}},"message":"the history chevron is disabled before any navigation"}
+{"click":{"entry":"documents"},"count":2}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"key":"alt+Up"}
+{"wait":{"directory":"$root"},"message":"the browser to be working in '$root'"}
+{"settle":{"pane":"$root"}}
+{"click":{"entry":"pictures"},"count":2}
+{"wait":{"directory":"pictures"},"message":"the browser to be working in 'pictures'"}
+{"settle":{"pane":"pictures"}}
+{"open_menu":{"role":"toggle button","name":"Back history"},"until":{"present":{"role":"menu item","name":"documents"}},"message":"the back history menu to open"}
+{"expect":{"present":{"role":"menu item","name":"documents","description":"$fixture/documents"}},"message":"the entry shows the folder's path"}
+{"settle":{"role":"menu item","name":"documents"}}
+{"click":{"role":"menu item","name":"documents"}}
+{"wait":{"directory":"documents"},"message":"choosing 'documents' from the history to jump back two steps"}
+{"settle":{"pane":"documents"}}
+{"key":"alt+Right"}
+{"wait":{"directory":"$root"},"message":"forward to replay the skipped visit to '$root'"}
+{"settle":{"pane":"$root"}}
+{"key":"alt+Right"}
+{"wait":{"directory":"pictures"},"message":"forward to return to 'pictures'"}
