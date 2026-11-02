@@ -122,6 +122,7 @@ fn reopening_a_deleted_directory_keeps_a_retryable_tab() {
             let view = tabs.active_browser();
             wait_until(|| button_with_label(view.overlay().upcast_ref(), "Retry").is_some());
             assert_eq!(tabs.tabs.borrow().len(), 2);
+            assert_names_awaited_tab(&window, &tabs, "destination");
             std::fs::create_dir(root.path().join("destination")).expect("restore directory");
             button_with_label(view.overlay().upcast_ref(), "Retry")
                 .expect("retry unavailable directory")
