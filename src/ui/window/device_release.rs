@@ -22,14 +22,14 @@ pub(super) use overlay::{mount_operation, pending_device_shell};
 #[cfg(test)]
 pub(super) use overlay::{note_unmount_progress, present_release_overlay};
 #[cfg(test)]
+pub(super) use probes::start_release;
+#[cfg(test)]
 pub(super) use probes::{
     begin_pending, clear_release_dismissed, complete_release_success, release_body_text,
     release_error_count, release_is_dismissed, release_overlay_presented, release_phase,
     release_shows_spinner, reset_releases, settle_pending_attempt,
 };
 pub(super) use run::{ReleaseRequest, ReleaseTarget, begin_release};
-#[cfg(test)]
-pub(super) use probes::start_release;
 #[cfg(test)]
 pub(super) use run::{location_at_flush_for_test, syncs_before_flush_for_test};
 

@@ -24,13 +24,15 @@ pub(super) fn sidebar_accepts_file_drop(location: &Location) -> bool {
     location.native_path().is_some()
 }
 
+type DropHover = Rc<dyn Fn(&gtk::DropTarget, &gtk::Widget)>;
+
 /// What the hover handlers on a place's drop target share.
 #[derive(Clone)]
 struct PlaceDrop {
     feedback: Rc<SidebarDropFeedback>,
     action: Rc<dyn Fn(&gtk::DropTarget) -> gtk::gdk::DragAction>,
     /// Highlights the row while files hover it and arms spring-loaded opening.
-    hover: Rc<dyn Fn(&gtk::DropTarget, &gtk::Widget)>,
+    hover: DropHover,
     cancel_spring_load: Rc<dyn Fn()>,
 }
 

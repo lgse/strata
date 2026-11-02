@@ -412,7 +412,12 @@ impl Dispatcher {
             self.shortcuts.cancel_chord();
             return Some(Propagation::Stop);
         }
-        if let Some(size) = self.type_to_search.preferences.text_size().for_shortcut(press) {
+        if let Some(size) = self
+            .type_to_search
+            .preferences
+            .text_size()
+            .for_shortcut(press)
+        {
             self.shortcuts.cancel_chord();
             self.view.set_text_size(size);
             return Some(Propagation::Stop);
@@ -513,7 +518,6 @@ impl Dispatcher {
             .flatten();
         self.sidebar.enter(&previous);
     }
-
 }
 
 struct SidebarFocus {

@@ -62,26 +62,26 @@ pub(super) use devices::{
 pub(crate) use gio_devices::gio_volume_is_encrypted;
 pub(super) use gio_devices::gio_volume_unix_device;
 use gio_devices::orphaned_password_drives;
-pub(super) use key_routing::{
-    TypeToSearchQuery, apply_browser_mode, browser_mode_for_digit, chooser_keys,
-    is_browser_navigation_key, type_to_search_query,
-};
 use key_routing::{
     MouseHistoryAction, SinglePaneArrow, TypeToSearch, mouse_history_action,
     sidebar_focus_direction, single_pane_arrow_action,
 };
+pub(super) use key_routing::{
+    TypeToSearchQuery, apply_browser_mode, browser_mode_for_digit, chooser_keys,
+    is_browser_navigation_key, type_to_search_query,
+};
 pub(in crate::ui) use keyboard::{ChooserKeys, ChooserPolicy, edit_focused_text};
-pub(crate) use launch::{default_save_folder, home_directory};
 pub(super) use launch::present_target;
-pub use launch::{present, present_reveal};
 use launch::{
     bind_update_notice_preferences, browser_for_window, open_checked, open_default_folder,
     schedule_after_first_paint,
 };
+pub(crate) use launch::{default_save_folder, home_directory};
+pub use launch::{present, present_reveal};
+use modal_layers::topmost_modal_layer;
 pub(super) use modal_layers::{
     foreign_modal_visible, install_modal_focus_trap, visible_modal_layer,
 };
-use modal_layers::topmost_modal_layer;
 pub use open_argument::present_open;
 use places::resolve_place_order;
 pub(super) use sidebar::build_sidebar;
@@ -94,12 +94,12 @@ use sidebar_rows::select_sidebar_row;
 use sidebar_sections::{CollapsibleSection, PinnedSection};
 use sidebar_trash::{TrashContents, TrashMenuRows, event_changes_trash_contents};
 pub(super) use sidebar_view::SidebarView;
-pub(in crate::ui) use sidebar_width::{RailPolicy, SidebarFit, sidebar_fits_without_preview};
+use sidebar_width::animate_sidebar;
 pub(super) use sidebar_width::{
     MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH, bind_sidebar_text_size, preferred_sidebar_width,
     sidebar_rail_width,
 };
-use sidebar_width::animate_sidebar;
+pub(in crate::ui) use sidebar_width::{RailPolicy, SidebarFit, sidebar_fits_without_preview};
 pub use unlock_argument::{UnlockTarget, present_unlock};
 
 // Test modules reach these through `super::`.
@@ -109,11 +109,11 @@ use {
     device_actions::DeviceRowActions,
     device_menu::attach_device_actions_menu,
     gtk::prelude::*,
+    sidebar_devices::sidebar_eject_button,
     sidebar_pins::{move_pinned_place, pin_gap_index, pin_locations_at},
     sidebar_rail::sync_sidebar_button,
     sidebar_reorder::sidebar_reorder_matches,
     sidebar_rows::sidebar_button,
-    sidebar_devices::sidebar_eject_button,
     std::time::{Duration, Instant},
 };
 
