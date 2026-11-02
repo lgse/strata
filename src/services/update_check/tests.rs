@@ -6,9 +6,10 @@ use std::{
 };
 
 use super::{
-    BuildKind, CHECK_INTERVAL, Channel, DocumentBlock, NetworkError, RELEASE_LIST_MAX_PAGES,
-    RELEASE_LIST_PAGE_SIZE, ReleaseResponse, ReleaseSummary, UpdateCheck, UpdateCheckCache,
-    Version, archive_name, cache_is_fresh, cached_releases, check_from_cache, fetch_package_update,
+    BuildKind, CHECK_INTERVAL, CachedReleaseNotes, Channel, DocumentBlock, NetworkError,
+    RELEASE_LIST_MAX_PAGES, RELEASE_LIST_PAGE_SIZE, ReleaseNotes, ReleaseResponse, ReleaseSummary,
+    UpdateCheck, UpdateCheckCache, Version, archive_name, cache_is_fresh, cached_release_notes,
+    cached_releases, check_from_cache, exact_release_outcome, fetch_package_update,
     from_cached_release, package_update_from_response, release_choices, release_metadata,
     release_page_url, request_error_message, request_json_conditional, select_cached_update,
     select_update, signed_release_pages, to_cached_release, to_release_summary,
@@ -197,6 +198,62 @@ fn missing_or_null_release_body_becomes_empty_notes() {
         let summary = to_release_summary(&release_response(json)).expect("tag should parse");
         assert!(release_metadata(&summary).notes.is_empty());
     }
+}
+
+/// What the next window reads back from `release-notes.toml`.
+fn reread(cache: Option<CachedReleaseNotes>) -> CachedReleaseNotes {
+    let text = toml::to_string_pretty(&cache.expect("the outcome should be cached"))
+        .expect("the cache entry should serialize");
+    toml::from_str(&text).expect("the cache entry should read back")
+}
+
+#[test]
+fn a_tag_without_a_release_is_cached_as_unavailable_until_the_recheck_interval() {
+    let tag = "v1.2.0-rc.1";
+    let unavailable = ReleaseNotes::Unavailable {
+        url: release_page_url(tag),
+    };
+    let unparsable =
+        r#"{"tag_name":"not-a-version","draft":false,"prerelease":false,"assets":[]}"#;
+    for response in [
+        Err(ureq::Error::StatusCode(404)),
+        Ok(release_response(unparsable)),
+    ] {
+        let (notes, cache) = exact_release_outcome(tag, response, 1_000);
+        assert_eq!(notes, unavailable);
+        let cache = reread(cache);
+        let recheck_at = 1_000 + CHECK_INTERVAL.as_secs();
+        assert_eq!(
+            cached_release_notes(cache.clone(), tag, recheck_at - 1),
+            Some(unavailable.clone())
+        );
+        assert_eq!(cached_release_notes(cache.clone(), tag, recheck_at), None);
+        assert_eq!(cached_release_notes(cache, "v1.2.0", 1_000), None);
+    }
+}
+
+#[test]
+fn found_release_notes_stay_cached_in_the_format_earlier_versions_wrote() {
+    let tag = "v1.2.3";
+    let response = release_response(
+        r###"{"tag_name":"v1.2.3","draft":false,"prerelease":false,"assets":[],"body":"## Changes","published_at":"2026-01-01T00:00:00Z"}"###,
+    );
+    let (notes, cache) = exact_release_outcome(tag, Ok(response), 1_000);
+    let earlier: CachedReleaseNotes = toml::from_str(
+        "tag = \"v1.2.3\"\nnotes = \"## Changes\"\npublished_at = \"2026-01-01T00:00:00Z\"\n",
+    )
+    .expect("an earlier cache file should read");
+    assert_eq!(reread(cache), earlier);
+    let much_later = 1_000 + 10 * CHECK_INTERVAL.as_secs();
+    assert_eq!(cached_release_notes(earlier, tag, much_later), Some(notes));
+}
+
+#[test]
+fn a_failed_release_notes_request_is_not_cached() {
+    let (notes, cache) =
+        exact_release_outcome("v1.2.3", Err(ureq::Error::StatusCode(500)), 1_000);
+    assert!(matches!(notes, ReleaseNotes::Failed { .. }), "{notes:?}");
+    assert_eq!(cache, None);
 }
 
 #[test]
