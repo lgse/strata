@@ -1018,6 +1018,7 @@
   "The change failed.": "Nem sikerült a módosítás.",
   "The command opened in your terminal. Select Refresh when it finishes.": "A parancs megnyílt a terminálban. Válassza a frissítés lehetőséget, amikor befejeződik.",
   "The connection timed out. Check the host and firewall.": "A kapcsolat időtúllépés miatt megszakadt. Ellenőrizze a kiszolgálót és a tűzfalat.",
+  "The connection to the host failed. Check that the server is running, then try again.": "Nem sikerült kapcsolódni a kiszolgálóhoz. Ellenőrizze, hogy fut-e a kiszolgáló, majd próbálja újra.",
   "The connection was interrupted": "A kapcsolat megszakadt",
   "The connection was refused": "A kapcsolat elutasítva",
   "The connection was reset": "A kapcsolat visszaállt",

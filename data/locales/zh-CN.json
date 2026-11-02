@@ -1018,6 +1018,7 @@
   "The change failed.": "更改失败。",
   "The command opened in your terminal. Select Refresh when it finishes.": "已在终端中打开命令。完成后请选择“刷新”。",
   "The connection timed out. Check the host and firewall.": "连接超时。请检查主机和防火墙。",
+  "The connection to the host failed. Check that the server is running, then try again.": "与主机的连接失败。请确认服务器正在运行，然后重试。",
   "The connection was interrupted": "连接中断",
   "The connection was refused": "连接被拒绝",
   "The connection was reset": "连接被重置",

@@ -1018,6 +1018,7 @@
   "The change failed.": "Не удалось выполнить изменение.",
   "The command opened in your terminal. Select Refresh when it finishes.": "Команда открыта в терминале. Когда она завершится, нажмите «Обновить».",
   "The connection timed out. Check the host and firewall.": "Время ожидания подключения истекло. Проверьте узел и брандмауэр.",
+  "The connection to the host failed. Check that the server is running, then try again.": "Не удалось подключиться к узлу. Убедитесь, что сервер работает, и повторите попытку.",
   "The connection was interrupted": "Соединение было прервано",
   "The connection was refused": "В подключении отказано",
   "The connection was reset": "Соединение было сброшено",

@@ -19,6 +19,7 @@ mod about;
 mod actions;
 mod bindings;
 mod channel;
+mod compact_bin;
 mod diagnostics;
 mod exclusions;
 mod general;

@@ -1018,6 +1018,7 @@
   "The change failed.": "The change failed.",
   "The command opened in your terminal. Select Refresh when it finishes.": "The command opened in your terminal. Select Refresh when it finishes.",
   "The connection timed out. Check the host and firewall.": "The connection timed out. Check the host and firewall.",
+  "The connection to the host failed. Check that the server is running, then try again.": "The connection to the host failed. Check that the server is running, then try again.",
   "The connection was interrupted": "The connection was interrupted",
   "The connection was refused": "The connection was refused",
   "The connection was reset": "The connection was reset",
