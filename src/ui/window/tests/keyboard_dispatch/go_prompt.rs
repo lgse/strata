@@ -61,10 +61,11 @@ impl FileSource for InertUris {
         &self,
         location: Location,
         include_hidden: bool,
+        began_on: Option<crate::services::ItemIdentity>,
         notify: Rc<dyn Fn(DirectoryChange)>,
         report: Rc<dyn Fn(crate::services::Watching)>,
     ) -> LoadHandle {
-        LocalFileSource.start_watch(location, include_hidden, notify, report)
+        LocalFileSource.start_watch(location, include_hidden, began_on, notify, report)
     }
 }
 

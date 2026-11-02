@@ -91,6 +91,7 @@ impl Browser {
             location: location.clone(),
         };
         let baseline = baseline.cloned();
+        let began_on = baseline.as_ref().and_then(|baseline| baseline.identity);
         let report = Rc::new(move |watching| {
             let browser = weak.upgrade();
             match (watching, &browser, &baseline) {
@@ -105,7 +106,9 @@ impl Browser {
             }
         });
         // Hidden entries remain in the model so revealing them never needs a rescan.
-        let watch = self.source.start_watch(location, true, notify, report);
+        let watch = self
+            .source
+            .start_watch(location, true, began_on, notify, report);
         if let Some(monitor) = self
             .monitors
             .borrow_mut()

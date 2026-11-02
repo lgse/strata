@@ -115,6 +115,7 @@ impl FileSource for LateMonitorSource {
         &self,
         location: Location,
         include_hidden: bool,
+        began_on: Option<ItemIdentity>,
         notify: WatchCallback,
         report: Rc<dyn Fn(Watching)>,
     ) -> LoadHandle {
@@ -122,6 +123,7 @@ impl FileSource for LateMonitorSource {
             Watcher::Local => crate::adapters::LocalFileSource.start_watch(
                 location,
                 include_hidden,
+                began_on,
                 notify,
                 report,
             ),

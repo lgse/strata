@@ -348,6 +348,7 @@ impl FileSource for Folders {
         &self,
         location: Location,
         _include_hidden: bool,
+        _began_on: Option<ItemIdentity>,
         notify: Notify,
         report: Rc<dyn Fn(Watching)>,
     ) -> LoadHandle {

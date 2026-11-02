@@ -19,7 +19,14 @@ fn background_folder_listings_skip_a_folder_an_operation_fences() {
                 .is_ok_and(|names| names.contains(std::ffi::OsStr::new("#1234")))
         }),
         ("departure probe", &|| {
-            native_entry_with_identity(root.path(), identity).as_ref() == Some(&folder)
+            native_entry_with_identity(
+                root.path(),
+                identity,
+                &MountTable::parse(b""),
+                &Progress::unlaned(),
+            )
+            .as_ref()
+                == Some(&folder)
         }),
         ("background re-list", &|| {
             let events = run_enumerate(background_request(&folder));

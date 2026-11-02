@@ -366,3 +366,23 @@ fn a_folder_is_found_where_a_renamed_ancestor_took_it() -> Result<(), Box<dyn Er
     }
     Ok(())
 }
+
+#[test]
+fn a_mount_point_is_never_searched_for_a_renamed_folder() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let open = root.path().join("a/b/c");
+    fs::create_dir_all(&open)?;
+    let identity = folder_identity(&open)?;
+    fs::rename(root.path().join("a/b"), root.path().join("a/b2"))?;
+    let renamed = root.path().join("a/b2");
+    let mounted_there = MountTable::parse(format!(
+        "36 35 98:0 / {} rw - ext4 /dev/sdb1 rw\n",
+        renamed.display()
+    ));
+
+    let progress = Progress::unlaned();
+    let found = |mounts: &MountTable| native_relocated_folder(&open, identity, mounts, &progress);
+    assert_eq!(found(&MountTable::parse(b"")), Some(renamed.join("c")));
+    assert_eq!(found(&mounted_there), None);
+    Ok(())
+}

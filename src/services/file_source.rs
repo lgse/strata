@@ -700,10 +700,12 @@ pub trait FileSource {
         None
     }
 
+    /// `began_on` is the folder's identity from the load that asked for the watch.
     fn start_watch(
         &self,
         location: Location,
         include_hidden: bool,
+        _began_on: Option<ItemIdentity>,
         notify: Rc<dyn Fn(DirectoryChange)>,
         report: Rc<dyn Fn(Watching)>,
     ) -> LoadHandle {

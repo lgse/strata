@@ -25,6 +25,7 @@ use rustix::fs::FileType;
 use super::local_operations::FolderStamp;
 use crate::{
     adapters::{
+        MountTable,
         gio_close::CancelOnDrop,
         gio_file_for_location, location_for_file,
         mount_lanes::{self, Class, Progress, Unanswered},
@@ -35,7 +36,7 @@ use crate::{
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, DirectoryStamp, Evidence, FileSource,
         IdentityTraits, ItemIdentity, LoadHandle, LocationValidationError, MetadataOutcome,
-        MetadataRequest, MetadataUpdate, MountToken, RequestId, Responsiveness, StampAnswer,
+        MetadataRequest, MetadataUpdate, MountToken, Proof, RequestId, Responsiveness, StampAnswer,
         Watching, backend_unavailable_message, bytes_support_named_family, file_activity,
         is_hidden_name, is_image_path, is_media_path, link_target_kind, listed_kind,
         native_hidden_names, sanitize_failure_message, symlink_kind,
@@ -510,6 +511,7 @@ impl FileSource for LocalFileSource {
         &self,
         location: Location,
         include_hidden: bool,
+        began_on: Option<ItemIdentity>,
         notify: Rc<dyn Fn(DirectoryChange)>,
         report: Rc<dyn Fn(Watching)>,
     ) -> LoadHandle {
@@ -527,6 +529,7 @@ impl FileSource for LocalFileSource {
                         monitor,
                         location,
                         include_hidden,
+                        began_on,
                         notify,
                     )));
                     report(Watching::Live);
@@ -637,12 +640,12 @@ impl FileSource for LocalFileSource {
             emit(None);
             return LoadHandle::new(|| {});
         };
+        let (_, mounts) = mount_watch::snapshot();
+        let job = mount_lanes::run(&departed.clone(), Class::Interactive, move |progress| {
+            native_relocated_folder(&departed, identity, &mounts, progress)
+        });
         let task = glib::MainContext::default().spawn_local(async move {
-            let found = gio::spawn_blocking(move || native_relocated_folder(&departed, identity))
-                .await
-                .ok()
-                .flatten();
-            emit(found.map(Location::local));
+            emit(job.await.ok().flatten().map(Location::local));
         });
         LoadHandle::new(move || task.abort())
     }
@@ -664,11 +667,18 @@ fn log_directory_load_started(request_id: RequestId, location: &Location) {
 /// Where the folder last seen at `departed` is now: renamed in place, or moved along with
 /// its deepest missing ancestor renamed within the nearest ancestor that remains, a rename
 /// that inotify does not report to the folder's own watch.
-fn native_relocated_folder(departed: &Path, identity: ItemIdentity) -> Option<PathBuf> {
+fn native_relocated_folder(
+    departed: &Path,
+    identity: ItemIdentity,
+    mounts: &MountTable,
+    progress: &Progress,
+) -> Option<PathBuf> {
     let mut renamed = departed;
     let directory = loop {
         let parent = renamed.parent()?;
-        match fs::metadata(parent) {
+        let metadata = fs::metadata(parent);
+        progress.answered(&metadata);
+        match metadata {
             Ok(metadata) if metadata.is_dir() => break parent,
             Ok(_) => {}
             Err(error)
@@ -682,36 +692,58 @@ fn native_relocated_folder(departed: &Path, identity: ItemIdentity) -> Option<Pa
     };
     let below = departed.strip_prefix(renamed).ok()?;
     if below.as_os_str().is_empty() {
-        return native_entry_with_identity(directory, identity);
+        return native_entry_with_identity(directory, identity, mounts, progress);
     }
-    native_folders(directory)?
+    native_folders(directory, mounts, progress)?
         .iter()
         .map(|folder| folder.path().join(below))
-        .find(|candidate| has_identity(candidate, identity))
+        .find(|candidate| has_identity(candidate, identity, progress))
 }
 
-fn native_folders(directory: &Path) -> Option<Vec<fs::DirEntry>> {
+/// A mount point cannot be renamed, and looking into one can wait on a server that stopped
+/// answering or trigger an automount, so none is a candidate.
+fn native_folders(
+    directory: &Path,
+    mounts: &MountTable,
+    progress: &Progress,
+) -> Option<Vec<fs::DirEntry>> {
     let mut listing = file_activity::list(directory).ok()?;
     let folders = listing
         .by_ref()
         .flatten()
         .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .filter(|entry| !mounts.is_mount_point(&entry.path()))
         .collect();
+    progress.beat();
     (!listing.stopped()).then_some(folders)
 }
 
-fn has_identity(path: &Path, identity: ItemIdentity) -> bool {
-    super::local_operations::folder_stamp(path, false).is_ok_and(|stamp| {
-        directory_stamp(path, &stamp, SystemTime::now())
-            .identity
-            .is_some_and(|candidate| identity.same(&candidate))
-    })
+/// The identity of the folder at `path` under its mount's identity rule.
+fn folder_identity_at(
+    path: &Path,
+    progress: &Progress,
+) -> Result<Option<ItemIdentity>, rustix::io::Errno> {
+    let stamp = super::local_operations::folder_stamp(path, false);
+    progress.answered(&stamp);
+    Ok(directory_stamp(path, &stamp?, SystemTime::now()).identity)
 }
 
-fn native_entry_with_identity(directory: &Path, identity: ItemIdentity) -> Option<PathBuf> {
+fn has_identity(path: &Path, identity: ItemIdentity, progress: &Progress) -> bool {
+    folder_identity_at(path, progress)
+        .ok()
+        .flatten()
+        .is_some_and(|candidate| identity.same(&candidate))
+}
+
+fn native_entry_with_identity(
+    directory: &Path,
+    identity: ItemIdentity,
+    mounts: &MountTable,
+    progress: &Progress,
+) -> Option<PathBuf> {
     use std::os::unix::fs::DirEntryExt;
-    let folders = native_folders(directory)?;
-    let matches = |entry: &&fs::DirEntry| has_identity(&entry.path(), identity);
+    let folders = native_folders(directory, mounts, progress)?;
+    let matches = |entry: &&fs::DirEntry| has_identity(&entry.path(), identity, progress);
     // Btrfs subvolumes, overlayfs and FUSE can list a different inode than stat reports.
     folders
         .iter()

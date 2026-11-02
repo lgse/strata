@@ -121,6 +121,7 @@ fn a_confined_chooser_checks_paths_at_once_and_where_folders_lead_on_a_worker() 
                 let handle = source.start_watch(
                     Location::local(path),
                     false,
+                    None,
                     Rc::new(move |change| sink.borrow_mut().push(change)),
                     Rc::new(|_| {}),
                 );
