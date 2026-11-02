@@ -1,4 +1,4 @@
-{"scenario":"peek-click-reveals-column","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"a.txt":"root preview\n","z.rar":"unsupported fixture\n","Alpha":{"a.txt":"alpha preview\n","Beta":{"Gamma":{"Delta":{"a.txt":"delta preview\n"}}}}},"images":{"image.png":{"width":80,"height":40,"rgb":[0,128,0]}},"cost":{"columns":2.1},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Clicking folder-peek reveal buttons focuses the revealed column without activating rows; only click route to peek, geometry adds nothing"}}
+{"scenario":"peek-click-reveals-column","modes":["columns"],"prefs":{"single_click_previews":false,"columns_mirror_selection":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"a.txt":"root preview\n","z.rar":"unsupported fixture\n","Alpha":{"a.txt":"alpha preview\n","Beta":{"Gamma":{"Delta":{"a.txt":"delta preview\n"}}}}},"images":{"image.png":{"width":80,"height":40,"rgb":[0,128,0]}},"cost":{"columns":2.1},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Clicking folder-peek reveal buttons focuses the revealed column without activating rows; only click route to peek, geometry adds nothing"}}
 {"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
 {"wait":{"present":{"role":"toggle button","name":"Preview panel"}},"message":"the session preview toggle"}
 {"expect":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":true}}}
@@ -32,10 +32,9 @@
 {"wait":{"present":{"role":"button","name":"Reveal Alpha column"}},"message":"the parent peek again"}
 {"click":{"role":"button","name":"Reveal Alpha column"}}
 {"wait":{"focused":"Beta"},"message":"the parent to receive focus"}
-{"select":{"entry":"a.txt","dir":"Alpha"}}
-{"wait":{"panes":["$root","Alpha"]},"message":"selecting a file ends the open path at its column, as moving the cursor onto it does"}
-{"note":"number","expr":{"count":{"description":"Columns view","rendered":false}},"as":"selected"}
+{"key":"Down"}
+{"wait":{"focused":"a.txt"},"message":"the cursor to reach the parent's file while the deeper columns stay open"}
 {"key":"space"}
 {"wait":{"preview":"alpha preview"},"message":"the focused parent's preview"}
 {"wait":{"all":[{"compare":{"left":{"of":{"pane":"Alpha"},"get":"x"},"op":">=","right":"$browser_left"}},{"compare":{"left":{"of":{"pane":"Alpha"},"get":"right"},"op":"<=","right":{"of":{"preview":true},"get":"x"}}}]},"message":"the focused parent, not the rightmost column, to remain visible"}
-{"expect":{"compare":{"left":{"count":{"description":"Columns view","rendered":false}},"op":"==","right":"$selected"}}}
+{"expect":{"compare":{"left":{"count":{"description":"Columns view","rendered":false}},"op":"==","right":"$before"}}}
