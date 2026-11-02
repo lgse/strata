@@ -1,0 +1,12 @@
+{"scenario":"unreadable-folder-offers-retry","modes":["columns","list","icons"],"layout":"us","mutation":null,"known_bug":null,"tree":{"locked":{"inside.txt":"inside\n"}},"teardown":[{"fs":{"path":"locked","chmod":"755"}}]}
+{"select":{"entry":"locked","dir":"$root"}}
+{"key":"Right","modes":["columns"]}
+{"key":"Return","modes":["list","icons"]}
+{"wait":{"focused":"inside.txt"},"message":"keyboard focus to reach 'inside.txt' inside the folder"}
+{"fs":{"path":"locked","chmod":"000"}}
+{"key":"F5"}
+{"wait":{"mentions":{"target":{"pane":"locked"},"role":"label","text":"Unable to read this directory"}},"message":"the reload to report the unreadable folder in its pane"}
+{"wait":{"present":{"role":"button","name":"Retry","within":{"pane":"locked"}}},"message":"the unreadable folder to offer Retry in every view"}
+{"fs":{"path":"locked","chmod":"755"}}
+{"click":{"role":"button","name":"Retry","within":{"pane":"locked"}}}
+{"wait":{"entries":["inside.txt"],"dir":"locked"},"message":"Retry to list the folder once it is readable again"}
