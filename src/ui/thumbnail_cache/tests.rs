@@ -330,6 +330,54 @@ fn uri_keys_cover_tricky_names() {
     assert!(hit.is_some() || cache_key(&raw_path).is_none());
 }
 
+fn bucket_entry_count(bucket: &Path) -> usize {
+    std::fs::read_dir(bucket)
+        .expect("the bucket should be listable")
+        .count()
+}
+
+#[test]
+fn files_inside_the_thumbnail_tree_are_never_cached() {
+    let (_guard, bucket) = BucketGuard::unique("recursive");
+    let root = bucket
+        .parent()
+        .expect("the bucket should sit under the thumbnails root");
+    let source = unique_source("recursive");
+    let photo = source.join("photo.jpg");
+    std::fs::write(&photo, b"source").expect("the fixture should be written");
+    store(&photo, 111, &solid_png(64, 64));
+    let (_, entry_name) = cache_key(&photo).expect("the photo should key");
+    let entry = bucket.join(entry_name);
+    assert!(entry.is_file());
+    assert_eq!(bucket_entry_count(&bucket), 1);
+
+    let normal = root.join("normal").join("other.png");
+    std::fs::create_dir_all(normal.parent().expect("the normal bucket has a parent"))
+        .expect("the normal bucket should exist");
+    std::fs::write(&normal, solid_png(32, 32)).expect("the sibling entry should be written");
+    for inside in [entry.as_path(), normal.as_path()] {
+        store(inside, 111, &solid_png(64, 64));
+        assert_eq!(lookup(inside, 111), None, "{inside:?} must never hit");
+    }
+    assert_eq!(bucket_entry_count(&bucket), 1);
+
+    let linked_root = source.join("linked-thumbnails");
+    symlink(root, &linked_root).expect("the cache symlink should be created");
+    let through_link = linked_root.join("large").join("via-link.png");
+    std::fs::write(&through_link, solid_png(32, 32)).expect("the linked entry should be written");
+    store(&through_link, 111, &solid_png(64, 64));
+    assert_eq!(bucket_entry_count(&bucket), 2);
+    std::fs::remove_file(&through_link).expect("the linked entry should be removed");
+
+    let lookalike = source.join("thumbnails-old").join("photo.png");
+    std::fs::create_dir_all(lookalike.parent().expect("the lookalike has a parent"))
+        .expect("the lookalike dir should exist");
+    std::fs::write(&lookalike, b"source").expect("the lookalike should be written");
+    store(&lookalike, 111, &solid_png(64, 64));
+    assert!(lookup(&lookalike, 111).is_some());
+    assert_eq!(bucket_entry_count(&bucket), 2);
+}
+
 #[test]
 fn normalizer_rejects_degenerate_renders() {
     assert!(normalize_to_canonical(b"", "file:///x.jpg", 1, false).is_err());

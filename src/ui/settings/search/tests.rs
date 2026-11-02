@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use super::matching::{page_title, score};
 use super::*;
 use crate::ui::{blur::BlurBin, preferences::PreferenceManager};
 
