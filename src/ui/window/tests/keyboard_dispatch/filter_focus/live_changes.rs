@@ -273,6 +273,86 @@ fn deleting_focused_result_moves_focus_to_next_result() {
     );
 }
 
+/// Ctrl+Z restores a hit trashed from the results, but stays the field's own
+/// text undo while the field has focus; Ctrl+Y on the results trashes it again.
+fn undo_trashed_result_case(mode: BrowserMode) -> Result<(), String> {
+    let fixture = filtered_fixture(mode, false);
+    let browser = fixture.view.browser();
+    let field = show_filter_with_results(&fixture, "report", &IMMEDIATE_REPORTS)?;
+    focus_first_result(&fixture, &field)?;
+    let hit = hit_cursor(&fixture).ok_or("no focused hit to trash")?;
+    let path = fixture._directory.path().join(&hit);
+    ensure(fixture.press(Key::Delete, ModifierType::empty()), || {
+        format!("Delete on {hit:?} was not handled")
+    })?;
+    ensure(
+        settles(|| !path.exists() && browser.pending_undo_trash().is_some()),
+        || format!("{hit:?} was never trashed"),
+    )?;
+
+    ensure(
+        field.grab_focus() && fixture.view.filter_has_focus(),
+        || {
+            format!(
+                "the field did not take focus; it is on {}",
+                describe_focus(&fixture)
+            )
+        },
+    )?;
+    let field_took_undo = !fixture.press(Key::z, ModifierType::CONTROL_MASK);
+    pump(200);
+    ensure(field_took_undo && !path.exists(), || {
+        "Ctrl+Z in the filter field undid the trash".to_owned()
+    })?;
+
+    focus_first_result(&fixture, &field)?;
+    ensure(
+        settles(|| fixture.press(Key::z, ModifierType::CONTROL_MASK)),
+        || {
+            format!(
+                "Ctrl+Z on the results was not handled; focus on {}",
+                describe_focus(&fixture)
+            )
+        },
+    )?;
+    ensure(settles(|| path.exists()), || {
+        format!("Ctrl+Z never restored {hit:?}")
+    })?;
+    ensure(field.text() == "report", || {
+        format!("Ctrl+Z changed the filter text to {:?}", field.text())
+    })?;
+
+    ensure(field.grab_focus(), || {
+        "the field did not take focus".to_owned()
+    })?;
+    focus_first_result(&fixture, &field)?;
+    ensure(
+        settles(|| fixture.press(Key::y, ModifierType::CONTROL_MASK)),
+        || {
+            format!(
+                "Ctrl+Y on the results was not handled; focus on {}",
+                describe_focus(&fixture)
+            )
+        },
+    )?;
+    ensure(settles(|| !path.exists()), || {
+        format!("Ctrl+Y never trashed {hit:?} again")
+    })
+}
+
+#[test]
+fn undo_restores_a_result_trashed_while_filtered() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::filter_focus::live_changes::undo_restores_a_result_trashed_while_filtered",
+        || {
+            check_modes(
+                &[BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons],
+                undo_trashed_result_case,
+            )
+        },
+    );
+}
+
 fn field_or_its_text_focused(fixture: &KeyboardFixture, field: &gtk::Entry) -> bool {
     focus(fixture).is_some_and(|focused| {
         focused == *field.upcast_ref::<gtk::Widget>() || focused.is_ancestor(field)
