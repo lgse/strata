@@ -720,13 +720,15 @@ sequence by its content, not its name: a file whose metadata probe found no medi
 or whose leading bytes are text, is neither counted nor stepped to. Files the probe
 has not reached yet are checked by reading their first 8 KiB off the GTK thread,
 outward from the shown file in growing chunks, as background work through their
-mount's [request lane](filesystem-compatibility.md#request-lanes). Until a file
-answers it stays out, and the position and previous/next buttons update after each
-chunk. When the shown file changes, reading starts again outward from it, and files
-that could not be read, or whose mount stalled, are asked again. Reading stops when
-the preview closes or no longer shows a player. Remote (GVfs) locations and route files still go by their name.
-Playback errors remain visible inside the
-view without disabling navigation. The timeline is the audio view's waveform
+mount's [request lane](filesystem-compatibility.md#request-lanes): while other
+requests keep the mount busy the reads wait their turn, and once it stalls they give
+up. Until a file answers it stays out, and the position and previous/next buttons
+update after each chunk. When the shown file changes, reading starts again outward
+from it, and files that could not be read, or whose mount stalled, are asked again.
+Reading stops when the preview closes or replaces the player with another kind of
+preview. Answers belong to one preview and last while its listing shows the file.
+Remote (GVfs) locations and route files still go by their name. Playback errors
+remain visible inside the view without disabling navigation. The timeline is the audio view's waveform
 slider: the same overview peaks, grown in from nothing the same way once the
 storyboard has finished with the shared decode slot, with the played range,
 playhead and hover line shared and chapter starts added as ticks.

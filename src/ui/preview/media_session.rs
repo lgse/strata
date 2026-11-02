@@ -182,25 +182,6 @@ impl PreviewState {
         }
     }
 
-    fn read_media(self: &Rc<Self>, anchor: crate::model::Location, unread: media_content::Unread) {
-        let covered = self
-            .media_reads
-            .borrow()
-            .as_ref()
-            .is_some_and(|reads| reads.covers(&anchor, &unread));
-        if unread.is_empty() || covered {
-            return;
-        }
-        let weak = Rc::downgrade(self);
-        let reads = media_content::Reads::start(anchor, unread, move || {
-            weak.upgrade().is_some_and(|state| {
-                state.refresh_listing_position();
-                state.stepping_family().is_some()
-            })
-        });
-        self.media_reads.replace(Some(reads));
-    }
-
     /// The shown file anchors the sequence; other files join once their bytes are known
     /// to be media, and the shown player's position updates when they are.
     pub(super) fn family_listing(
@@ -217,7 +198,8 @@ impl PreviewState {
         let current = self.current.borrow().as_ref()?.location.clone();
         let named =
             view.displayed_entries_matching(depth, |entry| entry_family(entry) == Some(family));
-        media_content::forget_all_but(&named);
+        let checks = self.media_checks.borrow();
+        checks.keep_only(&named);
         let shown = named
             .iter()
             .position(|entry| entry.location == current)
@@ -227,7 +209,7 @@ impl PreviewState {
             .into_iter()
             .enumerate()
             .filter(|(index, entry)| {
-                let media = media_content::answer(entry, family);
+                let media = checks.answer(entry, family);
                 if media.is_none() {
                     unread.push(*index, entry);
                 }
@@ -235,7 +217,16 @@ impl PreviewState {
             })
             .map(|(_, entry)| entry)
             .collect();
-        self.read_media(current.clone(), unread);
+        drop(checks);
+        let weak = Rc::downgrade(self);
+        self.media_checks
+            .borrow_mut()
+            .read(&current, unread, move || {
+                weak.upgrade().is_some_and(|state| {
+                    state.refresh_listing_position();
+                    state.stepping_family().is_some()
+                })
+            });
         let position = |location: &crate::model::Location| {
             files.iter().position(|entry| entry.location == *location)
         };

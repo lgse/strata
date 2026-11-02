@@ -371,9 +371,9 @@ fn video_drawer(
 }
 
 #[test]
-fn a_listing_past_the_answer_cache_is_read_once() {
+fn walking_a_read_listing_again_reads_nothing() {
     crate::test_support::gtk_test(
-        "ui::preview::tests::video::a_listing_past_the_answer_cache_is_read_once",
+        "ui::preview::tests::video::walking_a_read_listing_again_reads_nothing",
         || {
             let names: Vec<String> = (0..10).map(|index| format!("clip-{index}.mp4")).collect();
             let files: Vec<(&str, &[u8])> = names
@@ -386,7 +386,7 @@ fn a_listing_past_the_answer_cache_is_read_once() {
             wait_until("every clip to be read", || {
                 video.caption() == "1 of 10 in folder"
             });
-            let queued = media_content::queued_reads();
+            let queued = state.media_checks.borrow().queued();
             assert_eq!(queued, 10, "each clip is queued once");
             for _ in 0..2 {
                 assert_eq!(
@@ -399,10 +399,41 @@ fn a_listing_past_the_answer_cache_is_read_once() {
                 pump(std::time::Duration::from_millis(50));
             }
             assert_eq!(
-                media_content::queued_reads(),
+                state.media_checks.borrow().queued(),
                 queued,
                 "walking the listing again reads nothing"
             );
+            drawer.close();
+        },
+    );
+}
+
+#[test]
+fn reads_wait_out_a_busy_mount_without_a_new_shown_file() {
+    crate::test_support::gtk_test(
+        "ui::preview::tests::video::reads_wait_out_a_busy_mount_without_a_new_shown_file",
+        || {
+            let (directory, view) = listing_of(&[
+                ("a.mp4", MEDIA_BYTES),
+                ("b.mp4", MEDIA_BYTES),
+                ("c.mp4", MEDIA_BYTES),
+            ]);
+            let busy = crate::adapters::mount_lanes::admit(
+                directory.path(),
+                crate::adapters::mount_lanes::Class::Interactive,
+            )
+            .expect("a request on the folder's mount");
+            let (_provider, drawer, video) = video_drawer(&view, 0);
+            pump(std::time::Duration::from_millis(300));
+            assert_eq!(
+                video.caption(),
+                "1 of 1 in folder",
+                "background reads yield to the busy mount"
+            );
+            drop(busy);
+            wait_until("the reads to resume once the mount is free", || {
+                video.caption() == "1 of 3 in folder"
+            });
             drawer.close();
         },
     );
