@@ -30,6 +30,15 @@ pub(super) fn spatial_arrow(press: &KeyPress) -> Option<Binding> {
 }
 
 pub(super) fn activate_native_arrow(scope: &impl IsA<gtk::Widget>, key: gdk::Key) -> bool {
+    activate_native_binding(scope, key, gdk::ModifierType::empty())
+}
+
+/// Runs the focused file list's own GTK binding for `key` with exactly `modifiers`.
+pub(super) fn activate_native_binding(
+    scope: &impl IsA<gtk::Widget>,
+    key: gdk::Key,
+    modifiers: gdk::ModifierType,
+) -> bool {
     let Some(focused) = scope.root().and_then(|root| root.focus()) else {
         return false;
     };
@@ -53,7 +62,7 @@ pub(super) fn activate_native_arrow(scope: &impl IsA<gtk::Widget>, key: gdk::Key
                 continue;
             };
             if trigger.keyval() == key
-                && trigger.modifiers().is_empty()
+                && trigger.modifiers() == modifiers
                 && let Some(action) = shortcut.action()
             {
                 return action.activate(

@@ -353,4 +353,18 @@ impl ModeViews {
         self.browser.set_selection_anchor(depth, focused);
         true
     }
+
+    /// Moves GTK's Shift range origin to the model's anchor after a keyboard move GTK did
+    /// not make, such as Home, End or a page key, so a following native Shift+arrow,
+    /// Shift+Home or Shift+End extends from there.
+    pub fn anchor_native_range(&self, depth: usize) {
+        let Some(anchor) = self.browser.selection_anchor_position(depth) else {
+            return;
+        };
+        let positions = self.browser.selected_positions(depth);
+        for pane in self.panes_at(depth) {
+            reset_native_range_origin(pane, anchor);
+            set_selections(pane, &positions);
+        }
+    }
 }

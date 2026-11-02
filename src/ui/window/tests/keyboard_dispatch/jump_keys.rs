@@ -291,14 +291,170 @@ fn home_and_end_jump_to_the_first_and_last_item_in_the_default_key_map() {
                     "{mode:?} Strata handles Home"
                 );
                 assert_cursor_fill(&browser, "a.txt", &["a.txt"], format!("{mode:?}"));
-
-                assert!(
-                    !fixture.press(Key::End, SHIFT),
-                    "{mode:?} Shift+End stays with GTK"
-                );
             }
         },
     );
+}
+
+/// A real press reaches the dispatcher first and the focused list's own GTK binding
+/// only when the dispatcher lets it through; `KeyboardFixture::press` emits just the
+/// former. Returns whether the dispatcher handled it.
+fn press_through(fixture: &KeyboardFixture, key: Key, modifiers: ModifierType) -> bool {
+    if fixture.press(key, modifiers) {
+        return true;
+    }
+    assert!(
+        crate::ui::focus_navigation::activate_native_binding(&fixture.window, key, modifiers),
+        "the focused file list binds {key:?} with {modifiers:?}"
+    );
+    pump(50);
+    false
+}
+
+/// One view's keys for the range-anchor walk. Columns extends ranges itself; List and
+/// Icons leave Shift+arrows to GTK, whose arrow binding the dispatcher runs for an
+/// arrow or its letter.
+struct AnchorCase {
+    mode: BrowserMode,
+    next: Key,
+    previous: Key,
+    strata_extends: bool,
+    plain_next: &'static [Key],
+}
+
+const ANCHOR_CASES: [AnchorCase; 3] = [
+    AnchorCase {
+        mode: BrowserMode::Columns,
+        next: Key::Down,
+        previous: Key::Up,
+        strata_extends: true,
+        plain_next: &[Key::Down],
+    },
+    AnchorCase {
+        mode: BrowserMode::List,
+        next: Key::Down,
+        previous: Key::Up,
+        strata_extends: false,
+        plain_next: &[Key::Down, Key::j],
+    },
+    AnchorCase {
+        mode: BrowserMode::Icons,
+        next: Key::Right,
+        previous: Key::Left,
+        strata_extends: false,
+        plain_next: &[Key::Right, Key::l],
+    },
+];
+
+#[test]
+fn home_end_and_page_keys_move_the_shift_range_anchor() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::jump_keys::home_end_and_page_keys_move_the_shift_range_anchor",
+        || {
+            let fixture = KeyboardFixture::new();
+            PreferenceManager::shared().set_group_by_type(false);
+            let browser = fixture.view.browser();
+            // h j k l read as arrows only while type-to-search is off.
+            PreferenceManager::shared().set_type_to_search(false);
+            for case in &ANCHOR_CASES {
+                fixture.view.set_view_mode(case.mode);
+                focus_files(&fixture);
+                browser.select(0, 0);
+                focus_files(&fixture);
+                home_and_end_set_the_anchor(&fixture, &browser, case);
+                page_keys_set_the_anchor(&fixture, &browser, case);
+                arrows_set_the_anchor(&fixture, &browser, case);
+            }
+        },
+    );
+}
+
+fn home_and_end_set_the_anchor(
+    fixture: &KeyboardFixture,
+    browser: &crate::app::Browser,
+    case: &AnchorCase,
+) {
+    let mode = case.mode;
+    press_through(fixture, case.next, NONE);
+    assert_eq!(fill_names(browser), ["b.txt"], "{mode:?} next item");
+    assert!(fixture.press(Key::End, NONE), "{mode:?} Strata handles End");
+    assert_eq!(fill_names(browser), ["c.txt"], "{mode:?} End");
+    wait_until(|| focused_widget_shows(&fixture.window, "c.txt"));
+    assert_eq!(
+        press_through(fixture, Key::Home, SHIFT),
+        case.strata_extends,
+        "{mode:?} Shift+Home routing"
+    );
+    assert_eq!(
+        fill_names(browser),
+        ["a.txt", "b.txt", "c.txt"],
+        "{mode:?} Shift+Home after End extends from the last item"
+    );
+
+    assert!(
+        fixture.press(Key::Home, NONE),
+        "{mode:?} Strata handles Home"
+    );
+    assert_eq!(fill_names(browser), ["a.txt"], "{mode:?} Home");
+    wait_until(|| focused_widget_shows(&fixture.window, "a.txt"));
+    press_through(fixture, case.next, SHIFT);
+    assert_eq!(
+        fill_names(browser),
+        ["a.txt", "b.txt"],
+        "{mode:?} Shift+next after Home extends from the first item"
+    );
+    assert_eq!(
+        press_through(fixture, Key::End, SHIFT),
+        case.strata_extends,
+        "{mode:?} Shift+End routing"
+    );
+    assert_eq!(
+        fill_names(browser),
+        ["a.txt", "b.txt", "c.txt"],
+        "{mode:?} Shift+End keeps the anchor Home set"
+    );
+}
+
+fn page_keys_set_the_anchor(
+    fixture: &KeyboardFixture,
+    browser: &crate::app::Browser,
+    case: &AnchorCase,
+) {
+    let mode = case.mode;
+    assert!(fixture.press(Key::Home, NONE), "{mode:?}");
+    assert!(fixture.press(Key::Page_Down, NONE), "{mode:?} Page Down");
+    assert_eq!(fill_names(browser), ["c.txt"], "{mode:?} Page Down");
+    wait_until(|| focused_widget_shows(&fixture.window, "c.txt"));
+    press_through(fixture, case.previous, SHIFT);
+    assert_eq!(
+        fill_names(browser),
+        ["b.txt", "c.txt"],
+        "{mode:?} Shift+previous after Page Down extends from the paged item"
+    );
+}
+
+fn arrows_set_the_anchor(
+    fixture: &KeyboardFixture,
+    browser: &crate::app::Browser,
+    case: &AnchorCase,
+) {
+    let mode = case.mode;
+    for &key in case.plain_next {
+        assert!(fixture.press(Key::Home, NONE), "{mode:?}");
+        wait_until(|| focused_widget_shows(&fixture.window, "a.txt"));
+        press_through(fixture, key, NONE);
+        assert_eq!(fill_names(browser), ["b.txt"], "{mode:?} {key:?}");
+        wait_until(|| focused_widget_shows(&fixture.window, "b.txt"));
+        assert!(
+            fixture.press(Key::Page_Down, SHIFT),
+            "{mode:?} Strata handles Shift+Page Down"
+        );
+        assert_eq!(
+            fill_names(browser),
+            ["b.txt", "c.txt"],
+            "{mode:?} Shift+Page Down after {key:?} extends from the moved-to item"
+        );
+    }
 }
 
 #[test]

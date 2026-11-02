@@ -68,7 +68,8 @@ catalog! {
         COMPLETE: Command "complete" = Binding::plain(Key::Tab), live in both;
     }
     unlisted {
-        // Range selection that GTK performs once the dispatcher passes the key on.
+        // Range selection that GTK performs once the dispatcher passes the key on;
+        // Columns extends to the first or last item itself.
         EXTEND_LEFT: Binding = Binding::shift(Key::Left);
         EXTEND_RIGHT: Binding = Binding::shift(Key::Right);
         EXTEND_TO_FIRST: Binding = Binding::shift(Key::Home);
