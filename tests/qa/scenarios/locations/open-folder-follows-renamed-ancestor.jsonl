@@ -1,0 +1,20 @@
+{"scenario":"open-folder-follows-renamed-ancestor","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"outer/inner","mkdir":true,"parents":true}},{"fs":{"path":"outer/inner/one.txt","write":"1\n"}}],"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"an outside rename of the open folder's parent is followed without F5 in every view; the real-monitor logic is unit-tested in browser local_departures"}}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"key":"ctrl+a"}
+{"type":"$fixture/outer/inner"}
+{"wait":{"field":{"of":"field","text":"$fixture/outer/inner"}},"message":"typed location"}
+{"key":"Return"}
+{"wait":{"directory":"inner"},"message":"the browser to be working in 'inner'"}
+{"wait":{"entry":"one.txt"},"message":"the entry 'one.txt' to appear"}
+{"expect":{"panes":["inner"]},"message":"the typed folder to be the only pane"}
+{"fs":{"path":"outer","rename":"outer-renamed"}}
+{"fs":{"path":"outer-renamed/inner/two.txt","write":"2\n"}}
+{"wait":{"entry":"two.txt"},"message":"the folder to be followed to its new path and list 'two.txt' without a refresh"}
+{"expect":{"panes":["inner"]},"message":"the followed folder to stay the only pane"}
+{"fs":{"path":"outer-renamed/inner/one.txt","remove":true}}
+{"wait":{"entry_gone":"one.txt"},"message":"the followed folder to keep watching for changes"}
+{"key":"F5"}
+{"wait":{"directory":"inner"},"message":"F5 to reload the folder at its new path"}
+{"wait":{"entry":"two.txt"},"message":"the reloaded folder to list 'two.txt'"}

@@ -315,25 +315,80 @@ impl BrowserView {
 
     pub fn start_typed_rename(&self, rename: TypedRename) {
         let start = rename.start_folder();
-        let started = match rename.path {
+        let old_location = rename.entry.location.clone();
+        // `Some(None)`: the item moves to another folder, and its result is
+        // deliberately not followed to its new path.
+        let (started, follow) = match rename.path {
             Some(path) => {
                 let replacement =
                     start.and_then(|start| start.child(std::ffi::OsStr::new(path.first())));
                 let started = self.state.browser.place_entry(rename.entry, path, false);
                 self.state.typed_placement.replace(started.zip(replacement));
-                started
+                (started, Some(None))
             }
-            None => self.state.browser.rename(rename.entry, rename.name),
+            None => {
+                let new_location =
+                    start.and_then(|start| start.child(std::ffi::OsStr::new(&rename.name)));
+                let started = self.state.browser.rename(rename.entry, rename.name);
+                (started, new_location.map(Some))
+            }
         };
-        if let Some(request) = started {
-            self.state
-                .keyboard_refocus
-                .set(Some(KeyboardRefocus::Rename(request)));
+        let Some(request) = started else {
+            return;
+        };
+        self.state
+            .keyboard_refocus
+            .set(Some(KeyboardRefocus::Rename(request)));
+        if let Some(new_location) = follow {
+            self.follow_typed_rename(request, old_location, new_location);
         }
+    }
+
+    /// The prompt renames or moves the focused filter result as readily as a listing
+    /// entry. Registering after the operation starts relies on providers reporting
+    /// its end asynchronously.
+    fn follow_typed_rename(
+        &self,
+        request: crate::services::OperationRequestId,
+        old_location: crate::model::Location,
+        new_location: Option<crate::model::Location>,
+    ) {
+        self.state
+            .follow_renamed_result(&old_location, new_location.as_ref());
+        self.state.typed_rename.replace(Some(TypedRenameFollow {
+            request,
+            old_location,
+            new_location,
+        }));
     }
 }
 
+/// The filter-result follow a running typed rename registered, so its own
+/// failure undoes it and no other rename's.
+pub(super) struct TypedRenameFollow {
+    request: crate::services::OperationRequestId,
+    old_location: crate::model::Location,
+    /// `None` when the typed path moves the item to another folder.
+    new_location: Option<crate::model::Location>,
+}
+
 impl super::ViewState {
+    /// Ends the typed rename `request`; one that did not complete drops its
+    /// filter-result follow.
+    pub(super) fn end_typed_rename(
+        &self,
+        request: crate::services::OperationRequestId,
+        completed: bool,
+    ) {
+        let ended = self
+            .typed_rename
+            .borrow_mut()
+            .take_if(|follow| follow.request == request);
+        if let Some(follow) = ended.filter(|_| !completed) {
+            self.forget_renamed_result(&follow.old_location, follow.new_location.as_ref());
+        }
+    }
+
     pub(super) fn finish_keyboard_refocus(
         self: &Rc<Self>,
         finished: KeyboardRefocus,
@@ -390,7 +445,7 @@ impl BrowserView {
             let mut comparison = self
                 .state
                 .browser
-                .column_preferences(depth)
+                .requested_column_preferences(depth)
                 .unwrap_or_default()
                 .name_comparison;
             if toggle_sensitive {

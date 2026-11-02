@@ -70,6 +70,7 @@ impl BrowserView {
                 .borrow_mut()
                 .clear_inactive_mode(previous),
         }
+        self.state.sync_displayed_location();
         self.state.carry_listing_search(searching);
         self.restore_view_switch_focus(filter_focus);
     }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::services::WatchRequest;
 
 #[derive(Clone)]
 struct Folder {
@@ -346,11 +347,11 @@ impl FileSource for Folders {
 
     fn start_watch(
         &self,
-        location: Location,
-        _include_hidden: bool,
+        request: WatchRequest,
         notify: Notify,
         report: Rc<dyn Fn(Watching)>,
     ) -> LoadHandle {
+        let location = request.location;
         self.monitors.borrow_mut().insert(location.clone(), notify);
         self.watch_requests.borrow_mut().push(location.clone());
         let watching = self

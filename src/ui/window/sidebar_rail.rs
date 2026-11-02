@@ -129,6 +129,7 @@ impl SidebarState {
             widget_child = child.next_sibling();
             self.sync_rail_child(&child);
         }
+        self.sync_empty_pinned_section();
         self.sync_section_states();
         self.sync_keycaps();
     }

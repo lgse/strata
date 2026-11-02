@@ -58,6 +58,7 @@ impl Dispatcher {
 
     pub(super) fn inline_editing(&self, event: &KeyEvent) -> KeyResult {
         if event.press.is(RENAME.in_map(Map::Default))
+            && !self.preview_has_focus(event)
             && (self.view.filter_has_focus()
                 || !event
                     .focused
@@ -210,7 +211,7 @@ impl Dispatcher {
             self.view.create_new_folder();
             return Some(Propagation::Stop);
         }
-        if event.press.is(NEW_FOLDER_WITH_SELECTION) {
+        if event.press.is(NEW_FOLDER_WITH_SELECTION) && !self.preview_has_focus(event) {
             if !self.view.create_new_folder_for_selection() {
                 self.view.create_new_folder();
             }
@@ -241,26 +242,31 @@ impl Dispatcher {
         } else {
             return None;
         };
-        if self.view.filter_has_focus()
-            || event.text_has_focus()
-            || (self.preview_has_focus(event) && press.is_any(&[SELECT_ALL, COPY, PASTE, CUT]))
-        {
+        if self.view.filter_has_focus() || event.text_has_focus() || self.preview_has_focus(event) {
             return Some(Propagation::Proceed);
         }
         action(&self.view).then_some(Propagation::Stop)
     }
 
-    fn preview_has_focus(&self, event: &KeyEvent) -> bool {
-        let preview = self.preview.widget();
-        event
-            .focused
-            .as_ref()
-            .is_some_and(|focused| focused == &preview || focused.is_ancestor(&preview))
+    /// Whether keyboard focus is anywhere inside the preview drawer, whatever
+    /// widget it renders.
+    pub(super) fn preview_has_focus(&self, event: &KeyEvent) -> bool {
+        self.preview.owns_focus(event.focused.as_ref())
     }
 
     pub(super) fn context_menu_command(&self, event: &KeyEvent) -> KeyResult {
-        if event.press.is(CONTEXT_MENU)
-            && !event.text_has_focus()
+        if !event.press.is(CONTEXT_MENU) {
+            return None;
+        }
+        // A focused Back button lists its history for this key itself.
+        if event
+            .focused
+            .as_ref()
+            .is_some_and(crate::ui::browser::lists_back_history)
+        {
+            return Some(Propagation::Proceed);
+        }
+        if !event.text_has_focus()
             && (super::sidebar::open_sidebar_context_menu(&self.sidebar.widget)
                 || self.view.open_focused_context_menu())
         {

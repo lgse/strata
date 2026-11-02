@@ -210,6 +210,26 @@ impl SearchItem {
     fn search_name(&self) -> &str {
         &self.search_path[self.search_name_start..]
     }
+
+    /// This result after a rename within its folder to `path`.
+    pub(crate) fn renamed(&self, path: PathBuf) -> Self {
+        let name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        let search_path = format!(
+            "{}{}",
+            &self.search_path[..self.search_name_start],
+            fold_for_search(&name)
+        );
+        Self {
+            name,
+            path,
+            search_path,
+            ..self.clone()
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

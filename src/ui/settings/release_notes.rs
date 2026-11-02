@@ -272,7 +272,7 @@ pub(super) fn load_current_release_notes(card: &ReleaseNotesCard) {
                 set_release_notes_message(
                     &card.notes,
                     &crate::i18n::tr(
-                        "Release notes are unavailable because this version’s tag was not found.",
+                        "Release notes are unavailable because this version's tag was not found.",
                     ),
                 );
                 card.fallback.set_uri(&url);
@@ -281,10 +281,10 @@ pub(super) fn load_current_release_notes(card: &ReleaseNotesCard) {
             }
             Ok(ReleaseNotes::Failed { message, url }) => {
                 card.summary
-                    .set_text(&crate::i18n::tr("Couldn’t load release notes"));
+                    .set_text(&crate::i18n::tr("Couldn't load release notes"));
                 set_release_notes_message(
                     &card.notes,
-                    &rust_i18n::t!("Couldn’t load release notes: %{message}", message = message),
+                    &rust_i18n::t!("Couldn't load release notes: %{message}", message = message),
                 );
                 card.fallback.set_uri(&url);
                 card.fallback.set_visible(true);
@@ -293,11 +293,11 @@ pub(super) fn load_current_release_notes(card: &ReleaseNotesCard) {
             Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
             Err(TryRecvError::Disconnected) => {
                 card.summary
-                    .set_text(&crate::i18n::tr("Couldn’t load release notes"));
+                    .set_text(&crate::i18n::tr("Couldn't load release notes"));
                 set_release_notes_message(
                     &card.notes,
                     &crate::i18n::tr(
-                        "Couldn’t load release notes because the request ended unexpectedly.",
+                        "Couldn't load release notes because the request ended unexpectedly.",
                     ),
                 );
                 glib::ControlFlow::Break

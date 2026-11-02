@@ -25,6 +25,7 @@ use rustix::fs::FileType;
 use super::local_operations::FolderStamp;
 use crate::{
     adapters::{
+        MountTable,
         gio_close::CancelOnDrop,
         gio_file_for_location, location_for_file,
         mount_lanes::{self, Class, Progress, Unanswered},
@@ -35,9 +36,9 @@ use crate::{
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, DirectoryStamp, Evidence, FileSource,
         IdentityTraits, ItemIdentity, LoadHandle, LocationValidationError, MetadataOutcome,
-        MetadataRequest, MetadataUpdate, MountToken, RequestId, Responsiveness, StampAnswer,
-        Watching, backend_unavailable_message, bytes_support_named_family, file_activity,
-        is_hidden_name, is_image_path, is_media_path, link_target_kind, listed_kind,
+        MetadataRequest, MetadataUpdate, MountToken, Proof, RequestId, Responsiveness, StampAnswer,
+        WatchRequest, Watching, backend_unavailable_message, bytes_support_named_family,
+        file_activity, is_hidden_name, is_image_path, is_media_path, link_target_kind, listed_kind,
         native_hidden_names, sanitize_failure_message, symlink_kind,
     },
 };
@@ -524,13 +525,12 @@ impl FileSource for LocalFileSource {
 
     fn start_watch(
         &self,
-        location: Location,
-        include_hidden: bool,
+        request: WatchRequest,
         notify: Rc<dyn Fn(DirectoryChange)>,
         report: Rc<dyn Fn(Watching)>,
     ) -> LoadHandle {
         let started = monitors::start(
-            &location,
+            &request.location,
             super::local_operations::Watched::Folder,
             gio::FileMonitorFlags::WATCH_MOVES,
         );
@@ -539,17 +539,12 @@ impl FileSource for LocalFileSource {
         let task = glib::MainContext::default().spawn_local(async move {
             match started.await {
                 Some(monitor) => {
-                    slot.replace(Some(connect_monitor(
-                        monitor,
-                        location,
-                        include_hidden,
-                        notify,
-                    )));
+                    slot.replace(Some(connect_monitor(monitor, request, notify)));
                     report(Watching::Live);
                 }
                 None => {
                     tracing::debug!(
-                        location = %location.diagnostic_path(),
+                        location = %request.location.diagnostic_path(),
                         "directory monitoring unavailable"
                     );
                     report(Watching::Unavailable);
@@ -645,21 +640,20 @@ impl FileSource for LocalFileSource {
 
     fn find_by_identity(
         &self,
-        parent: Location,
+        departed: Location,
         identity: ItemIdentity,
         emit: Rc<dyn Fn(Option<Location>)>,
     ) -> LoadHandle {
-        let Some(directory) = parent.native_path().map(Path::to_path_buf) else {
+        let Some(departed) = departed.native_path().map(Path::to_path_buf) else {
             emit(None);
             return LoadHandle::new(|| {});
         };
+        let (_, mounts) = mount_watch::snapshot();
+        let job = mount_lanes::run(&departed.clone(), Class::Interactive, move |progress| {
+            native_relocated_folder(&departed, identity, &mounts, progress)
+        });
         let task = glib::MainContext::default().spawn_local(async move {
-            let found =
-                gio::spawn_blocking(move || native_entry_with_identity(&directory, identity))
-                    .await
-                    .ok()
-                    .flatten();
-            emit(found.map(Location::local));
+            emit(job.await.ok().flatten().map(Location::local));
         });
         LoadHandle::new(move || task.abort())
     }
@@ -678,25 +672,95 @@ fn log_directory_load_started(request_id: RequestId, location: &Location) {
     );
 }
 
-fn native_entry_with_identity(directory: &Path, identity: ItemIdentity) -> Option<PathBuf> {
-    use std::os::unix::fs::DirEntryExt;
+/// Where the folder last seen at `departed` is now: renamed in place, or moved along with
+/// its deepest missing ancestor renamed within the nearest ancestor that remains, a rename
+/// that inotify does not report to the folder's own watch.
+fn native_relocated_folder(
+    departed: &Path,
+    identity: ItemIdentity,
+    mounts: &MountTable,
+    progress: &Progress,
+) -> Option<PathBuf> {
+    let mut renamed = departed;
+    let directory = loop {
+        let parent = renamed.parent()?;
+        let metadata = fs::metadata(parent);
+        progress.answered(&metadata);
+        match metadata {
+            Ok(metadata) if metadata.is_dir() => break parent,
+            Ok(_) => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                ) => {}
+            Err(_) => return None,
+        }
+        renamed = parent;
+    };
+    let below = departed.strip_prefix(renamed).ok()?;
+    if below.as_os_str().is_empty() {
+        return native_entry_with_identity(directory, identity, mounts, progress);
+    }
+    native_folders(directory, below, mounts, progress)?
+        .iter()
+        .map(|folder| folder.path().join(below))
+        .find(|candidate| has_identity(candidate, identity, progress))
+}
+
+/// The folders of `directory` whose path `below` stays on the mount of `directory`, judged
+/// from its real path by the mount table: a mount point cannot be renamed, and looking into
+/// another mount can wait on a server that stopped answering or trigger an automount.
+fn native_folders(
+    directory: &Path,
+    below: &Path,
+    mounts: &MountTable,
+    progress: &Progress,
+) -> Option<Vec<fs::DirEntry>> {
+    let real = fs::canonicalize(directory);
+    progress.answered(&real);
+    let real = real.ok()?;
+    let mount = mounts.mount_point_for(&real);
+    let stays_on_the_mount = |entry: &fs::DirEntry| {
+        mounts.mount_point_for(&real.join(entry.file_name()).join(below)) == mount
+    };
     let mut listing = file_activity::list(directory).ok()?;
-    let folders: Vec<fs::DirEntry> = listing
+    let folders = listing
         .by_ref()
         .flatten()
         .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .filter(stays_on_the_mount)
         .collect();
-    if listing.stopped() {
-        return None;
-    }
-    let matches = |entry: &&fs::DirEntry| {
-        let path = entry.path();
-        super::local_operations::folder_stamp(&path, false).is_ok_and(|stamp| {
-            directory_stamp(&path, &stamp, SystemTime::now())
-                .identity
-                .is_some_and(|candidate| identity.same(&candidate))
-        })
-    };
+    progress.beat();
+    (!listing.stopped()).then_some(folders)
+}
+
+/// The identity of the folder at `path` under its mount's identity rule.
+fn folder_identity_at(
+    path: &Path,
+    progress: &Progress,
+) -> Result<Option<ItemIdentity>, rustix::io::Errno> {
+    let stamp = super::local_operations::folder_stamp(path, false);
+    progress.answered(&stamp);
+    Ok(directory_stamp(path, &stamp?, SystemTime::now()).identity)
+}
+
+fn has_identity(path: &Path, identity: ItemIdentity, progress: &Progress) -> bool {
+    folder_identity_at(path, progress)
+        .ok()
+        .flatten()
+        .is_some_and(|candidate| identity.same(&candidate))
+}
+
+fn native_entry_with_identity(
+    directory: &Path,
+    identity: ItemIdentity,
+    mounts: &MountTable,
+    progress: &Progress,
+) -> Option<PathBuf> {
+    use std::os::unix::fs::DirEntryExt;
+    let folders = native_folders(directory, Path::new(""), mounts, progress)?;
+    let matches = |entry: &&fs::DirEntry| has_identity(&entry.path(), identity, progress);
     // Btrfs subvolumes, overlayfs and FUSE can list a different inode than stat reports.
     folders
         .iter()

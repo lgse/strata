@@ -12,6 +12,9 @@ use super::{
     },
 };
 
+#[cfg(test)]
+pub(super) mod tests;
+
 pub(crate) const EXPERIMENTAL_LABEL: &str = "(experimental feature, under active development)";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -474,11 +477,6 @@ const ICONS_NAVIGATION: &[Shortcut] = &[
         "Focus the visible sidebar",
     ),
     row(One(BACKSPACE.shown()), "Go to the parent folder"),
-    within(
-        "%{keys} on the Back button",
-        One(CONTEXT_MENU.shown()),
-        "List the back history (also right-click or hold)",
-    ),
     row(
         Any(shown![
             THUMBNAILS_LARGER.alternate(0),
@@ -554,11 +552,17 @@ const DEFAULT_NAVIGATION: &[Shortcut] = &[
         Any(shown![HISTORY_BACK, HISTORY_FORWARD]),
         "Back / forward in history",
     ),
-    within(
-        "%{keys} on the Back button",
-        One(CONTEXT_MENU.shown()),
-        "List the back history (also right-click or hold)",
-    ),
+];
+
+/// Only Icons and List panes have a header with a Back button.
+const BACK_BUTTON_HISTORY: Shortcut = within(
+    "%{keys} on the Back button",
+    One(CONTEXT_MENU.shown()),
+    "List the back history (also right-click or hold)",
+);
+
+/// Navigation every default-map view shares, after the history rows.
+const DEFAULT_GO_TO: &[Shortcut] = &[
     row(One(PARENT_FOLDER.shown()), "Go to the parent folder"),
     row(One(HOME_FOLDER.shown()), "Go to Home"),
     row(Any(shown![FIRST_ITEM, LAST_ITEM]), "First / last item"),
@@ -574,12 +578,12 @@ const DEFAULT_NAVIGATION: &[Shortcut] = &[
 ];
 
 fn default_navigation(mode: BrowserMode) -> Vec<Shortcut> {
-    let own = match mode {
-        BrowserMode::Columns => COLUMNS_NAVIGATION,
-        BrowserMode::Icons => ICONS_NAVIGATION,
-        BrowserMode::List => LIST_NAVIGATION,
+    let (own, back_button): (_, &[Shortcut]) = match mode {
+        BrowserMode::Columns => (COLUMNS_NAVIGATION, &[]),
+        BrowserMode::Icons => (ICONS_NAVIGATION, &[BACK_BUTTON_HISTORY]),
+        BrowserMode::List => (LIST_NAVIGATION, &[BACK_BUTTON_HISTORY]),
     };
-    [own, DEFAULT_NAVIGATION].concat()
+    [own, DEFAULT_NAVIGATION, back_button, DEFAULT_GO_TO].concat()
 }
 const TENXER_LINE_NAVIGATION: &[Shortcut] = &[
     row(
@@ -978,6 +982,14 @@ const TRASH_AFTER_CONFIRMING: Shortcut = row(
     TENXER_DELETE_CONFIRM,
 ])));
 
+/// 10xer renames in the footer; the context menu still renames inline, and
+/// only there does Tab move the editor.
+const TAB_IN_INLINE_RENAME: Shortcut = within(
+    "%{keys} in an inline rename",
+    Any(shown![FOCUS_NEXT, FOCUS_PREVIOUS]),
+    "Rename the next / previous item",
+);
+
 const TENXER_FILES: &[Shortcut] = &[
     row(
         Any(shown![YANK, YANK_CUT]),
@@ -1006,6 +1018,7 @@ const TENXER_FILES: &[Shortcut] = &[
     row(One(UNDO.shown()), "Undo the last file operation"),
     row(One(REDO.shown()), "Redo the last file operation"),
     row(One(RENAME.shown()), "Rename the focused item in the footer"),
+    TAB_IN_INLINE_RENAME,
     row(
         One(OPEN_WITH.shown()),
         "Open With for the selection, or the focused item",
@@ -1136,6 +1149,7 @@ fn chooser_files(chooser: ChooserScope) -> Vec<Shortcut> {
             "Rename the focused item in the footer",
         ));
     }
+    shortcuts.push(TAB_IN_INLINE_RENAME);
     shortcuts.push(row(One(NEW_FOLDER.shown()), "Create a folder"));
     if chooser.multiple {
         shortcuts.extend_from_slice(&[
@@ -1159,10 +1173,11 @@ fn chooser_files(chooser: ChooserScope) -> Vec<Shortcut> {
 }
 
 /// 10xer rows that a default row already describes with other keys or context.
-const SHARED_WITH_DEFAULT: [(Keys, Option<&str>); 3] = [
+const SHARED_WITH_DEFAULT: [(Keys, Option<&str>); 4] = [
     (One(FIRST_ITEM.shown()), None),
     (One(CHOOSE_FOLDER.shown()), None),
     (One(FOCUS_PREVIOUS.shown()), Some(IN_ANY_PREVIEW)),
+    (TAB_IN_INLINE_RENAME.keys, TAB_IN_INLINE_RENAME.context),
 ];
 
 fn tenxer_mode_rows(
@@ -1611,28 +1626,4 @@ fn tenxer_scopes(mode: BrowserMode) -> Vec<Vec<ReferenceSection>> {
         }
     }
     scopes
-}
-/// The distinct rows of one map across all its scopes, each as the keys it
-/// shows: its own and those its action names.
-#[cfg(test)]
-pub(in crate::ui) fn reference_rows(tenxer: bool) -> Vec<Vec<Keys>> {
-    let mut rows: Vec<Shortcut> = Vec::new();
-    for shortcut in scoped_sections(tenxer)
-        .into_iter()
-        .flatten()
-        .flat_map(|section| section.rows)
-    {
-        if !rows.contains(&shortcut) {
-            rows.push(shortcut);
-        }
-    }
-    rows.into_iter()
-        .map(|shortcut| {
-            let mentioned = match shortcut.mention {
-                Some(Mention::Keys(keys)) => Some(keys),
-                Some(Mention::Held(_)) | None => None,
-            };
-            std::iter::once(shortcut.keys).chain(mentioned).collect()
-        })
-        .collect()
 }

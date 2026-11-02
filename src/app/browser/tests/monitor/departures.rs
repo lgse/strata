@@ -5,6 +5,11 @@ use super::*;
 #[derive(Debug, Clone, Copy)]
 enum OutsideChange {
     RenamedInPlace,
+    /// Inotify reports no rename of an ancestor, so the next change reports the removal.
+    ParentRenamedInPlace,
+    GrandparentRenamedInPlace,
+    /// The reload a rescan or F5 starts fails, which shows the folder is gone.
+    ParentRenamedInAMonitorBurst,
     MovedIntoAnotherFolder,
     Deleted,
     DeletedWithItsParent,
@@ -37,6 +42,14 @@ impl OutsideChange {
             Self::RenamedInPlace => {
                 source.rename(open, renamed);
                 renamed.clone()
+            }
+            Self::ParentRenamedInPlace | Self::ParentRenamedInAMonitorBurst => {
+                source.rename_tree(parent, &Location::local("/fixture/a2"));
+                Location::local("/fixture/a2/b")
+            }
+            Self::GrandparentRenamedInPlace => {
+                source.rename_tree(&Location::local("/fixture"), &Location::local("/moved"));
+                Location::local("/moved/a/b")
             }
             Self::MovedIntoAnotherFolder => {
                 source.rename(open, &Location::local("/fixture/elsewhere/b"));
@@ -78,7 +91,9 @@ impl OutsideChange {
 
     fn report(self, open: &Location) -> DirectoryChange {
         match self {
-            Self::DeletedInAMonitorBurst => DirectoryChange::Rescan,
+            Self::DeletedInAMonitorBurst | Self::ParentRenamedInAMonitorBurst => {
+                DirectoryChange::Rescan
+            }
             _ => DirectoryChange::Remove(open.clone()),
         }
     }
@@ -86,7 +101,10 @@ impl OutsideChange {
     /// `ColumnsRelocated`, `Reset` and `ColumnReloaded` counts.
     fn expected_navigation(self) -> (usize, usize, usize) {
         match self {
-            Self::RenamedInPlace => (1, 0, 0),
+            Self::RenamedInPlace | Self::ParentRenamedInPlace | Self::GrandparentRenamedInPlace => {
+                (1, 0, 0)
+            }
+            Self::ParentRenamedInAMonitorBurst => (1, 0, 1),
             Self::Unreachable => (0, 0, 0),
             // The rescan's reload fails, which shows the folder is gone.
             Self::DeletedInAMonitorBurst => (0, 1, 1),
@@ -153,6 +171,9 @@ fn reacts_to_its_own_removal(change: OutsideChange) -> Option<String> {
 fn the_open_folder_reacts_to_its_own_removal_report() {
     let changes = [
         OutsideChange::RenamedInPlace,
+        OutsideChange::ParentRenamedInPlace,
+        OutsideChange::GrandparentRenamedInPlace,
+        OutsideChange::ParentRenamedInAMonitorBurst,
         OutsideChange::MovedIntoAnotherFolder,
         OutsideChange::Deleted,
         OutsideChange::DeletedWithItsParent,
@@ -218,6 +239,31 @@ fn a_child_column_own_removal_report_is_left_to_its_parent_column() {
 
     assert_eq!(open_path(&browser), [parent, open]);
     assert!(events.borrow().is_empty(), "{:?}", events.borrow());
+}
+
+#[test]
+fn a_child_column_removal_report_follows_a_renamed_ancestor_of_the_first_column() {
+    let root = Location::local("/fixture/a/b");
+    let child = Location::local("/fixture/a/b/c");
+    let source = Rc::new(DepartingSource::default());
+    source.identities.identify(&root);
+    let browser = Browser::new(source.clone());
+    browser.navigate(root.clone());
+    browser.show_child(0, child.clone());
+    source.rename_tree(
+        &Location::local("/fixture/a"),
+        &Location::local("/fixture/a2"),
+    );
+
+    source.directory_monitor(&child)(DirectoryChange::Remove(child.clone()));
+
+    assert_eq!(
+        open_path(&browser),
+        [
+            Location::local("/fixture/a2/b"),
+            Location::local("/fixture/a2/b/c")
+        ]
+    );
 }
 
 #[derive(Debug, Clone, Copy)]

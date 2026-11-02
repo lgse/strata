@@ -8,6 +8,29 @@ use super::metadata_fills::SortPass;
 use super::{Browser, BrowserEvent, PublicationPlan, PublishTerminal, SortOrigin};
 
 impl Browser {
+    pub fn requested_column_preferences(&self, depth: usize) -> Option<ViewPreferences> {
+        let mut preferences = self.column_preferences(depth)?;
+        if let Some(requested) = self.requested_sort.get()
+            && requested.depth == depth
+            && self.pending_sort.get() == Some((requested.generation, depth))
+        {
+            preferences.set_sort_options(requested.preferences.sort_options());
+        }
+        if !self
+            .location_at(depth)
+            .is_some_and(|location| location.is_recent_root())
+        {
+            preferences.folders_first = self.preferences.get().folders_first;
+        }
+        Some(preferences)
+    }
+
+    pub fn restore_default_sort(self: &Rc<Self>, depth: usize, options: crate::model::SortOptions) {
+        self.apply_column_preferences(depth, SortOrigin::Followed, move |preferences| {
+            preferences.set_sort_options(options);
+        });
+    }
+
     pub fn set_sort_key(self: &Rc<Self>, depth: usize, sort_key: SortKey) {
         if sort_key == SortKey::Recency
             && !self
@@ -84,7 +107,7 @@ impl Browser {
         comparison: crate::model::NameComparison,
     ) {
         if self
-            .column_preferences(depth)
+            .requested_column_preferences(depth)
             .is_some_and(|prefs| prefs.sort_key == SortKey::Unsorted)
         {
             return;
@@ -96,7 +119,7 @@ impl Browser {
 
     pub fn set_sort_direction(self: &Rc<Self>, depth: usize, sort_direction: SortDirection) {
         if self
-            .column_preferences(depth)
+            .requested_column_preferences(depth)
             .is_some_and(|prefs| prefs.sort_key == SortKey::Unsorted)
         {
             return;
@@ -169,11 +192,30 @@ impl Browser {
         let Some(location) = self.location_at(depth) else {
             return;
         };
+        let Some(mut requested) = self.requested_column_preferences(depth) else {
+            return;
+        };
+        update(&mut requested);
         let generation = self.begin_sort(depth);
+        self.requested_sort.set(Some(SortPass {
+            depth,
+            generation,
+            origin,
+            preferences: requested,
+        }));
         let weak = Rc::downgrade(self);
         gio::glib::timeout_add_local_once(Duration::from_millis(16), move || {
             if let Some(browser) = weak.upgrade() {
-                browser.apply_debounced_sort(depth, &location, generation, origin, update);
+                browser.apply_debounced_sort(
+                    depth,
+                    &location,
+                    generation,
+                    origin,
+                    move |preferences| {
+                        preferences.set_sort_options(requested.sort_options());
+                        preferences.folders_first = requested.folders_first;
+                    },
+                );
             }
         });
     }

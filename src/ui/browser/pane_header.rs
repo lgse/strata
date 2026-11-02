@@ -100,6 +100,23 @@ fn install_menu_keys(popover: &gtk::Popover) {
 /// Roughly eight two-line entries; longer histories scroll.
 const HISTORY_MENU_MAX_HEIGHT: i32 = 400;
 
+/// Marks the popover [`attach_back_history`] parents to the Back button.
+const BACK_HISTORY_POPOVER: &str = "back-history-popover";
+
+/// Whether `focused` is a Back button that lists its history for the
+/// context-menu key. Window-level key handlers run first, so they must leave
+/// that key to the button rather than open the pane's context menu.
+pub(in crate::ui) fn lists_back_history(focused: &gtk::Widget) -> bool {
+    let mut child = focused.first_child();
+    while let Some(widget) = child {
+        if widget.is::<gtk::Popover>() && widget.has_css_class(BACK_HISTORY_POPOVER) {
+            return true;
+        }
+        child = widget.next_sibling();
+    }
+    false
+}
+
 /// Right-click, long-press, or the context-menu key on Back lists the back
 /// history, most recent first, and jumps to a chosen entry in one step.
 pub(in crate::ui) fn attach_back_history(browser: &Rc<Browser>, back: &gtk::Button) {
@@ -125,6 +142,7 @@ pub(in crate::ui) fn attach_back_history(browser: &Rc<Browser>, back: &gtk::Butt
         .position(gtk::PositionType::Bottom)
         .build();
     popover.add_css_class("column-popover");
+    popover.add_css_class(BACK_HISTORY_POPOVER);
     crate::ui::scrolling::popover::dismiss_on_outside_scroll(&popover);
     let popover_weak = popover.downgrade();
     let home = glib::home_dir();

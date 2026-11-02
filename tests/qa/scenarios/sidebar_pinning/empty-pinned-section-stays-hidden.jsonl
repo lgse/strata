@@ -1,0 +1,12 @@
+{"scenario":"empty-pinned-section-stays-hidden","modes":["columns"],"layout":"us","mutation":null,"known_bug":null}
+{"wait":{"present":{"sidebar":"Home"}},"message":"the sidebar places"}
+{"expect":{"absent":{"role":"button","name":"PINNED"}},"message":"nothing pinned, so no Pinned heading at startup"}
+{"click":{"named":"Toggle sidebar (Ctrl+B)","within":{"window":true}}}
+{"wait":{"pref":{"key":"sidebar_compact","value":true}},"message":"the first sidebar step to save the icon rail"}
+{"click":{"named":"Toggle sidebar (Ctrl+B)","within":{"window":true}}}
+{"wait":{"pref":{"key":"sidebar_expanded","value":false}},"message":"the second sidebar step to save the hidden sidebar"}
+{"click":{"named":"Toggle sidebar (Ctrl+B)","within":{"window":true}}}
+{"wait":{"pref":{"key":"sidebar_compact","value":false}},"message":"the third sidebar step to save the full sidebar"}
+{"wait":{"pref":{"key":"sidebar_expanded","value":true}},"message":"the third sidebar step to show the sidebar"}
+{"wait":{"present":{"sidebar":"Home"}},"message":"the full sidebar's places"}
+{"expect":{"absent":{"role":"button","name":"PINNED"}},"timeout_ms":0,"message":"leaving the rail with nothing pinned shows no Pinned heading"}

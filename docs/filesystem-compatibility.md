@@ -11,6 +11,11 @@ semantics come from the GVfs backend. This document covers them only where it sa
 [names](#names) they get by their address, the links they refuse, and how a native item moved to
 one is deleted.
 
+A failed `smb://` connection gets the same refused, timed-out and unreachable messages as
+[SFTP](remote-sftp.md#failures), read from the system error text GVfs-SMB appends to its generic
+failure. An SMB host that does not resolve still shows the generic error, because GVfs reports
+only "Invalid argument" for it.
+
 ## Guarantees
 
 - **Never replace a concurrent arrival.** An item that appears at a destination while Strata is
@@ -1828,9 +1833,13 @@ The exceptions are:
 - The reads at start, before the first window shows: Strata's settings and state files, GTK's
   bookmarks file, the install marker beside Strata's executable and the check for a Flatpak
   sandbox. The bundled font Strata writes at start is read by fontconfig whenever it lays out
-  text.
+  text. Before any of them, and before anything asks GIO for its default VFS, which waits about
+  25 s on a `gvfsd` that does not answer, Strata checks in a subprocess that GVfs answers within
+  2 s; if it does not, Strata restarts with GIO's local file and volume backends. Loading the
+  settings already asks GIO for its default VFS, so a debug build stops at that check if anything
+  before it has loaded GIO's modules.
 - GLib's volume monitor, which works only on the main thread. Strata takes it once, in the primary
-  instance's start-up, right after checking that GVfs answers and before the first window shows.
+  instance's start-up, after checking that GVfs answers and before the first window shows.
   Strata skips that check while the marker it wrote after the last passing check still matches the
   running `gvfsd` processes. The marker does not list GVfs's volume monitors
   (`gvfs-udisks2-volume-monitor` and the like), which this first use asks, so neither a `gvfsd`
@@ -1856,14 +1865,17 @@ interface thread makes, and its stall watchdog names the call the interface thre
 ### Request lanes
 
 These worker requests go through their mount's lane in `src/adapters/volume/mount_lanes.rs`: folder
-loads, probes, monitor creation, the release before an operation, the leftover review and its sweep
-of stale probes, imports, exports and program checks of custom actions, and the checks and
-background re-lists of [changes made elsewhere](#changes-made-elsewhere). A lane is keyed by the
-mount's id once a `statx` answer has named it. Until then a request is keyed by its path and the
-mount the table places it on, so a dead target of a symbolic link trips only that path and what lies
-below it, never the home folder the link sits in. A GVfs location is keyed by its scheme, user,
-server and port. GVfs never times out its own requests, so there the 2 s count from when each
-request, a folder load included, started.
+loads, probes, monitor creation, the look a monitor takes at its folder's path after a batch of
+changes, the search for a departed folder by its identity, the release before an operation, the
+leftover review and its sweep of stale probes, imports, exports and program checks of custom
+actions, the checks and background re-lists of [changes made elsewhere](#changes-made-elsewhere),
+and the preview's background reads of whether files named as audio or video hold media ([media
+sequences](preview-sandbox.md#video-previews)). A lane is keyed by the mount's id once a `statx`
+answer has named it. Until then a request is keyed by its path and the mount the table places it on,
+so a dead target of a symbolic link trips only that path and what lies below it, never the home
+folder the link sits in. A GVfs location is keyed by its scheme, user, server and port. GVfs never
+times out its own requests, so there the 2 s count from when each request, a folder load included,
+started.
 
 - **Progress.** A request makes progress when it gets an answer: success, "not found", "not a
   folder", a stale handle or a permission refusal. `EIO`, `ETIMEDOUT`, `EHOSTDOWN`, `ENOTCONN`, a
@@ -1957,6 +1969,19 @@ mount that stopped answering, monitors on every folder deliver nothing, and late
 cancels wait, until that server answers. The window stays usable, and folders that are
 [checked](#changes-made-elsewhere) still are, but other folders stop updating by themselves
 meanwhile.
+
+Inotify watches a folder, not its path: when another program renames or moves one of the folder's
+ancestors, the monitor sees nothing and goes on to report later changes under the old path. So after
+each batch of changes the folder is looked up at its path again, as background work on the lane,
+skipped while the lane is busy or stalled. One look runs at a time; batches that arrive meanwhile
+ask for one more when it ends. When the path holds no folder, or a folder that the mount's [identity
+rule](#identity) proves to be another than the one the folder's load found, the monitor reports its
+folder's removal, and the browser checks where the folder went, as [Browser directory-event
+routing](architecture.md#browser-directory-event-routing) describes. Searching for it lists the
+nearest ancestor that still exists, as an interactive request on the lane, and never looks at a path
+that the mount table, read from the ancestor's real path, places on another mount: a mount point
+cannot be renamed, and looking into another mount can wait on a server that stopped answering or
+trigger an automount. So a folder on another mount than the renamed ancestor's counts as departed.
 
 A column counts as unmonitored until its monitor is live. Once it is, the folder's change stamp is
 read again, and a change since the load re-lists the folder once. Before Linux 6.13, a change in

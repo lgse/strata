@@ -28,6 +28,7 @@ pub(super) struct ColumnModels {
     pub(super) search_results: Rc<RefCell<Vec<SearchItem>>>,
     pub(super) search_session: SearchSession,
     pub(super) search_model: gtk::StringList,
+    pub(super) renamed_result: crate::ui::inline_search::RenamedResult,
 }
 
 /// Mirrors the column's list selection into the browser's model for its depth.
@@ -199,6 +200,7 @@ impl ViewState {
             search_results: Rc::new(RefCell::new(Vec::new())),
             search_session: SearchSession::default(),
             search_model: gtk::StringList::new(&[]),
+            renamed_result: Default::default(),
         }
     }
 }

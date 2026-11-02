@@ -169,6 +169,19 @@ fn sibling_fixture(
 }
 
 #[test]
+fn remote_root_tab_labels_name_the_server_or_share_like_their_headings() {
+    for (uri, label) in [
+        ("smb://host/", "host".to_owned()),
+        ("smb://host/My%20Share/", "My Share".to_owned()),
+        ("sftp://host/caf%C3%A9", "café".to_owned()),
+        ("trash:///", crate::i18n::tr("Trash")),
+        ("recent:///", crate::i18n::tr("Recent")),
+    ] {
+        assert_eq!(tab_label(Some(&Location::uri(uri))), label, "{uri}");
+    }
+}
+
+#[test]
 fn browser_windows_keep_gtk_from_adding_a_default_title_bar() {
     gtk_test(
         "ui::window::composition::tabs::tests::browser_windows_keep_gtk_from_adding_a_default_title_bar",

@@ -72,6 +72,16 @@ impl PendingRename {
         true
     }
 
+    /// Where the item's filter result goes: its new path, or `None` when it moves
+    /// to another folder.
+    fn result_target(&self) -> Option<Option<&Location>> {
+        if self.placed {
+            // Deliberately not followed, even where a recursive filter lists it again.
+            return Some(None);
+        }
+        self.new_location.as_ref().map(Some)
+    }
+
     fn awaiting_refresh(&self) -> bool {
         matches!(&self.state, PendingRenameState::AwaitingRefresh { .. })
     }
@@ -449,10 +459,24 @@ impl ViewState {
         }
     }
 
+    /// Tells filter results where the pending rename takes their item.
+    pub(in crate::ui::browser) fn follow_pending_rename(&self) {
+        let target = self.pending_rename.borrow().as_ref().and_then(|pending| {
+            let to = pending.result_target()?.cloned();
+            Some((pending.old_location.clone(), to))
+        });
+        if let Some((from, to)) = target {
+            self.follow_renamed_result(&from, to.as_ref());
+        }
+    }
+
     pub(in crate::ui::browser) fn fail_pending_rename(&self) {
         let Some(pending) = self.pending_rename.take() else {
             return;
         };
+        if let Some(to) = pending.result_target() {
+            self.forget_renamed_result(&pending.old_location, to);
+        }
         self.browser.clear_group_folder_for(&pending.old_location);
         self.update_rename_labels(&pending.old_location, None, &pending.old_name);
     }

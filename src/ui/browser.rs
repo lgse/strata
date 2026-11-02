@@ -122,8 +122,8 @@ pub(in crate::ui) use crate::ui::browser::listing_filter::{
 pub(in crate::ui) use crate::ui::browser::location::ConnectOutcome;
 pub(super) use crate::ui::browser::pane_header::{
     attach_back_history, column_sort_direction_toggle, column_sort_menu, empty_trash_button,
-    leftovers_button, list_sort_menu, pane_new_folder_button, pane_refresh_button,
-    sync_column_sort_direction, sync_list_sort_menu,
+    leftovers_button, list_sort_menu, lists_back_history, pane_new_folder_button,
+    pane_refresh_button, sync_column_sort_direction, sync_list_sort_menu,
 };
 pub(super) use crate::ui::browser::paths::is_trash_root;
 pub use crate::ui::browser::peek::PeekBehavior;
@@ -263,6 +263,7 @@ pub(super) struct ViewState {
     rename_generation: Cell<u64>,
     rename_reveal_generation: Cell<u64>,
     keyboard_refocus: Cell<Option<file_commands::KeyboardRefocus>>,
+    typed_rename: RefCell<Option<file_commands::TypedRenameFollow>>,
     pending_click_rename: RefCell<Option<glib::SourceId>>,
     click_rename_generation: Cell<u64>,
     pending_new_entry: RefCell<Option<Rc<PendingEntryRename>>>,

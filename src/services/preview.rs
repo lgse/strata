@@ -252,13 +252,16 @@ pub(crate) fn read_head_sample(path: &Path) -> std::io::Result<Vec<u8>> {
 /// Whether a local file's leading bytes still back the visual family its name claims,
 /// so metadata probes skip source files that merely share a media extension.
 pub(crate) fn bytes_support_named_family(path: &Path) -> bool {
-    let Ok(sample) = read_head_sample(path) else {
-        return true;
-    };
+    read_supports_named_family(path).unwrap_or(true)
+}
+
+/// [`bytes_support_named_family`] that reports a failed read instead of trusting the name.
+pub(crate) fn read_supports_named_family(path: &Path) -> std::io::Result<bool> {
+    let sample = read_head_sample(path)?;
     let mut content_type = content_type_for_path(path).to_string();
     let mut content = content_family(&content_type);
     reconcile_with_sample(&mut content_type, &mut content, &sample);
-    !matches!(content, PreviewContent::Text { .. })
+    Ok(!matches!(content, PreviewContent::Text { .. }))
 }
 
 /// Text is NUL-free and either valid UTF-8 (allowing a sequence cut by the sample

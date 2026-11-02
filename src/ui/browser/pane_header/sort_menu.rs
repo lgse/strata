@@ -104,7 +104,7 @@ impl SortMenu {
         self.connect(&names, |browser, depth, value| {
             if let Some(natural) = value.and_then(|value| value.get::<bool>()) {
                 let mut comparison = browser
-                    .column_preferences(depth)
+                    .requested_column_preferences(depth)
                     .unwrap_or_default()
                     .name_comparison;
                 comparison.natural = natural;
@@ -143,7 +143,9 @@ impl SortMenu {
         ] {
             let action = gio::SimpleAction::new_stateful(name, None, &enabled.to_variant());
             self.connect(&action, move |browser, depth, _| {
-                let prefs = browser.column_preferences(depth).unwrap_or_default();
+                let prefs = browser
+                    .requested_column_preferences(depth)
+                    .unwrap_or_default();
                 if name == "folders" {
                     browser.set_folders_first(depth, !prefs.folders_first);
                 } else {
@@ -161,11 +163,12 @@ impl SortMenu {
             self.connect(&action, move |browser, depth, _| {
                 let manager = PreferenceManager::shared();
                 if name == "default" {
-                    if let Some(prefs) = browser.column_preferences(depth) {
+                    if let Some(prefs) = browser.requested_column_preferences(depth) {
                         manager.set_default_sort_options(prefs.sort_options());
                     }
                 } else if let Some(location) = browser.location_at(depth) {
                     manager.reset_folder_sort(&location);
+                    browser.restore_default_sort(depth, manager.default_sort_options());
                 }
             });
         }
