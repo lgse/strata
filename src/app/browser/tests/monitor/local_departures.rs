@@ -12,6 +12,8 @@ enum Departure {
     Delete,
     Rename,
     MoveIntoAnotherFolder,
+    /// Followed by a write into the open folder, the first change its monitor sees.
+    RenameParent,
     DeleteParent,
     /// The removal of the open child column and of the folder share one monitor batch.
     DeleteWithAnOpenChildColumn,
@@ -94,6 +96,13 @@ impl Departure {
                     .expect("move");
                 tree.parent.clone()
             }
+            Self::RenameParent => {
+                let renamed = tree.fixture.path().join("parent-renamed");
+                std::fs::rename(&tree.parent, &renamed).expect("rename parent");
+                let open = renamed.join("open");
+                std::fs::write(open.join("two.txt"), "2").expect("file");
+                open
+            }
             Self::DeleteParent => {
                 std::fs::remove_dir_all(&tree.parent).expect("delete parent");
                 tree.fixture.path().to_path_buf()
@@ -139,6 +148,16 @@ fn follows_the_departure(departure: Departure) -> Vec<String> {
     if matches!(departure, Departure::Recreate) {
         failures.extend(the_recreated_folder_keeps_listing(&browser, &tree));
     }
+    if matches!(departure, Departure::RenameParent) {
+        let listed = ["inner", "kept.txt", "two.txt"];
+        pump_for(&|| column_names(&browser, 0) == listed);
+        let names = column_names(&browser, 0);
+        if names != listed {
+            failures.push(format!(
+                "{departure:?}: the followed folder lists {names:?}"
+            ));
+        }
+    }
     let path = open_path(&browser);
     if (&path, browser.can_go_back()) != (&vec![expected.clone()], could_go_back) {
         failures.push(format!(
@@ -160,6 +179,7 @@ fn the_open_directory_follows_an_outside_rename_and_leaves_an_outside_removal() 
         Departure::Delete,
         Departure::Rename,
         Departure::MoveIntoAnotherFolder,
+        Departure::RenameParent,
         Departure::DeleteParent,
         Departure::DeleteWithAnOpenChildColumn,
         Departure::DeleteAFullFolder,

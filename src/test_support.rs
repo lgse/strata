@@ -5,6 +5,7 @@
 pub(crate) mod operations;
 pub(crate) mod parked;
 mod tests;
+pub(crate) mod widgets;
 
 use std::{
     io::Write,

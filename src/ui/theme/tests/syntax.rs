@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-use super::*;
+use std::collections::HashSet;
+
+use crate::test_support::gtk_test;
+use crate::ui::theme::{
+    ThemeManager, ThemeTokens, builtins, color_to_hex, resolved_source_palette,
+    source_style_scheme_xml, validate_tokens,
+};
 use sourceview5::prelude::*;
 
 #[test]
@@ -126,9 +132,9 @@ border = "#444444"
 dim_text = "#888888"
 "##;
     let mut tokens: ThemeTokens = toml::from_str(source).expect("legacy theme");
-    let derived = super::super::resolved_source_palette(&tokens, None);
+    let derived = resolved_source_palette(&tokens, None);
     tokens.syntax_string = Some("rgb(0,255,0)".into());
-    let resolved = super::super::resolved_source_palette(&tokens, None);
+    let resolved = resolved_source_palette(&tokens, None);
     assert_eq!(resolved.statement, derived.statement);
     assert_eq!(resolved.type_color, derived.type_color);
     assert_eq!(resolved.constant, derived.constant);

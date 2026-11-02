@@ -270,7 +270,7 @@ impl ViewState {
         let columns = self.columns.borrow().clone();
         for column in &columns {
             let weak = Rc::downgrade(self);
-            prune_missing_search_results(column, move || {
+            prune_missing_search_results(column, &self.browser, move || {
                 if let Some(state) = weak.upgrade() {
                     state.notify_search_selection_changed();
                 }

@@ -335,7 +335,7 @@ impl ModeViews {
 
     pub fn prune_stale_search_results(&self) {
         if let Some(pane) = self.single_pane() {
-            pane.search.prune_missing();
+            pane.search.prune_missing(&self.browser);
         }
     }
 

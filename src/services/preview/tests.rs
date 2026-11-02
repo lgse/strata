@@ -5,7 +5,7 @@ use super::{
     archive_preview_format, archive_preview_tree, bytes_support_named_family, content_family,
     has_plain_text_extension, is_extensionless_dotfile, is_image_path, is_media_path,
     is_non_executable_extensionless_dotfile, looks_like_text, normalize_preview_text,
-    reconcile_with_sample,
+    read_supports_named_family, reconcile_with_sample,
 };
 
 #[test]
@@ -827,5 +827,10 @@ fn metadata_probes_skip_text_that_merely_shares_a_media_name() {
             std::fs::write(&path, bytes).expect("fixture");
         }
         assert_eq!(bytes_support_named_family(&path), supported, "{name}");
+        assert_eq!(
+            read_supports_named_family(&path).ok(),
+            (name != "missing.mp4").then_some(supported),
+            "{name}: a failed read is no answer"
+        );
     }
 }

@@ -8,11 +8,22 @@ use std::{
 use super::*;
 
 fn live_watch(location: Location, notify: Rc<dyn Fn(DirectoryChange)>) -> LoadHandle {
+    live_watch_of(location, None, notify)
+}
+
+fn live_watch_of(
+    location: Location,
+    began_on: Option<ItemIdentity>,
+    notify: Rc<dyn Fn(DirectoryChange)>,
+) -> LoadHandle {
     let reported = Rc::new(Cell::new(None));
     let report = reported.clone();
     let handle = LocalFileSource.start_watch(
-        location,
-        false,
+        crate::services::WatchRequest {
+            location,
+            include_hidden: false,
+            began_on,
+        },
         notify,
         Rc::new(move |watching| report.set(Some(watching))),
     );
@@ -107,6 +118,84 @@ fn exchanged_files_stay_listed_unless_they_are_deleted() -> Result<(), Box<dyn E
             );
         }
     }
+    Ok(())
+}
+
+#[test]
+fn a_watched_folder_reports_its_removal_when_an_ancestor_was_renamed() -> Result<(), Box<dyn Error>>
+{
+    let _serial = serial();
+    // With the identity the folder loaded with, a folder made again at the old path is
+    // told apart from the one the watch follows.
+    for remade in [false, true] {
+        let root = tempfile::tempdir()?;
+        let (ancestor, renamed) = (root.path().join("b"), root.path().join("b2"));
+        fs::create_dir_all(ancestor.join("c"))?;
+        let watched = Location::local(ancestor.join("c"));
+        let began_on = folder_identity(&ancestor.join("c"))?;
+        let (changes, notify) = change_recorder();
+        let handle = live_watch_of(watched.clone(), Some(began_on), notify);
+
+        fs::rename(&ancestor, &renamed)?;
+        if remade {
+            fs::create_dir_all(ancestor.join("c"))?;
+        }
+        fs::write(renamed.join("c/two.txt"), b"2")?;
+        // The new file is looked up under the old path, where it is not found.
+        let stale = Location::local(ancestor.join("c/two.txt"));
+        let removed = |location: &Location| {
+            changes.borrow().iter().any(
+                |change| matches!(change, DirectoryChange::Remove(removed) if removed == location),
+            )
+        };
+        drain_until(|| removed(&watched) && removed(&stale));
+        drop(handle);
+    }
+    Ok(())
+}
+
+#[test]
+fn a_look_at_the_path_that_outlasts_later_batches_still_reports_the_departure()
+-> Result<(), Box<dyn Error>> {
+    use crate::adapters::{FsOp, FsQuirks, Quirks};
+
+    let _serial = serial();
+    let root = tempfile::tempdir()?;
+    let (ancestor, renamed) = (root.path().join("b"), root.path().join("b2"));
+    fs::create_dir_all(ancestor.join("c"))?;
+    let watched = Location::local(ancestor.join("c"));
+    let began_on = folder_identity(&ancestor.join("c"))?;
+    let gate = Gate::default();
+    let _scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            after: vec![(FsOp::FolderStamp, "c", 0, gate.racer())],
+            ..Quirks::default()
+        },
+    );
+    let (changes, notify) = change_recorder();
+    let handle = live_watch_of(watched.clone(), Some(began_on), notify);
+    let removed = |location: &Location| {
+        changes
+            .borrow()
+            .iter()
+            .any(|change| matches!(change, DirectoryChange::Remove(removed) if removed == location))
+    };
+
+    fs::write(ancestor.join("c/one.txt"), b"1")?;
+    // The first look has found the folder at its path, and waits to answer.
+    drain_until(|| gate.reached());
+    fs::rename(&ancestor, &renamed)?;
+    // Each write is a batch of its own, flushed while the first look still waits, so only
+    // the look they ask for once it ends can see the folder gone.
+    for name in ["two.txt", "three.txt"] {
+        fs::write(renamed.join("c").join(name), b"")?;
+        let stale = Location::local(ancestor.join("c").join(name));
+        drain_until(|| removed(&stale));
+    }
+    gate.release();
+    drain_until(|| removed(&watched));
+    drop(handle);
     Ok(())
 }
 
@@ -311,8 +400,11 @@ fn a_monitor_is_made_and_released_on_a_worker_while_the_window_keeps_running()
         glib::timeout_add_local_once(Duration::from_millis(10), move || tick.set(true));
 
         let handle = LocalFileSource.start_watch(
-            Location::local(&folder),
-            false,
+            crate::services::WatchRequest {
+                location: Location::local(&folder),
+                include_hidden: false,
+                began_on: None,
+            },
             Rc::new(move |change| {
                 let _held = &probe;
                 collected(change);
@@ -371,8 +463,11 @@ fn a_folder_on_a_mount_that_stopped_answering_gets_no_monitor() -> Result<(), Bo
         let reported = Rc::new(Cell::new(None));
         let report = reported.clone();
         let handle = LocalFileSource.start_watch(
-            Location::local(&folder),
-            false,
+            crate::services::WatchRequest {
+                location: Location::local(&folder),
+                include_hidden: false,
+                began_on: None,
+            },
             Rc::new(|_| {}),
             Rc::new(move |watching| report.set(Some(watching))),
         );
@@ -393,5 +488,58 @@ fn a_folder_on_a_mount_that_stopped_answering_gets_no_monitor() -> Result<(), Bo
         (Some(Watching::Unavailable), Some(Watching::Live), 1)
     );
     drop(load);
+    Ok(())
+}
+
+#[test]
+fn a_watched_path_counts_as_departed_unless_it_holds_the_same_folder() -> Result<(), Box<dyn Error>>
+{
+    type Change = fn(&Path) -> std::io::Result<()>;
+    // Each row changes the watched folder `b/c`, read with and without the identity the
+    // watch began on.
+    let rows: [(&str, Change, bool, bool); 4] = [
+        ("unchanged", |_| Ok(()), false, false),
+        (
+            "ancestor renamed",
+            |root| fs::rename(root.join("b"), root.join("b2")),
+            true,
+            true,
+        ),
+        (
+            "ancestor renamed and the path made again",
+            |root| {
+                fs::rename(root.join("b"), root.join("b2"))?;
+                fs::create_dir_all(root.join("b/c"))
+            },
+            true,
+            false,
+        ),
+        (
+            "replaced by a file",
+            |root| {
+                fs::remove_dir(root.join("b/c"))?;
+                fs::write(root.join("b/c"), "")
+            },
+            true,
+            true,
+        ),
+    ];
+    for (row, change, departed, departed_unidentified) in rows {
+        let root = tempfile::tempdir()?;
+        let watched = root.path().join("b/c");
+        fs::create_dir_all(&watched)?;
+        let began_on = folder_identity(&watched)?;
+        change(root.path())?;
+
+        let progress = Progress::unlaned();
+        assert_eq!(
+            (
+                departed_from(&watched, Some(began_on), &progress),
+                departed_from(&watched, None, &progress)
+            ),
+            (departed, departed_unidentified),
+            "{row}"
+        );
+    }
     Ok(())
 }

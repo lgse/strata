@@ -127,7 +127,7 @@ fn keymap_with_custom_actions_bound() -> Keymap {
 
 fn assert_each_listed_constant_has_a_row(listed: &[Listed], map: Map) {
     let tenxer = map == Map::Tenxer;
-    let rows = crate::ui::shortcut_reference::reference_rows(tenxer);
+    let rows = crate::ui::shortcut_reference::tests::reference_rows(tenxer);
     let wanted: Vec<(&Listed, Wanted)> = listed
         .iter()
         .filter(|constant| constant.maps.include(tenxer))

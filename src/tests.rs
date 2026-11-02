@@ -6,11 +6,12 @@ use gtk::gio;
 
 use super::{
     CommandLineAction, LaunchMode, classify_command_line, classify_udiskie_hook,
-    encode_daemon_pids, file_manager_debug_environment, gvfs_daemon_pids,
-    gvfs_probe_marker_is_fresh_at, gvfs_probe_marker_path_in, launch_mode, run_preview_helper,
+    encode_daemon_pids, file_manager_debug_environment, gio_modules_loaded, gvfs_daemon_pids,
+    gvfs_probe_marker_is_fresh_at, gvfs_probe_marker_path_in, launch_mode,
+    restart_with_local_vfs_if_gvfs_is_unresponsive, run_preview_helper,
     service_debug_environment, should_select_cairo, version_line,
 };
-use crate::ui::preferences::InterfaceRenderer;
+use crate::ui::preferences::{InterfaceRenderer, PreferenceManager};
 
 #[test]
 fn file_manager_activation_preserves_debug_flags_and_stops_restarting() {
@@ -319,4 +320,46 @@ fn only_a_readable_matching_marker_is_fresh() {
 
     std::fs::write(&marker, [0xff]).expect("the unreadable marker should be written");
     assert!(!gvfs_probe_marker_is_fresh_at(&marker, &proc_root));
+}
+
+/// Loading preferences creates GIO's default VFS (issue #2006), so the probe's
+/// guard must reject a probe that runs after it. Needs a process nothing else
+/// has loaded GIO in.
+#[test]
+fn a_gvfs_probe_after_preferences_created_the_default_vfs_is_rejected() {
+    const NAME: &str = "tests::a_gvfs_probe_after_preferences_created_the_default_vfs_is_rejected";
+    const CHILD: &str = "STRATA_GVFS_PROBE_ORDER_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        restart_with_local_vfs_if_gvfs_is_unresponsive();
+        let _renderer = PreferenceManager::shared().interface_renderer();
+        assert!(
+            gio_modules_loaded(),
+            "preferences no longer create GIO's default VFS; the probe ordering constraint may be obsolete"
+        );
+        assert_eq!(
+            std::panic::catch_unwind(restart_with_local_vfs_if_gvfs_is_unresponsive).is_err(),
+            cfg!(debug_assertions)
+        );
+        return;
+    }
+    let sandbox = tempfile::tempdir().expect("disposable preferences");
+    let output = std::process::Command::new(std::env::current_exe().expect("test executable"))
+        .args(["--exact", NAME, "--nocapture", "--include-ignored"])
+        .env(CHILD, "1")
+        // Keeps the probe from starting a subprocess or restarting the test.
+        .env("GIO_USE_VFS", "local")
+        .env("HOME", sandbox.path().join("home"))
+        .env("XDG_STATE_HOME", sandbox.path().join("state"))
+        .env("XDG_CONFIG_HOME", sandbox.path().join("config"))
+        .env("XDG_CACHE_HOME", sandbox.path().join("cache"))
+        .env("XDG_DATA_HOME", sandbox.path().join("data"))
+        .output()
+        .expect("the isolated launch starts");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // A stale NAME selects no test, and libtest still exits successfully.
+    assert!(
+        output.status.success() && stdout.contains("test result: ok. 1 passed"),
+        "the isolated launch must run exactly {NAME}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
 }

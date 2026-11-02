@@ -112,7 +112,7 @@ impl View {
         self.title.set_text(&crate::i18n::tr(match result {
             UpdateCheck::UpToDate => "Strata is up to date",
             UpdateCheck::Available { .. } => "An update is available",
-            UpdateCheck::Failed(_) => "Couldn’t check for updates",
+            UpdateCheck::Failed(_) => "Couldn't check for updates",
         }));
         let returns_to_stable = matches!(result,
             UpdateCheck::Available { release, .. }

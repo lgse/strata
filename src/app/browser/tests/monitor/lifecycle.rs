@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::services::WatchRequest;
 
 type LateWatch = (Location, WatchCallback, Rc<dyn Fn(Watching)>);
 type Answer = Rc<dyn Fn(RequestId) -> Vec<DirectoryEvent>>;
@@ -113,20 +114,16 @@ impl FileSource for LateMonitorSource {
 
     fn start_watch(
         &self,
-        location: Location,
-        include_hidden: bool,
+        request: WatchRequest,
         notify: WatchCallback,
         report: Rc<dyn Fn(Watching)>,
     ) -> LoadHandle {
         match self.watcher {
-            Watcher::Local => crate::adapters::LocalFileSource.start_watch(
-                location,
-                include_hidden,
-                notify,
-                report,
-            ),
+            Watcher::Local => crate::adapters::LocalFileSource.start_watch(request, notify, report),
             Watcher::Recorded => {
-                self.watches.borrow_mut().push((location, notify, report));
+                self.watches
+                    .borrow_mut()
+                    .push((request.location, notify, report));
                 LoadHandle::new(|| {})
             }
         }

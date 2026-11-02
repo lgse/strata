@@ -213,6 +213,7 @@ impl PreviewState {
             None | Some(MediaFamily::Route) => false,
         };
         if !retained {
+            self.media_checks.borrow_mut().stop();
             self.media_toggle_mute.replace(None);
             self.media_volume_slider.replace(None);
         }

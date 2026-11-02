@@ -108,6 +108,7 @@ impl ColumnParts {
             query_binding: Rc::new(RefCell::new(Some(query_binding))),
             search_model: models.search_model,
             recursive_search_active: models.recursive_search_active,
+            renamed_result: models.renamed_result,
             hits: models.hits,
         }
     }

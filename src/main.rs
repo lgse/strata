@@ -278,10 +278,10 @@ fn main() -> gtk::glib::ExitCode {
         }
         LaunchMode::UdiskieHook => return run_udiskie_hook(&arguments[2..]),
         LaunchMode::InstallUdiskie => {
-            return finish_portal_setup(portal_setup::udiskie::install());
+            return finish_localized_setup(portal_setup::udiskie::install);
         }
         LaunchMode::UninstallUdiskie => {
-            return finish_portal_setup(portal_setup::udiskie::uninstall());
+            return finish_localized_setup(portal_setup::udiskie::uninstall);
         }
         #[cfg(feature = "qa")]
         LaunchMode::Qa => {}
@@ -325,6 +325,16 @@ fn main() -> gtk::glib::ExitCode {
     install_application_identity();
     metrics::initialize();
     logging::initialize();
+    // Timed from here so `window presented` covers the whole launch, the way
+    // the field harness measures mapped from process start.
+    let launched = std::time::Instant::now();
+    // Before anything creates GIO's default VFS: a hung gvfsd blocks that for
+    // about 25 s, and loading preferences already creates it.
+    restart_with_local_vfs_if_gvfs_is_unresponsive();
+    tracing::debug!(
+        elapsed_ms = launched.elapsed().as_millis() as u64,
+        "startup gvfs probe finished"
+    );
     let select_cairo = should_select_cairo(
         std::env::var_os("GSK_RENDERER").as_deref(),
         ui::preferences::PreferenceManager::shared().interface_renderer(),
@@ -345,14 +355,6 @@ fn main() -> gtk::glib::ExitCode {
         tracing::warn!(%error, "could not refresh the stale Strata portal");
     }
 
-    // Timed from here so `window presented` covers the whole launch, the way
-    // the field harness measures mapped from process start.
-    let launched = std::time::Instant::now();
-    restart_with_local_vfs_if_gvfs_is_unresponsive();
-    tracing::debug!(
-        elapsed_ms = launched.elapsed().as_millis() as u64,
-        "startup gvfs probe finished"
-    );
     let assets_started = std::time::Instant::now();
     if let Err(error) = assets::prepare() {
         eprintln!("Unable to prepare bundled assets: {error}");
@@ -556,6 +558,12 @@ fn run_preview_helper(arguments: &[OsString]) -> Result<(), String> {
     sandbox_helper::run(&arguments)
 }
 
+/// Terminal setup output follows the system locale, as the installer that runs it does.
+fn finish_localized_setup(setup: fn() -> Result<String, String>) -> gtk::glib::ExitCode {
+    rust_i18n::set_locale(i18n::detected_locale());
+    finish_portal_setup(setup())
+}
+
 fn finish_portal_setup(result: Result<String, String>) -> gtk::glib::ExitCode {
     match result {
         Ok(message) => {
@@ -584,7 +592,17 @@ fn export_file_manager_interface(application: &gtk::Application) {
     }
 }
 
+/// GIO registers its built-in implementations, `GLocalVfs` among them, when it
+/// first loads its modules, as creating its default VFS does.
+fn gio_modules_loaded() -> bool {
+    glib::Type::from_name("GLocalVfs").is_some()
+}
+
 fn restart_with_local_vfs_if_gvfs_is_unresponsive() {
+    debug_assert!(
+        !gio_modules_loaded(),
+        "GIO loaded its modules before the GVfs probe; a hung gvfsd blocks its default VFS"
+    );
     if std::env::var_os("GIO_USE_VFS").is_some() {
         return;
     }

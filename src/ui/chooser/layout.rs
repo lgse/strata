@@ -104,6 +104,7 @@ pub(super) fn build_chooser_hosted(
             sidebar: &panes.sidebar,
             sidebar_toggle: header.sidebar_toggle.upcast_ref(),
             header: &header.content,
+            options: &details.options,
             preview: &preview,
             footer: &footer,
         },
@@ -339,6 +340,7 @@ fn preview_split(content: &gtk::Paned, preview: &PreviewDrawer) -> gtk::Paned {
 struct ChooserDetails {
     details: gtk::Box,
     filename: Option<gtk::Entry>,
+    options: gtk::FlowBox,
     filter_dropdown: Option<ChooserDropdown>,
     choices: Vec<ChoiceControl>,
     read_only: Option<gtk::CheckButton>,
@@ -375,6 +377,7 @@ impl ChooserDetails {
         Self {
             details,
             filename,
+            options,
             filter_dropdown,
             choices,
             read_only,
