@@ -1,0 +1,11 @@
+{"scenario":"paste-honors-foreign-cut-markers","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"gnome-cut","vars":{"operation":"cut"}},{"id":"gnome-copy","vars":{"operation":"copy"}},{"id":"kde-cut","vars":{"flag":"1"}},{"id":"kde-copy","vars":{"flag":"0"}}],"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Pasting a clipboard another file manager filled moves on a GNOME cut header or KDE cut flag and copies otherwise; the only coverage of foreign clipboard formats on the paste side"}}
+{"clipboard_set":{"offers":[{"mime":"x-special/gnome-copied-files","text":"$operation\nfile://$fixture_quoted/todo.txt"},{"mime":"text/uri-list","text":"file://$fixture_quoted/todo.txt\r\n"}]},"variants":["gnome-cut","gnome-copy"]}
+{"clipboard_set":{"offers":[{"mime":"text/uri-list","text":"file://$fixture_quoted/todo.txt\r\n"},{"mime":"application/x-kde-cutselection","text":"$flag"}]},"variants":["kde-cut","kde-copy"]}
+{"select":{"entry":"archive"}}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
+{"settle":{"pane":"archive"}}
+{"move":{"pane":"archive"}}
+{"key":"ctrl+v"}
+{"fs":{"path":"archive/todo.txt","text":"todo\n"},"message":"the paste to land in archive"}
+{"fs":{"path":"todo.txt","exists":false},"message":"a foreign cut must move the source","variants":["gnome-cut","kde-cut"]}
+{"fs":{"path":"todo.txt","exists":true},"timeout_ms":0,"message":"a foreign copy must keep the source","variants":["gnome-copy","kde-copy"]}

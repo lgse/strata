@@ -237,7 +237,7 @@ module explicitly. Re-exports retain the shared entry points used by alternate m
 | Inline rename and new-entry workflows | `inline_edit.rs` |
 | Location editing, breadcrumbs and mount authentication | `location.rs` |
 | Selection-aware menus and restricted chooser menus | `context_menu.rs`, `chooser_context.rs` |
-| Clipboard/cut intent and drag data | `clipboard.rs` |
+| Clipboard/cut intent and drag data; the file-manager clipboard formats | `clipboard.rs`, `clipboard/formats.rs` |
 | Transfers, destination search and archive dialogs | `transfer.rs`, `destination.rs`, `archive.rs` |
 | Progress and Trash confirmation/cancellation | `progress.rs`, `trash.rs` |
 | Properties, permissions and item customization | `properties.rs`, `customization.rs` |
