@@ -387,6 +387,15 @@ pub(super) struct DriveFacts {
 }
 
 fn gather_drive_facts(request: DriveFactsRequest) -> DriveFacts {
+    gather_drive_facts_with(request, drive_ops::fstab_type_for_device)
+}
+
+/// `fstab` reads the filesystem type an unmounted volume declares when the
+/// device itself cannot be probed, as for a network or FUSE fstab entry.
+fn gather_drive_facts_with(
+    request: DriveFactsRequest,
+    fstab: fn(&std::path::Path) -> Option<String>,
+) -> DriveFacts {
     let device = request.device.as_deref();
     let mount_root = request.mount_root.or_else(|| {
         device
@@ -406,6 +415,11 @@ fn gather_drive_facts(request: DriveFactsRequest) -> DriveFacts {
                     info.attribute_string("filesystem::type")
                         .map(|name| name.to_string())
                 })
+        })
+        .or_else(|| {
+            device
+                .and_then(fstab)
+                .and_then(|fstype| drive_ops::filesystem_display_name(&fstype))
         });
     let mount_point = mount_root.as_ref().and_then(|root| root.path());
     DriveFacts {

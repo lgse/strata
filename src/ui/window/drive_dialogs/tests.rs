@@ -712,6 +712,32 @@ fn drive_properties_show_at_once_and_fill_in_facts_read_off_the_ui_thread() {
 }
 
 #[test]
+fn unmounted_volumes_name_the_filesystem_their_fstab_entry_declares() {
+    fn declared(device: &std::path::Path) -> Option<String> {
+        match device.to_str() {
+            Some("/nonexistent/strata-fixture-vfat") => Some("vfat".to_owned()),
+            Some("/nonexistent/strata-fixture-fuse") => Some("fuse.sshfs".to_owned()),
+            _ => None,
+        }
+    }
+    for (device, expected) in [
+        ("/nonexistent/strata-fixture-vfat", Some("FAT32")),
+        ("/nonexistent/strata-fixture-fuse", Some("fuse.sshfs")),
+        ("/nonexistent/strata-fixture-undeclared", None),
+    ] {
+        let request = DriveFactsRequest {
+            device: Some(PathBuf::from(device)),
+            mount_root: None,
+        };
+        let facts = std::thread::spawn(move || gather_drive_facts_with(request, declared))
+            .join()
+            .expect("drive facts");
+        assert_eq!(facts.filesystem.as_deref(), expected, "{device}");
+        assert!(!facts.mounted);
+    }
+}
+
+#[test]
 fn format_dialog_reads_drive_facts_off_the_ui_thread_and_continue_waits_for_them() {
     let bin = tempfile::tempdir().expect("isolated PATH");
     crate::test_support::gtk_test_with_env(
