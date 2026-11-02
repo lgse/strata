@@ -216,7 +216,6 @@ fn enter_reports_and_back(fixture: &KeyboardFixture) {
     let browser = fixture.view.browser();
     assert!(fixture.press(Key::Return, ModifierType::empty()));
     wait_until(|| location_ends_with(browser.active_location(), "reports"));
-    wait_loaded(&browser, 0);
     browser.back();
     wait_until(|| in_fixture_folder(fixture));
     wait_loaded(&browser, 0);

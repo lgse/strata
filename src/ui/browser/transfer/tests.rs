@@ -369,7 +369,9 @@ fn focused_enter_destination_fixture(
 
 fn write_files(root: &Path, files: &[(&str, &[u8])]) {
     for (name, contents) in files {
-        std::fs::write(root.join(name), contents).expect("fixture file");
+        let path = root.join(name);
+        std::fs::create_dir_all(path.parent().expect("fixture parent")).expect("fixture folder");
+        std::fs::write(path, contents).expect("fixture file");
     }
 }
 

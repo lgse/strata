@@ -241,10 +241,9 @@ impl ConfirmedDrop {
     fn confirm_reads_the_live_preference(
         &self,
         fixture: &DropFixture,
-        button: &str,
-        enabled: bool,
+        finished: &Cell<bool>,
+        (button, enabled): (&str, bool),
     ) {
-        let finished = self.observe_finished();
         self.manager.set_open_folder_after_drop(!enabled);
         self.ask_across_devices(fixture);
         self.manager.set_open_folder_after_drop(enabled);
@@ -269,8 +268,9 @@ fn cross_device_confirmation_reads_the_live_drop_open_preference() {
             for (button, enabled) in [("Copy", true), ("Move", false)] {
                 let fixture = drop_fixture("confirmed drop fixture", b"confirmed");
                 drop.view.navigate_location(Location::local(&fixture.root));
+                let finished = drop.observe_finished();
                 drop.cancel_leaves_everything_alone(&fixture);
-                drop.confirm_reads_the_live_preference(&fixture, button, enabled);
+                drop.confirm_reads_the_live_preference(&fixture, &finished, (button, enabled));
             }
             drop.window.destroy();
         },

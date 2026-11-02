@@ -353,7 +353,7 @@ fn ctrl_comma_reaches_settings_until_a_modal_blocks_it() {
     let layer = settings_layer(&content).expect("settings");
     assert!(layer.is_visible());
     layer.set_visible(false);
-    let blocking = focused_modal_layer(&content.overlay());
+    let blocking = focused_modal_layer(content.overlay());
     press_settings(&window, gtk::PropagationPhase::Bubble);
     assert!(!settings_shown(&content));
     press_phase(&window, gtk::PropagationPhase::Capture, Key::m, MODE_CHORD);

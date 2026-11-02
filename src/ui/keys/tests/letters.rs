@@ -108,10 +108,13 @@ fn latin_layout_label_cases() -> Vec<LabelCase> {
 
 #[test]
 fn letters_follow_the_label_then_the_physical_key() {
-    let cases = latin_layout_label_cases()
+    let mut latin = latin_layout_label_cases().into_iter();
+    let us = latin.next();
+    let cases = us
         .into_iter()
         .chain(cyrillic_label_cases())
-        .chain(greek_and_hebrew_label_cases());
+        .chain(greek_and_hebrew_label_cases())
+        .chain(latin);
     for (name, press, binding) in cases {
         assert!(press.is(binding), "{name}: {press:?}");
     }
