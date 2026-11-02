@@ -1,24 +1,17 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    fs,
-    io::{self, Read},
+    fs, io,
     path::{Path, PathBuf},
-    process::{Child, Command, ExitStatus, Stdio},
+    process::{Command, Stdio},
     sync::{
-        Arc, Once,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc,
+        atomic::{AtomicBool, Ordering},
     },
-    thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
-use rustix::process::{Pid, Signal, kill_process_group};
-
-use crate::services::{
-    ArchiveFormat, MediaPreviewSize, ModelFormat, ModelRender, SecretString,
-    model_preview::MAX_MODEL_INPUT_BYTES,
-};
+use crate::services::{ModelPreviewStage, model_preview::MAX_MODEL_INPUT_BYTES};
 
 #[cfg(feature = "rar")]
 pub(crate) mod archive;
@@ -29,6 +22,31 @@ mod model;
 pub(crate) mod raw_metadata;
 pub(crate) mod runtime;
 
+mod command;
+mod operation;
+mod output;
+mod process;
+
+#[cfg(test)]
+use command::polaris_gpu_available_at;
+use command::{SandboxCommand, runtime_command, sandbox_command, sandbox_input_path};
+pub(crate) use command::{gpu_devices, numbered_name, polaris_gpu_available, sandbox_tool};
+pub(crate) use operation::{
+    CoverFormat, DocumentFormat, MediaPreviewBackend, PDF_PASSWORD_PROTECTED, ParseOperation,
+    PdfPreviewError, PdfRenderSize,
+};
+pub(crate) use output::png_dimensions;
+#[cfg(test)]
+use output::{NEXT_DIRECTORY, OutputError, prune_orphaned_private_outputs};
+use output::{
+    PrivateOutput, archive_output_error, read_metadata, read_private_output, valid_output,
+};
+pub(crate) use process::Renderer;
+use process::{
+    kill_renderer, monitor_renderer, spawn_renderer, terminate, wait_for_renderer,
+    wait_for_renderer_reporting,
+};
+
 const WALL_TIME_LIMIT: Duration = Duration::from_secs(12);
 const ADDRESS_SPACE_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 pub(crate) const FILE_SIZE_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
@@ -36,354 +54,6 @@ const TEMPORARY_STORAGE_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_RASTER_INPUT_BYTES: u64 = 512 * 1024 * 1024;
 pub(crate) const MAX_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
 pub(crate) const MAX_TEXT_LAYER_BYTES: u64 = 8 * 1024 * 1024;
-static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(1);
-
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(crate) enum MediaPreviewBackend {
-    Automatic,
-    VaApi,
-    Vulkan,
-    Software,
-}
-
-impl MediaPreviewBackend {
-    pub(crate) fn argument(self) -> &'static str {
-        match self {
-            Self::Automatic => "automatic",
-            Self::VaApi => "vaapi",
-            Self::Vulkan => "vulkan",
-            Self::Software => "software",
-        }
-    }
-
-    pub(crate) fn from_argument(value: &str) -> Option<Self> {
-        match value {
-            "automatic" => Some(Self::Automatic),
-            "vaapi" => Some(Self::VaApi),
-            "vulkan" => Some(Self::Vulkan),
-            "software" => Some(Self::Software),
-            _ => None,
-        }
-    }
-}
-
-#[derive(serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum PdfPreviewError {
-    PasswordProtected,
-}
-
-pub(crate) const PDF_PASSWORD_PROTECTED: &str = "This PDF is password protected.";
-
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(crate) struct PdfRenderSize {
-    pub(crate) width: i32,
-    pub(crate) height: i32,
-}
-
-impl PdfRenderSize {
-    const MAX_WIDTH: i32 = 1_400;
-    const MAX_HEIGHT: i32 = 1_800;
-    const MAX_PIXELS: u64 = 2_500_000;
-
-    pub(crate) fn new(width: i32, height: i32) -> Self {
-        Self {
-            width: width.clamp(16, Self::MAX_WIDTH),
-            height: height.clamp(16, Self::MAX_HEIGHT),
-        }
-    }
-
-    pub(crate) fn for_viewport_width(width: i32) -> Self {
-        Self::new(width, Self::MAX_HEIGHT)
-    }
-
-    pub(crate) fn image_limits(self) -> (u32, u32, u64) {
-        let size = Self::new(self.width, self.height);
-        let width = size.width as u32;
-        let height = size.height as u32;
-        (
-            width,
-            height,
-            (u64::from(width) * u64::from(height)).min(Self::MAX_PIXELS),
-        )
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum CoverFormat {
-    Cbz,
-    Cbr,
-    Epub,
-}
-
-impl CoverFormat {
-    pub(crate) fn for_name(name: &std::ffi::OsStr) -> Option<Self> {
-        let extension = Path::new(name).extension()?.to_str()?;
-        Self::from_argument(&extension.to_ascii_lowercase())
-    }
-
-    pub(crate) fn argument(self) -> &'static str {
-        match self {
-            Self::Cbz => "cbz",
-            Self::Cbr => "cbr",
-            Self::Epub => "epub",
-        }
-    }
-
-    pub(crate) fn from_argument(value: &str) -> Option<Self> {
-        match value {
-            "cbz" => Some(Self::Cbz),
-            "cbr" => Some(Self::Cbr),
-            "epub" => Some(Self::Epub),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum DocumentFormat {
-    Docx,
-    Odt,
-}
-
-impl DocumentFormat {
-    pub(crate) fn for_file(content_type: &str, name: &std::ffi::OsStr) -> Option<Self> {
-        if crate::services::docx::is_document(content_type, name) {
-            Some(Self::Docx)
-        } else if crate::services::odt::is_document(content_type, name) {
-            Some(Self::Odt)
-        } else {
-            None
-        }
-    }
-
-    pub(crate) fn argument(self) -> &'static str {
-        match self {
-            Self::Docx => "docx",
-            Self::Odt => "odt",
-        }
-    }
-
-    pub(crate) fn from_argument(value: &str) -> Option<Self> {
-        match value {
-            "docx" => Some(Self::Docx),
-            "odt" => Some(Self::Odt),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum ParseOperation {
-    ThumbnailImage,
-    ThumbnailRaw,
-    ThumbnailPdf,
-    ThumbnailVideo,
-    ThumbnailAppImage,
-    ThumbnailModel(ModelFormat),
-    ThumbnailCover(CoverFormat),
-    PreviewCover(CoverFormat),
-    PreviewImage,
-    PreviewRaw,
-    InspectImage,
-    ConvertImage,
-    DocumentImage,
-    DocumentMermaid,
-    DocumentMath {
-        display: bool,
-    },
-    MediaMetadata,
-    RawMetadata,
-    PreviewWorkbook,
-    PreviewDocument(DocumentFormat),
-    PreviewPdf(PdfRenderSize),
-    PreviewModel(ModelRender),
-    PreviewRoute(crate::services::route_preview::RouteRender),
-    PreviewMedia(MediaPreviewSize),
-    PreviewAudio(MediaPreviewSize),
-    AudioPeaks,
-    VideoStoryboard {
-        cell_edge: u32,
-    },
-    AudioTags,
-    AudioCover,
-    ArchiveList {
-        format: ArchiveFormat,
-        password: Option<SecretString>,
-    },
-}
-
-impl ParseOperation {
-    fn argument(&self) -> &'static str {
-        match self {
-            Self::ThumbnailImage => "thumbnail-image",
-            Self::ThumbnailRaw => "thumbnail-raw",
-            Self::ThumbnailPdf => "thumbnail-pdf",
-            Self::ThumbnailVideo => "thumbnail-video",
-            Self::ThumbnailAppImage => "thumbnail-appimage",
-            Self::ThumbnailModel(_) => "thumbnail-model",
-            Self::ThumbnailCover(_) => "thumbnail-cover",
-            Self::PreviewCover(_) => "preview-cover",
-            Self::PreviewImage => "preview-image",
-            Self::PreviewRaw => "preview-raw",
-            Self::InspectImage => "inspect-image",
-            Self::ConvertImage => "convert-image",
-            Self::DocumentImage => "document-image",
-            Self::DocumentMermaid => "document-mermaid",
-            Self::DocumentMath { display: true } => "document-math",
-            Self::DocumentMath { display: false } => "document-inline-math",
-            Self::MediaMetadata => "media-metadata",
-            Self::RawMetadata => "raw-metadata",
-            Self::PreviewWorkbook => "preview-workbook",
-            Self::PreviewDocument(_) => "preview-document",
-            Self::PreviewPdf(_) => "preview-pdf",
-            Self::PreviewModel(_) => "preview-model",
-            Self::PreviewRoute(_) => "preview-route",
-            Self::PreviewMedia(_) => "preview-media",
-            Self::PreviewAudio(_) => "preview-audio",
-            Self::AudioPeaks => "audio-peaks",
-            Self::VideoStoryboard { .. } => "video-storyboard",
-            Self::AudioTags => "audio-tags",
-            Self::AudioCover => "audio-cover",
-            Self::ArchiveList { .. } => "archive-list",
-        }
-    }
-
-    fn is_media(&self) -> bool {
-        matches!(
-            self,
-            Self::PreviewMedia(_)
-                | Self::PreviewAudio(_)
-                | Self::AudioPeaks
-                | Self::VideoStoryboard { .. }
-        )
-    }
-
-    fn needs_media_libraries(&self) -> bool {
-        matches!(
-            self,
-            Self::ThumbnailVideo
-                | Self::PreviewMedia(_)
-                | Self::PreviewAudio(_)
-                | Self::AudioPeaks
-                | Self::VideoStoryboard { .. }
-                | Self::AudioTags
-                | Self::AudioCover
-                | Self::MediaMetadata
-        )
-    }
-
-    fn output_name(&self) -> &'static str {
-        if matches!(
-            self,
-            Self::MediaMetadata
-                | Self::AudioTags
-                | Self::RawMetadata
-                | Self::PreviewWorkbook
-                | Self::PreviewDocument(_)
-                | Self::PreviewRoute(_)
-                | Self::InspectImage
-        ) {
-            "result.json"
-        } else if self.is_media() {
-            "result.media"
-        } else if matches!(self, Self::ArchiveList { .. }) {
-            "result.archive.json"
-        } else {
-            "result.png"
-        }
-    }
-
-    fn image_limits(&self) -> Option<(u32, u32, u64)> {
-        match self {
-            Self::ThumbnailImage
-            | Self::ThumbnailRaw
-            | Self::ThumbnailPdf
-            | Self::ThumbnailVideo
-            | Self::ThumbnailAppImage
-            | Self::ThumbnailModel(_)
-            | Self::ThumbnailCover(_) => Some((256, 256, 256 * 256)),
-            Self::PreviewCover(_) | Self::AudioCover => Some((800, 800, 800 * 800)),
-            Self::ConvertImage => Some((
-                crate::services::image_conversion::MAX_EDGE,
-                crate::services::image_conversion::MAX_EDGE,
-                crate::services::image_conversion::MAX_PIXELS,
-            )),
-            Self::PreviewImage
-            | Self::PreviewRaw
-            | Self::DocumentImage
-            | Self::DocumentMermaid
-            | Self::DocumentMath { .. } => Some((800, 800, 800 * 800)),
-            Self::PreviewPdf(size) => Some(size.image_limits()),
-            Self::PreviewModel(render) => {
-                let size = MediaPreviewSize::new(render.size.width, render.size.height);
-                Some((size.width as u32, size.height as u32, 1280 * 1280))
-            }
-            Self::PreviewMedia(_)
-            | Self::PreviewRoute(_)
-            | Self::InspectImage
-            | Self::PreviewAudio(_)
-            | Self::AudioPeaks
-            | Self::VideoStoryboard { .. }
-            | Self::AudioTags
-            | Self::MediaMetadata
-            | Self::RawMetadata
-            | Self::PreviewWorkbook
-            | Self::PreviewDocument(_)
-            | Self::ArchiveList { .. } => None,
-        }
-    }
-
-    fn input_size_limit(&self) -> Option<u64> {
-        match self {
-            Self::ThumbnailImage
-            | Self::ThumbnailRaw
-            | Self::ThumbnailPdf
-            | Self::PreviewImage
-            | Self::PreviewRaw
-            | Self::RawMetadata
-            | Self::PreviewPdf(_) => Some(MAX_RASTER_INPUT_BYTES),
-            Self::PreviewModel(render) if render.format != ModelFormat::Gcode => {
-                Some(MAX_MODEL_INPUT_BYTES)
-            }
-            Self::ThumbnailModel(format) if *format != ModelFormat::Gcode => {
-                Some(MAX_MODEL_INPUT_BYTES)
-            }
-            Self::PreviewModel(_) | Self::ThumbnailModel(_) => None,
-            Self::ThumbnailCover(_) | Self::PreviewCover(_) => {
-                Some(crate::sandbox_helper::archive_cover::MAX_INPUT_BYTES)
-            }
-            Self::InspectImage | Self::ConvertImage => {
-                Some(crate::services::image_conversion::MAX_INPUT_BYTES)
-            }
-            Self::PreviewRoute(_) => Some(crate::services::route_preview::MAX_ROUTE_INPUT_BYTES),
-            Self::PreviewWorkbook => Some(crate::services::table::WORKBOOK_BYTE_LIMIT),
-            Self::PreviewDocument(DocumentFormat::Docx) => {
-                Some(crate::services::docx::DOCX_BYTE_LIMIT)
-            }
-            Self::PreviewDocument(DocumentFormat::Odt) => {
-                Some(crate::services::odt::ODT_BYTE_LIMIT)
-            }
-            Self::DocumentImage => Some(crate::services::document_media::IMAGE_INPUT_LIMIT),
-            Self::DocumentMermaid => {
-                Some(crate::services::document_media::DIAGRAM_INPUT_LIMIT as u64)
-            }
-            Self::DocumentMath { .. } => {
-                Some(crate::services::document_media::MATH_INPUT_LIMIT as u64)
-            }
-            Self::ThumbnailVideo
-            | Self::ThumbnailAppImage
-            | Self::PreviewMedia(_)
-            | Self::PreviewAudio(_)
-            | Self::AudioPeaks
-            | Self::VideoStoryboard { .. }
-            | Self::AudioTags
-            | Self::AudioCover
-            | Self::MediaMetadata
-            | Self::ArchiveList { .. } => None,
-        }
-    }
-}
 
 #[derive(Clone, Default)]
 pub(crate) struct Cancellation(Arc<AtomicBool>);
@@ -412,6 +82,15 @@ pub(crate) struct ParseOutput {
     pub(crate) model_mesh: Option<crate::services::ModelMesh>,
 }
 
+/// One sandboxed parse: the input, what to produce from it, and how to stop.
+pub(crate) struct ParseRequest<'a> {
+    pub(crate) input: &'a Path,
+    pub(crate) operation: ParseOperation,
+    pub(crate) value: i32,
+    pub(crate) media_backend: MediaPreviewBackend,
+    pub(crate) cancellation: &'a Cancellation,
+}
+
 pub(crate) fn parse(
     input: &Path,
     operation: ParseOperation,
@@ -419,41 +98,33 @@ pub(crate) fn parse(
     media_backend: MediaPreviewBackend,
     cancellation: &Cancellation,
 ) -> Result<ParseOutput, String> {
-    parse_with_progress(
+    let request = ParseRequest {
         input,
         operation,
         value,
         media_backend,
         cancellation,
-        &|_| {},
-    )
+    };
+    parse_with_progress(request, &|_| {})
 }
 
 pub(crate) fn parse_with_progress(
-    input: &Path,
-    operation: ParseOperation,
-    value: i32,
-    media_backend: MediaPreviewBackend,
-    cancellation: &Cancellation,
-    progress: &dyn Fn(crate::services::ModelPreviewStage),
+    request: ParseRequest<'_>,
+    progress: &dyn Fn(ModelPreviewStage),
 ) -> Result<ParseOutput, String> {
-    let archive = matches!(operation, ParseOperation::ArchiveList { .. });
-    let result = parse_sandboxed(
-        input,
-        operation,
-        value,
-        media_backend,
-        cancellation,
-        progress,
-    );
-    match result {
-        Err(error)
-            if archive && !cancellation.is_cancelled() && !is_archive_contract_message(&error) =>
-        {
+    let archive = matches!(request.operation, ParseOperation::ArchiveList { .. });
+    let cancellation = request.cancellation;
+    match parse_sandboxed(request, progress) {
+        Err(error) if archive && hides_archive_failure(cancellation, &error) => {
             Err(crate::adapters::ARCHIVE_PREVIEW_FAILED_MESSAGE.to_owned())
         }
         result => result,
     }
+}
+
+/// Archive failures other than the documented contract messages are reported generically.
+fn hides_archive_failure(cancellation: &Cancellation, message: &str) -> bool {
+    !cancellation.is_cancelled() && !is_archive_contract_message(message)
 }
 
 fn is_archive_contract_message(message: &str) -> bool {
@@ -464,47 +135,51 @@ fn is_archive_contract_message(message: &str) -> bool {
 }
 
 fn parse_sandboxed(
-    input: &Path,
-    operation: ParseOperation,
-    value: i32,
-    media_backend: MediaPreviewBackend,
-    cancellation: &Cancellation,
-    progress: &dyn Fn(crate::services::ModelPreviewStage),
+    request: ParseRequest<'_>,
+    progress: &dyn Fn(ModelPreviewStage),
 ) -> Result<ParseOutput, String> {
-    if cancellation.is_cancelled() {
+    if request.cancellation.is_cancelled() {
         return Err("Preview cancelled".to_owned());
     }
-    if operation.is_media() {
+    if request.operation.is_media() {
         return Err("Media previews require a decoded-frame session".into());
     }
-    let canonical = input
+    let canonical = request
+        .input
         .canonicalize()
         .map_err(|error| crate::services::io_error_message(&error))?;
-    let stop = cancellation.clone();
+    let stop = request.cancellation.clone();
     let hold = Arc::new(crate::services::file_activity::hold(
-        [input, &canonical],
+        [request.input, &canonical],
         move || stop.cancel(),
     )?);
-    hold.settle(parse_canonical(
-        &canonical,
-        operation,
-        value,
-        media_backend,
-        cancellation,
-        progress,
-        Arc::clone(&hold),
-    ))
+    let request = ParseRequest {
+        input: &canonical,
+        ..request
+    };
+    hold.settle(parse_canonical(request, progress, Arc::clone(&hold)))
 }
 
-fn parse_canonical(
-    input: &Path,
-    operation: ParseOperation,
-    value: i32,
-    media_backend: MediaPreviewBackend,
-    cancellation: &Cancellation,
-    progress: &dyn Fn(crate::services::ModelPreviewStage),
-    hold: Arc<crate::services::file_activity::Hold>,
-) -> Result<ParseOutput, String> {
+fn input_limit_message(operation: &ParseOperation) -> String {
+    match operation {
+        ParseOperation::InspectImage | ParseOperation::ConvertImage => {
+            "The image exceeds the 32 MiB conversion limit. Choose a smaller image.".to_owned()
+        }
+        ParseOperation::PreviewRoute(_) => {
+            "This route file exceeds the 32 MiB preview limit.".to_owned()
+        }
+        ParseOperation::PreviewModel(_) => {
+            const _: () = assert!(
+                MAX_MODEL_INPUT_BYTES == 128 * 1024 * 1024,
+                "update the model size limit message and its catalog entry"
+            );
+            "This model file exceeds the 128 MiB preview limit. Try a smaller or lower-detail version.".to_owned()
+        }
+        _ => "Preview input exceeds the supported size limit".to_owned(),
+    }
+}
+
+fn check_input(input: &Path, operation: &ParseOperation) -> Result<(), String> {
     let input_metadata =
         fs::metadata(input).map_err(|error| crate::services::io_error_message(&error))?;
     if !input_metadata.is_file() {
@@ -514,47 +189,24 @@ fn parse_canonical(
         .input_size_limit()
         .is_some_and(|limit| input_metadata.len() > limit)
     {
-        return Err(
-            if matches!(
-                operation,
-                ParseOperation::InspectImage | ParseOperation::ConvertImage
-            ) {
-                "The image exceeds the 32 MiB conversion limit. Choose a smaller image.".to_owned()
-            } else if matches!(operation, ParseOperation::PreviewRoute(_)) {
-                "This route file exceeds the 32 MiB preview limit.".to_owned()
-            } else if matches!(operation, ParseOperation::PreviewModel(_)) {
-                const _: () = assert!(
-                    MAX_MODEL_INPUT_BYTES == 128 * 1024 * 1024,
-                    "update the model size limit message and its catalog entry"
-                );
-                "This model file exceeds the 128 MiB preview limit. Try a smaller or lower-detail version.".to_owned()
-            } else {
-                "Preview input exceeds the supported size limit".to_owned()
-            },
-        );
+        return Err(input_limit_message(operation));
     }
-    if let Some(result) = browser::preview(input, &operation, cancellation) {
-        return result.map(|data| ParseOutput {
-            data,
-            page: 0,
-            pages: 0,
-            text_layer: None,
-            model_mesh: None,
-        });
-    }
+    Ok(())
+}
 
-    let output = Arc::new(
-        PrivateOutput::create().map_err(|error| crate::services::io_error_message(&error))?,
-    );
-    let secret = if let ParseOperation::ArchiveList {
+fn archive_secret(operation: &ParseOperation) -> Result<Option<rustix::fd::OwnedFd>, String> {
+    let ParseOperation::ArchiveList {
         password: Some(password),
         ..
-    } = &operation
-    {
-        Some(stage_secret_anon(password.expose().as_bytes())?)
-    } else {
-        None
+    } = operation
+    else {
+        return Ok(None);
     };
+    stage_secret_anon(password.expose().as_bytes()).map(Some)
+}
+
+fn spawn_sandboxed(request: &ParseRequest<'_>, output: &PrivateOutput) -> Result<Renderer, String> {
+    let secret = archive_secret(&request.operation)?;
     let current_executable = std::env::current_exe()
         .map_err(|error| format!("Unable to locate the Strata executable: {error}"))?;
     let running_executable = PathBuf::from(format!("/proc/{}/exe", std::process::id()));
@@ -563,16 +215,17 @@ fn parse_canonical(
     let bwrap =
         crate::trusted_command::resolve("bwrap").map_err(|error| sandbox_unavailable(&error))?;
     let devices = Vec::new();
-    let mut command = sandbox_command(
-        &bwrap,
-        &executable,
-        input,
-        output.path(),
-        operation.clone(),
-        value,
-        media_backend,
-        &devices,
-    );
+    let mut command = SandboxCommand {
+        bwrap: &bwrap,
+        executable: &executable,
+        input: request.input,
+        output: output.path(),
+        operation: request.operation.clone(),
+        value: request.value,
+        media_backend: request.media_backend,
+        devices: &devices,
+    }
+    .build();
     if let Some(secret) = secret {
         // Command duplicates only this child's stdin; concurrent spawns cannot inherit the secret.
         command.stdin(Stdio::from(fs::File::from(secret)));
@@ -580,33 +233,188 @@ fn parse_canonical(
     }
     command.stderr(Stdio::null());
     command.stdout(Stdio::null());
-    let mut child = spawn_renderer(&mut command).map_err(|error| sandbox_start_failed(&error))?;
+    let child = spawn_renderer(&mut command).map_err(|error| sandbox_start_failed(&error))?;
     drop(command);
-    let timeout = if matches!(
-        operation,
+    Ok(child)
+}
+
+fn renderer_timeout(operation: &ParseOperation) -> Duration {
+    match operation {
         ParseOperation::DocumentImage
-            | ParseOperation::DocumentMermaid
-            | ParseOperation::DocumentMath { .. }
-    ) {
-        Duration::from_secs(3)
-    } else {
-        WALL_TIME_LIMIT
-    };
-    let mut previous = None;
-    let mut poll_progress = || {
-        if matches!(operation, ParseOperation::PreviewModel(_))
-            && let Ok(bytes) = read_private_output(&output.path().join("result.progress"), 128)
-            && let Ok(stage) = serde_json::from_slice::<crate::services::ModelPreviewStage>(&bytes)
-            && !matches!(stage, crate::services::ModelPreviewStage::Rendering { triangles } if triangles > crate::services::model_preview::MAX_MODEL_TRIANGLES)
-            && previous != Some(stage)
-        {
-            previous = Some(stage);
-            progress(stage);
-        }
-    };
-    let status = if matches!(&operation, ParseOperation::PreviewModel(render)
+        | ParseOperation::DocumentMermaid
+        | ParseOperation::DocumentMath { .. } => Duration::from_secs(3),
+        _ => WALL_TIME_LIMIT,
+    }
+}
+
+fn is_model_thumbnail(operation: &ParseOperation) -> bool {
+    matches!(operation, ParseOperation::PreviewModel(render)
         if render.purpose == crate::services::ModelRenderPurpose::Thumbnail)
-    {
+}
+
+/// Forwards each new, plausible model stage the helper reports while it runs.
+struct ModelProgress<'a> {
+    enabled: bool,
+    output: &'a Path,
+    previous: Option<ModelPreviewStage>,
+    progress: &'a dyn Fn(ModelPreviewStage),
+}
+
+impl ModelProgress<'_> {
+    fn reported_stage(&self) -> Option<ModelPreviewStage> {
+        let bytes = read_private_output(&self.output.join("result.progress"), 128).ok()?;
+        let stage = serde_json::from_slice::<ModelPreviewStage>(&bytes).ok()?;
+        let implausible = matches!(stage, ModelPreviewStage::Rendering { triangles }
+            if triangles > crate::services::model_preview::MAX_MODEL_TRIANGLES);
+        (!implausible).then_some(stage)
+    }
+
+    fn poll(&mut self) {
+        if !self.enabled {
+            return;
+        }
+        let Some(stage) = self.reported_stage() else {
+            return;
+        };
+        if self.previous != Some(stage) {
+            self.previous = Some(stage);
+            (self.progress)(stage);
+        }
+    }
+}
+
+fn reports_failure(operation: &ParseOperation) -> bool {
+    matches!(
+        operation,
+        ParseOperation::PreviewModel(_)
+            | ParseOperation::PreviewRoute(_)
+            | ParseOperation::InspectImage
+            | ParseOperation::ConvertImage
+            | ParseOperation::PreviewPdf(_)
+    )
+}
+
+fn reported_failure(operation: &ParseOperation, data: Vec<u8>) -> Option<String> {
+    if !matches!(operation, ParseOperation::PreviewPdf(_)) {
+        return String::from_utf8(data).ok();
+    }
+    matches!(
+        serde_json::from_slice::<PdfPreviewError>(&data),
+        Ok(PdfPreviewError::PasswordProtected)
+    )
+    .then(|| PDF_PASSWORD_PROTECTED.to_owned())
+}
+
+fn renderer_failure(operation: &ParseOperation, output: &Path) -> String {
+    if !reports_failure(operation) {
+        return "The sandboxed preview renderer failed".to_owned();
+    }
+    read_private_output(&output.join("result.error"), 512)
+        .ok()
+        .and_then(|data| reported_failure(operation, data))
+        .unwrap_or_else(|| "The sandboxed preview renderer failed".to_owned())
+}
+
+fn output_limit(operation: &ParseOperation) -> u64 {
+    match operation {
+        ParseOperation::InspectImage => 32,
+        ParseOperation::MediaMetadata | ParseOperation::AudioTags | ParseOperation::RawMetadata => {
+            metadata::MAX_METADATA_BYTES
+        }
+        _ => MAX_OUTPUT_BYTES,
+    }
+}
+
+fn read_output_data(operation: &ParseOperation, output: &Path) -> Result<Vec<u8>, String> {
+    let is_archive = matches!(operation, ParseOperation::ArchiveList { .. });
+    let result_path = output.join(operation.output_name());
+    let data = read_private_output(&result_path, output_limit(operation)).map_err(|error| {
+        if is_archive {
+            archive_output_error(&error)
+        } else {
+            error.message()
+        }
+    })?;
+    if !valid_output(operation.clone(), &data) {
+        return Err(if is_archive {
+            crate::adapters::INVALID_ARCHIVE.to_owned()
+        } else {
+            "The preview renderer produced invalid image data".to_owned()
+        });
+    }
+    Ok(data)
+}
+
+fn read_text_layer(
+    operation: &ParseOperation,
+    output: &Path,
+) -> Option<crate::services::PdfTextLayer> {
+    if !matches!(operation, ParseOperation::PreviewPdf(_)) {
+        return None;
+    }
+    read_private_output(&output.join("result.text"), MAX_TEXT_LAYER_BYTES)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+}
+
+fn read_parse_output(operation: ParseOperation, output: &Path) -> Result<ParseOutput, String> {
+    let data = read_output_data(&operation, output)?;
+    let (page, pages) = read_metadata(&output.join("result.meta"));
+    let model_mesh = if let ParseOperation::PreviewModel(render) = operation {
+        model::read_mesh(render, &output.join("result.model"))?
+    } else {
+        None
+    };
+    // A page without an extractable text layer (scanned images, malformed layout)
+    // still previews; selection just stays unavailable there.
+    let text_layer = read_text_layer(&operation, output);
+    Ok(ParseOutput {
+        data,
+        page,
+        pages,
+        text_layer,
+        model_mesh,
+    })
+}
+
+fn browser_output(data: Vec<u8>) -> ParseOutput {
+    ParseOutput {
+        data,
+        page: 0,
+        pages: 0,
+        text_layer: None,
+        model_mesh: None,
+    }
+}
+
+fn parse_canonical(
+    request: ParseRequest<'_>,
+    progress: &dyn Fn(ModelPreviewStage),
+    hold: Arc<crate::services::file_activity::Hold>,
+) -> Result<ParseOutput, String> {
+    let ParseRequest {
+        input,
+        ref operation,
+        cancellation,
+        ..
+    } = request;
+    check_input(input, operation)?;
+    if let Some(result) = browser::preview(input, operation, cancellation) {
+        return result.map(browser_output);
+    }
+    let output = Arc::new(
+        PrivateOutput::create().map_err(|error| crate::services::io_error_message(&error))?,
+    );
+    let mut child = spawn_sandboxed(&request, &output)?;
+    let timeout = renderer_timeout(operation);
+    let mut model_progress = ModelProgress {
+        enabled: matches!(operation, ParseOperation::PreviewModel(_)),
+        output: output.path(),
+        previous: None,
+        progress,
+    };
+    let mut poll_progress = || model_progress.poll();
+    let status = if is_model_thumbnail(operation) {
         model::wait_for_thumbnail(
             child,
             cancellation,
@@ -619,73 +427,9 @@ fn parse_canonical(
         wait_for_renderer_reporting(&mut child, cancellation, timeout, &mut poll_progress)?
     };
     if !status.success() {
-        if matches!(
-            operation,
-            ParseOperation::PreviewModel(_)
-                | ParseOperation::PreviewRoute(_)
-                | ParseOperation::InspectImage
-                | ParseOperation::ConvertImage
-                | ParseOperation::PreviewPdf(_)
-        ) && let Ok(data) = read_private_output(&output.path().join("result.error"), 512)
-        {
-            if matches!(operation, ParseOperation::PreviewPdf(_)) {
-                if let Ok(PdfPreviewError::PasswordProtected) = serde_json::from_slice(&data) {
-                    return Err(PDF_PASSWORD_PROTECTED.to_owned());
-                }
-            } else if let Ok(message) = String::from_utf8(data) {
-                return Err(message);
-            }
-        }
-        return Err("The sandboxed preview renderer failed".to_owned());
+        return Err(renderer_failure(operation, output.path()));
     }
-
-    let result_path = output.path().join(operation.output_name());
-    let limit = if matches!(operation, ParseOperation::InspectImage) {
-        32
-    } else if matches!(
-        operation,
-        ParseOperation::MediaMetadata | ParseOperation::AudioTags | ParseOperation::RawMetadata
-    ) {
-        metadata::MAX_METADATA_BYTES
-    } else {
-        MAX_OUTPUT_BYTES
-    };
-    let data = read_private_output(&result_path, limit).map_err(|error| {
-        if matches!(operation, ParseOperation::ArchiveList { .. }) {
-            archive_output_error(&error)
-        } else {
-            error.message()
-        }
-    })?;
-    if !valid_output(operation.clone(), &data) {
-        return Err(if matches!(operation, ParseOperation::ArchiveList { .. }) {
-            crate::adapters::INVALID_ARCHIVE.to_owned()
-        } else {
-            "The preview renderer produced invalid image data".to_owned()
-        });
-    }
-    let (page, pages) = read_metadata(&output.path().join("result.meta"));
-    let model_mesh = if let ParseOperation::PreviewModel(render) = operation {
-        model::read_mesh(render, &output.path().join("result.model"))?
-    } else {
-        None
-    };
-    // A page without an extractable text layer (scanned images, malformed layout)
-    // still previews; selection just stays unavailable there.
-    let text_layer = if matches!(operation, ParseOperation::PreviewPdf(_)) {
-        read_private_output(&output.path().join("result.text"), MAX_TEXT_LAYER_BYTES)
-            .ok()
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-    } else {
-        None
-    };
-    Ok(ParseOutput {
-        data,
-        page,
-        pages,
-        text_layer,
-        model_mesh,
-    })
+    read_parse_output(request.operation, output.path())
 }
 
 // A memfd avoids named-file residue and dependence on TMPDIR's O_TMPFILE support.
@@ -734,747 +478,6 @@ pub(crate) fn sandbox_start_failed(error: &io::Error) -> String {
         error = crate::services::io_error_detail(error)
     )
     .into_owned()
-}
-
-const NAMESPACE_WAIT: Duration = Duration::from_secs(1);
-
-pub(crate) struct Renderer {
-    child: Child,
-    init: Option<rustix::fd::OwnedFd>,
-    /// Held open so bubblewrap's closing write to the info pipe cannot raise SIGPIPE.
-    _info: Option<rustix::fd::OwnedFd>,
-}
-
-impl Renderer {
-    fn id(&self) -> u32 {
-        self.child.id()
-    }
-
-    fn stdout(&mut self) -> Option<std::process::ChildStdout> {
-        self.child.stdout.take()
-    }
-
-    fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
-        let status = self.child.try_wait()?;
-        if status.is_some() {
-            self.await_namespace();
-        }
-        Ok(status)
-    }
-
-    fn await_namespace(&mut self) {
-        use rustix::event::{PollFd, PollFlags, Timespec, poll};
-        let Some(init) = self.init.take() else {
-            return;
-        };
-        let deadline = Instant::now() + NAMESPACE_WAIT;
-        loop {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            let timeout = Timespec {
-                tv_sec: remaining.as_secs() as i64,
-                tv_nsec: i64::from(remaining.subsec_nanos()),
-            };
-            let mut fds = [PollFd::new(&init, PollFlags::IN)];
-            match poll(&mut fds, Some(&timeout)) {
-                Err(rustix::io::Errno::INTR) if !remaining.is_zero() => {}
-                _ => return,
-            }
-        }
-    }
-}
-
-fn spawn_renderer(command: &mut Command) -> io::Result<Renderer> {
-    use std::os::unix::process::CommandExt;
-
-    let (info, info_end) = rustix::pipe::pipe_with(rustix::pipe::PipeFlags::CLOEXEC)?;
-    command.stderr(Stdio::from(info_end));
-    let spawned = command.process_group(0).spawn();
-    // Drops the parent's write end, or the pipe never reports bubblewrap's exit.
-    command.stderr(Stdio::null());
-    let child = spawned?;
-    let init = namespace_init(&info, &child).and_then(|pid| {
-        rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).ok()
-    });
-    Ok(Renderer {
-        child,
-        init,
-        _info: Some(info),
-    })
-}
-
-fn namespace_init(info: &rustix::fd::OwnedFd, child: &Child) -> Option<Pid> {
-    use rustix::event::{PollFd, PollFlags, Timespec, poll};
-    let deadline = Instant::now() + NAMESPACE_WAIT;
-    let bwrap = child_pidfd(child);
-    let mut report = Vec::new();
-    loop {
-        if let Some(pid) = reported_init(&report) {
-            return Some(pid);
-        }
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() || report.len() > 4096 {
-            return None;
-        }
-        let timeout = Timespec {
-            tv_sec: remaining.as_secs() as i64,
-            tv_nsec: i64::from(remaining.subsec_nanos()),
-        };
-        let mut fds = vec![PollFd::new(info, PollFlags::IN)];
-        if let Some(bwrap) = &bwrap {
-            fds.push(PollFd::new(bwrap, PollFlags::IN));
-        }
-        match poll(&mut fds, Some(&timeout)) {
-            Ok(_) if fds[0].revents().contains(PollFlags::IN) => {
-                let mut chunk = [0; 512];
-                match rustix::io::read(info, &mut chunk) {
-                    Ok(0) => return reported_init(&report),
-                    Ok(read) => report.extend_from_slice(&chunk[..read]),
-                    Err(rustix::io::Errno::INTR | rustix::io::Errno::AGAIN) => {}
-                    Err(_) => return None,
-                }
-            }
-            Ok(_) if fds[0].revents().contains(PollFlags::HUP) => return reported_init(&report),
-            Ok(_) if fds.get(1).is_some_and(|fd| !fd.revents().is_empty()) => {
-                return reported_init(&report);
-            }
-            Ok(_) | Err(rustix::io::Errno::INTR) => {}
-            Err(_) => return None,
-        }
-    }
-}
-
-fn reported_init(report: &[u8]) -> Option<Pid> {
-    let report = std::str::from_utf8(report).ok()?;
-    let (_, after) = report.split_once("\"child-pid\":")?;
-    let digits = after.trim_start();
-    let end = digits.find(|character: char| !character.is_ascii_digit())?;
-    Pid::from_raw(digits[..end].parse().ok()?)
-}
-
-/// `None` on kernels without pidfd support; wait loops fall back to interval polling.
-fn child_pidfd(child: &Child) -> Option<rustix::fd::OwnedFd> {
-    let pid = rustix::process::Pid::from_raw(i32::try_from(child.id()).ok()?)?;
-    rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).ok()
-}
-
-/// A pidfd wakes on child exit; poll errors degrade to a short sleep, and the
-/// deadline bounds every path.
-fn wait_step(pidfd: Option<&rustix::fd::OwnedFd>, deadline: Instant) {
-    use rustix::event::{PollFd, PollFlags, Timespec, poll};
-    let remaining = deadline.saturating_duration_since(Instant::now());
-    let quantum = remaining.min(Duration::from_millis(20));
-    let Some(pidfd) = pidfd else {
-        thread::sleep(quantum);
-        return;
-    };
-    let timespec = Timespec {
-        tv_sec: quantum.as_secs() as i64,
-        tv_nsec: i64::from(quantum.subsec_nanos()),
-    };
-    let mut fds = [PollFd::new(pidfd, PollFlags::IN)];
-    if poll(&mut fds, Some(&timespec)).is_err() {
-        thread::sleep(Duration::from_millis(1));
-    }
-}
-
-fn wait_for_renderer(
-    child: &mut Renderer,
-    cancellation: &Cancellation,
-    wall_time_limit: Duration,
-) -> Result<ExitStatus, String> {
-    wait_for_renderer_reporting(child, cancellation, wall_time_limit, &mut || {})
-}
-
-fn wait_for_renderer_reporting(
-    child: &mut Renderer,
-    cancellation: &Cancellation,
-    wall_time_limit: Duration,
-    progress: &mut dyn FnMut(),
-) -> Result<ExitStatus, String> {
-    let result = monitor_renderer(child, cancellation, wall_time_limit, progress);
-    if result.is_err() {
-        terminate(child);
-    }
-    result
-}
-
-fn monitor_renderer(
-    child: &mut Renderer,
-    cancellation: &Cancellation,
-    wall_time_limit: Duration,
-    progress: &mut dyn FnMut(),
-) -> Result<ExitStatus, String> {
-    let started = Instant::now();
-    let deadline = started + wall_time_limit;
-    let pidfd = child_pidfd(&child.child);
-    loop {
-        if cancellation.is_cancelled() {
-            return Err("Preview cancelled".to_owned());
-        }
-        if Instant::now() >= deadline {
-            return Err("The preview renderer timed out".to_owned());
-        }
-        progress();
-        match child.try_wait() {
-            Ok(Some(status)) => return Ok(status),
-            Ok(None) => wait_step(pidfd.as_ref(), deadline),
-            Err(error) => {
-                return Err(format!("Unable to monitor the preview renderer: {error}"));
-            }
-        }
-    }
-}
-
-/// Resolves a helper tool the way the sandbox's `PATH` does. The sandbox root
-/// is mounted at its host path, so the host file is the one helpers run.
-pub(crate) fn sandbox_tool(name: &str) -> Option<PathBuf> {
-    use std::os::unix::fs::PermissionsExt;
-    runtime::current()
-        .tool_directories()
-        .map(|directory| directory.join(name))
-        .find(|candidate| {
-            fs::metadata(candidate).is_ok_and(|metadata| {
-                metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
-            })
-        })
-}
-
-fn runtime_command(bwrap: &Path, needs_media_libraries: bool) -> Command {
-    let runtime = runtime::current();
-    let mut command = Command::new(bwrap);
-    command.args([
-        "--info-fd",
-        "2",
-        "--unshare-all",
-        "--die-with-parent",
-        "--new-session",
-        "--clearenv",
-        "--setenv",
-        "PATH",
-        runtime.path.as_str(),
-        "--setenv",
-        "HOME",
-        "/nonexistent",
-        "--setenv",
-        "XDG_CACHE_HOME",
-        "/tmp/cache",
-        "--proc",
-        "/proc",
-        "--dev",
-        "/dev",
-        "--size",
-        &TEMPORARY_STORAGE_LIMIT_BYTES.to_string(),
-        "--tmpfs",
-        "/tmp",
-        "--dir",
-        "/app",
-        "--dir",
-        "/etc",
-        "--ro-bind",
-        runtime.root.as_str(),
-        runtime.root.as_str(),
-        "--ro-bind-try",
-        "/lib",
-        "/lib",
-        "--ro-bind-try",
-        "/lib64",
-        "/lib64",
-        "--ro-bind-try",
-        "/etc/fonts",
-        "/etc/fonts",
-        "--ro-bind-try",
-        "/var/cache/fontconfig",
-        "/var/cache/fontconfig",
-        "--ro-bind-try",
-        "/etc/ld.so.cache",
-        "/etc/ld.so.cache",
-        "--ro-bind-try",
-        "/etc/ImageMagick-7",
-        "/etc/ImageMagick-7",
-        "--ro-bind-try",
-        "/etc/ImageMagick-6",
-        "/etc/ImageMagick-6",
-    ]);
-    if let Some(loaders) = &runtime.gdk_pixbuf_module_file {
-        command.args(["--setenv", "GDK_PIXBUF_MODULE_FILE", loaders]);
-    }
-    if needs_media_libraries {
-        // Debian-family FFmpeg libraries resolve BLAS/LAPACK through these links.
-        // Expose only the runtime files, not the system alternatives directory.
-        for architecture in ["x86_64-linux-gnu", "aarch64-linux-gnu"] {
-            for library in ["libblas.so.3", "liblapack.so.3"] {
-                let path = format!("/etc/alternatives/{library}-{architecture}");
-                command.arg("--ro-bind-try").arg(&path).arg(&path);
-            }
-        }
-    }
-    // Debian-family ImageMagick commands resolve through these links.
-    for tool in ["magick", "convert"] {
-        let path = format!("/etc/alternatives/{tool}");
-        command.arg("--ro-bind-try").arg(&path).arg(&path);
-    }
-    for architecture in ["x86_64-linux-gnu", "aarch64-linux-gnu"] {
-        for library in [
-            "libGL.so.1",
-            "libEGL.so.1",
-            "libGLESv2.so.2",
-            "libGLESv1_CM.so.1",
-            "libGL.so",
-            "libEGL.so",
-            "libGLESv2.so",
-            "libGLESv1_CM.so",
-            "libGLX_indirect.so.0",
-        ] {
-            let path = format!("/etc/alternatives/glx--{library}-{architecture}");
-            command.arg("--ro-bind-try").arg(&path).arg(&path);
-        }
-    }
-    command
-}
-
-#[expect(
-    clippy::too_many_arguments,
-    reason = "explicit executable path permits testing without installed bubblewrap"
-)]
-fn sandbox_command(
-    bwrap: &Path,
-    executable: &Path,
-    input: &Path,
-    output: &Path,
-    operation: ParseOperation,
-    value: i32,
-    media_backend: MediaPreviewBackend,
-    devices: &[PathBuf],
-) -> Command {
-    let mut command = runtime_command(bwrap, operation.needs_media_libraries());
-    let sandbox_input = sandbox_input_path(input);
-    command.arg("--ro-bind").arg(executable).arg("/app/strata");
-    command.arg("--ro-bind").arg(input).arg(&sandbox_input);
-    if !operation.is_media() {
-        command.arg("--bind").arg(output).arg("/output");
-    }
-    if operation.is_media() && media_backend != MediaPreviewBackend::Software {
-        // Hardware media drivers need selected render nodes plus read-only sysfs discovery data.
-        for device in devices {
-            command.arg("--dev-bind-try").arg(device).arg(device);
-        }
-        command.args(["--ro-bind", "/sys", "/sys"]);
-    }
-    if !operation.is_media() {
-        // Keep CPU-scaled glibc arenas within the helper's address-space limit.
-        command.args(["--setenv", "MALLOC_ARENA_MAX", "1"]);
-    }
-    command.arg("--");
-    if !operation.is_media() {
-        command
-            .arg(&runtime::current().prlimit)
-            .arg(format!("--as={ADDRESS_SPACE_LIMIT_BYTES}"))
-            .arg("--cpu=10")
-            .arg(format!(
-                "--fsize={}",
-                if matches!(operation, ParseOperation::ThumbnailVideo) {
-                    MAX_OUTPUT_BYTES
-                } else {
-                    FILE_SIZE_LIMIT_BYTES
-                }
-            ))
-            .arg("--");
-    }
-    command.args([
-        "/app/strata",
-        "--preview-helper",
-        operation.argument(),
-        &sandbox_input,
-    ]);
-    if let ParseOperation::PreviewMedia(size) | ParseOperation::PreviewAudio(size) = operation {
-        let size = MediaPreviewSize::new(size.width, size.height);
-        command.arg("/dev/stdout");
-        command.arg(format!("{}x{}", size.width, size.height));
-    } else if let ParseOperation::AudioPeaks | ParseOperation::VideoStoryboard { .. } = operation {
-        command.arg("/dev/stdout");
-        command.arg(match operation {
-            ParseOperation::VideoStoryboard { cell_edge } => cell_edge.to_string(),
-            _ => "0".to_owned(),
-        });
-    } else {
-        command.arg(format!("/output/{}", operation.output_name()));
-        let value = match operation {
-            ParseOperation::PreviewPdf(size) => {
-                let size = PdfRenderSize::new(size.width, size.height);
-                format!("{value}:{}x{}", size.width, size.height)
-            }
-            ParseOperation::PreviewModel(render) => format!(
-                "{}:{}x{}:{:06x}:{}:{}",
-                render.format.argument(),
-                render.size.width,
-                render.size.height,
-                render.palette.accent,
-                match render.purpose {
-                    crate::services::ModelRenderPurpose::Preview =>
-                        format!("{:06x}", render.palette.surface),
-                    crate::services::ModelRenderPurpose::Thumbnail => "transparent".to_owned(),
-                },
-                render.view.argument(),
-            ),
-            ParseOperation::PreviewRoute(render) => format!(
-                "{}:{:06x}:{:06x}",
-                render.format.label(),
-                render.palette.accent,
-                render.palette.surface
-            ),
-            ParseOperation::ThumbnailModel(format) => format.argument().to_owned(),
-            ParseOperation::ThumbnailCover(format) => format.argument().to_owned(),
-            ParseOperation::PreviewCover(format) => format.argument().to_owned(),
-            ParseOperation::PreviewDocument(format) => format.argument().to_owned(),
-            ParseOperation::ArchiveList { format, .. } => format.extension().to_owned(),
-            _ => value.to_string(),
-        };
-        command.arg(value);
-    }
-    command.arg(media_backend.argument());
-    command
-}
-
-fn sandbox_input_path(input: &Path) -> String {
-    match input.extension().and_then(|extension| extension.to_str()) {
-        Some(extension)
-            if (1..=8).contains(&extension.len())
-                && extension.bytes().all(|byte| byte.is_ascii_alphanumeric()) =>
-        {
-            format!("/input.{extension}")
-        }
-        _ => "/input".to_owned(),
-    }
-}
-
-pub(crate) fn gpu_devices(dev: &Path, media_backend: MediaPreviewBackend) -> Vec<PathBuf> {
-    if media_backend == MediaPreviewBackend::Software {
-        return Vec::new();
-    }
-    let mut devices = Vec::new();
-    if let Ok(entries) = fs::read_dir(dev.join("dri")) {
-        for entry in entries.flatten() {
-            if numbered_name(&entry.file_name(), "renderD") {
-                devices.push(entry.path());
-            }
-        }
-    }
-    if media_backend != MediaPreviewBackend::VaApi
-        && let Ok(entries) = fs::read_dir(dev)
-    {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            if name == "nvidiactl" || numbered_name(&name, "nvidia") {
-                devices.push(entry.path());
-            }
-        }
-    }
-    devices.sort();
-    devices
-}
-
-pub(crate) fn polaris_gpu_available() -> bool {
-    polaris_gpu_available_at(Path::new("/dev"), Path::new("/sys/class/drm"))
-}
-
-fn polaris_gpu_available_at(dev: &Path, drm: &Path) -> bool {
-    fs::read_dir(dev.join("dri")).is_ok_and(|entries| {
-        entries.flatten().any(|entry| {
-            numbered_name(&entry.file_name(), "renderD") && polaris_render_node(&entry.path(), drm)
-        })
-    })
-}
-
-fn polaris_render_node(device: &Path, drm: &Path) -> bool {
-    let Some(name) = device.file_name() else {
-        return false;
-    };
-    let metadata = drm.join(name).join("device");
-    let Some(vendor) = pci_id(&metadata.join("vendor")) else {
-        return false;
-    };
-    let Some(device) = pci_id(&metadata.join("device")) else {
-        return false;
-    };
-    vendor == 0x1002 && matches!(device, 0x67c0..=0x67df | 0x67e0..=0x67ff | 0x6980..=0x699f)
-}
-
-fn pci_id(path: &Path) -> Option<u16> {
-    let value = fs::read_to_string(path).ok()?;
-    u16::from_str_radix(value.trim().strip_prefix("0x").unwrap_or(value.trim()), 16).ok()
-}
-
-pub(crate) fn numbered_name(name: &std::ffi::OsStr, prefix: &str) -> bool {
-    name.to_str()
-        .and_then(|name| name.strip_prefix(prefix))
-        .is_some_and(|suffix| {
-            !suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_digit())
-        })
-}
-
-fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
-    if matches!(operation, ParseOperation::PreviewRoute(_)) {
-        return crate::services::route_preview::RoutePreview::from_json(data).is_ok();
-    }
-    if matches!(operation, ParseOperation::InspectImage) {
-        return data.len() <= 32
-            && serde_json::from_slice::<crate::services::image_conversion::ImageKind>(data)
-                .is_ok();
-    }
-    if matches!(operation, ParseOperation::AudioCover) && data == b"null" {
-        return true;
-    }
-    if matches!(operation, ParseOperation::PreviewWorkbook) {
-        return crate::services::table::TableData::from_json(data).is_ok();
-    }
-    if matches!(operation, ParseOperation::PreviewDocument(_)) {
-        return crate::services::docx::RichTextData::from_json(data).is_ok();
-    }
-    if matches!(operation, ParseOperation::RawMetadata) {
-        return raw_metadata::RawMetadata::from_json(data).is_ok();
-    }
-    if matches!(operation, ParseOperation::AudioTags) {
-        return metadata::AudioTags::from_json(data).is_ok();
-    }
-    if matches!(operation, ParseOperation::MediaMetadata) {
-        data.len() as u64 <= metadata::MAX_METADATA_BYTES
-            && serde_json::from_slice::<serde_json::Value>(data).is_ok()
-    } else if matches!(operation, ParseOperation::ArchiveList { .. }) {
-        crate::adapters::archive_payload_valid(data)
-    } else if operation.is_media() {
-        false
-    } else {
-        let Some((width, height)) = png_dimensions(data) else {
-            return false;
-        };
-        let Some((max_width, max_height, max_pixels)) = operation.image_limits() else {
-            return false;
-        };
-        width <= max_width
-            && height <= max_height
-            && u64::from(width)
-                .checked_mul(u64::from(height))
-                .is_some_and(|pixels| pixels <= max_pixels)
-    }
-}
-
-pub(crate) fn png_dimensions(data: &[u8]) -> Option<(u32, u32)> {
-    if !data.starts_with(b"\x89PNG\r\n\x1a\n")
-        || data.get(8..12)? != 13u32.to_be_bytes()
-        || data.get(12..16)? != b"IHDR"
-    {
-        return None;
-    }
-    let width = u32::from_be_bytes(data.get(16..20)?.try_into().ok()?);
-    let height = u32::from_be_bytes(data.get(20..24)?.try_into().ok()?);
-    (width > 0 && height > 0).then_some((width, height))
-}
-
-fn kill_renderer(renderer: &mut Renderer) {
-    if let Ok(raw_pid) = i32::try_from(renderer.id())
-        && let Some(process_group) = Pid::from_raw(raw_pid)
-    {
-        let _killed = kill_process_group(process_group, Signal::KILL);
-    }
-    // bwrap is also the PID-namespace init process, so descendants that create a new
-    // process group still die with it.
-    let _killed = renderer.child.kill();
-}
-
-fn terminate(renderer: &mut Renderer) {
-    kill_renderer(renderer);
-    let _waited = renderer.child.wait();
-    renderer.await_namespace();
-}
-
-fn read_private_output(path: &Path, max_bytes: u64) -> Result<Vec<u8>, OutputError> {
-    use rustix::fs::{FileType, Mode, OFlags, fstat, open};
-
-    // The renderer controls the final entry, but not the host directory ancestors.
-    // NONBLOCK lets us reject a FIFO without waiting for a writer at open time.
-    let fd = open(
-        path,
-        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK,
-        Mode::empty(),
-    )
-    .map_err(|_| OutputError::Missing)?;
-    let stat = fstat(&fd).map_err(|error| OutputError::Io(error.to_string()))?;
-    if FileType::from_raw_mode(stat.st_mode) != FileType::RegularFile {
-        return Err(OutputError::NonRegular);
-    }
-    let len = u64::try_from(stat.st_size).unwrap_or(0);
-    if len == 0 {
-        return Err(OutputError::Empty);
-    }
-    if len > max_bytes {
-        return Err(OutputError::Oversize);
-    }
-    let mut data = Vec::new();
-    fs::File::from(fd)
-        .take(max_bytes.saturating_add(1))
-        .read_to_end(&mut data)
-        .map_err(|error| OutputError::Io(error.to_string()))?;
-    if data.is_empty() {
-        return Err(OutputError::Empty);
-    }
-    if data.len() as u64 > max_bytes {
-        return Err(OutputError::Oversize);
-    }
-    Ok(data)
-}
-
-#[derive(Debug, PartialEq)]
-enum OutputError {
-    Missing,
-    NonRegular,
-    Empty,
-    Oversize,
-    Io(String),
-}
-
-impl OutputError {
-    fn message(&self) -> String {
-        match self {
-            Self::Missing => "The preview renderer produced no output".to_owned(),
-            Self::NonRegular => "The preview renderer produced a non-regular output".to_owned(),
-            Self::Empty | Self::Oversize => {
-                "The preview renderer produced an invalid output size".to_owned()
-            }
-            Self::Io(message) => message.clone(),
-        }
-    }
-}
-
-fn archive_output_error(error: &OutputError) -> String {
-    match error {
-        OutputError::Oversize => crate::adapters::ARCHIVE_TOO_LARGE_MESSAGE.to_owned(),
-        _ => crate::adapters::INVALID_ARCHIVE.to_owned(),
-    }
-}
-
-fn read_metadata(path: &Path) -> (i32, i32) {
-    let Ok(bytes) = read_private_output(path, 256) else {
-        return (0, 0);
-    };
-    let Ok(value) = std::str::from_utf8(&bytes) else {
-        return (0, 0);
-    };
-    let mut values = value
-        .split_whitespace()
-        .filter_map(|part| part.parse().ok());
-    (values.next().unwrap_or(0), values.next().unwrap_or(0))
-}
-
-const PRIVATE_OUTPUT_PREFIX: &str = "strata-preview-";
-const PRIVATE_OUTPUT_ATTEMPTS: usize = 64;
-
-// The flock on the directory marks it as in use; the sweep removes only directories it can
-// lock, which also works across pid namespaces that share the temp directory.
-struct PrivateOutput {
-    path: PathBuf,
-    _lock: rustix::fd::OwnedFd,
-}
-
-impl PrivateOutput {
-    fn create() -> io::Result<Self> {
-        static SWEEP: Once = Once::new();
-        SWEEP.call_once(|| {
-            thread::spawn(|| prune_orphaned_private_outputs(&std::env::temp_dir()));
-        });
-        Self::create_in(&std::env::temp_dir())
-    }
-
-    fn create_in(parent: &Path) -> io::Result<Self> {
-        use std::os::unix::fs::DirBuilderExt;
-
-        for _ in 0..PRIVATE_OUTPUT_ATTEMPTS {
-            let path = parent.join(format!(
-                "{PRIVATE_OUTPUT_PREFIX}{}-{}",
-                std::process::id(),
-                NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed)
-            ));
-            match fs::DirBuilder::new().mode(0o700).create(&path) {
-                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-                result => result?,
-            }
-            if let Some(lock) = lock_new_private_output(&path)? {
-                return Ok(Self { path, _lock: lock });
-            }
-        }
-        Err(io::Error::from(io::ErrorKind::AlreadyExists))
-    }
-
-    fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
-impl Drop for PrivateOutput {
-    fn drop(&mut self) {
-        let _removed = fs::remove_dir_all(&self.path);
-    }
-}
-
-fn open_private_output(path: &Path) -> rustix::io::Result<rustix::fd::OwnedFd> {
-    use rustix::fs::{Mode, OFlags, open};
-
-    open(
-        path,
-        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-        Mode::empty(),
-    )
-}
-
-// `None` means a concurrent sweep claimed the new directory before it was locked.
-fn lock_new_private_output(path: &Path) -> io::Result<Option<rustix::fd::OwnedFd>> {
-    use rustix::fs::{FlockOperation, flock, fstat, lstat};
-
-    let fd = match open_private_output(path) {
-        Ok(fd) => fd,
-        Err(rustix::io::Errno::NOENT) => return Ok(None),
-        Err(error) => return Err(error.into()),
-    };
-    // Other lock errors are ignored: without lock support the sweep cannot lock it either.
-    if let Err(rustix::io::Errno::WOULDBLOCK) = flock(&fd, FlockOperation::NonBlockingLockExclusive)
-    {
-        return Ok(None);
-    }
-    let locked = fstat(&fd)?;
-    let same = lstat(path)
-        .is_ok_and(|current| (current.st_dev, current.st_ino) == (locked.st_dev, locked.st_ino));
-    Ok(same.then_some(fd))
-}
-
-// Worker pools and detached threads still own their output when the process exits, and a
-// killed process never drops it, so earlier runs leave directories behind.
-fn prune_orphaned_private_outputs(tmp: &Path) {
-    use rustix::fs::{FlockOperation, flock, fstat};
-
-    let Ok(entries) = fs::read_dir(tmp) else {
-        return;
-    };
-    let uid = rustix::process::geteuid().as_raw();
-    let all_digits =
-        |text: &str| !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit());
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let matches = name
-            .to_str()
-            .and_then(|name| name.strip_prefix(PRIVATE_OUTPUT_PREFIX))
-            .and_then(|rest| rest.split_once('-'))
-            .is_some_and(|(pid, sequence)| all_digits(pid) && all_digits(sequence));
-        if !matches {
-            continue;
-        }
-        let path = entry.path();
-        let Ok(fd) = open_private_output(&path) else {
-            continue;
-        };
-        let ours = fstat(&fd).is_ok_and(|stat| stat.st_uid == uid);
-        if ours && flock(&fd, FlockOperation::NonBlockingLockExclusive).is_ok() {
-            let _ignored = fs::remove_dir_all(&path);
-        }
-    }
 }
 
 #[cfg(test)]
