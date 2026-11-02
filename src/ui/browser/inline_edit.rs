@@ -590,7 +590,13 @@ impl ViewState {
         let generation = self.start_pending_rename(&entry, name.clone(), None);
         self.follow_pending_rename();
         self.update_rename_labels(&entry.location, None, &name);
-        self.queue_pending_rename(generation, move |browser| browser.rename(entry, name));
+        self.queue_pending_rename(generation, move |browser| {
+            if new_item {
+                browser.name_new_item(entry, name)
+            } else {
+                browser.rename(entry, name)
+            }
+        });
     }
 
     /// Filter results keep their selection and focus by path. Tells those listing
