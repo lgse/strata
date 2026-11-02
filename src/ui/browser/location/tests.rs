@@ -1337,7 +1337,7 @@ fn leaving_columns_names_the_active_folder_instead_of_its_mirrored_child() {
 /// Opens the breadcrumb hierarchy menu and reads the label of the item marked current.
 fn current_hierarchy_item(view: &BrowserView) -> Option<String> {
     let anchor = view.widget();
-    view.state.show_breadcrumb_hierarchy_menu(&anchor, 0.0, 0.0);
+    view.state.show_breadcrumb_hierarchy_menu(&anchor, 0.0);
     let popover = descendants(&anchor)
         .into_iter()
         .filter(|widget| widget.has_css_class("breadcrumb-popover"))

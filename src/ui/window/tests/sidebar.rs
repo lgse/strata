@@ -430,6 +430,28 @@ fn sidebar_reorders_only_distinct_rows_in_the_same_section() {
     }
 }
 
+#[test]
+fn network_share_mounts_take_the_disconnectable_network_row() {
+    for (uri, share) in [
+        ("smb://server/share/", true),
+        ("SFTP://user@host/", true),
+        ("ftp://host/", true),
+        ("davs://host/remote.php/", true),
+        ("trash:///", false),
+        ("admin:///etc/", false),
+        ("mtp://phone/", false),
+    ] {
+        assert_eq!(
+            super::super::sidebar_devices::is_network_share(&Location::uri(uri)),
+            share,
+            "{uri}"
+        );
+    }
+    assert!(!super::super::sidebar_devices::is_network_share(
+        &Location::local("/run/media/disk")
+    ));
+}
+
 fn pin(path: &str, name: &str) -> (Location, String) {
     (Location::local(path), name.to_owned())
 }

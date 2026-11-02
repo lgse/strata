@@ -100,6 +100,30 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
 }
 
 #[test]
+fn blank_interface_fonts_load_as_the_default_font() {
+    gtk_test(
+        "ui::preferences::tests::preferences::loading::blank_interface_fonts_load_as_the_default_font",
+        || {
+            for (stored, expected) in [
+                ("", None),
+                ("   ", None),
+                ("  Fixture Sans ", Some("Fixture Sans")),
+            ] {
+                assert_recovered_preferences_survive_save(
+                    |saved| {
+                        saved.insert("interface_font".into(), stored.into());
+                    },
+                    Preferences {
+                        interface_font: expected.map(str::to_owned),
+                        ..non_default_preferences()
+                    },
+                );
+            }
+        },
+    );
+}
+
+#[test]
 fn unlisted_search_limits_round_up_on_load_and_set() {
     gtk_test(
         "ui::preferences::tests::preferences::loading::unlisted_search_limits_round_up_on_load_and_set",

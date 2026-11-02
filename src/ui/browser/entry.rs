@@ -210,7 +210,7 @@ pub(in crate::ui) fn icon_for_name(name: &str) -> &'static str {
         ) => crate::assets::icons::PICTURES,
         Some(
             "mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v" | "mpeg" | "mpg" | "ogv" | "3gp" | "3g2"
-            | "flv" | "wmv" | "asf" | "m2ts" | "vob",
+            | "flv" | "wmv" | "asf" | "m2ts" | "vob" | "h264" | "264" | "h265" | "265" | "hevc",
         ) => crate::assets::icons::VIDEOS,
         Some("mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus" | "wma" | "aiff") => {
             crate::assets::icons::FILE_AUDIO
@@ -226,8 +226,8 @@ pub(in crate::ui) fn icon_for_name(name: &str) -> &'static str {
             | "smarty" | "tpl",
         ) => catppuccin::HTML,
         Some(
-            "zip" | "7z" | "tar" | "gz" | "tgz" | "bz2" | "xz" | "zst" | "rar" | "lz" | "lzma"
-            | "lzo" | "rz" | "sz" | "cab" | "arj" | "cpio",
+            "zip" | "7z" | "tar" | "gz" | "tgz" | "tbz" | "tbz2" | "txz" | "tzst" | "bz2" | "xz"
+            | "zst" | "rar" | "lz" | "lzma" | "lzo" | "rz" | "sz" | "cab" | "arj" | "cpio",
         ) => crate::assets::icons::FILE_ARCHIVE,
         Some(
             "deb" | "rpm" | "pkg" | "appimage" | "msi" | "exe" | "apk" | "jar" | "war" | "ear"

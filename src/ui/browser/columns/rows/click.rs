@@ -34,6 +34,24 @@ fn anchor_at(context: &RowContext, row: u32) {
     }
 }
 
+/// What a row press does on release: activate, preview, or for a plain click on a
+/// file that does neither, end the open path at its column.
+fn release_kind(
+    activate: bool,
+    plain_file_press: bool,
+    previews: bool,
+) -> Option<PendingActivationKind> {
+    if activate {
+        Some(PendingActivationKind::Standard { preview: false })
+    } else if !plain_file_press {
+        None
+    } else if previews {
+        Some(PendingActivationKind::Standard { preview: true })
+    } else {
+        Some(PendingActivationKind::CloseDeeper)
+    }
+}
+
 /// Filtered folders keep one-click open.
 fn filtered_click_kind(
     state: &ViewState,
@@ -452,20 +470,22 @@ impl RowClick {
         let activate = outcome.activate && !slow_click_rename;
         self.rename_position
             .set(slow_click_rename.then_some(source_position));
-        let preview = !activate
+        let plain_file_press = !activate
             && !slow_click_rename
-            && should_preview_pointer_press(press.count, press.control, press.shift)
-            && entry_responds_to_preview_click(&entry, state.single_click_previews.get());
-        if activate || preview {
-            self.arm(PendingPointerActivation {
-                position: source_position,
-                location: entry.location.clone(),
-                press: press.point,
-                moved: false,
-                kind: PendingActivationKind::Standard { preview },
-                location_hold: outcome.location_hold,
-            });
-        }
+            && !entry.is_directory()
+            && should_preview_pointer_press(press.count, press.control, press.shift);
+        let previews = entry_responds_to_preview_click(&entry, state.single_click_previews.get());
+        let Some(kind) = release_kind(activate, plain_file_press, previews) else {
+            return;
+        };
+        self.arm(PendingPointerActivation {
+            position: source_position,
+            location: entry.location.clone(),
+            press: press.point,
+            moved: false,
+            kind,
+            location_hold: outcome.location_hold,
+        });
     }
 
     fn updated(&self, gesture: &gtk::GestureClick) {
@@ -555,6 +575,14 @@ impl RowClick {
             }
             PendingActivationKind::RecursivePreview => {
                 self.preview_recursive_search(state, &pending);
+            }
+            PendingActivationKind::CloseDeeper => {
+                let deeper = self.context().depth + 1;
+                if self.pending_entry_matches(state, &pending)
+                    && state.browser.location_at(deeper).is_some()
+                {
+                    state.browser.close_column(deeper);
+                }
             }
         }
     }

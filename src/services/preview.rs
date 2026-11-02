@@ -213,18 +213,42 @@ pub trait PreviewProvider {
 /// Leading bytes read to decide a local file's preview family.
 pub(crate) const CONTENT_SAMPLE_BYTES: usize = 8 * 1024;
 
+/// Elementary video streams the shared MIME database does not name.
+const RAW_VIDEO_STREAMS: &[(&str, &str)] = &[
+    ("h264", "video/h264"),
+    ("264", "video/h264"),
+    ("h265", "video/h265"),
+    ("265", "video/h265"),
+    ("hevc", "video/h265"),
+];
+
+fn raw_video_stream_type(path: &Path) -> Option<&'static str> {
+    let extension = path.extension()?.as_encoded_bytes();
+    RAW_VIDEO_STREAMS
+        .iter()
+        .find(|(suffix, _)| extension.eq_ignore_ascii_case(suffix.as_bytes()))
+        .map(|(_, content_type)| *content_type)
+}
+
 pub(crate) fn guess_content_type(path: &Path) -> (String, bool) {
-    if path
-        .extension()
-        .is_some_and(|extension| extension.as_encoded_bytes().eq_ignore_ascii_case(b"h264"))
-    {
-        return ("video/h264".to_owned(), false);
+    if let Some(content_type) = raw_video_stream_type(path) {
+        return (content_type.to_owned(), false);
     }
     let (guessed, uncertain) = gio::content_type_guess(Some(path), None::<&[u8]>);
     if !guessed.starts_with("image/") && crate::sandbox::raw_metadata::is_raw(path) {
         return ("image/x-dcraw".to_owned(), false);
     }
     (guessed.to_string(), uncertain)
+}
+
+/// A sniffed type that only says "binary" defers to the name, so Properties agrees with
+/// the preview about formats the MIME database lacks; any byte-backed type wins.
+pub(crate) fn refine_reported_content_type(reported: &str, name: &Path) -> String {
+    if reported == "application/octet-stream" {
+        guess_content_type(name).0
+    } else {
+        reported.to_owned()
+    }
 }
 
 fn content_type_for_path(path: &Path) -> String {

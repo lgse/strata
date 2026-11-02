@@ -123,8 +123,8 @@ impl SidebarState {
         location: Location,
         mount: gio::Mount,
     ) -> Option<device_release::DeviceIds> {
-        if is_smb_location(&location) {
-            self.append_smb_mount(name, location, mount);
+        if is_network_share(&location) {
+            self.append_network_share(name, location, mount);
             return None;
         }
         let row = sidebar_button(crate::assets::icons::HARD_DRIVE, name);
@@ -342,7 +342,7 @@ impl SidebarState {
         }
     }
 
-    pub(super) fn append_smb_mount(
+    pub(super) fn append_network_share(
         self: &Rc<Self>,
         name: &str,
         location: Location,
@@ -470,10 +470,16 @@ pub(super) fn sidebar_device_shell(row: &gtk::Button) -> Option<gtk::Box> {
         .filter(|parent| parent.has_css_class("sidebar-device"))
 }
 
-pub(super) fn is_smb_location(location: &Location) -> bool {
+/// GVfs network backends: their mounts are shares to disconnect, not drives to eject.
+const NETWORK_SHARE_SCHEMES: &[&str] = &["smb", "sftp", "ftp", "ftps", "dav", "davs", "afp", "nfs"];
+
+pub(super) fn is_network_share(location: &Location) -> bool {
     location.uri_value().is_some_and(|uri| {
-        uri.get(..4)
-            .is_some_and(|scheme| scheme.eq_ignore_ascii_case("smb:"))
+        gtk::glib::Uri::parse_scheme(uri).is_some_and(|scheme| {
+            NETWORK_SHARE_SCHEMES
+                .iter()
+                .any(|known| scheme.eq_ignore_ascii_case(known))
+        })
     })
 }
 
