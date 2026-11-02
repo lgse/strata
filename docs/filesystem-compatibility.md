@@ -1413,7 +1413,10 @@ removed once its originals have gone back. One budget covers a whole Delete, a p
 after its items are placed (its sources and the originals it set aside), or a copy's cleanups, so a
 thousand held folders cost one wait. Each put back of set-aside originals has a budget of its own,
 so cancelling a merge or Replace whose original another program holds open can take that whole
-budget once more. A folder that empties goes at once and costs no wait.
+budget once more. A folder that empties goes at once and costs no wait. A folder still refused
+for its leftovers does not stop the rest of a Delete or cleanup: everything else is removed, the
+folder and the folders above it stay, and the error names it. Any other error stops the removal at
+once.
 
 ### Naming what holds it
 
@@ -1807,7 +1810,10 @@ worker:
   it has entered its working folder.
 - Once it has resolved its command-line paths, Strata makes `/` its working folder, so libraries
   that look files up relative to the working folder never wait on the folder Strata was started
-  from. A program that Open With starts without a working folder of its own starts in `/` too.
+  from. A program that Open or Open With starts begins in the folder of the first opened file
+  unless its desktop entry sets `Path`: Strata enters that folder only while GIO spawns the
+  program and returns to `/` as soon as it has started, so the folder stays busy only for the
+  program. Files without a local path, and a folder Strata cannot enter, leave the program in `/`.
 - Strata's own settings and state files are saved by one background writer and read again there
   after another program changes them; see [Saved preferences](preferences.md).
 - An enumerator or stream the interface lets go of is closed in the background

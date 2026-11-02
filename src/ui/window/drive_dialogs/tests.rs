@@ -645,7 +645,7 @@ fn format_dialog_reads_drive_facts_off_the_ui_thread_and_continue_waits_for_them
                 let overlay = gtk::Overlay::new();
                 overlay.set_child(Some(&crate::ui::blur::BlurBin::new(&sidebar)));
                 let window = gtk::Window::builder().child(&overlay).build();
-                window.present();
+                crate::test_support::present_window(&window);
                 let started = Rc::new(Cell::new(false));
                 let start = started.clone();
                 open_format_dialog(

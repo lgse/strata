@@ -182,6 +182,9 @@ fn enter_on_a_video_preview_opens_it_where_it_stopped() {
                 preview_has_focus(&fixture) && shows_clip(&fixture, "b.mp4")
             });
             let playing_video = || {
+                settle("video stream ready", || {
+                    fixture.preview.media_for_test().is_some()
+                });
                 let media = fixture.preview.media_for_test().expect("video stream");
                 media.play();
                 settle("playback past the first second", || {

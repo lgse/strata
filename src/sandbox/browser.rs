@@ -11,7 +11,7 @@ use std::{
     process::Stdio,
     sync::{
         Arc, Condvar, Mutex, OnceLock,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -452,15 +452,36 @@ fn preview_pool() -> &'static Pool {
     })
 }
 
-pub(crate) fn workers_supported() -> bool {
-    static SUPPORTED: OnceLock<bool> = OnceLock::new();
-    *SUPPORTED.get_or_init(|| {
+static NAMESPACES_RESTRICTED: AtomicBool = AtomicBool::new(false);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum WorkerSupport {
+    Available,
+    LandlockUnavailable,
+    /// Discovered when a supervisor starts; it holds for the rest of the process.
+    NamespacesRestricted,
+}
+
+pub(crate) fn worker_support() -> WorkerSupport {
+    static LANDLOCK_SUPPORTED: OnceLock<bool> = OnceLock::new();
+    let landlock = *LANDLOCK_SUPPORTED.get_or_init(|| {
         let supported = worker::supported();
         if !supported {
             tracing::warn!("Landlock ABI 3 unavailable; retaining one-shot sandboxes");
         }
         supported
-    })
+    });
+    if !landlock {
+        WorkerSupport::LandlockUnavailable
+    } else if NAMESPACES_RESTRICTED.load(Ordering::Relaxed) {
+        WorkerSupport::NamespacesRestricted
+    } else {
+        WorkerSupport::Available
+    }
+}
+
+pub(crate) fn workers_supported() -> bool {
+    worker_support() == WorkerSupport::Available
 }
 
 impl Pool {
@@ -694,11 +715,18 @@ enum Worker {
 
 impl Worker {
     fn spawn() -> io::Result<Self> {
-        if workers_supported() {
-            ProcessWorker::spawn().map(Self::Persistent)
-        } else {
-            Ok(Self::OneShot)
+        if !workers_supported() {
+            return Ok(Self::OneShot);
         }
+        Ok(match ProcessWorker::spawn()? {
+            Startup::Ready(worker) => Self::Persistent(worker),
+            Startup::NamespacesRestricted => {
+                if !NAMESPACES_RESTRICTED.swap(true, Ordering::Relaxed) {
+                    tracing::warn!("Job namespaces restricted; retaining one-shot sandboxes");
+                }
+                Self::OneShot
+            }
+        })
     }
 
     fn execute(
@@ -747,8 +775,32 @@ struct ProcessWorker {
     _snapshot: super::PrivateOutput,
 }
 
+enum Startup {
+    Ready(ProcessWorker),
+    NamespacesRestricted,
+}
+
+#[derive(Debug, PartialEq)]
+enum Readiness {
+    Ready,
+    NamespacesRestricted,
+}
+
+fn read_readiness(socket: &mut impl io::Read) -> io::Result<Readiness> {
+    let mut byte = [0];
+    socket.read_exact(&mut byte)?;
+    match byte[0] {
+        wire::READY => Ok(Readiness::Ready),
+        wire::NAMESPACES_RESTRICTED => Ok(Readiness::NamespacesRestricted),
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Invalid browser worker handshake",
+        )),
+    }
+}
+
 enum LauncherMessage {
-    Spawn(std::sync::mpsc::SyncSender<io::Result<ProcessWorker>>),
+    Spawn(std::sync::mpsc::SyncSender<io::Result<Startup>>),
     Idle,
 }
 
@@ -756,7 +808,7 @@ static LAUNCHER: OnceLock<Result<std::sync::mpsc::Sender<LauncherMessage>, Strin
     OnceLock::new();
 
 impl ProcessWorker {
-    fn spawn() -> io::Result<Self> {
+    fn spawn() -> io::Result<Startup> {
         let launcher = LAUNCHER
             .get_or_init(|| {
                 let (sender, receiver) = std::sync::mpsc::channel::<LauncherMessage>();
@@ -799,7 +851,7 @@ impl ProcessWorker {
         result.recv().map_err(io::Error::other)?
     }
 
-    fn spawn_on_launcher() -> io::Result<Self> {
+    fn spawn_on_launcher() -> io::Result<Startup> {
         let snapshot = super::PrivateOutput::create()?;
         let executable = super::resolve_renderer_executable(
             &std::env::current_exe()?,
@@ -807,7 +859,7 @@ impl ProcessWorker {
             snapshot.path(),
         )
         .map_err(io::Error::other)?;
-        let (socket, child_socket) = UnixStream::pair()?;
+        let (mut socket, child_socket) = UnixStream::pair()?;
         socket.set_read_timeout(Some(super::WALL_TIME_LIMIT))?;
         socket.set_write_timeout(Some(super::WALL_TIME_LIMIT))?;
         let bwrap = crate::trusted_command::resolve("bwrap")
@@ -840,13 +892,30 @@ impl ProcessWorker {
             .stdin(Stdio::from(std::os::fd::OwnedFd::from(child_socket)))
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        let child = super::spawn_renderer(&mut command)?;
+        let mut child = super::spawn_renderer(&mut command)?;
+        // The command still owns the supervisor's socket end, which would hide
+        // an early exit until the read timeout.
+        drop(command);
+        match read_readiness(&mut socket) {
+            Ok(Readiness::Ready) => {}
+            Ok(Readiness::NamespacesRestricted) => {
+                super::terminate(&mut child);
+                return Ok(Startup::NamespacesRestricted);
+            }
+            Err(error) => {
+                super::terminate(&mut child);
+                return Err(io::Error::new(
+                    error.kind(),
+                    format!("Browser sandbox failed to start: {error}"),
+                ));
+            }
+        }
         tracing::debug!(pid = child.id(), "browser sandbox started");
-        Ok(Self {
+        Ok(Startup::Ready(Self {
             child,
             socket,
             _snapshot: snapshot,
-        })
+        }))
     }
 
     fn execute(

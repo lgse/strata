@@ -157,6 +157,26 @@ in the same directory, moves the selected items into it, and names it in place.
 With nothing selected **Ctrl+Alt+N** falls back to a plain `new folder`. The item
 is hidden in Trash, Recent, and while a recursive search is open.
 
+In a local folder, a rename may give a path relative to the item's folder. Each
+`/` separates a folder: renaming `todo.txt` to `notes/todo.txt` moves it into
+`notes`, creating that folder if it is missing and reusing it if it is already a
+real folder. `..` is the folder above and `.` the current one, so `../todo.txt`
+moves the item up a level; they are resolved as written, so `notes/../todo.txt`,
+or `../work/todo.txt` for an item in `work`, is just `todo.txt`, and a path
+cannot climb past the filesystem root. The last part must be a name. A trailing
+`/` names a folder, so a folder renamed `docs/` is simply named `docs`. Only the
+first name given to a **New File** turns it into a folder: a new file named
+`docs/` becomes the empty folder `docs`, while an existing file never becomes
+one and the name is refused. Every part must be a valid name. The item keeps its
+contents and never replaces anything, a link or file in the way of a folder
+stops it, and a new file that is no longer empty is not turned into a folder. If
+any step fails, the folders it created are removed again, the item keeps its
+name, and the error is shown. **Undo** of a new item moves what the naming
+created to Trash: the outermost new folder, or the item itself when its folders
+already existed. **Undo** of a rename moves the item back and moves the folders
+the rename created to Trash. Naming **New Folder with Selection** and the
+[10xer](10xer-mode.md) **a** prompt still take a single name.
+
 For **any file or folder rename**, Enter, clicking outside the field (even empty
 pane space), or moving keyboard focus away commits a valid name. **Tab** and
 **Shift+Tab** commit it too, then open the rename on the next or previous item,
@@ -172,10 +192,11 @@ and **Ctrl+\\** do nothing; finish or cancel the edit first.
 Clicking inside the field continues editing. Existing files retain extension-aware
 selection (the stem is selected); folder names containing dots are selected in full.
 
-Names containing `/` or NUL, `.`/`..`, and whitespace-only names (including
-Unicode whitespace) are invalid. Valid names are used exactly as typed,
-including spaces around a nonblank name, hidden-file prefixes, and Unicode.
-Name conflicts, names the location would store as another (see [Names the user
+Names containing `/` (apart from a local rename with a path, above) or NUL, `.`
+and `..` on their own, and whitespace-only names (including Unicode whitespace)
+are invalid. Valid names are used exactly as typed, including spaces around a
+nonblank name, hidden-file prefixes, and Unicode. Name conflicts, names the
+location would store as another (see [Names the user
 types](filesystem-compatibility.md#names-the-user-types)), filesystem-specific
 limits, and permission errors retain the original item and report an error.
 

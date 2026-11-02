@@ -834,7 +834,10 @@ impl ViewState {
         glib::MainContext::default().spawn_local(async move {
             let Ok(info) = file
                 .query_info_future(
-                    "standard::content-type,standard::is-hidden,standard::size,time::modified,unix::mode,owner::user,owner::group",
+                    &format!(
+                        "{},standard::is-hidden,standard::size,time::modified,unix::mode,owner::user,owner::group",
+                        crate::adapters::CONTENT_TYPE_ATTRIBUTES
+                    ),
                     gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
                     glib::Priority::DEFAULT,
                 )
@@ -848,8 +851,12 @@ impl ViewState {
             if let Some(time) = info.modification_date_time() {
                 crate::util::set_full_modified_date(&modified, Some(time.to_unix()));
             }
-            hidden.set_text(&crate::i18n::tr(if info.is_hidden() { "Yes" } else { "No" }));
-            if let Some(content_type) = info.content_type() {
+            hidden.set_text(&crate::i18n::tr(if crate::adapters::info_is_hidden(&info) {
+                "Yes"
+            } else {
+                "No"
+            }));
+            if let Some(content_type) = crate::adapters::content_type_of(&info) {
                 kind.set_text(&gio::content_type_get_description(&content_type));
                 if let Some(app) = gio::AppInfo::default_for_type(&content_type, false) {
                     opens_with.set_text(&app.display_name());

@@ -404,7 +404,10 @@ open-path marker. The current name is filled in with a file's stem (or a
 folder's whole name) selected, as inline rename selects it. The item is fixed
 when the prompt opens; **Up** / **Down** do not move the cursor while it is open.
 **Enter** renames the item to exactly the typed name and keeps its contents; an
-unchanged name does nothing. An invalid name, one already taken (including by
+unchanged name does nothing. In a local folder the name may be a relative path
+that moves the item, as for [inline renames](keyboard-navigation.md#creating-files-and-folders);
+a folder on the path that is already a file or link also keeps the prompt open.
+An invalid name, one already taken (including by
 another hard link to the same file; see
 [Rename](filesystem-compatibility.md#rename)), or one the location would store
 as another keeps the prompt open with the reason, and nothing is replaced.

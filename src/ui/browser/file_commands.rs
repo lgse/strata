@@ -13,7 +13,7 @@ use super::{
 use crate::{
     adapters::gio_file_for_location,
     model::{ActionInput, FileEntry, Location, SortDirection, SortKey},
-    services::{ActionCatalog, ActionHandle, ArchiveFormat, InvocationSource},
+    services::{ActionCatalog, ActionHandle, ArchiveFormat, InvocationSource, TypedPath},
 };
 
 pub(crate) use super::transfer::ConflictFocus;
@@ -62,6 +62,7 @@ pub(crate) enum CreateRefusal {
     Invalid(&'static str),
     Exists(String),
     Unstorable(String),
+    NotAFolder(String),
 }
 
 pub(crate) struct TypedEntry {
@@ -235,13 +236,46 @@ pub(crate) fn can_rename(entry: &FileEntry) -> bool {
 pub(crate) struct TypedRename {
     pub(crate) entry: FileEntry,
     pub(crate) name: String,
+    /// Set when the name moves the item out of its folder.
+    path: Option<TypedPath>,
 }
 
 impl TypedRename {
+    /// Every typed name, with whether it names a folder.
+    pub(crate) fn components(&self) -> Vec<(&str, bool)> {
+        let Some(path) = &self.path else {
+            return vec![(self.name.as_str(), false)];
+        };
+        path.folders
+            .iter()
+            .map(|folder| (folder.as_str(), true))
+            .chain([(path.name.as_str(), path.folder)])
+            .collect()
+    }
+
+    /// The folder the typed names are relative to.
+    pub(crate) fn start_folder(&self) -> Option<Location> {
+        let parent = self.entry.location.parent()?;
+        match &self.path {
+            Some(path) => path.start(&parent),
+            None => Some(parent),
+        }
+    }
+
     pub(crate) fn native_paths(&self) -> Option<(PathBuf, PathBuf)> {
         let current = self.entry.location.native_path()?;
-        let wanted = current.parent()?.join(&self.name);
+        let wanted = self.components().into_iter().fold(
+            self.start_folder()?.native_path()?.to_path_buf(),
+            |path, (name, _)| path.join(name),
+        );
         Some((current.to_path_buf(), wanted))
+    }
+
+    pub(crate) fn folders(&self) -> Vec<String> {
+        self.path
+            .as_ref()
+            .map(|path| path.folders.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -254,18 +288,44 @@ impl BrowserView {
         if !can_rename(&entry) {
             return Err(CreateRefusal::Unsupported);
         }
-        crate::services::validate_basename(text).map_err(CreateRefusal::Invalid)?;
-        if entry.display_name == text || entry.native_name == std::ffi::OsStr::new(text) {
+        let (name, path) = if let Some(parent) = entry
+            .location
+            .native_path()
+            .and_then(|_| entry.location.parent())
+        {
+            let path = TypedPath::parse(text, entry.is_directory(), false)
+                .map_err(CreateRefusal::Invalid)?
+                .within(&parent);
+            if path.is_rename_of(entry.is_directory()) {
+                (path.name, None)
+            } else {
+                (text.to_owned(), Some(path))
+            }
+        } else {
+            crate::services::validate_basename(text).map_err(CreateRefusal::Invalid)?;
+            (text.to_owned(), None)
+        };
+        if path.is_none()
+            && (entry.display_name == name || entry.native_name == std::ffi::OsStr::new(&name))
+        {
             return Ok(None);
         }
-        Ok(Some(TypedRename {
-            entry,
-            name: text.to_owned(),
-        }))
+        Ok(Some(TypedRename { entry, name, path }))
     }
 
     pub fn start_typed_rename(&self, rename: TypedRename) {
-        if let Some(request) = self.state.browser.rename(rename.entry, rename.name) {
+        let start = rename.start_folder();
+        let started = match rename.path {
+            Some(path) => {
+                let replacement =
+                    start.and_then(|start| start.child(std::ffi::OsStr::new(path.first())));
+                let started = self.state.browser.place_entry(rename.entry, path, false);
+                self.state.typed_placement.replace(started.zip(replacement));
+                started
+            }
+            None => self.state.browser.rename(rename.entry, rename.name),
+        };
+        if let Some(request) = started {
             self.state
                 .keyboard_refocus
                 .set(Some(KeyboardRefocus::Rename(request)));

@@ -1,4 +1,4 @@
-{"scenario":"hidden-files-persist-across-restart","modes":["columns","icons","list"],"cost":{"columns":1.0,"icons":1.1,"list":1.1}}
+{"scenario":"hidden-files-persist-across-restart","modes":["columns","icons","list"],"prefs":{"group_by_type":true},"cost":{"columns":1.0,"icons":1.1,"list":1.1}}
 {"wait":{"entries":{"contains":["todo.txt"],"excludes":[".hidden.txt"]},"dir":"$root"},"message":"the fixture listed without its hidden file"}
 {"fs":{"path":".external.txt","write":"created outside Strata\n"}}
 {"fs":{"path":"monitor-ready.txt","write":"visible monitor barrier\n"}}

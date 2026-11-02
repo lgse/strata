@@ -17,18 +17,22 @@ pub(crate) mod trash_support;
 mod volume;
 
 pub(crate) use file_manager1::{RevealRequest, export_file_manager};
-pub(crate) use gio_location::{gio_file_for_location, location_for_file, reveal_target_for_file};
+pub(crate) use gio_location::{
+    CONTENT_TYPE_ATTRIBUTES, content_type_of, gio_file_for_location, location_for_file,
+    reveal_target_for_file,
+};
 pub(crate) use local_actions::{LocalActionStore, resolve_executable as resolve_action_executable};
 pub use local_files::LocalFileSource;
 pub(crate) use local_files::{RecentRemovalState, recent_remove_entries};
-pub(crate) use local_files::{query_file_entry, watch};
+pub(crate) use local_files::{info_is_hidden, query_file_entry, watch};
 pub(crate) use local_jobs::LocalActionRunner;
 pub use local_operations::LocalOperationProvider;
 pub(crate) use local_operations::{
     ARCHIVE_PREVIEW_FAILED_MESSAGE, ARCHIVE_TOO_LARGE_MESSAGE, ARCHIVE_UNSUPPORTED_MESSAGE,
     ActiveOperation, INVALID_ARCHIVE, MAX_ARCHIVE_PASSWORD_BYTES, MAYBE_BAD_PASSWORD,
     PASSWORD_REQUIRED, archive_payload_valid, encode_archive_result, flush_filesystem,
-    list_archive_entries_direct, transfer_targets, typed_name_refusal, typed_rename_is_taken,
+    list_archive_entries_direct, transfer_targets, typed_folder_blocked, typed_name_refusal,
+    typed_rename_is_taken,
 };
 #[cfg(test)]
 pub(crate) use local_operations::{

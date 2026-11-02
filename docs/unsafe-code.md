@@ -148,9 +148,12 @@ runs atfork handlers and resets libc's threading state. Namespace unshare uses
 only user/mount/PID/IPC flags, never `CLONE_FILES`.
 
 Children replace stdin/stdout and close inherited control descriptors before
-setup. Results use a per-job write-only pipe directly to the application; the
-supervisor never buffers media bytes or metadata, including previous thumbnails,
-that a subsequent fork could expose. A second fork enters the new PID namespace;
+setup. The one exception is the supervisor's startup probe child, which only
+attempts the same namespace setup, reports the outcome as its exit status, and
+exits without reading the socket or any input. Results use a per-job
+write-only pipe directly to the application; the supervisor never buffers media
+bytes or metadata, including previous thumbnails, that a subsequent fork could
+expose. A second fork enters the new PID namespace;
 its PID 1 installs a private proc mount, scratch mounts and input protections
 before decoding. Children exit
 through `exit_group`, without inherited atexit handlers or supervisor-buffer

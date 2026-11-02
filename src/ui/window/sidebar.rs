@@ -330,6 +330,8 @@ impl SidebarState {
             keycaps: RefCell::new(Vec::new()),
             keycaps_shown: Cell::new(false),
             visible_pins: RefCell::new(Vec::new()),
+            pinned_section: RefCell::new(None),
+            devices_section: RefCell::new(None),
             empty_pinned_section: RefCell::new(Vec::new()),
             file_drag_over: Cell::new(false),
             drop_feedback,
@@ -361,6 +363,21 @@ impl SidebarState {
                 {
                     state.places_visibility.replace(visibility);
                     state.rebuild();
+                }
+            },
+        );
+        let weak = Rc::downgrade(self);
+        self.preference_manager.bind_preference(
+            &self.widget,
+            |manager| {
+                (
+                    manager.sidebar_pinned_collapsed(),
+                    manager.sidebar_devices_collapsed(),
+                )
+            },
+            move |_, _| {
+                if let Some(state) = weak.upgrade() {
+                    state.sync_section_states();
                 }
             },
         );

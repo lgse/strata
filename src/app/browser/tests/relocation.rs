@@ -342,31 +342,49 @@ fn removing_the_root_with_open_child_columns_returns_to_the_nearest_existing_anc
 }
 
 #[test]
-fn a_rename_superseded_by_another_operation_still_reports_its_relocation() {
-    let browser = Browser::new(Rc::new(FakeFileSource));
-    let operations = Rc::new(crate::test_support::operations::HeldOperations::default());
-    browser.set_operation_provider(operations.clone());
+fn a_superseded_rename_or_placement_reports_its_relocation_but_records_no_undo() {
     let old = Location::local("/fixture/docs");
-    let rename = browser
-        .rename(fixture_entry("/fixture/docs"), "docs2".into())
-        .expect("rename started");
-    browser.delete(vec![fixture_entry("/fixture/other.txt")], false);
-    let events = Rc::new(RefCell::new(Vec::new()));
-    let observed = events.clone();
-    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    for typed_path in [false, true] {
+        let browser = Browser::new(Rc::new(FakeFileSource));
+        let operations = Rc::new(crate::test_support::operations::HeldOperations::default());
+        browser.set_operation_provider(operations.clone());
+        let (rename, new, finished) = if typed_path {
+            let path = crate::services::TypedPath::parse("kept/docs", false, false).expect("path");
+            let new = Location::local("/fixture/kept/docs");
+            let request_id = browser
+                .place_entry(fixture_entry("/fixture/docs"), path, false)
+                .expect("placement started");
+            let placed = vec![new.clone()];
+            let finished = OperationEvent::EntryPlaced { request_id, placed };
+            (request_id, new, finished)
+        } else {
+            let request_id = browser
+                .rename(fixture_entry("/fixture/docs"), "docs2".into())
+                .expect("rename started");
+            let new = Location::local("/fixture/docs2");
+            (request_id, new, OperationEvent::Renamed { request_id })
+        };
+        browser.delete(vec![fixture_entry("/fixture/other.txt")], false);
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let observed = events.clone();
+        browser.observe(move |event| observed.borrow_mut().push(event.clone()));
 
-    operations.emit(rename, OperationEvent::Renamed { request_id: rename });
+        operations.emit(rename, finished);
 
-    assert_eq!(
-        location_changes(&events.borrow()),
-        [relocated(&old, &Location::local("/fixture/docs2"))]
-    );
-    assert!(
-        !events
-            .borrow()
-            .iter()
-            .any(|event| matches!(event, BrowserEvent::RenameCompleted { .. }))
-    );
+        assert_eq!(
+            location_changes(&events.borrow()),
+            [relocated(&old, &new)],
+            "{typed_path}"
+        );
+        assert!(
+            !events
+                .borrow()
+                .iter()
+                .any(|event| matches!(event, BrowserEvent::RenameCompleted { .. })),
+            "{typed_path}"
+        );
+        assert_eq!(pending_undo_entry(), None, "{typed_path}");
+    }
 }
 
 #[test]

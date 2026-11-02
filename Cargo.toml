@@ -45,7 +45,7 @@ gstreamer = { version = "0.25.3", features = ["v1_20"] }
 gstreamer-app = { version = "0.25.2", features = ["v1_20"] }
 gtk = { package = "gtk4", version = "0.11.4", features = ["v4_12"] }
 hex = "0.4.3"
-html5gum = { version = "0.8", default-features = false }
+html5gum = { version = "0.9", default-features = false }
 ignore = "0.4.23"
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
 kamadak-exif = "0.6.1"
@@ -60,7 +60,7 @@ pulldown-cmark = { version = "0.13", default-features = false }
 ring = "0.17.14"
 resvg = { version = "0.48.1", default-features = false, features = ["text", "system-fonts"] }
 rust-i18n = "4.2.4"
-rustix = { version = "1.1.4", features = ["fs", "process", "event", "net", "mount", "thread", "stdio", "pipe", "runtime", "time"] }
+rustix = { version = "1.1.4", features = ["fs", "process", "event", "net", "mount", "thread", "stdio", "pipe", "time"] }
 seccompiler = "0.5.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -82,7 +82,7 @@ zstd = "0.14.3"
 zip = "9.0.4"
 unrar = { version = "0.5.8", optional = true }
 unrar_sys = { version = "0.5.8", optional = true }
-x11rb = { version = "0.13.2", default-features = false, features = ["xkb", "xtest"], optional = true }
+x11rb = { version = "0.14.0", default-features = false, features = ["xkb", "xtest"], optional = true }
 regex = { version = "1.13.1", optional = true }
 frizbee = "0.13"
 fitparser = "0.11.0"
