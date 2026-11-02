@@ -6,9 +6,21 @@ use std::path::PathBuf;
 
 use gtk::prelude::*;
 
-use super::{DeviceIds, ReleaseKey};
+use super::{
+    super::{device_labels, drive_dialogs::PropertiesTarget},
+    DeviceIds, ReleaseKey,
+};
+use crate::ui::preferences::PreferenceManager;
 
+/// A release key named as the Devices row names the device.
 pub(in crate::ui::window) fn key_for_volume(volume: &gio::Volume) -> ReleaseKey {
+    labelled(
+        system_key_for_volume(volume),
+        PropertiesTarget::Volume(volume.clone()),
+    )
+}
+
+fn system_key_for_volume(volume: &gio::Volume) -> ReleaseKey {
     let mount = volume.get_mount();
     ReleaseKey {
         unix_device: super::super::gio_volume_unix_device(volume)
@@ -25,10 +37,15 @@ pub(in crate::ui::window) fn key_for_volume(volume: &gio::Volume) -> ReleaseKey 
 }
 
 pub(in crate::ui::window) fn ids_for_volume(volume: &gio::Volume) -> DeviceIds {
-    key_for_volume(volume).ids()
+    system_key_for_volume(volume).ids()
 }
 
+/// A release key named as the Devices row names the device.
 pub(in crate::ui::window) fn key_for_mount(mount: &gio::Mount) -> ReleaseKey {
+    labelled(system_key_for_mount(mount), PropertiesTarget::Mount(mount.clone()))
+}
+
+fn system_key_for_mount(mount: &gio::Mount) -> ReleaseKey {
     let volume = mount.volume();
     ReleaseKey {
         unix_device: mount
@@ -55,7 +72,16 @@ pub(in crate::ui::window) fn key_for_mount(mount: &gio::Mount) -> ReleaseKey {
 }
 
 pub(in crate::ui::window) fn ids_for_mount(mount: &gio::Mount) -> DeviceIds {
-    key_for_mount(mount).ids()
+    system_key_for_mount(mount).ids()
+}
+
+fn labelled(mut key: ReleaseKey, target: PropertiesTarget) -> ReleaseKey {
+    key.display_name = device_labels::display_name(
+        &PreferenceManager::shared(),
+        target.label_id().as_deref(),
+        &key.display_name,
+    );
+    key
 }
 
 pub(in crate::ui::window) fn key_for_drive(drive: &gio::Drive) -> ReleaseKey {

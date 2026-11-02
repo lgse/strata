@@ -614,6 +614,14 @@ pub(super) fn show_drive_properties(
         .layout
         .subtitle
         .set_ellipsize(gtk::pango::EllipsizeMode::End);
+    if let Some(id) = target.label_id() {
+        super::device_labels::bind_label_text(
+            &shell.layout.subtitle,
+            &super::super::preferences::PreferenceManager::shared(),
+            &id,
+            &name,
+        );
+    }
 
     let block_device = volume
         .as_ref()
