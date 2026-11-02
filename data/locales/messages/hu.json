@@ -47,6 +47,7 @@
   "%{keys} in a prompt": "%{keys} egy bekérőmezőben",
   "%{keys} in a rename": "%{keys} egy átnevezés közben",
   "%{keys} in an archive": "%{keys} egy archívumban",
+  "%{keys} in an inline rename": "%{keys} egy listán belüli átnevezés közben",
   "%{keys} in any preview": "%{keys} bármely előnézetben",
   "%{keys} in header": "%{keys} a fejlécben",
   "%{keys} in media": "%{keys} a médiában",

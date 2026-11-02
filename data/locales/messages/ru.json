@@ -47,6 +47,7 @@
   "%{keys} in a prompt": "%{keys} в строке ввода",
   "%{keys} in a rename": "%{keys} при переименовании",
   "%{keys} in an archive": "%{keys} в архиве",
+  "%{keys} in an inline rename": "%{keys} при переименовании в списке",
   "%{keys} in any preview": "%{keys} в любом предпросмотре",
   "%{keys} in header": "%{keys} в заголовке",
   "%{keys} in media": "%{keys} в медиафайле",

@@ -47,6 +47,7 @@
   "%{keys} in a prompt": "%{keys} en un campo de entrada",
   "%{keys} in a rename": "%{keys} durante un renombrado",
   "%{keys} in an archive": "%{keys} en un archivo comprimido",
+  "%{keys} in an inline rename": "%{keys} durante un renombrado en la lista",
   "%{keys} in any preview": "%{keys} en cualquier vista previa",
   "%{keys} in header": "%{keys} en el encabezado",
   "%{keys} in media": "%{keys} en contenido multimedia",

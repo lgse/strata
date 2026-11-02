@@ -47,6 +47,7 @@
   "%{keys} in a prompt": "在输入栏中按 %{keys}",
   "%{keys} in a rename": "重命名时按 %{keys}",
   "%{keys} in an archive": "在压缩文件中按 %{keys}",
+  "%{keys} in an inline rename": "在文件列表中重命名时按 %{keys}",
   "%{keys} in any preview": "在任意预览中按 %{keys}",
   "%{keys} in header": "在窗格标题栏中按 %{keys}",
   "%{keys} in media": "在媒体预览中按 %{keys}",
