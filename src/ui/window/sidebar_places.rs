@@ -214,8 +214,8 @@ impl SidebarState {
         self.sync_empty_pinned_section();
     }
 
-    /// Runs after the rail sync, which would otherwise show the empty
-    /// section's heading like any other.
+    /// Applies the drag state to the empty section's widgets; also re-run
+    /// after the rail sync, which shows every heading.
     pub(super) fn sync_empty_pinned_section(&self) {
         let over = self.file_drag_over.get();
         let rail = self.rail.get();

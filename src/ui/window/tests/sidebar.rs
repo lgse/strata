@@ -61,6 +61,13 @@ fn shows_label(widget: &gtk::Widget, text: &str) -> bool {
     false
 }
 
+fn shows_class(widget: &gtk::Widget, class: &str) -> bool {
+    widget.is_visible()
+        && (widget.has_css_class(class)
+            || std::iter::successors(widget.first_child(), gtk::Widget::next_sibling)
+                .any(|child| shows_class(&child, class)))
+}
+
 #[test]
 fn a_rejected_place_click_returns_the_highlight_to_the_open_location() {
     // Without a GVfs backend, network:// is rejected rather than opened.
@@ -359,6 +366,10 @@ fn an_empty_pinned_section_shows_only_while_files_are_dragged_over_the_sidebar()
             sidebar.state.set_rail(true);
             sidebar.state.set_file_drag_over(true);
             assert!(!pinned_shown(), "the rail hides the heading during a drag");
+            assert!(
+                shows_class(sidebar.widget.upcast_ref(), "sidebar-pin-gap"),
+                "the rail keeps the pin drop target during a drag"
+            );
             sidebar.state.set_file_drag_over(false);
             sidebar.state.set_rail(false);
             assert!(!pinned_shown(), "leaving the rail keeps it hidden");
