@@ -206,7 +206,8 @@ impl Dispatcher {
 
     /// Runs GTK's arrow binding. GTK's plain move resets its own Shift range origin; the
     /// model's anchor, which Shift+page keys and Shift+click extend from, follows it
-    /// when the move replaced the selection, and not when GTK kept a range at an edge.
+    /// when the move replaced and changed the selection, and not when GTK kept a range at
+    /// an edge.
     fn run_arrow_binding(&self, arrow: Key) -> bool {
         let browser = self.view.browser();
         let selection = || {
