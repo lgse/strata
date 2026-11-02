@@ -452,6 +452,48 @@ fn unsupported_trash_fallback_explains_and_focuses_cancel() {
     );
 }
 
+#[test]
+fn a_cancelled_confirmation_gives_back_the_cursor_a_completion_took_meanwhile() {
+    crate::test_support::gtk_test(
+        "ui::browser::trash::tests::a_cancelled_confirmation_gives_back_the_cursor_a_completion_took_meanwhile",
+        || {
+            let fixture = tempfile::tempdir().expect("fixture");
+            for name in ["a.txt", "b.txt", "c.zip"] {
+                fs::write(fixture.path().join(name), b"keep").expect("fixture file");
+            }
+            let [asked, archive] =
+                ["b.txt", "c.zip"].map(|name| Location::local(fixture.path().join(name)));
+            let view = view();
+            let window = window(&view);
+            let browser = view.browser();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| browser.select_entries_by_location_at(0, std::slice::from_ref(&asked)));
+            let focused = || browser.focused_entry().map(|entry| entry.location);
+
+            view.state
+                .show_delete_confirmation(browser.focused_entry().into_iter().collect());
+            // A compression finishing underneath selects its archive.
+            assert!(browser.select_entries_by_location_at(0, std::slice::from_ref(&archive)));
+            assert!(modal_key(&window, gtk::gdk::Key::Escape));
+            wait_until(|| {
+                find_widget(window.upcast_ref(), &|widget: &gtk::Widget| {
+                    widget.has_css_class("app-modal-layer")
+                })
+                .is_none()
+            });
+
+            let selected = browser
+                .selected_entries()
+                .into_iter()
+                .map(|entry| entry.location)
+                .collect::<Vec<_>>();
+            assert_eq!((focused(), selected), (Some(asked.clone()), vec![asked]));
+            window.destroy();
+            browser.clear_observer();
+        },
+    );
+}
+
 fn followed_file_symlink(link: &Path) -> FileEntry {
     let mut entry = glib::MainContext::new()
         .block_on(crate::adapters::query_file_entry(Location::local(link)))
