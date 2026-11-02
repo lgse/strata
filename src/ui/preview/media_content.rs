@@ -9,7 +9,7 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::{Path, PathBuf},
     rc::Rc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use gtk::{gio, glib, prelude::*};
@@ -23,7 +23,7 @@ use crate::{
 /// The nearest file on each side answers first; later chunks grow to bound refreshes.
 const FIRST_CHUNK: usize = 2;
 const MAX_CHUNK: usize = 256;
-/// How long a read waits for a mount that is busy with other work, not stalled.
+/// How often a read asks again while a mount is busy with other work, not stalled.
 const BUSY_RETRY: Duration = Duration::from_millis(100);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -70,8 +70,28 @@ type Answers = Rc<RefCell<HashMap<PathBuf, (Fingerprint, bool)>>>;
 pub(super) struct MediaChecks {
     answers: Answers,
     reads: Option<Reads>,
+    limits: Limits,
     #[cfg(test)]
     queued: usize,
+}
+
+/// A request hung behind a link keeps a mount busy without stalling it, so waiting
+/// for a busy mount ends after this long.
+#[derive(Clone)]
+struct Limits {
+    busy: Duration,
+    #[cfg(test)]
+    abandoned: Rc<std::cell::Cell<usize>>,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            busy: mount_lanes::NOT_RESPONDING_AFTER,
+            #[cfg(test)]
+            abandoned: Rc::default(),
+        }
+    }
 }
 
 /// Unanswered files of one listing, by their place in it.
@@ -154,13 +174,15 @@ impl MediaChecks {
             cancellable: cancellable.clone(),
         });
         let answers = self.answers.clone();
+        let limits = self.limits.clone();
         glib::MainContext::default().spawn_local(async move {
             let mut queue = VecDeque::from(files);
             let mut size = FIRST_CHUNK;
+            let mut given_up = HashSet::new();
             while !queue.is_empty() && !cancellable.is_cancelled() {
                 let chunk: Vec<_> = queue.drain(..size.min(queue.len())).collect();
                 size = (size * 2).min(MAX_CHUNK);
-                let learned = read_chunk(chunk, &cancellable).await;
+                let learned = read_chunk(chunk, &cancellable, &limits, &mut given_up).await;
                 if learned.is_empty() {
                     continue;
                 }
@@ -184,6 +206,17 @@ impl MediaChecks {
     #[cfg(test)]
     pub(super) fn queued(&self) -> usize {
         self.queued
+    }
+
+    #[cfg(test)]
+    pub(super) fn wait_for_busy_mounts(&mut self, limit: Duration) {
+        self.limits.busy = limit;
+    }
+
+    /// Folders whose reads ended without an answer.
+    #[cfg(test)]
+    pub(super) fn abandoned(&self) -> usize {
+        self.limits.abandoned.get()
     }
 }
 
@@ -222,10 +255,13 @@ impl Unread {
     }
 }
 
-/// Reads one chunk folder by folder; files whose read gets no answer are left out.
+/// Reads one chunk folder by folder; files whose read gets no answer are left out, and
+/// a folder that got none is not asked again by the same reads.
 async fn read_chunk(
     chunk: Vec<(PathBuf, Fingerprint)>,
     cancellable: &gio::Cancellable,
+    limits: &Limits,
+    given_up: &mut HashSet<PathBuf>,
 ) -> Vec<(PathBuf, Fingerprint, bool)> {
     let mut folders: Vec<(PathBuf, Vec<(PathBuf, Fingerprint)>)> = Vec::new();
     for (path, fingerprint) in chunk {
@@ -237,8 +273,16 @@ async fn read_chunk(
     }
     let mut answers = Vec::new();
     for (folder, files) in folders {
+        if given_up.contains(&folder) {
+            continue;
+        }
         let paths: Vec<PathBuf> = files.iter().map(|(path, _)| path.clone()).collect();
-        let Some(read) = read_folder(&folder, paths, cancellable).await else {
+        let Some(read) = read_folder(&folder, paths, cancellable, limits).await else {
+            if !cancellable.is_cancelled() {
+                #[cfg(test)]
+                limits.abandoned.set(limits.abandoned.get() + 1);
+                given_up.insert(folder);
+            }
             continue;
         };
         answers.extend(
@@ -252,13 +296,16 @@ async fn read_chunk(
 }
 
 /// Background work through the folder's mount lane: it waits its turn while the mount
-/// is busy with other requests and gives up once the mount has stalled. Each read
-/// follows symbolic links through `reach`, so a dead link target trips only itself.
+/// is busy with other requests, for at most `limits.busy`, and gives up at once when
+/// the mount has stalled. Each read follows symbolic links through `reach`, so a dead
+/// link target trips only itself.
 async fn read_folder(
     folder: &Path,
     paths: Vec<PathBuf>,
     cancellable: &gio::Cancellable,
+    limits: &Limits,
 ) -> Option<Vec<Option<bool>>> {
+    let mut busy_since = None;
     loop {
         if cancellable.is_cancelled() {
             return None;
@@ -285,6 +332,10 @@ async fn read_folder(
             Err(Unanswered::Skipped)
                 if mount_lanes::responsiveness(folder) == Responsiveness::Answering =>
             {
+                let since = *busy_since.get_or_insert_with(Instant::now);
+                if since.elapsed() >= limits.busy {
+                    return None;
+                }
                 glib::timeout_future(BUSY_RETRY).await;
             }
             Err(_) => return None,

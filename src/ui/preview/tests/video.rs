@@ -418,12 +418,12 @@ fn reads_wait_out_a_busy_mount_without_a_new_shown_file() {
                 ("b.mp4", MEDIA_BYTES),
                 ("c.mp4", MEDIA_BYTES),
             ]);
+            let (_provider, drawer, video) = video_drawer(&view, 0);
             let busy = crate::adapters::mount_lanes::admit(
                 directory.path(),
                 crate::adapters::mount_lanes::Class::Interactive,
             )
             .expect("a request on the folder's mount");
-            let (_provider, drawer, video) = video_drawer(&view, 0);
             pump(std::time::Duration::from_millis(300));
             assert_eq!(
                 video.caption(),
@@ -434,6 +434,72 @@ fn reads_wait_out_a_busy_mount_without_a_new_shown_file() {
             wait_until("the reads to resume once the mount is free", || {
                 video.caption() == "1 of 3 in folder"
             });
+            drawer.close();
+        },
+    );
+}
+
+#[test]
+fn reads_stop_waiting_for_a_mount_that_stays_busy() {
+    crate::test_support::gtk_test(
+        "ui::preview::tests::video::reads_stop_waiting_for_a_mount_that_stays_busy",
+        || {
+            let (directory, view) = listing_of(&[
+                ("a.mp4", MEDIA_BYTES),
+                ("b.mp4", MEDIA_BYTES),
+                ("c.mp4", MEDIA_BYTES),
+            ]);
+            let browser = view.browser();
+            let provider = Rc::new(Provider::default());
+            let drawer = PreviewDrawer::new(provider.clone(), false);
+            drawer.state.keyboard_view.replace(Some(view.downgrade()));
+            drawer.observe_browser(&browser);
+            crate::ui::preferences::PreferenceManager::shared().set_preview_autoplay(false);
+            let state = &drawer.state;
+            state
+                .media_checks
+                .borrow_mut()
+                .wait_for_busy_mounts(std::time::Duration::from_millis(200));
+            // A request on the folder, parked behind a link elsewhere: its lane keeps the
+            // folder busy while the folder itself never stalls.
+            let elsewhere = tempfile::tempdir().expect("link target folder");
+            let (entered, inside) = std::sync::mpsc::channel();
+            let (release, released) = std::sync::mpsc::channel::<()>();
+            let folder = directory.path().to_path_buf();
+            let target = elsewhere.path().join("clip");
+            let hung = std::thread::spawn(move || {
+                let busy = crate::adapters::mount_lanes::admit(
+                    &folder,
+                    crate::adapters::mount_lanes::Class::Interactive,
+                )
+                .expect("a request on the folder's mount");
+                busy.progress().reach(&target, None, || {
+                    entered.send(()).expect("entered");
+                    released.recv().map_err(std::io::Error::other)
+                });
+            });
+            inside.recv().expect("the request to hang");
+            browser.select(0, 0);
+            drawer.show(browser.entry_at(0, 0).expect("shown clip"), Some(0));
+            ready(&provider, 0, "video/mp4");
+            wait_until("the reads to stop waiting", || {
+                state.media_checks.borrow().abandoned() > 0
+            });
+            release.send(()).expect("release");
+            hung.join().expect("the hung request ends");
+            pump(std::time::Duration::from_millis(300));
+            let video = state
+                .video
+                .borrow()
+                .as_ref()
+                .expect("video view")
+                .view
+                .clone();
+            assert_eq!(
+                video.caption(),
+                "1 of 1 in folder",
+                "given-up files wait for the shown file to change"
+            );
             drawer.close();
         },
     );

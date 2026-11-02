@@ -721,9 +721,9 @@ or whose leading bytes are text, is neither counted nor stepped to. Files the pr
 has not reached yet are checked by reading their first 8 KiB off the GTK thread,
 outward from the shown file in growing chunks, as background work through their
 mount's [request lane](filesystem-compatibility.md#request-lanes): while other
-requests keep the mount busy the reads wait their turn, and once it stalls they give
-up. Until a file answers it stays out, and the position and previous/next buttons
-update after each chunk. When the shown file changes, reading starts again outward
+requests keep the mount busy the reads wait their turn for up to 10 s, and once it
+stalls they give up at once. Until a file answers it stays out, and the position and
+previous/next buttons update after each chunk. When the shown file changes, reading starts again outward
 from it, and files that could not be read, or whose mount stalled, are asked again.
 Reading stops when the preview closes or replaces the player with another kind of
 preview. Answers belong to one preview and last while its listing shows the file.
