@@ -671,8 +671,7 @@ impl VideoView {
     ) {
         self.error.set_visible(false);
         self.play.set_sensitive(false);
-        self.previous.set_sensitive(has_previous);
-        self.next.set_sensitive(has_next);
+        self.set_listing(position, has_previous, has_next);
         // The opening thumbnail would misrepresent a resumed clip.
         let resume_cell = entry
             .location
@@ -702,8 +701,6 @@ impl VideoView {
         self.chapters.borrow_mut().clear();
         self.timeline.set_chapters(Vec::new());
         self.show_badge_skeleton();
-        self.eyebrow
-            .set_text(&position.map(ListingPosition::caption).unwrap_or_default());
         self.title.set_text(
             &std::path::Path::new(&entry.display_name)
                 .file_stem()
@@ -712,6 +709,18 @@ impl VideoView {
                     |stem| stem.to_string_lossy().into_owned(),
                 ),
         );
+    }
+
+    pub(super) fn set_listing(
+        &self,
+        position: Option<ListingPosition>,
+        has_previous: bool,
+        has_next: bool,
+    ) {
+        self.previous.set_sensitive(has_previous);
+        self.next.set_sensitive(has_next);
+        self.eyebrow
+            .set_text(&position.map(ListingPosition::caption).unwrap_or_default());
     }
 
     pub(super) fn show_error(&self, title: &str, detail: &str, command: Option<&str>) {
@@ -781,6 +790,11 @@ impl VideoView {
                 revealer.set_reveal_child(true);
             }
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn caption(&self) -> String {
+        self.eyebrow.text().into()
     }
 
     #[cfg(test)]

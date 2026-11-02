@@ -37,12 +37,29 @@ pub(super) fn failed(provider: &Provider, index: usize, message: &str) {
     });
 }
 
+/// Leading bytes the preview's content check accepts for a media name.
+const MEDIA_BYTES: &[u8] = b"\0\0\0\x18ftypmp42\0\0\0\0mp42isom";
+
 pub(super) fn sorted_listing(
     names: &[&str],
 ) -> (tempfile::TempDir, crate::ui::browser::BrowserView) {
+    let files: Vec<(&str, &[u8])> = names
+        .iter()
+        .map(|name| {
+            let media =
+                entry_family(&entry(name)).is_some_and(|family| family != MediaFamily::Route);
+            (*name, if media { MEDIA_BYTES } else { &[][..] })
+        })
+        .collect();
+    listing_of(&files)
+}
+
+pub(super) fn listing_of(
+    files: &[(&str, &[u8])],
+) -> (tempfile::TempDir, crate::ui::browser::BrowserView) {
     let directory = tempfile::tempdir().expect("media directory");
-    for name in names {
-        std::fs::write(directory.path().join(name), []).expect("media fixture");
+    for (name, bytes) in files {
+        std::fs::write(directory.path().join(name), bytes).expect("media fixture");
     }
     let view = crate::ui::browser::BrowserView::new(
         Rc::new(crate::adapters::LocalFileSource),
@@ -129,6 +146,7 @@ fn video_steps_reuse_one_view_and_keep_playback() {
             drawer.show(browser.entry_at(0, 0).expect("first clip"), Some(0));
             ready(&provider, 0, "video/mp4");
             let state = &drawer.state;
+            wait_for_sequence(state, MediaFamily::Video, 3);
             let stream = || state.media.borrow().clone().expect("rendered stream");
             let show_cursor = || state.show(browser.cursor_entry(0).expect("clip cursor"), Some(0));
             let cursor_name = || browser.cursor_entry(0).expect("clip cursor").display_name;
@@ -218,6 +236,7 @@ fn steps_stay_within_the_same_media_type() {
             drawer.show(browser.entry_at(0, 0).expect("first track"), Some(0));
             ready(&provider, 0, "audio/mpeg");
             assert!(state.audio.borrow().is_some());
+            wait_for_sequence(state, MediaFamily::Audio, 2);
             assert!(state.step_media(1, true));
             assert_eq!(cursor_name(), "c.mp3", "audio skips the video between");
             show_cursor();
@@ -231,9 +250,87 @@ fn steps_stay_within_the_same_media_type() {
             ready(&provider, 2, "video/mp4");
             assert!(state.audio.borrow().is_none());
             assert!(state.video.borrow().is_some());
+            wait_for_sequence(state, MediaFamily::Video, 2);
             assert!(!state.step_media(-1, true), "no video before the first one");
             assert!(state.step_media(1, true));
             assert_eq!(cursor_name(), "d.mp4", "video skips the audio between");
+            drawer.close();
+        },
+    );
+}
+
+#[test]
+fn steps_skip_files_named_as_video_whose_bytes_are_text() {
+    crate::test_support::gtk_test(
+        "ui::preview::tests::video::steps_skip_files_named_as_video_whose_bytes_are_text",
+        || {
+            const H264: &[u8] = b"\0\0\0\x01\x67\x42\xc0\x1e\xd9";
+            let (_directory, view) = listing_of(&[
+                ("alpha.h264", H264),
+                ("beta.h264", H264),
+                ("UPPER.H264", H264),
+                ("clip.mp4", MEDIA_BYTES),
+                ("fake.mp4", b"not a video\n"),
+                ("notes.h264", b"just some notes\n"),
+            ]);
+            let browser = view.browser();
+            let provider = Rc::new(Provider::default());
+            let drawer = PreviewDrawer::new(provider.clone(), false);
+            drawer.state.keyboard_view.replace(Some(view.downgrade()));
+            drawer.observe_browser(&browser);
+            crate::ui::preferences::PreferenceManager::shared().set_preview_autoplay(false);
+            let state = &drawer.state;
+            let alpha = (0..6)
+                .find(|position| {
+                    browser
+                        .entry_at(0, *position)
+                        .is_some_and(|entry| entry.display_name == "alpha.h264")
+                })
+                .expect("alpha listed");
+            browser.select(0, alpha);
+            drawer.show(browser.entry_at(0, alpha).expect("alpha"), Some(0));
+            ready(&provider, 0, "video/h264");
+            let video = state
+                .video
+                .borrow()
+                .as_ref()
+                .expect("video view")
+                .view
+                .clone();
+            wait_until("the header to count only real videos", || {
+                video.caption().ends_with(" of 4 in folder")
+            });
+
+            let step = |direction: i32| {
+                if !state.step_media(direction, true) {
+                    return None;
+                }
+                let landed = browser.cursor_entry(0).expect("stepped cursor");
+                state.show(landed.clone(), Some(0));
+                ready(&provider, provider.0.borrow().len() - 1, "video/mp4");
+                assert!(state.video.borrow().is_some(), "stepping stays in video");
+                Some(landed.display_name)
+            };
+            for _ in 0..6 {
+                if step(-1).is_none() {
+                    break;
+                }
+            }
+            assert_eq!(video.caption(), "1 of 4 in folder");
+            let mut visited = vec![browser.cursor_entry(0).expect("first").display_name];
+            for _ in 0..6 {
+                let Some(name) = step(1) else {
+                    break;
+                };
+                visited.push(name);
+            }
+            visited.sort();
+            assert_eq!(
+                visited,
+                ["UPPER.H264", "alpha.h264", "beta.h264", "clip.mp4"],
+                "text named as video is never a step"
+            );
+            assert_eq!(video.caption(), "4 of 4 in folder");
             drawer.close();
         },
     );
@@ -532,6 +629,15 @@ fn pump(duration: std::time::Duration) {
         glib::MainContext::default().iteration(false);
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
+}
+
+pub(super) fn wait_for_sequence(state: &Rc<PreviewState>, family: MediaFamily, count: usize) {
+    wait_until("the media sequence", || {
+        state
+            .listing_position(family)
+            .0
+            .is_some_and(|position| position.count == count)
+    });
 }
 
 fn wait_until(what: &str, condition: impl Fn() -> bool) {

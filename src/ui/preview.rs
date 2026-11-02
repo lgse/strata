@@ -46,6 +46,7 @@ mod keyboard;
 mod layout;
 mod lifecycle;
 mod loading;
+mod media_content;
 mod media_controls;
 mod media_render;
 mod media_session;

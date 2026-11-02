@@ -149,7 +149,7 @@ impl PreviewState {
     }
 
     pub(super) fn listing_position(
-        &self,
+        self: &Rc<Self>,
         family: MediaFamily,
     ) -> (Option<ListingPosition>, bool, bool) {
         let Some((files, index)) = self.family_listing(family, None) else {
@@ -172,8 +172,20 @@ impl PreviewState {
         )
     }
 
+    fn refresh_listing_position(self: &Rc<Self>) {
+        if let Some(audio) = self.audio.borrow().as_ref() {
+            let (folder, has_previous, has_next) = self.listing_position(MediaFamily::Audio);
+            audio.view.set_listing(folder, has_previous, has_next);
+        } else if let Some(video) = self.video.borrow().as_ref() {
+            let (position, has_previous, has_next) = self.listing_position(MediaFamily::Video);
+            video.view.set_listing(position, has_previous, has_next);
+        }
+    }
+
+    /// The shown file anchors the sequence; other files join once their bytes are known
+    /// to be media, and the shown player's position updates when they are.
     pub(super) fn family_listing(
-        &self,
+        self: &Rc<Self>,
         family: MediaFamily,
         around: Option<crate::model::Location>,
     ) -> Option<(Vec<FileEntry>, usize)> {
@@ -184,8 +196,18 @@ impl PreviewState {
             .and_then(super::super::browser::WeakBrowserView::upgrade)?;
         let depth = self.current_depth.get()?;
         let current = self.current.borrow().as_ref()?.location.clone();
-        let files =
-            view.displayed_entries_matching(depth, |entry| entry_family(entry) == Some(family));
+        let pending = RefCell::new(media_content::PendingReads::default());
+        let files = view.displayed_entries_matching(depth, |entry| {
+            entry_family(entry) == Some(family)
+                && (media_content::holds_media(entry, family, &mut pending.borrow_mut())
+                    || entry.location == current)
+        });
+        let weak = Rc::downgrade(self);
+        pending.into_inner().start(move || {
+            if let Some(state) = weak.upgrade() {
+                state.refresh_listing_position();
+            }
+        });
         let position = |location: &crate::model::Location| {
             files.iter().position(|entry| entry.location == *location)
         };
