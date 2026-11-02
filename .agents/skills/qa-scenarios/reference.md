@@ -129,6 +129,7 @@ the main context drains. Input is real XTEST.
 | `{"reveal_control":{"role":"spin button","name":"Text size in pixels"}}` | Scrolls a settings page's own pane until the control is wholly shown, then settles it. |
 | `{"adopt":"PNG conversion test","timeout_ms":20000,"message":"..."}` | Portal runs: waits for a showing window with this title and drives it from then on (snapshot, targets, input log). |
 | `{"clipboard_set":"text"}`, `{"clipboard":"999","message":"..."}` | Owns the clipboard with the text from a second display connection; reads the clipboard and fails unless it matches, exactly or as `{"starts_with":...,"contains":...,"longer_than":5}`. |
+| `{"clipboard_set":{"offers":[{"mime":"x-special/gnome-copied-files","text":"cut\nfile://$fixture_quoted/a.txt"}]}}`, `{"clipboard":"1","mime":"application/x-kde-cutselection"}` | Owns the clipboard with raw offers under their MIME types, the way a file manager fills it; reads one MIME type's bytes as text instead of the clipboard text. |
 | `{"sleep":600}` | Waits; the main loop keeps running. Never use it to wait for state. |
 
 A click holds the button 100 ms; a double click's two clicks are 90 ms apart,

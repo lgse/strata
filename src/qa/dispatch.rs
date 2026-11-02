@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use super::{
     Controller, LOCATE_TIMEOUT, Outcome, POINTER_GAP, POLL_INTERVAL, Sample,
-    clipboard::{abridged, private_display, read_clipboard},
+    clipboard::{abridged, own_clipboard, private_display, read_clipboard},
     driver::Input,
     input::Event,
     note::{Shape, note},
@@ -709,10 +709,12 @@ impl Controller {
                     glib::timeout_future(POLL_INTERVAL).await;
                 }
             }
-            Command::ClipboardSet(text) => match private_display() {
+            Command::ClipboardSet(content) => match private_display() {
                 Ok(display) => {
-                    display.clipboard().set_text(&text);
-                    display.flush();
+                    if let Err(error) = own_clipboard(&display, content) {
+                        display.close();
+                        return Outcome::error(error);
+                    }
                     if let Some(previous) = self.clipboard.replace(Some(display)) {
                         previous.close();
                     }
@@ -720,18 +722,23 @@ impl Controller {
                 }
                 Err(error) => Outcome::error(error),
             },
-            Command::Clipboard { text, message } => {
+            Command::Clipboard {
+                text,
+                mime,
+                message,
+            } => {
                 let display = match self.clipboard.take().map_or_else(private_display, Ok) {
                     Ok(display) => display,
                     Err(error) => return Outcome::error(error),
                 };
-                let read = read_clipboard(&display).await;
+                let read = read_clipboard(&display, mime.as_deref()).await;
                 display.close();
+                let predicate = json!({ "clipboard": text, "mime": mime });
                 match read {
                     Some(read) if text.matches(&read) => Outcome::default(),
                     Some(read) => Outcome {
                         failures: vec![Failure {
-                            predicate: json!({ "clipboard": text }),
+                            predicate,
                             actual: json!(abridged(&read)),
                             message,
                         }],
@@ -740,7 +747,7 @@ impl Controller {
                     },
                     None => {
                         let failure = Failure {
-                            predicate: json!({ "clipboard": text }),
+                            predicate,
                             actual: Value::Null,
                             message: Some(
                                 "selected table text on the private display clipboard".to_owned(),
