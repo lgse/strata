@@ -27,6 +27,15 @@ impl Chooser {
     }
 
     fn open_with(kind: ChooserKind, mode: BrowserMode, tree: &[&str], tenxer: bool) -> Self {
+        Self::open_configured(mode, tree, tenxer, move |request| request.kind = kind)
+    }
+
+    fn open_configured(
+        mode: BrowserMode,
+        tree: &[&str],
+        tenxer: bool,
+        configure: impl FnOnce(&mut ChooserRequest),
+    ) -> Self {
         crate::ui::prepare_portal_ui();
         let preferences = PreferenceManager::shared();
         preferences.set_browser_mode(mode);
@@ -41,7 +50,7 @@ impl Chooser {
             }
         }
         let mut chooser_request = request(root.path().to_path_buf());
-        chooser_request.kind = kind;
+        configure(&mut chooser_request);
         let response = Rc::new(RefCell::new(None));
         let responses = Rc::new(Cell::new(0));
         let (received, counted) = (response.clone(), responses.clone());
@@ -727,6 +736,105 @@ fn save_starts_in_the_files_r_edits_the_name_and_enter_saves_here() {
 
             assert!(chooser.press(Key::Return));
             assert_eq!(chooser.chosen(), [chooser.uri("report.txt")]);
+        },
+    );
+}
+
+type ConfigureRequest = fn(&mut ChooserRequest);
+
+/// The request's option controls, in the order they are laid out.
+fn option_stops(state: &ChooserState) -> Vec<gtk::Widget> {
+    let filter = state
+        .filter_dropdown
+        .iter()
+        .map(|dropdown| dropdown.button.clone().upcast());
+    let choices = state.choices.iter().map(|choice| match choice {
+        ChoiceControl::Boolean { check, .. } => check.clone().upcast(),
+        ChoiceControl::Select { dropdown, .. } => dropdown.button.clone().upcast(),
+    });
+    let read_only = state.read_only.iter().map(|check| check.clone().upcast());
+    filter.chain(choices).chain(read_only).collect()
+}
+
+fn focus_is_within(chooser: &Chooser, widget: &gtk::Widget) -> bool {
+    gtk::prelude::RootExt::focus(&chooser.state.window)
+        .is_some_and(|focus| focus == *widget || focus.is_ancestor(widget))
+}
+
+#[test]
+fn tenxer_tab_cycles_files_header_name_options_and_back_to_files() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::tenxer_tab_cycles_files_header_name_options_and_back_to_files",
+        || {
+            fn save(request: &mut ChooserRequest) {
+                request.kind = ChooserKind::SaveFile {
+                    current_name: Some("report.draft.pdf".into()),
+                };
+            }
+            fn filtered_save(request: &mut ChooserRequest) {
+                save(request);
+                request.filters = vec![
+                    FileFilter::new("PDF").glob("*.pdf"),
+                    FileFilter::new("All files").glob("*"),
+                ];
+            }
+            fn open_with_choice(request: &mut ChooserRequest) {
+                request.choices = vec![Choice::boolean("extension", "Automatic extension", true)];
+            }
+            fn folder_with_choice(request: &mut ChooserRequest) {
+                open_with_choice(request);
+                request.kind = ChooserKind::Open {
+                    directory: true,
+                    multiple: false,
+                };
+            }
+            // Each case's stops after the header: name field, then options.
+            let cases: [(&str, ConfigureRequest, usize); 4] = [
+                ("save", save, 1),
+                ("filtered save", filtered_save, 2),
+                ("open with a choice", open_with_choice, 3),
+                ("folder with a choice", folder_with_choice, 1),
+            ];
+            for (case, configure, after_header) in cases {
+                let chooser =
+                    Chooser::open_configured(BrowserMode::List, &["existing.txt"], true, configure);
+                let header = widget_with_class(chooser.state.window.upcast_ref(), "browser-header")
+                    .expect("header");
+                let name = chooser.state.filename.clone();
+                let stops: Vec<gtk::Widget> = std::iter::once(header)
+                    .chain(name.iter().map(|name| name.clone().upcast()))
+                    .chain(option_stops(&chooser.state))
+                    .collect();
+                assert_eq!(stops.len(), 1 + after_header, "{case}");
+                let initial_name = name.as_ref().map(|name| name.text());
+                wait_until(|| chooser.state.view.item_view_has_focus());
+                for _ in 0..2 {
+                    for (index, stop) in stops.iter().enumerate() {
+                        assert!(chooser.press(Key::Tab), "{case}: Tab {index}");
+                        assert!(focus_is_within(&chooser, stop), "{case}: Tab {index}");
+                    }
+                    assert!(chooser.press(Key::Tab), "{case}");
+                    assert!(
+                        chooser.state.view.item_view_has_focus(),
+                        "{case}: back to files"
+                    );
+                }
+                for stop in &stops {
+                    chooser.press(Key::Tab);
+                    assert!(focus_is_within(&chooser, stop), "{case}");
+                }
+                for stop in stops[1..stops.len() - 1].iter().rev() {
+                    assert!(chooser.press_with(Key::ISO_Left_Tab, ModifierType::SHIFT_MASK));
+                    assert!(focus_is_within(&chooser, stop), "{case}: Shift+Tab");
+                }
+                assert!(chooser.press_with(Key::ISO_Left_Tab, ModifierType::SHIFT_MASK));
+                assert!(
+                    chooser.state.view.item_view_has_focus(),
+                    "{case}: Shift+Tab back to files"
+                );
+                assert_eq!(name.map(|name| name.text()), initial_name, "{case}");
+                assert!(chooser.open_request(), "{case}");
+            }
         },
     );
 }

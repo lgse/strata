@@ -702,9 +702,16 @@ The request takes the fill, or the cursor item when nothing is filled; the
 automatic first-row selection never counts. A Save request always saves in the
 current folder, and moving the cursor changes neither the name nor the
 destination. While the name or location field has focus, every key but **F1**,
-**Ctrl+Shift+M**, and **Esc** is typed; **Ctrl+A** selects the text. Every
-request starts with focus in the files. **Tab** goes from the files to the
-header, from the header to the Save name, and from the name back to the files.
+**Ctrl+Shift+M**, and **Esc** is typed, except that **Tab** and **Shift+Tab**
+leave the name field; **Ctrl+A** selects the text. Every request starts with
+focus in the files. **Tab** goes from the files to the header, from the header
+to the name field, then through the request's options (file type, choices the
+application offers, and **Open files read-only**) and back to the files. With
+no options, **Tab** from the name field returns straight to the files. A
+request without a name field, such as a folder chooser, goes from the header
+straight to its options.
+**Shift+Tab** steps back through the options to the name field, and from the
+name field returns to the files.
 Saving over an existing file asks first with Cancel focused. Beside Cancel and
 Save, a Save request shows hints for **Enter**, plus **r** and **o** when it
 saves one named file.
