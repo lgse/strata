@@ -47,6 +47,7 @@
   "%{keys} in a prompt": "プロンプトで %{keys}",
   "%{keys} in a rename": "名前の変更中に %{keys}",
   "%{keys} in an archive": "アーカイブで %{keys}",
+  "%{keys} in an inline rename": "一覧内での名前の変更中に %{keys}",
   "%{keys} in any preview": "任意のプレビューで %{keys}",
   "%{keys} in header": "ヘッダーで %{keys}",
   "%{keys} in media": "メディアで %{keys}",

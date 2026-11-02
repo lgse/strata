@@ -47,6 +47,7 @@
   "%{keys} in a prompt": "프롬프트에서 %{keys}",
   "%{keys} in a rename": "이름 바꾸기 중 %{keys}",
   "%{keys} in an archive": "압축 파일에서 %{keys}",
+  "%{keys} in an inline rename": "목록 안에서 이름 바꾸기 중 %{keys}",
   "%{keys} in any preview": "모든 미리 보기에서 %{keys}",
   "%{keys} in header": "헤더에서 %{keys}",
   "%{keys} in media": "미디어에서 %{keys}",

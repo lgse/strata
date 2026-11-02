@@ -47,6 +47,7 @@
   "%{keys} in a prompt": "%{keys} in einer Eingabe",
   "%{keys} in a rename": "%{keys} beim Umbenennen",
   "%{keys} in an archive": "%{keys} in einem Archiv",
+  "%{keys} in an inline rename": "%{keys} beim Umbenennen in der Liste",
   "%{keys} in any preview": "%{keys} in jeder Vorschau",
   "%{keys} in header": "%{keys} im Navigationskopf",
   "%{keys} in media": "%{keys} in Medien",

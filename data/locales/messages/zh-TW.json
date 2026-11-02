@@ -47,6 +47,7 @@
   "%{keys} in a prompt": "%{keys}（提示中）",
   "%{keys} in a rename": "重新命名時按 %{keys}",
   "%{keys} in an archive": "%{keys}（封存檔中）",
+  "%{keys} in an inline rename": "在清單中重新命名時按 %{keys}",
   "%{keys} in any preview": "%{keys}（任何預覽中）",
   "%{keys} in header": "%{keys}（標題列）",
   "%{keys} in media": "%{keys}（媒體中）",
