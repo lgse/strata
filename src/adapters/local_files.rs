@@ -50,6 +50,7 @@ mod monitor_changes;
 mod monitors;
 mod native;
 mod recent;
+mod remote;
 mod stamps;
 
 use fill::*;
@@ -59,6 +60,7 @@ pub(crate) use monitors::watch;
 use native::*;
 use recent::*;
 pub(crate) use recent::{RecentRemovalState, recent_remove_entries};
+use remote::*;
 use stamps::*;
 
 const LIST_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::target-uri,access::can-trash,access::can-delete";
@@ -467,222 +469,7 @@ impl FileSource for LocalFileSource {
             return camera_photos::enumerate(request, emit);
         }
 
-        let task = glib::MainContext::default().spawn_local(async move {
-            let class = match request.background {
-                true => Class::Background,
-                false => Class::Interactive,
-            };
-            let admitted = mount_lanes::admit_remote(
-                mount_lanes::authority(location.uri_value().unwrap_or_default()),
-                class,
-            );
-            let Ok(admitted) = admitted else {
-                emit(DirectoryEvent::Failed {
-                    request_id,
-                    message: crate::services::io_error_message(&ErrorKind::TimedOut.into()),
-                    refused: true,
-                    denied: false,
-                });
-                return;
-            };
-            let progress = admitted.progress();
-            let beat = || progress.beat();
-            let directory = gio_file_for_location(&location);
-            let deadline = started + request.time_budget;
-            let finish_truncated = |entries: usize,
-                                    reason: &'static str,
-                                    can_trash: Option<bool>,
-                                    can_delete: Option<bool>| {
-                tracing::warn!(
-                    request_id = request_id.0,
-                    entries,
-                    elapsed_ms = started.elapsed().as_millis() as u64,
-                    reason,
-                    "directory load truncated"
-                );
-                emit(DirectoryEvent::Finished {
-                    request_id,
-                    truncated: true,
-                    can_trash,
-                    can_delete,
-                });
-            };
-            // GVfs's admin backend has no trash operation but reports `access::can-trash`.
-            let mut can_trash = location.is_administrator().then_some(false);
-            let mut can_delete = None;
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                finish_truncated(0, "time budget", can_trash, can_delete);
-                return;
-            }
-            if stamped_remotely(&location) {
-                let read_at = SystemTime::now();
-                match admitted
-                    .call(glib::future_with_timeout(
-                        remaining,
-                        directory.query_info_future(
-                            STAMP_ATTRIBUTES,
-                            gio::FileQueryInfoFlags::NONE,
-                            glib::Priority::LOW,
-                        ),
-                    ))
-                    .await
-                {
-                    Ok(Ok(info)) => {
-                        beat();
-                        emit(DirectoryEvent::Stamp {
-                            request_id,
-                            stamp: Box::new(remote_stamp(
-                                location.uri_value().unwrap_or_default(),
-                                &info,
-                                read_at,
-                            )),
-                        });
-                    }
-                    Ok(Err(error)) => progress.answered(&Err::<(), _>(error)),
-                    Err(_) => {
-                        finish_truncated(0, "time budget", can_trash, can_delete);
-                        return;
-                    }
-                }
-            }
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            let attributes = if request.include_metadata {
-                FULL_ATTRIBUTES
-            } else {
-                LIST_ATTRIBUTES
-            };
-            let enumerator = match admitted
-                .call(glib::future_with_timeout(
-                    remaining,
-                    directory.enumerate_children_future(
-                        attributes,
-                        gio::FileQueryInfoFlags::NONE,
-                        glib::Priority::DEFAULT,
-                    ),
-                ))
-                .await
-            {
-                Ok(Ok(enumerator)) => {
-                    beat();
-                    enumerator
-                }
-                Ok(Err(error)) => {
-                    tracing::warn!(
-                        request_id = request_id.0,
-                        error_domain = ?error.domain(),
-                        error_code = error.code(),
-                        "directory load failed"
-                    );
-                    progress.answered(&Err::<(), _>(error.clone()));
-                    emit(remote_directory_failure(request_id, &error));
-                    return;
-                }
-                Err(_) => {
-                    finish_truncated(0, "time budget", can_trash, can_delete);
-                    return;
-                }
-            };
-
-            let mut total_entries = 0usize;
-            let mut names_digest = 0u64;
-            let mut first_batch = true;
-            loop {
-                let remaining = deadline.saturating_duration_since(Instant::now());
-                if remaining.is_zero() {
-                    finish_truncated(total_entries, "time budget", can_trash, can_delete);
-                    break;
-                }
-                match admitted
-                    .call(glib::future_with_timeout(
-                        remaining,
-                        enumerator
-                            .next_files_future(request.batch_size as i32, glib::Priority::DEFAULT),
-                    ))
-                    .await
-                {
-                    Ok(Ok(files)) if files.is_empty() => {
-                        beat();
-                        tracing::info!(
-                            request_id = request_id.0,
-                            entries = total_entries,
-                            elapsed_ms = started.elapsed().as_millis() as u64,
-                            "directory load finished"
-                        );
-                        emit(DirectoryEvent::ListingDigest {
-                            request_id,
-                            names_digest,
-                        });
-                        emit(DirectoryEvent::Finished {
-                            request_id,
-                            truncated: false,
-                            can_trash,
-                            can_delete,
-                        });
-                        break;
-                    }
-                    Ok(Ok(files)) => {
-                        beat();
-                        if can_trash.is_none() {
-                            can_trash = files.iter().find_map(info_can_trash);
-                        }
-                        if can_delete.is_none() {
-                            can_delete = files.iter().find_map(info_can_delete);
-                        }
-                        let mut entries: Vec<_> = files
-                            .into_iter()
-                            .filter_map(|info| {
-                                listed_entry(request_id, &location, &directory, info)
-                            })
-                            .collect();
-                        let remaining_capacity = request.max_entries.saturating_sub(total_entries);
-                        let entry_budget_exhausted = entries.len() > remaining_capacity;
-                        entries.truncate(remaining_capacity);
-                        total_entries += entries.len();
-                        names_digest = entries.iter().fold(names_digest, |digest, entry| {
-                            digest.wrapping_add(name_hash(&entry.native_name))
-                        });
-                        if first_batch {
-                            tracing::info!(
-                                request_id = request_id.0,
-                                entries = entries.len(),
-                                elapsed_ms = started.elapsed().as_millis() as u64,
-                                "first directory batch ready"
-                            );
-                            first_batch = false;
-                        }
-                        emit(DirectoryEvent::Batch {
-                            request_id,
-                            entries,
-                        });
-                        if entry_budget_exhausted {
-                            finish_truncated(total_entries, "entry budget", can_trash, can_delete);
-                            break;
-                        }
-                    }
-                    Ok(Err(error)) => {
-                        tracing::warn!(
-                            request_id = request_id.0,
-                            error_domain = ?error.domain(),
-                            error_code = error.code(),
-                            "directory load interrupted"
-                        );
-                        progress.answered(&Err::<(), _>(error.clone()));
-                        emit(remote_directory_failure(request_id, &error));
-                        break;
-                    }
-                    Err(_) => {
-                        finish_truncated(total_entries, "time budget", can_trash, can_delete);
-                        break;
-                    }
-                }
-            }
-        });
-
-        LoadHandle::new(move || {
-            tracing::debug!(request_id = request_id.0, "directory load cancelled");
-            task.abort();
-        })
+        enumerate_remote(request, emit, started)
     }
 
     fn offers_administrator_access(&self) -> bool {
@@ -700,8 +487,6 @@ impl FileSource for LocalFileSource {
     ) -> LoadHandle {
         // Cap viewport fills so a buggy caller cannot stat a full directory.
         const MAX_FILL_ENTRIES: usize = 1024;
-        let request_id = request.id;
-        let include_icon_details = request.include_icon_details;
         let mut locations = request.entries;
         if !request.full {
             locations.truncate(MAX_FILL_ENTRIES);
@@ -709,91 +494,16 @@ impl FileSource for LocalFileSource {
         let all_native = locations
             .iter()
             .all(|location| location.native_path().is_some());
-        if all_native && !locations.is_empty() {
-            return fill_parallel(
-                request_id,
-                locations,
-                include_icon_details,
-                request.time_budget,
-                emit,
-            );
+        let fill = FillRequest {
+            request_id: request.id,
+            locations,
+            include_icon_details: request.include_icon_details,
+            time_budget: request.time_budget,
+        };
+        if all_native && !fill.locations.is_empty() {
+            return fill_parallel(fill, emit);
         }
-        let task = glib::MainContext::default().spawn_local(async move {
-            let deadline = Instant::now() + request.time_budget;
-            let mut updates = Vec::with_capacity(locations.len());
-            let mut truncated = false;
-            let mut attempted = 0usize;
-            let mut failed = 0usize;
-            for location in &locations {
-                if Instant::now() >= deadline {
-                    truncated = true;
-                    break;
-                }
-                let Some(file) = location
-                    .native_path()
-                    .map(gio::File::for_path)
-                    .or_else(|| location.uri_value().map(gio::File::for_uri))
-                else {
-                    continue;
-                };
-                attempted += 1;
-                // Bound each stat by the remaining budget so one hung mount cannot stall the fill.
-                let remaining = deadline.saturating_duration_since(Instant::now());
-                if remaining.is_zero() {
-                    truncated = true;
-                    break;
-                }
-                let (update, ok) = match glib::future_with_timeout(
-                    remaining,
-                    file.query_info_future(
-                        METADATA_ATTRIBUTES,
-                        gio::FileQueryInfoFlags::NONE,
-                        glib::Priority::DEFAULT,
-                    ),
-                )
-                .await
-                {
-                    Ok(Ok(info)) => {
-                        let (mut update, ok) = update_from_info(&info, location);
-                        if include_icon_details {
-                            update.image_dimensions = MetadataValue::Unavailable;
-                            update.child_count = MetadataValue::Unavailable;
-                            update.duration_seconds = MetadataValue::Unavailable;
-                        }
-                        (update, ok)
-                    }
-                    Ok(Err(_)) => (
-                        MetadataUpdate {
-                            location: location.clone(),
-                            size: MetadataValue::Unknown,
-                            modified_unix_seconds: MetadataValue::Unknown,
-                            mode: MetadataValue::Unknown,
-                            image_dimensions: MetadataValue::Unknown,
-                            child_count: MetadataValue::Unknown,
-                            duration_seconds: MetadataValue::Unknown,
-                            listable: MetadataValue::Unknown,
-                        },
-                        false,
-                    ),
-                    Err(_) => {
-                        truncated = true;
-                        break;
-                    }
-                };
-                failed += usize::from(!ok);
-                updates.push(update);
-            }
-            emit_fill_outcome(
-                &emit,
-                request_id,
-                updates,
-                truncated,
-                attempted,
-                failed,
-                locations.len(),
-            );
-        });
-        LoadHandle::new(move || task.abort())
+        fill_queried(fill, emit)
     }
 
     fn start_watch(
