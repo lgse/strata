@@ -230,45 +230,70 @@ fn descendant_with_class(root: &gtk::Widget, class: &str) -> Option<gtk::Widget>
     found
 }
 
+fn heading_label(popover: &gtk::PopoverMenu, with_icon: bool) -> gtk::Label {
+    if !with_icon {
+        return descendant_with_class(popover.upcast_ref(), "separator")
+            .and_downcast::<gtk::Label>()
+            .expect("provider heading label");
+    }
+    let heading = descendant_with_class(popover.upcast_ref(), "provider-heading")
+        .expect("provider heading row");
+    let image = heading.first_child().expect("heading icon");
+    assert!(image.downcast_ref::<gtk::Image>().is_some());
+    image
+        .next_sibling()
+        .and_downcast::<gtk::Label>()
+        .expect("heading label")
+}
+
 #[test]
-fn provider_icon_heading_keeps_the_name_and_action_positions() {
+fn provider_heading_row_keeps_the_name_and_action_positions() {
     crate::test_support::gtk_test(
-        "ui::file_providers::tests::menu_sections::provider_icon_heading_keeps_the_name_and_action_positions",
+        "ui::file_providers::tests::menu_sections::provider_heading_row_keeps_the_name_and_action_positions",
         || {
             install_hub();
-            with_hub(|hub| hub.providers[0].heading_icon = Some(black_pixel().upcast()));
-            let model = gio::Menu::new();
-            let popover = gtk::PopoverMenu::from_model(Some(&model));
-            let group = gio::SimpleActionGroup::new();
-            popover.insert_action_group("provider", Some(&group));
-            let mut renderer = menus::Renderer::new(
-                (model.clone(), None),
-                group.clone(),
-                glib::WeakRef::new(),
-                popover.downgrade(),
-                (vec!["/file".into()], false),
-                Rc::new(Cell::new(1)),
-                1,
-            );
-            renderer.update(vec![
-                (0, action("keep", "Keep offline", None)),
-                (0, action("share", "Share", None)),
-            ]);
-            let section = model.item_link(0, "section").expect("provider section");
-            assert_eq!(labels(&section), ["Keep offline", "Share"]);
-            renderer.update(vec![
-                (0, action("share", "Share", None)),
-                (0, action("link", "Copy link", None)),
-            ]);
-            assert_eq!(labels(&section), ["Share", "Copy link"]);
-            assert!(group.lookup_action("action-0-keep").is_none());
+            for with_icon in [true, false] {
+                with_hub(|hub| {
+                    hub.providers[0].heading_icon = with_icon.then(|| black_pixel().upcast());
+                });
+                let model = gio::Menu::new();
+                let popover = gtk::PopoverMenu::from_model(Some(&model));
+                let group = gio::SimpleActionGroup::new();
+                popover.insert_action_group("provider", Some(&group));
+                let mut renderer = menus::Renderer::new(
+                    (model.clone(), None),
+                    group.clone(),
+                    glib::WeakRef::new(),
+                    popover.downgrade(),
+                    (vec!["/file".into()], false),
+                    Rc::new(Cell::new(1)),
+                    1,
+                );
+                renderer.update(vec![
+                    (0, action("keep", "Keep offline", None)),
+                    (0, action("share", "Share", None)),
+                ]);
+                let section = model.item_link(0, "section").expect("provider section");
+                assert_eq!(labels(&section), ["Keep offline", "Share"]);
+                renderer.update(vec![
+                    (0, action("share", "Share", None)),
+                    (0, action("link", "Copy link", None)),
+                ]);
+                assert_eq!(labels(&section), ["Share", "Copy link"]);
+                assert!(group.lookup_action("action-0-keep").is_none());
 
-            let heading = descendant_with_class(popover.upcast_ref(), "provider-heading")
-                .expect("provider heading row");
-            let image = heading.first_child().expect("heading icon");
-            assert!(image.downcast_ref::<gtk::Image>().is_some());
-            let label = image.next_sibling().and_downcast::<gtk::Label>();
-            assert_eq!(label.expect("heading label").label(), "Example Cloud");
+                // GTK can hold a section title outside the widget tree (#2011).
+                assert_eq!(
+                    string_attribute(model.upcast_ref(), 0, "label"),
+                    None,
+                    "no GTK section title (icon: {with_icon})"
+                );
+                assert_eq!(
+                    heading_label(&popover, with_icon).label(),
+                    "Example Cloud",
+                    "heading (icon: {with_icon})"
+                );
+            }
         },
     );
 }
