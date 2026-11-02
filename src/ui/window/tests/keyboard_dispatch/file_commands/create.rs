@@ -466,7 +466,10 @@ fn abandoned_group_naming_case(mode: BrowserMode, dismissal: GroupNamingDismissa
     focus_files(&fixture);
     assert!(fixture.press(Key::n, GROUP));
     wait_until(|| grouped.get());
-    assert!(all_exist(directory, &["new folder/a.txt", "new folder/b.txt"]));
+    assert!(all_exist(
+        directory,
+        &["new folder/a.txt", "new folder/b.txt"]
+    ));
     if dismissal != GroupNamingDismissal::PendingEscape {
         abandon_group_naming(&fixture, dismissal);
     }

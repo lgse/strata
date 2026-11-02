@@ -128,7 +128,9 @@ impl Injector {
 
     pub(crate) fn return_keycode(&self, key: &BorrowedKey) -> Result<(), String> {
         match &self.backend {
-            Backend::X11(x11) => x11.set_keysyms(key.keycode, key.keysyms_per_keycode, &key.previous),
+            Backend::X11(x11) => {
+                x11.set_keysyms(key.keycode, key.keysyms_per_keycode, &key.previous)
+            }
             Backend::Wayland(_) => Ok(()),
         }
     }

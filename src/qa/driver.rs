@@ -225,8 +225,7 @@ impl Input<'_> {
         loop {
             let located = self.find(aim.target, aim.at, Aim::Point).await?;
             let (x, y) = self.aimed_point(aim, &located)?;
-            if scrolls < REVEAL_SCROLL_ATTEMPTS
-                && self.scroll_onto_screen(&located, (x, y)).await?
+            if scrolls < REVEAL_SCROLL_ATTEMPTS && self.scroll_onto_screen(&located, (x, y)).await?
             {
                 scrolls += 1;
                 continue;
@@ -235,7 +234,11 @@ impl Input<'_> {
         }
     }
 
-    fn aimed_point(&self, aim: &Aimed<'_>, located: &targets::Located) -> Result<(f64, f64), String> {
+    fn aimed_point(
+        &self,
+        aim: &Aimed<'_>,
+        located: &targets::Located,
+    ) -> Result<(f64, f64), String> {
         let Some(name) = aim.left_bound else {
             return Ok(located.point);
         };
