@@ -141,15 +141,7 @@ impl SidebarState {
     }
 
     pub(super) fn append_pinned_places(self: &Rc<Self>) {
-        let pinned = self
-            .pinned_places
-            .borrow()
-            .iter()
-            .enumerate()
-            .filter(|(_, (location, _))| !is_standard_place_location(location))
-            .filter(|(_, (location, _))| !self.local_only || location.native_path().is_some())
-            .map(|(index, (location, name))| (index, location.clone(), name.clone()))
-            .collect::<Vec<_>>();
+        let pinned = self.listed_pins();
         let empty = pinned.is_empty();
         let before_section = self.widget.last_child();
         if self.widget.first_child().is_some() {
@@ -158,34 +150,61 @@ impl SidebarState {
         let section = self.append_pinned_section(pinned.len());
         let drag_cache = Rc::new(pinned_drop::FolderDragCache::new(self.local_only));
         let mut previous = None;
-        for (ordinal, (index, location, name)) in pinned.into_iter().enumerate() {
-            pinned_drop::append_gap(self, previous, Some(location.clone()), &drag_cache);
-            previous = Some(location.clone());
-            self.visible_pins.borrow_mut().push(location.clone());
-            let row = self.append_pinned_place(index, &name, location);
-            if let Some(keycap) =
-                pin_keycap(ordinal).and_then(|keycap| self.add_keycap(&row, &keycap))
-            {
-                sync_keycap(&keycap, self.keycaps_shown.get() && !self.rail.get());
-            }
+        for (ordinal, pin) in pinned.into_iter().enumerate() {
+            pinned_drop::append_gap(self, previous, Some(pin.1.clone()), &drag_cache);
+            previous = Some(pin.1.clone());
+            self.append_numbered_pin(ordinal, pin);
         }
         pinned_drop::append_gap(self, previous, None, &drag_cache);
         section.collect_items(&self.widget);
         self.pinned_section.replace(Some(section));
         self.sync_pinned_section_partition();
         let section = if empty {
-            let first = match before_section {
-                Some(widget) => widget.next_sibling(),
-                None => self.widget.first_child(),
-            };
-            std::iter::successors(first, gtk::Widget::next_sibling)
-                .inspect(|widget| widget.set_visible(self.file_drag_over.get()))
-                .map(|widget| widget.downgrade())
-                .collect()
+            self.widgets_after(before_section)
         } else {
             Vec::new()
         };
         self.empty_pinned_section.replace(section);
+    }
+
+    /// Pins the sidebar lists, with their index in the saved pins.
+    fn listed_pins(&self) -> Vec<(usize, Location, String)> {
+        self.pinned_places
+            .borrow()
+            .iter()
+            .enumerate()
+            .filter(|(_, (location, _))| !is_standard_place_location(location))
+            .filter(|(_, (location, _))| !self.local_only || location.native_path().is_some())
+            .map(|(index, (location, name))| (index, location.clone(), name.clone()))
+            .collect()
+    }
+
+    fn append_numbered_pin(
+        self: &Rc<Self>,
+        ordinal: usize,
+        (index, location, name): (usize, Location, String),
+    ) {
+        self.visible_pins.borrow_mut().push(location.clone());
+        let row = self.append_pinned_place(index, &name, location);
+        if let Some(keycap) = pin_keycap(ordinal).and_then(|keycap| self.add_keycap(&row, &keycap))
+        {
+            sync_keycap(&keycap, self.keycaps_shown.get() && !self.rail.get());
+        }
+    }
+
+    /// The empty Pinned section's widgets, shown only while files are dragged.
+    fn widgets_after(
+        &self,
+        before_section: Option<gtk::Widget>,
+    ) -> Vec<glib::WeakRef<gtk::Widget>> {
+        let first = match before_section {
+            Some(widget) => widget.next_sibling(),
+            None => self.widget.first_child(),
+        };
+        std::iter::successors(first, gtk::Widget::next_sibling)
+            .inspect(|widget| widget.set_visible(self.file_drag_over.get()))
+            .map(|widget| widget.downgrade())
+            .collect()
     }
 
     /// With nothing pinned, the Pinned section is only a drop target, so it

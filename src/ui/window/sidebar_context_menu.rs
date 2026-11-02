@@ -65,7 +65,7 @@ impl SidebarState {
     }
 
     /// Closes the menu, then runs `action` while the sidebar is still alive.
-    fn connect_state_item(
+    pub(super) fn connect_state_item(
         self: &Rc<Self>,
         button: &gtk::Button,
         popover: &gtk::Popover,

@@ -156,7 +156,9 @@ pub(super) fn move_pinned_place(
     source: usize,
     index: usize,
 ) -> bool {
-    if source >= places.len() || index > places.len() || index == source || index == source + 1 {
+    let out_of_range = source >= places.len() || index > places.len();
+    let stays_put = index == source || index == source + 1;
+    if out_of_range || stays_put {
         return false;
     }
     let place = places.remove(source);

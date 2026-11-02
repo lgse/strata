@@ -13,9 +13,36 @@ use crate::{
 };
 
 use super::{
-    SidebarState, sidebar, sidebar::PlaceNavigation, sidebar_context_menu::sidebar_context_option,
-    sidebar_drop_feedback, sidebar_rows::sidebar_button,
+    SidebarState, sidebar,
+    sidebar::PlaceNavigation,
+    sidebar_context_menu::sidebar_context_option,
+    sidebar_drop_feedback,
+    sidebar_popover::{context_popover, open_on_secondary_click, popdown},
+    sidebar_rows::sidebar_button,
 };
+
+struct TrashMenuItems {
+    properties: gtk::Button,
+    unpin: gtk::Button,
+    empty: gtk::Button,
+}
+
+/// Closes the menu, then runs `action` on the view while it is still alive.
+fn connect_view_item(
+    button: &gtk::Button,
+    popover: &gtk::Popover,
+    view: &BrowserView,
+    action: impl Fn(&BrowserView) + 'static,
+) {
+    let popover = popover.downgrade();
+    let view = view.downgrade();
+    button.connect_clicked(move |_| {
+        popdown(&popover);
+        if let Some(view) = view.upgrade() {
+            action(&view);
+        }
+    });
+}
 
 /// Rows of the Trash sidebar context menu that only make sense while Trash holds items.
 pub(super) struct TrashMenuRows {
@@ -235,6 +262,32 @@ impl SidebarState {
         self.add_place_keycap(&row, crate::ui::keys::bindings::GO_TRASH);
         self.bind_place_row(&row, location, PlaceNavigation::Direct);
 
+        let (menu, items) = self.build_trash_menu();
+        self.apply_trash_menu_visibility();
+        self.watch_trash();
+        self.refresh_trash_contents();
+        self.view.set_trash_button(row.clone());
+        let popover = context_popover(&row, &menu);
+        sidebar::append_open_in_tab(
+            &menu,
+            &popover,
+            &row,
+            &self.view,
+            &Location::uri("trash:///"),
+        );
+        self.connect_trash_items(&popover, &items);
+        let weak_state = Rc::downgrade(self);
+        popover.connect_show(move |_| {
+            if let Some(state) = weak_state.upgrade() {
+                state.refresh_trash_contents();
+            }
+        });
+        open_on_secondary_click(&row, &popover);
+        self.append_sidebar_row(&row);
+        self.make_place_reorderable(&row, "trash");
+    }
+
+    fn build_trash_menu(&self) -> (gtk::Box, TrashMenuItems) {
         let menu = crate::ui::accessibility::menu_box();
         menu.add_css_class("folder-context-menu");
         let properties = sidebar_context_option(crate::assets::icons::INFO, "Properties", false);
@@ -250,78 +303,26 @@ impl SidebarState {
             separator,
             empty: empty.clone(),
         });
-        self.apply_trash_menu_visibility();
-        self.watch_trash();
-        self.refresh_trash_contents();
-        self.view.set_trash_button(row.clone());
-        let popover = gtk::Popover::builder()
-            .child(&menu)
-            .autohide(true)
-            .has_arrow(false)
-            .build();
-        popover.add_css_class("folder-context-popover");
-        popover.set_parent(&row);
-        sidebar::append_open_in_tab(
-            &menu,
-            &popover,
-            &row,
+        let items = TrashMenuItems {
+            properties,
+            unpin,
+            empty,
+        };
+        (menu, items)
+    }
+
+    fn connect_trash_items(self: &Rc<Self>, popover: &gtk::Popover, items: &TrashMenuItems) {
+        connect_view_item(&items.properties, popover, &self.view, |view| {
+            view.show_location_properties(&Location::uri("trash:///"));
+        });
+        self.connect_state_item(&items.unpin, popover, |state| {
+            state.preference_manager.set_sidebar_show_trash(false);
+        });
+        connect_view_item(
+            &items.empty,
+            popover,
             &self.view,
-            &Location::uri("trash:///"),
+            BrowserView::confirm_empty_trash,
         );
-        let properties_popover = popover.downgrade();
-        let properties_view = self.view.downgrade();
-        properties.connect_clicked(move |_| {
-            if let Some(popover) = properties_popover.upgrade() {
-                popover.popdown();
-            }
-            if let Some(view) = properties_view.upgrade() {
-                view.show_location_properties(&Location::uri("trash:///"));
-            }
-        });
-        let unpin_popover = popover.downgrade();
-        let weak_state = Rc::downgrade(self);
-        unpin.connect_clicked(move |_| {
-            if let Some(popover) = unpin_popover.upgrade() {
-                popover.popdown();
-            }
-            if let Some(state) = weak_state.upgrade() {
-                state.preference_manager.set_sidebar_show_trash(false);
-            }
-        });
-        let empty_popover = popover.downgrade();
-        let empty_view = self.view.downgrade();
-        empty.connect_clicked(move |_| {
-            if let Some(popover) = empty_popover.upgrade() {
-                popover.popdown();
-            }
-            if let Some(view) = empty_view.upgrade() {
-                view.confirm_empty_trash();
-            }
-        });
-        let context = gtk::GestureClick::new();
-        context.set_button(3);
-        let weak_popover = popover.downgrade();
-        let weak_state = Rc::downgrade(self);
-        popover.connect_show(move |_| {
-            if let Some(state) = weak_state.upgrade() {
-                state.refresh_trash_contents();
-            }
-        });
-        context.connect_pressed(move |gesture, _, x, y| {
-            gesture.set_state(gtk::EventSequenceState::Claimed);
-            let Some(popover) = weak_popover.upgrade() else {
-                return;
-            };
-            popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
-                x.round() as i32,
-                y.round() as i32,
-                1,
-                1,
-            )));
-            popover.popup();
-        });
-        row.add_controller(context);
-        self.append_sidebar_row(&row);
-        self.make_place_reorderable(&row, "trash");
     }
 }

@@ -13,13 +13,90 @@ use super::{
     places::STANDARD_PLACE_IDS,
     sidebar,
     sidebar::PlaceNavigation,
-    sidebar_drop_feedback,
+    sidebar_drop_feedback::{self, SidebarDropFeedback},
     sidebar_rows::{customize_sidebar_folder_icon, sidebar_button},
 };
 
 pub(super) const PINNED_DRAG_PREFIX: &str = "pinned:";
 
 pub(super) type SidebarReorder = Rc<dyn Fn(&Rc<SidebarState>, &str, bool) -> bool>;
+
+/// A drop target for reordering: a row, which places a drop by its half, or
+/// the gap fixed above or below it.
+pub(super) struct ReorderSlot {
+    payload: String,
+    fixed_after: Option<bool>,
+}
+
+impl ReorderSlot {
+    fn row(payload: &str) -> Self {
+        Self {
+            payload: payload.to_owned(),
+            fixed_after: None,
+        }
+    }
+
+    fn gap(payload: &str, after: bool) -> Self {
+        Self {
+            payload: payload.to_owned(),
+            fixed_after: Some(after),
+        }
+    }
+
+    /// A row dropped on its own gap stays put; a payload of another kind is refused.
+    fn settled_without_move(&self, source: &str) -> Option<bool> {
+        if source == self.payload && self.fixed_after.is_some() {
+            return Some(true);
+        }
+        (!sidebar_reorder_matches(source, &self.payload)).then_some(false)
+    }
+}
+
+/// Tracks the pointer over a reorder target and shows where a drop would land.
+struct ReorderHover {
+    payload: String,
+    y: Rc<Cell<f64>>,
+    feedback: Rc<SidebarDropFeedback>,
+}
+
+impl ReorderHover {
+    fn connect(&self, drop: &gtk::DropTarget) {
+        let enter_y = self.y.clone();
+        let enter_payload = self.payload.clone();
+        let enter_feedback = self.feedback.clone();
+        drop.connect_enter(move |target, _, y| {
+            enter_y.set(y);
+            if let Some(row) = target.widget() {
+                enter_feedback.enter(&row);
+            }
+            sidebar_reorder_feedback(target, &enter_payload, y, &enter_feedback)
+        });
+        let motion_y = self.y.clone();
+        let motion_payload = self.payload.clone();
+        let motion_feedback = self.feedback.clone();
+        drop.connect_motion(move |target, _, y| {
+            motion_y.set(y);
+            sidebar_reorder_feedback(target, &motion_payload, y, &motion_feedback)
+        });
+        let hover_y = self.y.clone();
+        let value_payload = self.payload.clone();
+        let value_feedback = self.feedback.clone();
+        drop.connect_value_notify(move |target| {
+            let Some(offered) = target.current_drop() else {
+                return;
+            };
+            if !target
+                .widget()
+                .is_some_and(|row| value_feedback.is_current(&row))
+            {
+                return;
+            }
+            let action =
+                sidebar_reorder_feedback(target, &value_payload, hover_y.get(), &value_feedback);
+            offered.status(action, action);
+        });
+    }
+}
 
 impl SidebarState {
     pub(super) fn make_reorderable(
@@ -52,17 +129,26 @@ impl SidebarState {
         }
 
         let on_drop: SidebarReorder = Rc::new(on_drop);
-        self.install_reorder_target(row, payload.clone(), None, on_drop.clone());
+        self.install_reorder_target(row, ReorderSlot::row(&payload), on_drop.clone());
         if parse_pinned_drag_source(&payload).is_none() {
-            for after in [false, true] {
-                if let Some(gap) = self.insert_reorder_gap(row.upcast_ref(), after) {
-                    self.install_reorder_target(
-                        &gap,
-                        payload.clone(),
-                        Some(after),
-                        on_drop.clone(),
-                    );
-                }
+            self.install_reorder_gaps(row, &payload, &on_drop);
+        }
+    }
+
+    /// Standard places also take drops in the gaps above and below them.
+    fn install_reorder_gaps(
+        self: &Rc<Self>,
+        row: &gtk::Button,
+        payload: &str,
+        on_drop: &SidebarReorder,
+    ) {
+        for after in [false, true] {
+            if let Some(gap) = self.insert_reorder_gap(row.upcast_ref(), after) {
+                self.install_reorder_target(
+                    &gap,
+                    ReorderSlot::gap(payload, after),
+                    on_drop.clone(),
+                );
             }
         }
     }
@@ -88,8 +174,7 @@ impl SidebarState {
     pub(super) fn install_reorder_target(
         self: &Rc<Self>,
         widget: &impl IsA<gtk::Widget>,
-        payload: String,
-        fixed_after: Option<bool>,
+        slot: ReorderSlot,
         on_drop: SidebarReorder,
     ) {
         let drop = gtk::DropTarget::new(String::static_type(), gtk::gdk::DragAction::MOVE);
@@ -102,47 +187,28 @@ impl SidebarState {
                     .contains_type(gtk::gdk::FileList::static_type()),
             )
         });
-        let hover_y = Rc::new(Cell::new(0.0));
-        let enter_y = hover_y.clone();
-        let enter_payload = payload.clone();
-        let enter_feedback = self.drop_feedback.clone();
-        drop.connect_enter(move |target, _, y| {
-            enter_y.set(y);
-            if let Some(row) = target.widget() {
-                enter_feedback.enter(&row);
-            }
-            sidebar_reorder_feedback(target, &enter_payload, y, &enter_feedback)
-        });
-        let motion_y = hover_y.clone();
-        let motion_payload = payload.clone();
-        let motion_feedback = self.drop_feedback.clone();
-        drop.connect_motion(move |target, _, y| {
-            motion_y.set(y);
-            sidebar_reorder_feedback(target, &motion_payload, y, &motion_feedback)
-        });
-        let value_payload = payload.clone();
-        let value_feedback = self.drop_feedback.clone();
-        drop.connect_value_notify(move |target| {
-            if let Some(offered) = target.current_drop()
-                && target
-                    .widget()
-                    .is_some_and(|row| value_feedback.is_current(&row))
-            {
-                let action = sidebar_reorder_feedback(
-                    target,
-                    &value_payload,
-                    hover_y.get(),
-                    &value_feedback,
-                );
-                offered.status(action, action);
-            }
-        });
+        let hover = ReorderHover {
+            payload: slot.payload.clone(),
+            y: Rc::new(Cell::new(0.0)),
+            feedback: self.drop_feedback.clone(),
+        };
+        hover.connect(&drop);
         let leave_feedback = self.drop_feedback.clone();
         drop.connect_leave(move |target| {
             if let Some(row) = target.widget() {
                 leave_feedback.leave(&row);
             }
         });
+        self.connect_reorder_drop(&drop, slot, on_drop);
+        widget.add_controller(drop);
+    }
+
+    fn connect_reorder_drop(
+        self: &Rc<Self>,
+        drop: &gtk::DropTarget,
+        slot: ReorderSlot,
+        on_drop: SidebarReorder,
+    ) {
         let weak_state = Rc::downgrade(self);
         let drop_feedback = self.drop_feedback.clone();
         drop.connect_drop(move |target, value, _, y| {
@@ -153,19 +219,16 @@ impl SidebarState {
             let Ok(source) = value.get::<String>() else {
                 return false;
             };
-            if source == payload && fixed_after.is_some() {
-                return true;
+            if let Some(settled) = slot.settled_without_move(&source) {
+                return settled;
             }
-            if !sidebar_reorder_matches(&source, &payload) {
-                return false;
-            }
-            let after = fixed_after.unwrap_or_else(|| y >= f64::from(row.height()) / 2.0);
-            if let Some(state) = weak_state.upgrade() {
-                return on_drop(&state, &source, after);
-            }
-            false
+            let after = slot
+                .fixed_after
+                .unwrap_or_else(|| y >= f64::from(row.height()) / 2.0);
+            weak_state
+                .upgrade()
+                .is_some_and(|state| on_drop(&state, &source, after))
         });
-        widget.add_controller(drop);
     }
 
     pub(super) fn append_reorderable_place(
