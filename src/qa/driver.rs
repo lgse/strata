@@ -219,14 +219,15 @@ impl Input<'_> {
     }
 
     /// A point a scroller clips is wheeled into view first, so the pointer lands on the
-    /// target; a `left_bound` aim already lies inside its kept box.
+    /// target. A `left_bound` aim is never scrolled: it deliberately aims at the visible
+    /// part of a clipped target.
     pub(super) async fn aim(&self, aim: &Aimed<'_>) -> Result<(i16, i16), String> {
         let mut scrolls = 0;
         loop {
             let located = self.find(aim.target, aim.at, Aim::Point).await?;
             let (x, y) = self.aimed_point(aim, &located)?;
-            if scrolls < REVEAL_SCROLL_ATTEMPTS && self.scroll_onto_screen(&located, (x, y)).await?
-            {
+            let may_scroll = aim.left_bound.is_none() && scrolls < REVEAL_SCROLL_ATTEMPTS;
+            if may_scroll && self.scroll_onto_screen(&located, (x, y)).await? {
                 scrolls += 1;
                 continue;
             }

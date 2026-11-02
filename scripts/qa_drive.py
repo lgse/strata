@@ -89,6 +89,8 @@ def parse_prefs(text: str) -> Iterator[tuple[str, object]]:
         key, separator, raw = line.partition("=")
         if not separator or not key:
             raise PreferenceError(f"--pref needs KEY=VALUE, not {line!r}")
+        if not BARE_KEY.fullmatch(key):
+            raise PreferenceError(f"--pref {key!r}: a preference key is letters, digits, _ and -")
         try:
             value = json.loads(raw)
         except ValueError:

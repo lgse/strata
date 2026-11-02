@@ -54,10 +54,7 @@ impl Input<'_> {
     }
 
     pub(super) async fn press(&self, chord: &Chord) -> Result<(), String> {
-        let keysym = input::keysym(&chord.key)?;
-        let Ok((keycode, needs_shift)) = self.injector.keycode(keysym) else {
-            return self.press_borrowed(keysym, &chord.modifiers).await;
-        };
+        let (keycode, needs_shift) = self.injector.keycode(input::keysym(&chord.key)?)?;
         if needs_shift {
             self.injector
                 .keycode(input::modifier_keysym(Modifier::Shift)?)?;
@@ -68,16 +65,26 @@ impl Input<'_> {
         tapped
     }
 
+    /// Types one character, on a borrowed keycode when the layout lacks it.
+    pub(super) async fn type_character(&self, character: char) -> Result<(), String> {
+        let keysym = input::keysym(&character.to_string())?;
+        if self.injector.keycode(keysym).is_err() {
+            return self.press_borrowed(keysym).await;
+        }
+        self.press(&Chord {
+            modifiers: Vec::new(),
+            key: character.to_string(),
+        })
+        .await
+    }
+
     /// Types a keysym the layout lacks on a borrowed keycode, which is returned only after
     /// GTK has read the press, so the key is never translated with the restored row.
-    async fn press_borrowed(&self, keysym: u32, modifiers: &[Modifier]) -> Result<(), String> {
+    async fn press_borrowed(&self, keysym: u32) -> Result<(), String> {
         let borrowed = self.injector.borrow_keycode(keysym)?;
         let pressed = async {
             self.await_keymap(borrowed.keycode, keysym, true).await?;
-            let held = self.hold(modifiers).await?;
-            let tapped = self.tap_key(borrowed.keycode, false).await;
-            self.release(&held).await;
-            tapped
+            self.tap_key(borrowed.keycode, false).await
         }
         .await;
         let returned = self.injector.return_keycode(&borrowed);

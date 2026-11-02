@@ -181,7 +181,7 @@ class PreferenceValuesAreWrittenAsTheyWereGiven(unittest.TestCase):
         )
 
     def test_values_settings_toml_cannot_hold_are_refused(self):
-        for prefs in ("show_hidden=null", "show_hidden", "=true"):
+        for prefs in ("show_hidden=null", "show_hidden", "=true", "show hidden=true", "a.b=1"):
             with self.subTest(prefs=prefs), self.assertRaises(qa_drive.PreferenceError):
                 list(qa_drive.parse_prefs(prefs))
 
