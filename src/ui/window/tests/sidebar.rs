@@ -354,6 +354,14 @@ fn an_empty_pinned_section_shows_only_while_files_are_dragged_over_the_sidebar()
             );
             sidebar.state.set_file_drag_over(false);
             assert!(!pinned_shown(), "leaving the sidebar hides it again");
+            sidebar.state.rebuild();
+            assert!(!pinned_shown(), "a rebuild without a drag keeps it hidden");
+            sidebar.state.set_rail(true);
+            sidebar.state.set_file_drag_over(true);
+            assert!(!pinned_shown(), "the rail hides the heading during a drag");
+            sidebar.state.set_file_drag_over(false);
+            sidebar.state.set_rail(false);
+            assert!(!pinned_shown(), "leaving the rail keeps it hidden");
 
             sidebar
                 .state
