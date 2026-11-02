@@ -765,6 +765,79 @@ fn start_release_leaves_before_flush_and_restores_when_gio_fails_while_mounted()
 }
 
 #[test]
+fn disconnecting_a_share_leaves_every_browser_and_returns_them_while_it_stays_mounted() {
+    crate::test_support::gtk_test(
+        "ui::window::device_release::tests::disconnecting_a_share_leaves_every_browser_and_returns_them_while_it_stays_mounted",
+        || {
+            let share = tempfile::tempdir().expect("share root");
+            let inside = share.path().join("photos");
+            std::fs::create_dir(&inside).expect("folder on the share");
+            let outside = tempfile::tempdir().expect("folder off the share");
+            let new_browser = || {
+                Browser::new(Rc::new(DropWatch {
+                    dropped: Arc::new(AtomicBool::new(false)),
+                }))
+            };
+            let (sidebar, other_window, other_tab) = (new_browser(), new_browser(), new_browser());
+            let watches = [&other_window, &other_tab]
+                .map(|browser| super::watch_sidebars(Some(browser), || {}));
+            let home = Some(Location::local(super::super::home_directory()));
+            let root = gio::File::for_path(share.path());
+            for (fails, still_mounted, returns) in [
+                (true, true, true),
+                (true, false, false),
+                (false, true, false),
+            ] {
+                sidebar.navigate(Location::local(share.path()));
+                other_window.navigate(Location::local(&inside));
+                other_tab.navigate(Location::local(outside.path()));
+                let left_first = Cell::new(false);
+                let result = glib::MainContext::default().block_on(super::leave_share_and_unmount(
+                    &root,
+                    Some(&sidebar),
+                    || {
+                        left_first.set(
+                            sidebar.active_location() == home
+                                && other_window.active_location() == home,
+                        );
+                        async move {
+                            if fails {
+                                Err(glib::Error::new(gio::IOErrorEnum::Busy, "share busy"))
+                            } else {
+                                Ok(())
+                            }
+                        }
+                    },
+                    || still_mounted,
+                ));
+                let case = format!("fails {fails}, still mounted {still_mounted}");
+                assert_eq!(result.is_err(), fails, "{case}");
+                assert!(
+                    left_first.get(),
+                    "every browser leaves before unmounting: {case}"
+                );
+                let (sidebar_at, window_at) = if returns {
+                    (
+                        Some(Location::local(share.path())),
+                        Some(Location::local(&inside)),
+                    )
+                } else {
+                    (home.clone(), home.clone())
+                };
+                assert_eq!(sidebar.active_location(), sidebar_at, "{case}");
+                assert_eq!(other_window.active_location(), window_at, "{case}");
+                assert_eq!(
+                    other_tab.active_location(),
+                    Some(Location::local(outside.path())),
+                    "a browser off the share stays put: {case}"
+                );
+            }
+            drop(watches);
+        },
+    );
+}
+
+#[test]
 fn start_release_claims_unplug_only_when_the_drive_is_removable_or_ejectable() {
     crate::test_support::gtk_test(
         "ui::window::device_release::tests::start_release_claims_unplug_only_when_the_drive_is_removable_or_ejectable",

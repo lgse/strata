@@ -6,7 +6,7 @@ use std::{cell::Cell, rc::Rc};
 
 use gtk::prelude::*;
 
-use crate::{adapters::location_for_file, model::Location, ui::browser::show_error_dialog};
+use crate::{adapters::location_for_file, model::Location};
 
 use super::{
     SidebarState,
@@ -372,9 +372,10 @@ impl SidebarState {
 
         let disconnect_popover = popover.downgrade();
         let parent = self.view.widget();
+        let browser = Rc::downgrade(&self.browser);
         disconnect.connect_clicked(move |_| {
             popdown(&disconnect_popover);
-            disconnect_mount(&parent, mount.clone());
+            device_release::disconnect_share(&parent, browser.upgrade(), mount.clone());
         });
         open_on_secondary_click(&row, &popover);
     }
@@ -443,25 +444,6 @@ fn volume_description(volume: &gio::Volume, mounted: Option<&Location>) -> Optio
         .and_then(|root| location_for_file(&root))
         .map(|location| location.display_path())
         .or_else(|| gio_volume_unix_device(volume).map(String::from))
-}
-
-fn disconnect_mount(parent: &gtk::Widget, mount: gio::Mount) {
-    let window = parent.root().and_downcast::<gtk::Window>();
-    let operation = gtk::MountOperation::new(window.as_ref());
-    let error_parent = parent.clone();
-    glib::MainContext::default().spawn_local(async move {
-        if let Err(error) = mount
-            .unmount_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
-            .await
-            && !error.matches(gio::IOErrorEnum::Cancelled)
-        {
-            show_error_dialog(
-                &error_parent,
-                &crate::i18n::tr("Unable to disconnect"),
-                &error.to_string(),
-            );
-        }
-    });
 }
 
 pub(super) fn sidebar_device_shell(row: &gtk::Button) -> Option<gtk::Box> {
