@@ -96,6 +96,13 @@ struct RestartOps<'a> {
     is_alive: &'a mut dyn FnMut(u32) -> bool,
 }
 
+/// Whether the user must restart udiskie, shown as the localized `RESTART_WARNING`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RestartOutcome {
+    Done,
+    ManualRestartNeeded,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RestartMode {
     EnsureRunning,
@@ -804,19 +811,20 @@ fn restart_udiskie(mode: RestartMode) -> String {
         wait: &mut wait,
         is_alive: &mut is_alive,
     };
-    match restart_udiskie_at(
+    let outcome = restart_udiskie_at(
         Path::new("/proc"),
         rustix::process::geteuid().as_raw(),
         std::process::id(),
         &mut ops,
         mode,
-    ) {
-        Ok(None) => String::new(),
-        Ok(Some(warning)) => format!("\n{}", crate::i18n::tr(&warning)),
-        Err(error) => {
-            tracing::warn!("Could not restart udiskie: {error}");
-            format!("\n{}", crate::i18n::tr(RESTART_WARNING))
-        }
+    )
+    .unwrap_or_else(|error| {
+        tracing::warn!("Could not restart udiskie: {error}");
+        RestartOutcome::ManualRestartNeeded
+    });
+    match outcome {
+        RestartOutcome::Done => String::new(),
+        RestartOutcome::ManualRestartNeeded => format!("\n{}", crate::i18n::tr(RESTART_WARNING)),
     }
 }
 
@@ -826,10 +834,10 @@ fn restart_udiskie_at(
     current_pid: u32,
     ops: &mut RestartOps<'_>,
     mode: RestartMode,
-) -> Result<Option<String>, String> {
+) -> Result<RestartOutcome, String> {
     let snapshot = discover_udiskie_at(proc_root, euid, current_pid);
     if snapshot.is_empty() && mode == RestartMode::ReloadIfRunning {
-        return Ok(None);
+        return Ok(RestartOutcome::Done);
     }
     let argv = snapshot
         .iter()
@@ -837,15 +845,15 @@ fn restart_udiskie_at(
         .find(|argv| argv_is_usable(argv))
         .or_else(|| default_udiskie_argv(ops.lookup));
     let Some(argv) = argv else {
-        return Ok(Some(RESTART_WARNING.to_owned()));
+        return Ok(RestartOutcome::ManualRestartNeeded);
     };
     if let Err(error) = (ops.spawn)(&argv) {
         tracing::warn!("Could not relaunch udiskie: {error}");
-        return Ok(Some(RESTART_WARNING.to_owned()));
+        return Ok(RestartOutcome::ManualRestartNeeded);
     }
     let pids: Vec<u32> = snapshot.iter().map(|process| process.pid).collect();
     if pids.is_empty() {
-        return Ok(None);
+        return Ok(RestartOutcome::Done);
     }
     for pid in &pids {
         (ops.signal)(*pid, ProcessSignal::Term);
@@ -856,7 +864,7 @@ fn restart_udiskie_at(
             (ops.signal)(*pid, ProcessSignal::Kill);
         }
     }
-    Ok(None)
+    Ok(RestartOutcome::Done)
 }
 
 fn argv_is_usable(argv: &[String]) -> bool {

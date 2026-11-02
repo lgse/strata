@@ -11,9 +11,9 @@ use std::{
 use serde_norway::{Mapping, Value};
 
 use super::{
-    ProcessSignal, RestartMode, RestartOps, UdiskieInstallState, config_json, config_yml,
-    discover_udiskie_at, install_at, managed_event_hook, read_state, restart_udiskie_at,
-    state_directory, status_at, uninstall_at,
+    ProcessSignal, RestartMode, RestartOps, RestartOutcome, UdiskieInstallState, config_json,
+    config_yml, discover_udiskie_at, install_at, managed_event_hook, read_state,
+    restart_udiskie_at, state_directory, status_at, uninstall_at,
 };
 use crate::portal_setup::SetupContext;
 
@@ -591,7 +591,7 @@ fn restart_signals_only_snapshot_pids() {
 
     let warning = restart_udiskie_at(&proc_root, euid, 1, &mut ops, RestartMode::EnsureRunning)
         .expect("restart");
-    assert_eq!(warning, None);
+    assert_eq!(warning, RestartOutcome::Done);
     assert_eq!(
         spawned.borrow().as_ref().map(Vec::as_slice),
         Some(
@@ -638,7 +638,7 @@ fn restart_spawn_failure_does_not_signal() {
 
     let warning = restart_udiskie_at(&proc_root, euid, 1, &mut ops, RestartMode::EnsureRunning)
         .expect("non-fatal");
-    assert_eq!(warning.as_deref(), Some(super::RESTART_WARNING));
+    assert_eq!(warning, RestartOutcome::ManualRestartNeeded);
     assert!(
         signals.borrow().is_empty(),
         "spawn failure must not SIGTERM the running daemon"
@@ -678,7 +678,7 @@ fn restart_empty_snapshot_install_spawns_default() {
         RestartMode::EnsureRunning,
     )
     .expect("restart");
-    assert_eq!(warning, None);
+    assert_eq!(warning, RestartOutcome::Done);
     assert_eq!(
         spawned.borrow().as_ref().map(Vec::as_slice),
         Some(
@@ -731,7 +731,7 @@ fn restart_empty_snapshot_uninstall_does_not_spawn() {
         RestartMode::ReloadIfRunning,
     )
     .expect("restart");
-    assert_eq!(warning, None);
+    assert_eq!(warning, RestartOutcome::Done);
     assert!(
         spawned.borrow().is_none(),
         "uninstall should not start udiskie when none is running"
