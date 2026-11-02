@@ -641,6 +641,7 @@
   "Refusing to replace non-regular portal configuration %{path}": "拒絕取代非一般檔案的入口設定 %{path}",
   "Refusing to replace non-regular udiskie configuration %{path}": "拒絕取代非一般檔案的 udiskie 設定 %{path}",
   "Refusing unsafe archive path: %{name}": "拒絕不安全的壓縮檔路徑：%{name}",
+  "Refusing to extract through the symbolic link “%{path}”": "拒絕透過符號連結“%{path}”解壓縮",
   "Release notes unavailable for this build": "此版本沒有可用的版本資訊",
   "Remote preview exceeds the %{limit} download limit": "遠端預覽超過 %{limit} 下載上限",
   "Remove exclusion %{item}": "移除排除項目 %{item}",

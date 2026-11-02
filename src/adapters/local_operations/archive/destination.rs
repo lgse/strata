@@ -490,6 +490,20 @@ impl ExtractionDestination {
             .map_err(errno_text)
     }
 
+    /// A folder whose name an earlier member or an existing item already
+    /// holds. Its parent opened, so a link refused here is the one at `path`.
+    fn open_claimed_folder(&self, path: &Path) -> Result<OwnedFd, String> {
+        fs().open_dir(Entry::new(&self.root, path.as_os_str()))
+            .map_err(|error| match error {
+                Errno::LOOP => rust_i18n::t!(
+                    "Refusing to extract through the symbolic link “%{path}”",
+                    path = path.display()
+                )
+                .into_owned(),
+                error => errno_text(error),
+            })
+    }
+
     pub(super) fn create_file(
         &self,
         placed: &Placed,
@@ -887,7 +901,7 @@ impl ExtractNameResolver {
             let made = parent.join(&claim.name);
             if claim.made.is_none() {
                 // A member under a link's or a file's name fails there.
-                staging.open_directory(&made)?;
+                staging.open_claimed_folder(&made)?;
             } else {
                 self.taken
                     .insert((index, claim.name.clone()), name.to_os_string());

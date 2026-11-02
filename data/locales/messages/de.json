@@ -660,6 +660,7 @@
   "Refusing to replace non-regular portal configuration %{path}": "Die Portalkonfiguration %{path} ist keine reguläre Datei und wird nicht ersetzt",
   "Refusing to replace non-regular udiskie configuration %{path}": "Die udiskie-Konfiguration %{path} ist keine reguläre Datei und wird nicht ersetzt",
   "Refusing unsafe archive path: %{name}": "Unsicherer Archivpfad abgelehnt: %{name}",
+  "Refusing to extract through the symbolic link “%{path}”": "Entpacken über den symbolischen Link „%{path}“ abgelehnt",
   "Release notes unavailable for this build": "Versionshinweise für diesen Build nicht verfügbar",
   "Remote preview exceeds the %{limit} download limit": "Die Vorschau der entfernten Datei überschreitet das Download-Limit von %{limit}",
   "Remove %{name}": "%{name} entfernen",

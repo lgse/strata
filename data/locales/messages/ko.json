@@ -660,6 +660,7 @@
   "Refusing to replace non-regular portal configuration %{path}": "포털 구성 %{path}은(는) 일반 파일이 아니므로 바꾸지 않습니다",
   "Refusing to replace non-regular udiskie configuration %{path}": "udiskie 구성 %{path}은(는) 일반 파일이 아니므로 바꾸지 않습니다",
   "Refusing unsafe archive path: %{name}": "안전하지 않은 압축 파일 경로를 거부했습니다: %{name}",
+  "Refusing to extract through the symbolic link “%{path}”": "심볼릭 링크 “%{path}”을(를) 거치는 압축 풀기를 거부했습니다",
   "Release notes unavailable for this build": "이 빌드의 릴리스 정보를 사용할 수 없음",
   "Remote preview exceeds the %{limit} download limit": "원격 미리 보기가 다운로드 한도 %{limit}을(를) 초과합니다",
   "Remove %{name}": "%{name} 제거",

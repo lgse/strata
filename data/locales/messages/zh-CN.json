@@ -660,6 +660,7 @@
   "Refusing to replace non-regular portal configuration %{path}": "门户配置 %{path} 不是普通文件，为安全起见不会替换",
   "Refusing to replace non-regular udiskie configuration %{path}": "udiskie 配置 %{path} 不是普通文件，为安全起见不会替换",
   "Refusing unsafe archive path: %{name}": "已拒绝不安全的压缩文件路径：%{name}",
+  "Refusing to extract through the symbolic link “%{path}”": "已拒绝通过符号链接“%{path}”解压",
   "Release notes unavailable for this build": "此版本的发行说明不可用",
   "Remote preview exceeds the %{limit} download limit": "远程预览超出 %{limit} 下载上限",
   "Remove %{name}": "移除 %{name}",

@@ -660,6 +660,7 @@
   "Refusing to replace non-regular portal configuration %{path}": "Refusing to replace non-regular portal configuration %{path}",
   "Refusing to replace non-regular udiskie configuration %{path}": "Refusing to replace non-regular udiskie configuration %{path}",
   "Refusing unsafe archive path: %{name}": "Refusing unsafe archive path: %{name}",
+  "Refusing to extract through the symbolic link “%{path}”": "Refusing to extract through the symbolic link “%{path}”",
   "Release notes unavailable for this build": "Release notes unavailable for this build",
   "Remote preview exceeds the %{limit} download limit": "Remote preview exceeds the %{limit} download limit",
   "Remove %{name}": "Remove %{name}",

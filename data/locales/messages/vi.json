@@ -660,6 +660,7 @@
   "Refusing to replace non-regular portal configuration %{path}": "Từ chối thay thế cấu hình cổng không phải tệp thông thường %{path}",
   "Refusing to replace non-regular udiskie configuration %{path}": "Từ chối thay thế cấu hình udiskie không phải tệp thông thường %{path}",
   "Refusing unsafe archive path: %{name}": "Đã từ chối đường dẫn không an toàn trong tệp nén: %{name}",
+  "Refusing to extract through the symbolic link “%{path}”": "Đã từ chối giải nén qua liên kết tượng trưng “%{path}”",
   "Release notes unavailable for this build": "Không có ghi chú phát hành cho bản dựng này",
   "Remote preview exceeds the %{limit} download limit": "Bản xem trước từ xa vượt quá giới hạn tải xuống %{limit}",
   "Remove %{name}": "Gỡ bỏ %{name}",
