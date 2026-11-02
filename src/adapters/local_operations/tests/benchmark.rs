@@ -66,8 +66,7 @@ pub(super) fn worker_counts() -> Vec<usize> {
 }
 
 fn parent_and_name(root: &Path) -> Result<(OwnedFd, OsString), Box<dyn Error>> {
-    let parent =
-        open_local_parent_directory(root.parent().ok_or("benchmark root has no parent")?)?;
+    let parent = open_local_parent_directory(root.parent().ok_or("benchmark root has no parent")?)?;
     let name = root
         .file_name()
         .ok_or("benchmark root has no name")?

@@ -14,10 +14,10 @@ fn merge_fixing(
     merge_hooked(gio::File::for_path(source), target, hooks)
 }
 
+type CopyCheck = fn(&str, CopyStep) -> Result<(), Box<dyn Error>>;
+
 /// Runs `check` with the engine's copy and with GIO's.
-fn with_both_copies(
-    check: fn(&str, CopyStep) -> Result<(), Box<dyn Error>>,
-) -> Result<(), Box<dyn Error>> {
+fn with_both_copies(check: CopyCheck) -> Result<(), Box<dyn Error>> {
     check("engine", engine_copy(fixing()))?;
     check("GIO", gio_merge_copy(fixing()))
 }

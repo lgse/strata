@@ -874,7 +874,12 @@ fn benchmark_delete_large_directory() -> Result<(), Box<dyn Error>> {
         benchmark.sync()?;
     }
     let production_workers = detected_workers.unwrap_or(1);
-    benchmark::report(&benchmark, serial_elapsed, production_workers, &measurements)?;
+    benchmark::report(
+        &benchmark,
+        serial_elapsed,
+        production_workers,
+        &measurements,
+    )?;
     assert!(!serial_root.exists());
     assert!(worker_roots.iter().all(|(_, root)| !root.exists()));
     Ok(())
