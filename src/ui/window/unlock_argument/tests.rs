@@ -44,20 +44,36 @@ fn pump_for(duration: Duration) {
     }
 }
 
-fn button_with_label(widget: &gtk::Widget, label: &str) -> Option<gtk::Button> {
-    if let Ok(button) = widget.clone().downcast::<gtk::Button>()
-        && button.label().as_deref() == Some(label)
+fn descendant<T: IsA<gtk::Widget>>(
+    widget: &gtk::Widget,
+    matches: &impl Fn(&T) -> bool,
+) -> Option<T> {
+    if let Ok(found) = widget.clone().downcast::<T>()
+        && matches(&found)
     {
-        return Some(button);
+        return Some(found);
     }
     let mut child = widget.first_child();
     while let Some(widget) = child {
         child = widget.next_sibling();
-        if let Some(button) = button_with_label(&widget, label) {
-            return Some(button);
+        if let Some(found) = descendant(&widget, matches) {
+            return Some(found);
         }
     }
     None
+}
+
+fn button_with_label(widget: &gtk::Widget, label: &str) -> Option<gtk::Button> {
+    descendant(widget, &|button: &gtk::Button| {
+        button.label().as_deref() == Some(label)
+    })
+}
+
+fn shows_message(browser: &BrowserView, message: &str) -> bool {
+    let message = crate::i18n::tr(message);
+    status_widget(&browser.overlay()).is_some_and(|status| {
+        descendant(&status, &|label: &gtk::Label| label.label() == message).is_some()
+    })
 }
 
 fn missing_target() -> UnlockTarget {
@@ -179,6 +195,26 @@ fn match_hides_connecting_overlay() {
             assert!(
                 !request.active.get(),
                 "match success should finish the appearance wait"
+            );
+        },
+    );
+}
+
+#[test]
+fn present_volume_status_survives_first_folder() {
+    crate::test_support::gtk_test(
+        "ui::window::unlock_argument::tests::present_volume_status_survives_first_folder",
+        || {
+            PreferenceManager::seed_saved_preferences_for_test();
+            let browser = view();
+            after_first_folder(&browser, |browser| show_not_encrypted(&browser));
+            browser.navigate_location(Location::local(home_directory()));
+
+            wait_until(|| shows_message(&browser, NOT_ENCRYPTED_MESSAGE));
+            pump_for(Duration::from_millis(50));
+            assert!(
+                shows_message(&browser, NOT_ENCRYPTED_MESSAGE),
+                "an immediate unlock result should stay visible once the first folder opens"
             );
         },
     );
