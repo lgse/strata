@@ -248,14 +248,10 @@ impl Dispatcher {
         action(&self.view).then_some(Propagation::Stop)
     }
 
-    /// Whatever widget a preview renders, keys typed inside it never act on
-    /// the previewed file.
+    /// Whether keyboard focus is anywhere inside the preview drawer, whatever
+    /// widget it renders.
     pub(super) fn preview_has_focus(&self, event: &KeyEvent) -> bool {
-        let preview = self.preview.widget();
-        event
-            .focused
-            .as_ref()
-            .is_some_and(|focused| focused == &preview || focused.is_ancestor(&preview))
+        self.preview.owns_focus(event.focused.as_ref())
     }
 
     pub(super) fn context_menu_command(&self, event: &KeyEvent) -> KeyResult {
