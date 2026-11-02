@@ -136,6 +136,7 @@
   "An archive named “%{final_name}” already exists in %{value1}. Replace it to overwrite its contents, or keep both to create a numbered copy.": "Já existe um arquivo compactado chamado “%{final_name}” em %{value1}. Substitua-o para sobrescrever seu conteúdo ou mantenha ambos para criar uma cópia numerada.",
   "An item named “%{name}” already exists in %{folder}. Redoing the move will overwrite its contents.": "Já existe um item chamado “%{name}” em %{folder}. Refazer a movimentação sobrescreverá o conteúdo.",
   "An item named “%{name}” already exists in %{folder}. Replacing it will overwrite its contents.": "Já existe um item chamado “%{name}” em %{folder}. Substituí-lo sobrescreverá o conteúdo.",
+  "An item named “%{name}” already exists in %{folder}. A file and a folder can’t replace one another.": "Já existe um item chamado “%{name}” em %{folder}. Um arquivo e uma pasta não podem substituir um ao outro.",
   "An item named “%{name}” already exists in %{folder}. Undoing the move will overwrite its contents.": "Já existe um item chamado “%{name}” em %{folder}. Desfazer a movimentação sobrescreverá o conteúdo.",
   "An update is available": "Há uma atualização disponível",
   "Another install is already running — try again shortly.": "Outra instalação já está em andamento — tente novamente em instantes.",

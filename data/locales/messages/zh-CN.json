@@ -136,6 +136,7 @@
   "An archive named “%{final_name}” already exists in %{value1}. Replace it to overwrite its contents, or keep both to create a numbered copy.": "%{value1} 中已存在名为“%{final_name}”的压缩文件。选择“替换”将覆盖其内容，选择“保留两者”将创建带编号的副本。",
   "An item named “%{name}” already exists in %{folder}. Redoing the move will overwrite its contents.": "%{folder} 中已存在名为“%{name}”的项目。重做移动将覆盖其内容。",
   "An item named “%{name}” already exists in %{folder}. Replacing it will overwrite its contents.": "%{folder} 中已存在名为“%{name}”的项目。替换将覆盖其内容。",
+  "An item named “%{name}” already exists in %{folder}. A file and a folder can’t replace one another.": "%{folder} 中已存在名为“%{name}”的项目。文件和文件夹无法相互替换。",
   "An item named “%{name}” already exists in %{folder}. Undoing the move will overwrite its contents.": "%{folder} 中已存在名为“%{name}”的项目。撤销移动将覆盖其内容。",
   "An update is available": "有可用更新",
   "Another install is already running — try again shortly.": "已有其他安装正在进行，请稍后重试。",

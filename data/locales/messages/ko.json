@@ -136,6 +136,7 @@
   "An archive named “%{final_name}” already exists in %{value1}. Replace it to overwrite its contents, or keep both to create a numbered copy.": "%{value1}에 “%{final_name}” 압축 파일이 이미 있습니다. 내용을 덮어쓰려면 바꾸고, 번호가 붙은 사본을 만들려면 둘 다 유지하세요.",
   "An item named “%{name}” already exists in %{folder}. Redoing the move will overwrite its contents.": "%{folder}에 “%{name}” 항목이 이미 있습니다. 이동을 다시 실행하면 내용을 덮어씁니다.",
   "An item named “%{name}” already exists in %{folder}. Replacing it will overwrite its contents.": "%{folder}에 “%{name}” 항목이 이미 있습니다. 바꾸면 내용을 덮어씁니다.",
+  "An item named “%{name}” already exists in %{folder}. A file and a folder can’t replace one another.": "%{folder}에 “%{name}” 항목이 이미 있습니다. 파일과 폴더는 서로 바꿀 수 없습니다.",
   "An item named “%{name}” already exists in %{folder}. Undoing the move will overwrite its contents.": "%{folder}에 “%{name}” 항목이 이미 있습니다. 이동을 실행 취소하면 내용을 덮어씁니다.",
   "An update is available": "업데이트가 있습니다",
   "Another install is already running — try again shortly.": "다른 설치가 이미 진행 중입니다. 잠시 후 다시 시도하세요.",

@@ -136,6 +136,7 @@
   "An archive named “%{final_name}” already exists in %{value1}. Replace it to overwrite its contents, or keep both to create a numbered copy.": "%{value1}には「%{final_name}」というアーカイブがすでにあります。内容を上書きするには置き換え、番号付きのコピーを作成するには両方を保持してください。",
   "An item named “%{name}” already exists in %{folder}. Redoing the move will overwrite its contents.": "%{folder}には「%{name}」という項目がすでにあります。移動をやり直すと内容が上書きされます。",
   "An item named “%{name}” already exists in %{folder}. Replacing it will overwrite its contents.": "%{folder}には「%{name}」という項目がすでにあります。置き換えると内容が上書きされます。",
+  "An item named “%{name}” already exists in %{folder}. A file and a folder can’t replace one another.": "%{folder}には「%{name}」という項目がすでにあります。ファイルとフォルダーを互いに置き換えることはできません。",
   "An item named “%{name}” already exists in %{folder}. Undoing the move will overwrite its contents.": "%{folder}には「%{name}」という項目がすでにあります。移動を元に戻すと内容が上書きされます。",
   "An update is available": "更新があります",
   "Another install is already running — try again shortly.": "別のインストールが実行中です。しばらくしてから再試行してください。",
