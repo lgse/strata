@@ -13,7 +13,7 @@ use super::{
 };
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;
 
 pub(crate) const EXPERIMENTAL_LABEL: &str = "(experimental feature, under active development)";
 
@@ -1617,28 +1617,4 @@ fn tenxer_scopes(mode: BrowserMode) -> Vec<Vec<ReferenceSection>> {
         }
     }
     scopes
-}
-/// The distinct rows of one map across all its scopes, each as the keys it
-/// shows: its own and those its action names.
-#[cfg(test)]
-pub(in crate::ui) fn reference_rows(tenxer: bool) -> Vec<Vec<Keys>> {
-    let mut rows: Vec<Shortcut> = Vec::new();
-    for shortcut in scoped_sections(tenxer)
-        .into_iter()
-        .flatten()
-        .flat_map(|section| section.rows)
-    {
-        if !rows.contains(&shortcut) {
-            rows.push(shortcut);
-        }
-    }
-    rows.into_iter()
-        .map(|shortcut| {
-            let mentioned = match shortcut.mention {
-                Some(Mention::Keys(keys)) => Some(keys),
-                Some(Mention::Held(_)) | None => None,
-            };
-            std::iter::once(shortcut.keys).chain(mentioned).collect()
-        })
-        .collect()
 }

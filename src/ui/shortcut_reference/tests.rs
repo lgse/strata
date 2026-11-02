@@ -16,21 +16,6 @@ fn rows_for(sections: &[ReferenceSection], action: &str) -> usize {
         .count()
 }
 
-/// The 10xer window and every chooser request.
-fn tenxer_choosers() -> Vec<Option<ChooserScope>> {
-    let requests = [
-        ChooserRequest::Files,
-        ChooserRequest::Folders,
-        ChooserRequest::SaveFile,
-        ChooserRequest::SaveFiles,
-    ];
-    std::iter::once(None)
-        .chain(requests.into_iter().flat_map(|request| {
-            [false, true].map(|multiple| Some(ChooserScope { request, multiple }))
-        }))
-        .collect()
-}
-
 /// The Back button lives in the Icons and List pane header, which Columns lacks
 /// and 10xer hides. Tab moves an inline rename in either map, the 10xer
 /// chooser's context-menu rename included.
@@ -58,10 +43,9 @@ fn rows_appear_once_where_their_feature_exists() {
                 action,
                 default,
             );
-            for chooser in tenxer_choosers() {
-                let sections = tenxer_sections(mode, chooser);
+            for (index, sections) in tenxer_scopes(mode).into_iter().enumerate() {
                 expect(
-                    format!("10xer {mode:?} {chooser:?}"),
+                    format!("10xer {mode:?} scope {index}"),
                     &sections,
                     action,
                     tenxer,
@@ -70,4 +54,28 @@ fn rows_appear_once_where_their_feature_exists() {
         }
     }
     assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+/// The distinct rows of one map across all its scopes, each as the keys it
+/// shows: its own and those its action names.
+pub(in crate::ui) fn reference_rows(tenxer: bool) -> Vec<Vec<Keys>> {
+    let mut rows: Vec<Shortcut> = Vec::new();
+    for shortcut in scoped_sections(tenxer)
+        .into_iter()
+        .flatten()
+        .flat_map(|section| section.rows)
+    {
+        if !rows.contains(&shortcut) {
+            rows.push(shortcut);
+        }
+    }
+    rows.into_iter()
+        .map(|shortcut| {
+            let mentioned = match shortcut.mention {
+                Some(Mention::Keys(keys)) => Some(keys),
+                Some(Mention::Held(_)) | None => None,
+            };
+            std::iter::once(shortcut.keys).chain(mentioned).collect()
+        })
+        .collect()
 }
