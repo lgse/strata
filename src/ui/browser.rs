@@ -122,7 +122,8 @@ pub(in crate::ui) use crate::ui::browser::listing_filter::{
 pub(in crate::ui) use crate::ui::browser::location::ConnectOutcome;
 pub(super) use crate::ui::browser::pane_header::{
     attach_back_history, column_sort_direction_toggle, column_sort_menu, empty_trash_button,
-    leftovers_button, pane_new_folder_button, pane_refresh_button, sync_column_sort_direction,
+    leftovers_button, lists_back_history, pane_new_folder_button, pane_refresh_button,
+    sync_column_sort_direction,
 };
 pub(super) use crate::ui::browser::paths::is_trash_root;
 pub use crate::ui::browser::peek::PeekBehavior;

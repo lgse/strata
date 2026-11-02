@@ -2,6 +2,7 @@
 
 use super::acceptance::{request, visible_collection_selection, wait_until};
 use super::*;
+use crate::test_support::widgets::{mapped_back_button, press_on_widget};
 use crate::ui::browser_modes::BrowserMode;
 use gtk::gdk::{Key, ModifierType};
 use std::{
@@ -1191,6 +1192,59 @@ fn enter_in_the_filter_field_chooses_the_top_result_in_every_view() {
                     });
                 assert!(handled, "{mode:?}: Enter in the field was not handled");
                 assert_eq!(chooser.chosen(), [chooser.uri(&top)], "{mode:?}");
+            }
+        },
+    );
+}
+
+#[test]
+fn context_menu_keys_on_back_list_the_back_history() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::context_menu_keys_on_back_list_the_back_history",
+        || {
+            for mode in [BrowserMode::Icons, BrowserMode::List] {
+                let chooser =
+                    Chooser::open_with(single_file(), mode, &["alpha/", "notes.txt"], false);
+                let browser = chooser.state.view.browser();
+                let alpha = Location::local(chooser.root.path().join("alpha"));
+                browser.navigate(alpha.clone());
+                wait_until(|| {
+                    browser.active_location().as_ref() == Some(&alpha)
+                        && browser
+                            .column_snapshot(0)
+                            .is_some_and(|column| !column.loading)
+                });
+                for (key, modifiers) in [
+                    (Key::Menu, ModifierType::empty()),
+                    (Key::F10, ModifierType::SHIFT_MASK),
+                ] {
+                    let case = format!("{mode:?} {modifiers:?}+{key:?}");
+                    let back = RefCell::new(None);
+                    wait_until(|| {
+                        back.replace(mapped_back_button(chooser.state.window.upcast_ref()));
+                        back.borrow().is_some()
+                    });
+                    let back = back
+                        .take()
+                        .unwrap_or_else(|| panic!("{case}: no Back button"));
+                    let history = widget_with_class(&back, "back-history-popover")
+                        .and_downcast::<gtk::Popover>()
+                        .unwrap_or_else(|| panic!("{case}: Back has no history menu"));
+                    assert!(back.grab_focus(), "{case}: Back took no focus");
+                    assert!(
+                        !chooser.press_with(key, modifiers),
+                        "{case}: the chooser claimed the key from Back"
+                    );
+                    press_on_widget(&back, key, modifiers);
+                    wait_until(|| history.is_visible());
+                    assert_eq!(
+                        browser.active_location().as_ref(),
+                        Some(&alpha),
+                        "{case}: the key went back"
+                    );
+                    history.popdown();
+                    wait_until(|| !history.is_visible());
+                }
             }
         },
     );

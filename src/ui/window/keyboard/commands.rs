@@ -255,8 +255,18 @@ impl Dispatcher {
     }
 
     pub(super) fn context_menu_command(&self, event: &KeyEvent) -> KeyResult {
-        if event.press.is(CONTEXT_MENU)
-            && !event.text_has_focus()
+        if !event.press.is(CONTEXT_MENU) {
+            return None;
+        }
+        // A focused Back button lists its history for this key itself.
+        if event
+            .focused
+            .as_ref()
+            .is_some_and(crate::ui::browser::lists_back_history)
+        {
+            return Some(Propagation::Proceed);
+        }
+        if !event.text_has_focus()
             && (super::sidebar::open_sidebar_context_menu(&self.sidebar.widget)
                 || self.view.open_focused_context_menu())
         {
