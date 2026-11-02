@@ -9,7 +9,7 @@ use super::{
 };
 
 impl ColumnState {
-    fn shows(&self, entry: &FileEntry) -> bool {
+    pub(super) fn shows(&self, entry: &FileEntry) -> bool {
         self.preferences.show_hidden || !entry.is_hidden
     }
 
@@ -185,7 +185,7 @@ impl NavigationState {
             return None;
         }
         let position = column.stepped_cursor(direction)?;
-        focus_only(column, position);
+        place_committed_cursor(column, position);
         self.active_column = Some(depth);
         Some((depth, position))
     }
@@ -202,7 +202,7 @@ impl NavigationState {
         let (depth, _, position) = self.page_target(direction, page, order)?;
         let column = self.columns.get_mut(depth)?;
         self.visual = None;
-        focus_only(column, position);
+        place_committed_cursor(column, position);
         self.active_column = Some(depth);
         Some((depth, position))
     }
@@ -304,9 +304,28 @@ impl NavigationState {
         self.active_column = Some(depth);
     }
 
+    /// A parent restored by Back has no cursor yet; it takes the folder it has
+    /// open, as descending into that folder would have left it. A parent still
+    /// loading takes it once listed, unless a cursor was placed meanwhile.
     pub fn focus_parent(&mut self) -> Option<(usize, Option<usize>)> {
         let depth = self.active_column?;
         let parent_depth = depth.checked_sub(1)?;
+        let open_child = self.active_child_position(parent_depth);
+        let open_folder = self.columns[depth].location.clone();
+        let column = &mut self.columns[parent_depth];
+        if column.selected.is_none() {
+            match open_child {
+                Some(position) if column.shows(&column.entries[position]) => {
+                    place_committed_cursor(column, position);
+                }
+                None if column.load_state == LoadState::Loading
+                    && column.preferred_on_load.is_none() =>
+                {
+                    column.open_child_on_load = Some(open_folder);
+                }
+                _ => {}
+            }
+        }
         self.activate_pane(parent_depth);
         Some((parent_depth, self.columns[parent_depth].selected))
     }
@@ -322,10 +341,7 @@ impl NavigationState {
         });
         if column.selected.is_none() {
             if let Some(position) = position {
-                let location = column.entries[position].location.clone();
-                adopt_selected_locations(column, HashSet::from([location.clone()]), true);
-                column.selected = Some(position);
-                column.selection_anchor = Some(location);
+                place_committed_cursor(column, position);
             } else if column.load_state == LoadState::Loading {
                 column.select_first_on_load = true;
             }
@@ -361,7 +377,8 @@ impl NavigationState {
     }
 }
 
-pub(super) fn focus_only(column: &mut ColumnState, position: usize) {
+/// Cursor, single selection and anchor on `position`, as a user's own choice.
+pub(super) fn place_committed_cursor(column: &mut ColumnState, position: usize) {
     let location = column.entries[position].location.clone();
     adopt_selected_locations(column, HashSet::from([location.clone()]), true);
     column.selected = Some(position);

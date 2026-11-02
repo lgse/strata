@@ -7,7 +7,9 @@ use crate::{
     services::RequestId,
 };
 
-use super::{ColumnState, EntryInsertion, LoadState, NavigationState, merge_entries};
+use super::{
+    ColumnState, EntryInsertion, LoadState, NavigationState, merge_entries, place_committed_cursor,
+};
 
 impl NavigationState {
     pub fn select_first_on_load(&mut self, depth: usize) {
@@ -194,6 +196,7 @@ impl NavigationState {
             return false;
         };
         column.pending_selection.clear();
+        column.open_child_on_load = None;
         column.truncated = truncated;
         column.settle_listed_state();
         true
@@ -246,6 +249,7 @@ impl ColumnState {
         self.resolve_pending_reveal();
         self.restore_pending_selection();
         self.resolve_preferred_on_load();
+        self.resolve_open_child_on_load();
         if self.select_first_on_load && !self.entries.is_empty() {
             self.select_first_visible_entry();
         }
@@ -261,6 +265,7 @@ impl ColumnState {
         self.pending_reveal.clear();
         self.selection_from_reveal = false;
         self.preferred_on_load = None;
+        self.open_child_on_load = None;
         self.reload_cursor = None;
     }
 
@@ -310,11 +315,33 @@ impl ColumnState {
         self.select_loaded_entry(position);
     }
 
+    /// Unlike the preferred entry, the open folder has no fallback: a cursor on
+    /// another entry would make file commands act on it.
+    fn resolve_open_child_on_load(&mut self) {
+        if !self.pending_reveal.is_empty() || self.selected.is_some() {
+            return;
+        }
+        let Some(open_child) = self.open_child_on_load.as_ref() else {
+            return;
+        };
+        let Some(position) = self
+            .entries
+            .iter()
+            .position(|entry| entry.location == *open_child && self.shows(entry))
+        else {
+            return;
+        };
+        self.pending_selection.clear();
+        self.select_first_on_load = false;
+        place_committed_cursor(self, position);
+    }
+
     /// Fallbacks that need the complete listing: the first visible entry for a preferred
     /// entry that never arrived, and a cursor-only neighbour for a reloaded cursor whose
     /// entry is gone. Returns whether the cursor moved.
     pub(super) fn complete_load_selection(&mut self) -> bool {
         let before = self.selected;
+        self.open_child_on_load = None;
         if self.preferred_on_load.take().is_some() && self.awaits_fallback_cursor() {
             self.select_first_visible_entry();
         }
@@ -356,6 +383,7 @@ impl ColumnState {
         self.load_cursor = None;
         self.selection_from_reveal = true;
         self.preferred_on_load = None;
+        self.open_child_on_load = None;
         self.reload_cursor = None;
     }
 
