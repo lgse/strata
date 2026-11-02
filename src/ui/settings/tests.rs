@@ -105,3 +105,13 @@ pub(super) fn page_text(root: &gtk::Widget) -> String {
     }
     text.join("\n")
 }
+
+fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
+    let mut found = vec![widget.clone()];
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        found.extend(descendants(&widget));
+    }
+    found
+}

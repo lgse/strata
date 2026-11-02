@@ -125,7 +125,8 @@ impl UdiskieIntegrationStatus {
         }
     }
 
-    fn reload(self: &Rc<Self>, failure: Option<String>) {
+    /// Rereads the status, then shows `notice` as `(text, is_error)`.
+    fn reload(self: &Rc<Self>, notice: Option<(String, bool)>) {
         if self.busy.replace(true) {
             return;
         }
@@ -141,8 +142,8 @@ impl UdiskieIntegrationStatus {
                 )
                 .into_owned()),
             });
-            if let Some(failure) = failure {
-                summary.message(&failure, true);
+            if let Some((text, error)) = notice {
+                summary.message(&text, error);
             }
         });
     }
@@ -166,11 +167,6 @@ impl UdiskieIntegrationStatus {
                 }
                 if let Some(restore) = self.restore.upgrade() {
                     restore.set_visible(status.has_installation);
-                }
-                if let Some(message) = self.message.upgrade()
-                    && !message.has_css_class("error")
-                {
-                    message.set_visible(false);
                 }
                 self.set_sensitive(!SETUP_RUNNING.get());
             }
@@ -229,28 +225,38 @@ impl UdiskieIntegrationStatus {
             let _hold = hold;
             let result = gio::spawn_blocking(move || {
                 if enable {
-                    portal_setup::udiskie::install()?;
+                    portal_setup::udiskie::install()
                 } else {
-                    portal_setup::udiskie::uninstall()?;
+                    portal_setup::udiskie::uninstall()
                 }
-                Ok::<_, String>(())
             })
             .await;
-            SETUP_RUNNING.set(false);
-            summary.busy.set(false);
-            let failure = match result {
-                Ok(Ok(())) => None,
-                Ok(Err(error)) => Some(error),
-                Err(error) => Some(
-                    rust_i18n::t!(
-                        "Integration change failed: %{error}",
-                        error = format!("{:?}", error)
-                    )
-                    .into_owned(),
-                ),
-            };
-            summary.reload(failure);
+            summary.finish_apply(result);
         });
+    }
+
+    pub(crate) fn finish_apply(
+        self: &Rc<Self>,
+        result: Result<
+            Result<portal_setup::udiskie::UdiskieChange, String>,
+            Box<dyn std::any::Any + Send>,
+        >,
+    ) {
+        SETUP_RUNNING.set(false);
+        self.busy.set(false);
+        let notice = match result {
+            Ok(Ok(change)) => change.restart_warning().map(|warning| (warning, false)),
+            Ok(Err(error)) => Some((error, true)),
+            Err(error) => Some((
+                rust_i18n::t!(
+                    "Integration change failed: %{error}",
+                    error = format!("{:?}", error)
+                )
+                .into_owned(),
+                true,
+            )),
+        };
+        self.reload(notice);
     }
 }
 

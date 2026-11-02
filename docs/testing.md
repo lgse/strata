@@ -620,9 +620,11 @@ of the address that cannot connect. `exec` runs a shell command in the
 fixture with the session's HOME, XDG directories, display, runtime directory,
 and bus. `restart` closes the application's stdin, signals its group if it
 has not quit within ten seconds (the runner's `EXIT_TIMEOUT` and
-`TERMINATE_GRACE`), rewrites the given
-preferences in its saved `settings.toml`, and launches it again on the same
-fixture and HOME. Every exchange is appended to
+`TERMINATE_GRACE`), merges the given
+preferences into its saved `settings.toml` (each key replaced whole, tables
+included), and launches it again on the same fixture and HOME. A value
+`settings.toml` cannot hold is refused before the application quits, and a
+saved file that no longer parses is left unchanged and relaunched. Every exchange is appended to
 `target/qa-drive/transcript.jsonl` in the artifacts' transcript format, and the
 input log, build log, screenshots, and (after `stop`) application log land in
 `target/qa-drive/`, which `start` empties. There is one session per checkout,
@@ -681,7 +683,8 @@ long-name editor staying in the viewport, a live click-mode preference, cut
 deferring its move to the paste, Return in the location editor, Keep Both
 selecting the numbered copy, Enter, click-away and Escape in the inline
 editor, a new entry colliding with an existing name, the rename error dialog,
-Delete moving to the trash, and Shift+click ranges. Each patch belongs to
+Delete moving to the trash, focus returning to a Columns filter result after a
+dismissed delete confirmation, and Shift+click ranges. Each patch belongs to
 exactly one scenario.
 
 The chosen scenarios first run once on the unmodified tree, and every run of a
@@ -723,14 +726,15 @@ These expose an app race: Ctrl+D, Ctrl+V, or F2 within 75 ms of the arrow key
 that moved the cursor onto a folder leaves a stale mirrored column, and a paste
 then leaves the pasted file neither selected nor focused.
 
-- `rename-and-undo-restores`: settles the renamed row before Ctrl+Z. The
-  directory monitor can list the new name, and the listing select and focus
-  it, before the rename's own completion publishes its undo and ends the
-  operation; a Ctrl+Z in between is dropped. The app shows nothing a run can
-  read to tell that the undo is ready (Undo has no menu item or action
-  state), so the wait is the settle. Under the same parallel load, 3 of 60
-  runs without it lost the Ctrl+Z and none of 60 with it did (6 of 116 and 0
-  of 84 over every probe).
+- `rename-and-undo-restores`, and `undo-created-folder-trashes`
+  (typed-name) for the name a new folder takes: settles the renamed row
+  before Ctrl+Z. The directory monitor can list the new name, and the
+  listing select and focus it, before the rename's own completion publishes
+  its undo and ends the operation; a Ctrl+Z in between is dropped. The app
+  shows nothing a run can read to tell that the undo is ready (Undo has no
+  menu item or action state), so the wait is the settle. Under the same
+  parallel load, 3 of 60 `rename-and-undo-restores` runs without it lost the
+  Ctrl+Z and none of 60 with it did (6 of 116 and 0 of 84 over every probe).
 - `new-folder-with-selection-groups` (Columns): waits for the renamed
   `grouped` row to count its two items before clicking it. The row first
   shows the optimistic rename, and a click on it before the listing catches

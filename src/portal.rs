@@ -762,7 +762,7 @@ pub(crate) fn open_selection(
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct DestinationCheck {
     pub paths: Vec<PathBuf>,
-    pub existing_files: bool,
+    pub existing: Vec<PathBuf>,
 }
 
 pub(crate) async fn check_destinations(
@@ -786,7 +786,7 @@ async fn inspect_destinations(
         return Err(crate::i18n::tr("Choose an accessible local folder"));
     }
     let mut paths = Vec::with_capacity(names.len());
-    let mut existing_files = false;
+    let mut existing = Vec::new();
     for name in names {
         let path = folder.join(name);
         let file = gio::File::for_path(&path);
@@ -813,9 +813,9 @@ async fn inspect_destinations(
                 {
                     return Err(folder_exists_message(name));
                 }
-                existing_files = true;
+                existing.push(path.clone());
             }
-            Ok(_) => existing_files = true,
+            Ok(_) => existing.push(path.clone()),
             Err(error) if error.matches(gio::IOErrorEnum::NotFound) => {}
             Err(error) => {
                 return Err(rust_i18n::t!(
@@ -827,10 +827,7 @@ async fn inspect_destinations(
         }
         paths.push(path);
     }
-    Ok(DestinationCheck {
-        paths,
-        existing_files,
-    })
+    Ok(DestinationCheck { paths, existing })
 }
 
 fn folder_exists_message(name: &OsStr) -> String {

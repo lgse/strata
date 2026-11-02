@@ -1,10 +1,10 @@
 diff --git a/src/ui/browser/inline_edit.rs b/src/ui/browser/inline_edit.rs
-index 1d8b9e88..e9c2edf1 100644
+index 42c59a71..b9286d34 100644
 --- a/src/ui/browser/inline_edit.rs
 +++ b/src/ui/browser/inline_edit.rs
-@@ -180,7 +180,7 @@ impl super::BrowserView {
+@@ -71,7 +71,7 @@ impl super::BrowserView {
                      .as_ref()
-                     .is_some_and(|target| target == &field || target.is_ancestor(&field))
+                     .is_some_and(|target| is_within(target, &field))
              {
 -                state.submit_rename(&field);
 +                state.cancel_rename();

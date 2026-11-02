@@ -275,7 +275,28 @@ pub(super) fn filesystem_label_for_device(device: &Path) -> Option<String> {
             .filter(|output| output.status.success())
             .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
     })?;
-    match fstype.as_str() {
+    filesystem_display_name(&fstype)
+}
+
+pub(super) fn fstab_type_for_device(device: &Path) -> Option<String> {
+    crate::util::ui_thread::assert_off();
+    let (points, _) = gio_unix::MountPoint::mount_points();
+    points
+        .into_iter()
+        .find(|point| point.device_path() == device)
+        .map(|point| point.fs_type().to_string())
+}
+
+/// `auto` and `none` name no filesystem.
+pub(super) fn fstab_display_name(fstype: &str) -> Option<String> {
+    match fstype.trim() {
+        "auto" | "none" => None,
+        declared => filesystem_display_name(declared),
+    }
+}
+
+fn filesystem_display_name(fstype: &str) -> Option<String> {
+    match fstype {
         "vfat" | "fat" | "msdos" => Some("FAT32".to_owned()),
         "ntfs" => Some("NTFS".to_owned()),
         "exfat" => Some("exFAT".to_owned()),

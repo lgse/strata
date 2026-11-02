@@ -486,7 +486,7 @@ omarchy menu keybindings --print | grep -i "file manager"
 
 ### Unlock encrypted volumes on Omarchy
 
-On Omarchy 3 or 4, the installer asks whether to use Strata for encrypted-volume unlock (default No). **Settings → General → Desktop integration** includes **Unlock encrypted volumes**. Choose **Use Strata** so plugging in an encrypted drive opens Strata's password prompt instead of udiskie's dialog. **Restore default** returns udiskie to its previous configuration.
+On Omarchy 3 or 4, the installer asks whether to use Strata for encrypted-volume unlock (default No). **Settings → General → Desktop integration** includes **Unlock encrypted volumes**. Choose **Use Strata** so plugging in an encrypted drive opens Strata's password prompt instead of udiskie's dialog. **Restore default** returns udiskie to its previous configuration. When this version of Strata or a later one made the setup and udiskie's settings have not changed since, it puts back the original file byte for byte, comments and formatting included; otherwise it keeps your later changes and removes only Strata's.
 
 On generic Arch, the installer offers the same step only when `udiskie` is already on `PATH`. Restore there with `strata --uninstall-udiskie-unlock`; Settings for this row stays Omarchy-only.
 
