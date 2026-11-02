@@ -40,18 +40,18 @@ type Pass = (
 );
 
 /// A rewrite within one tick of a coarse clock keeps the times, not
-/// always the size the copy read up to. Virtual files report none. Gives the
-/// stat back where the source changed while it was read.
+/// always the size the copy read up to. Virtual files report none.
+/// `None` where the source changed while it was read.
 fn settled_read(
     stat: &EntryStat,
     read: EntryStat,
     (digest, end, unsettled): Pass,
-) -> Result<manifest::Read, EntryStat> {
+) -> Option<manifest::Read> {
     let whole = end.is_none_or(|end| end == read.size || (stat.size == 0 && read.size == 0));
     if manifest::changed(stat, &read) || !whole {
-        return Err(read);
+        return None;
     }
-    Ok(manifest::Read {
+    Some(manifest::Read {
         stat: read,
         contents: digest
             .zip(unsettled)
@@ -390,10 +390,11 @@ impl Copy {
                 };
                 return Ok(Some((snapshot, read)));
             }
-            match settled_read(&stat, self.fs.stat_fd(source_fd)?, pass) {
-                Ok(read) => return Ok(Some((snapshot, read))),
-                Err(read) => stat = read,
+            let read = self.fs.stat_fd(source_fd)?;
+            if let Some(read) = settled_read(&stat, read, pass) {
+                return Ok(Some((snapshot, read)));
             }
+            stat = read;
         }
         Ok(None)
     }

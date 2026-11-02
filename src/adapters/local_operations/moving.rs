@@ -98,7 +98,7 @@ pub(super) async fn move_owing(
         (Some(source_path), Some(target_path)) => {
             copy.local(source, source_path, target_path).await?
         }
-        (Some(source_path), None) => copy.to_remote(source, source_path, target).await?,
+        (Some(source_path), None) => copy.onto_remote(source, source_path, target).await?,
         _ => copy.through_gio(source, target, &owed).await?,
     };
     owed.owe(deletion);
@@ -149,7 +149,7 @@ impl MoveCopy {
     }
 
     /// Recorded before GIO copies it, so a change during the copy shows.
-    async fn to_remote(
+    async fn onto_remote(
         self,
         source: gio::File,
         source_path: PathBuf,
