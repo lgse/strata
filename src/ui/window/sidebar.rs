@@ -153,7 +153,7 @@ pub(in crate::ui) fn build_sidebar(
     state.sync_active_place();
     let release_watch = {
         let weak = Rc::downgrade(&state);
-        super::device_release::watch_sidebars(move || {
+        super::device_release::watch_sidebars(Some(&state.browser), move || {
             if let Some(state) = weak.upgrade() {
                 state.rebuild();
             }
