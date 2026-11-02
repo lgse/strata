@@ -448,13 +448,16 @@ impl Dispatcher {
         Some(Propagation::Stop)
     }
 
+    /// Undo and Redo replay the operation history rather than act on a
+    /// selection, so they reach the browser even while results show.
     fn search_rows_own_key(&self, event: &KeyEvent) -> bool {
         if self.view.selected_search_results().is_none() || event.text_has_focus() {
             return false;
         }
-        !event.press.is(MOVE_TO_TRASH
-            .in_map(Map::Default)
-            .ignoring(SHORTCUT_MODIFIERS))
+        !event.press.is_any(&[UNDO, REDO])
+            && !event.press.is(MOVE_TO_TRASH
+                .in_map(Map::Default)
+                .ignoring(SHORTCUT_MODIFIERS))
     }
 
     fn preview_password_escape(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
