@@ -60,6 +60,17 @@ def label(text, limit=90):
     return (clean or tr("Device")).encode("utf-8")[:limit].decode("utf-8", "ignore")
 
 
+def device_labels(devices):
+    """Menu label per device in menu order; a shared name gets a stable suffix from the ID."""
+    names = {device: label(name) for device, name in devices.items()}
+    counts = Counter(names.values())
+    return {
+        device: names[device] + " (" + hashlib.sha256(device.encode()).hexdigest()[:6] + ")"
+        if counts[names[device]] > 1 else names[device]
+        for device in sorted(names, key=lambda d: (names[d].casefold(), d))
+    }
+
+
 def action_id(device):
     return "send-" + hashlib.sha256(device.encode("utf-8")).hexdigest()[:48]
 
@@ -202,13 +213,8 @@ class Provider:
             return []
         if not snapshot.devices or len(snapshot.devices) > 63:
             return []
-        names = {device: label(name) for device, name in snapshot.devices.items()}
-        counts = Counter(names.values())
         actions = []
-        for device in sorted(names, key=lambda d: (names[d].casefold(), d)):
-            name = names[device]
-            if counts[name] > 1:
-                name += " (" + hashlib.sha256(device.encode()).hexdigest()[:6] + ")"
+        for device, name in device_labels(snapshot.devices).items():
             t = self.ticket(snapshot, device, paths, identities)
             actions.append({"id": action_id(device), "label": name, "placement": "send-to",
                             "context": t.token})
@@ -247,7 +253,7 @@ class Provider:
             return result("rejected", message)
         return result(
             "accepted", tr("Files submitted to {device}: {count}. KDE Connect handles transfer progress and results.",
-               device=label(snapshot.devices[t.device]), count=total),
+               device=device_labels(snapshot.devices)[t.device], count=total),
         )
 
     def handle(self, request):

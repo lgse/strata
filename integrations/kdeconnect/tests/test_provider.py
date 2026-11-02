@@ -156,8 +156,9 @@ class MenuTests(unittest.TestCase):
         self.backend.devices = {"phone1": "Phone", "phone2": "Phone"}
         leaves = self.menu()
         self.assertNotEqual(leaves[0]["label"], leaves[1]["label"])
-        self.activate(leaves[1])
+        reply = self.activate(leaves[1])
         self.assertEqual(self.backend.submissions[0][1], "phone2")
+        self.assertIn(leaves[1]["label"], reply["message"])
 
     def test_unusual_device_names_remain_valid_protocol_labels(self):
         for name in ("\n\x1b\t", "冬" * 200, "A\x00B", "normal"):
