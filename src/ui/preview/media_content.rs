@@ -4,18 +4,28 @@
 //! the preview reads a file's leading bytes before choosing a player, so a media sequence
 //! that trusted names would count, and land on, files that preview as text.
 
-use std::{cell::RefCell, collections::HashMap, path::PathBuf};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet, VecDeque},
+    path::{Path, PathBuf},
+};
 
-use gtk::{gio, glib};
+use gtk::{gio, glib, prelude::*};
 
 use super::MediaFamily;
-use crate::model::{FileEntry, MetadataValue};
+use crate::{
+    adapters::mount_lanes::{self, Class},
+    model::{FileEntry, Location, MetadataValue},
+};
 
-/// Verdicts outlive folders so revisits stay instant; the cache restarts past this size.
-const MAX_REMEMBERED: usize = 8192;
+/// Answers outside the listing being walked are forgotten past this many.
+const MAX_REMEMBERED: usize = if cfg!(test) { 4 } else { 8192 };
+/// The nearest file on each side answers first; later chunks grow to bound refreshes.
+const FIRST_CHUNK: usize = 2;
+const MAX_CHUNK: usize = 256;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Fingerprint {
+pub(super) struct Fingerprint {
     size: MetadataValue<u64>,
     modified: MetadataValue<i64>,
 }
@@ -50,59 +60,39 @@ impl Fingerprint {
     }
 }
 
-struct Check {
-    fingerprint: Fingerprint,
-    /// The last answer, kept while a changed file is read again.
-    media: Option<bool>,
-    reading: bool,
-}
-
 thread_local! {
-    static CHECKS: RefCell<HashMap<PathBuf, Check>> = RefCell::new(HashMap::new());
+    /// Only answered reads: a failed or skipped read is asked again later.
+    static ANSWERS: RefCell<HashMap<PathBuf, (Fingerprint, bool)>> =
+        RefCell::new(HashMap::new());
 }
 
-/// Local files whose bytes a media sequence still has to read.
-#[derive(Default)]
-pub(super) struct PendingReads(Vec<(PathBuf, Fingerprint)>);
+#[cfg(test)]
+thread_local! {
+    static QUEUED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 
-/// Whether `entry`, already named as `family`, belongs in its media sequence. Unread
-/// local files stay out and are queued on `pending` until their bytes answer.
-pub(super) fn holds_media(
-    entry: &FileEntry,
-    family: MediaFamily,
-    pending: &mut PendingReads,
-) -> bool {
+/// Files queued for reading so far, to prove a walk converges.
+#[cfg(test)]
+pub(super) fn queued_reads() -> usize {
+    QUEUED.get()
+}
+
+/// Whether `entry`, named as `family`, holds media; `None` until its bytes are read.
+/// Route files and remote locations go by their name.
+pub(super) fn answer(entry: &FileEntry, family: MediaFamily) -> Option<bool> {
     if family == MediaFamily::Route || probed_media(entry, family) {
-        return true;
+        return Some(true);
     }
     let Some(path) = entry.location.native_path() else {
-        return true;
+        return Some(true);
     };
     let fingerprint = Fingerprint::of(entry);
-    CHECKS.with_borrow_mut(|checks| {
-        if let Some(check) = checks.get_mut(path) {
-            if check.fingerprint.same_file(&fingerprint) {
-                check.fingerprint.learn(&fingerprint);
-            } else if !check.reading {
-                check.fingerprint = fingerprint.clone();
-                check.reading = true;
-                pending.0.push((path.to_path_buf(), fingerprint));
-            }
-            return check.media == Some(true);
-        }
-        if checks.len() >= MAX_REMEMBERED {
-            checks.clear();
-        }
-        checks.insert(
-            path.to_path_buf(),
-            Check {
-                fingerprint: fingerprint.clone(),
-                media: None,
-                reading: true,
-            },
-        );
-        pending.0.push((path.to_path_buf(), fingerprint));
-        false
+    ANSWERS.with_borrow_mut(|answers| {
+        let (known, media) = answers.get_mut(path)?;
+        known.same_file(&fingerprint).then(|| {
+            known.learn(&fingerprint);
+            *media
+        })
     })
 }
 
@@ -113,36 +103,170 @@ fn probed_media(entry: &FileEntry, family: MediaFamily) -> bool {
             && matches!(entry.image_dimensions, MetadataValue::Known(_)))
 }
 
-impl PendingReads {
-    /// Reads the queued files off the GTK thread, then calls `done` on it.
-    pub(super) fn start(self, done: impl FnOnce() + 'static) {
-        if self.0.is_empty() {
+/// Keeps every answer for `listing`, however many, so walking it again never reads
+/// its files again; answers for other folders go once there are too many.
+pub(super) fn forget_all_but(listing: &[FileEntry]) {
+    ANSWERS.with_borrow_mut(|answers| {
+        if answers.len() <= MAX_REMEMBERED {
             return;
         }
-        glib::MainContext::default().spawn_local(async move {
-            let paths: Vec<PathBuf> = self.0.iter().map(|(path, _)| path.clone()).collect();
-            let answers = gio::spawn_blocking(move || {
-                paths
-                    .iter()
-                    .map(|path| crate::services::bytes_support_named_family(path))
-                    .collect::<Vec<_>>()
-            })
-            .await
-            .unwrap_or_default();
-            CHECKS.with_borrow_mut(|checks| {
-                for (index, (path, fingerprint)) in self.0.iter().enumerate() {
-                    let Some(check) = checks
-                        .get_mut(path)
-                        .filter(|check| check.reading && check.fingerprint.same_file(fingerprint))
-                    else {
-                        continue;
-                    };
-                    check.reading = false;
-                    // Like an unreadable file, a failed job leaves the name to decide.
-                    check.media = Some(answers.get(index).copied().unwrap_or(true));
-                }
-            });
-            done();
-        });
+        let keep: HashSet<&Path> = listing
+            .iter()
+            .filter_map(|entry| entry.location.native_path())
+            .collect();
+        answers.retain(|path, _| keep.contains(path.as_path()));
+    });
+}
+
+/// Unanswered files of one listing, by their place in it.
+pub(super) struct Unread {
+    around: usize,
+    files: Vec<(usize, PathBuf, Fingerprint)>,
+}
+
+impl Unread {
+    /// `around` is the shown file's place in the listing.
+    pub(super) fn new(around: usize) -> Self {
+        Self {
+            around,
+            files: Vec::new(),
+        }
     }
+
+    pub(super) fn push(&mut self, index: usize, entry: &FileEntry) {
+        if let Some(path) = entry.location.native_path() {
+            self.files
+                .push((index, path.to_path_buf(), Fingerprint::of(entry)));
+        }
+    }
+
+    pub(super) fn is_empty(&self) -> bool {
+        self.files.is_empty()
+    }
+
+    /// Outward from the shown file, the next one before the previous at each distance.
+    pub(super) fn nearest_first(mut self) -> Vec<(PathBuf, Fingerprint)> {
+        let around = self.around;
+        self.files
+            .sort_by_key(|(index, ..)| (index.abs_diff(around), *index < around));
+        self.files
+            .into_iter()
+            .map(|(_, path, fingerprint)| (path, fingerprint))
+            .collect()
+    }
+}
+
+/// One preview's reads; dropping them stops reading before the next chunk.
+pub(super) struct Reads {
+    anchor: Location,
+    covered: HashSet<PathBuf>,
+    cancellable: gio::Cancellable,
+}
+
+impl Drop for Reads {
+    fn drop(&mut self) {
+        self.cancellable.cancel();
+    }
+}
+
+impl Reads {
+    /// Whether these reads already took up `unread` for the same shown file, so a walk
+    /// they triggered, or a failed read, does not start them again.
+    pub(super) fn covers(&self, anchor: &Location, unread: &Unread) -> bool {
+        self.anchor == *anchor
+            && unread
+                .files
+                .iter()
+                .all(|(_, path, _)| self.covered.contains(path))
+    }
+
+    /// Reads `unread` in growing chunks, nearest first, and calls `answered` after each
+    /// chunk that answered something; it returns whether reading should go on.
+    pub(super) fn start(
+        anchor: Location,
+        unread: Unread,
+        answered: impl Fn() -> bool + 'static,
+    ) -> Self {
+        let files = unread.nearest_first();
+        #[cfg(test)]
+        QUEUED.set(QUEUED.get() + files.len());
+        let covered = files.iter().map(|(path, _)| path.clone()).collect();
+        let cancellable = gio::Cancellable::new();
+        let reading = cancellable.clone();
+        glib::MainContext::default().spawn_local(async move {
+            let mut queue = VecDeque::from(files);
+            let mut size = FIRST_CHUNK;
+            while !queue.is_empty() && !reading.is_cancelled() {
+                let chunk: Vec<_> = queue.drain(..size.min(queue.len())).collect();
+                size = (size * 2).min(MAX_CHUNK);
+                let learned = remember(read_chunk(chunk, &reading).await);
+                if learned && !reading.is_cancelled() && !answered() {
+                    break;
+                }
+            }
+        });
+        Self {
+            anchor,
+            covered,
+            cancellable,
+        }
+    }
+}
+
+/// Reads one chunk folder by folder, each through its mount's lane as background work:
+/// a stalled mount skips its files, which stay unanswered.
+async fn read_chunk(
+    chunk: Vec<(PathBuf, Fingerprint)>,
+    cancellable: &gio::Cancellable,
+) -> Vec<(PathBuf, Fingerprint, bool)> {
+    let mut folders: Vec<(PathBuf, Vec<(PathBuf, Fingerprint)>)> = Vec::new();
+    for (path, fingerprint) in chunk {
+        let folder = path.parent().unwrap_or(Path::new("/")).to_path_buf();
+        match folders.iter_mut().find(|(known, _)| *known == folder) {
+            Some((_, files)) => files.push((path, fingerprint)),
+            None => folders.push((folder, vec![(path, fingerprint)])),
+        }
+    }
+    let mut answers = Vec::new();
+    for (folder, files) in folders {
+        if cancellable.is_cancelled() {
+            break;
+        }
+        let paths: Vec<PathBuf> = files.iter().map(|(path, _)| path.clone()).collect();
+        let stop = cancellable.clone();
+        let job = mount_lanes::run(&folder, Class::Background, move |progress| {
+            paths
+                .iter()
+                .map(|path| {
+                    if stop.is_cancelled() {
+                        return None;
+                    }
+                    let answer = crate::services::read_supports_named_family(path);
+                    progress.answered(&answer);
+                    answer.ok()
+                })
+                .collect::<Vec<_>>()
+        });
+        let Ok(read) = job.await else {
+            continue;
+        };
+        answers.extend(
+            files
+                .into_iter()
+                .zip(read)
+                .filter_map(|((path, fingerprint), media)| Some((path, fingerprint, media?))),
+        );
+    }
+    answers
+}
+
+/// Whether there was anything to remember.
+fn remember(answers: Vec<(PathBuf, Fingerprint, bool)>) -> bool {
+    let learned = !answers.is_empty();
+    ANSWERS.with_borrow_mut(|known| {
+        for (path, fingerprint, media) in answers {
+            known.insert(path, (fingerprint, media));
+        }
+    });
+    learned
 }

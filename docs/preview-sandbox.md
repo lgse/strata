@@ -715,12 +715,17 @@ paint, sized by the poster's aspect until the probe answers. Clicking the frame
 toggles playback; there is no separate centre button. Consecutive video files
 reuse one view, like audio. Previous/next step to the previous or next file of
 the same media family, so audio steps to audio and video to video, following
-visible search results like audio does. A file joins the sequence by its content,
-not its name, in every view: a file whose metadata probe found no media, or whose
-leading bytes are text, is neither counted nor stepped to. Files the probe has not
-reached yet are checked by reading their first 8 KiB off the GTK thread; until a
-file's check answers it stays out, and the position and previous/next buttons
-update as answers arrive. Playback errors remain visible inside the
+visible search results like audio does. In every view, a local file joins the
+sequence by its content, not its name: a file whose metadata probe found no media,
+or whose leading bytes are text, is neither counted nor stepped to. Files the probe
+has not reached yet are checked by reading their first 8 KiB off the GTK thread,
+outward from the shown file in growing chunks, as background work through their
+mount's [request lane](filesystem-compatibility.md#request-lanes). Until a file
+answers it stays out, and the position and previous/next buttons update after each
+chunk. When the shown file changes, reading starts again outward from it, and files
+that could not be read, or whose mount stalled, are asked again. Reading stops when
+the preview closes or no longer shows a player. Remote (GVfs) locations and route files still go by their name.
+Playback errors remain visible inside the
 view without disabling navigation. The timeline is the audio view's waveform
 slider: the same overview peaks, grown in from nothing the same way once the
 storyboard has finished with the shared decode slot, with the played range,

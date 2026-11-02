@@ -138,6 +138,7 @@ impl PreviewState {
     }
 
     pub(super) fn close(self: &Rc<Self>) {
+        self.media_reads.take();
         let tree_focused = self.archive_tree_focused();
         // The preview closes now, so input such as the next Escape already
         // reaches the files; only the drawer's slide out waits.

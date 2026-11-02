@@ -61,6 +61,12 @@ pub(super) fn listing_of(
     for (name, bytes) in files {
         std::fs::write(directory.path().join(name), bytes).expect("media fixture");
     }
+    listed(directory)
+}
+
+pub(super) fn listed(
+    directory: tempfile::TempDir,
+) -> (tempfile::TempDir, crate::ui::browser::BrowserView) {
     let view = crate::ui::browser::BrowserView::new(
         Rc::new(crate::adapters::LocalFileSource),
         crate::ui::browser::PeekBehavior::default(),
@@ -331,6 +337,130 @@ fn steps_skip_files_named_as_video_whose_bytes_are_text() {
                 "text named as video is never a step"
             );
             assert_eq!(video.caption(), "4 of 4 in folder");
+            drawer.close();
+        },
+    );
+}
+
+fn video_drawer(
+    view: &crate::ui::browser::BrowserView,
+    position: usize,
+) -> (
+    Rc<Provider>,
+    PreviewDrawer,
+    Rc<crate::ui::preview::video::VideoView>,
+) {
+    let browser = view.browser();
+    let provider = Rc::new(Provider::default());
+    let drawer = PreviewDrawer::new(provider.clone(), false);
+    drawer.state.keyboard_view.replace(Some(view.downgrade()));
+    drawer.observe_browser(&browser);
+    crate::ui::preferences::PreferenceManager::shared().set_preview_autoplay(false);
+    browser.select(0, position);
+    drawer.show(browser.entry_at(0, position).expect("shown clip"), Some(0));
+    ready(&provider, 0, "video/mp4");
+    let video = drawer
+        .state
+        .video
+        .borrow()
+        .as_ref()
+        .expect("video view")
+        .view
+        .clone();
+    (provider, drawer, video)
+}
+
+#[test]
+fn a_listing_past_the_answer_cache_is_read_once() {
+    crate::test_support::gtk_test(
+        "ui::preview::tests::video::a_listing_past_the_answer_cache_is_read_once",
+        || {
+            let names: Vec<String> = (0..10).map(|index| format!("clip-{index}.mp4")).collect();
+            let files: Vec<(&str, &[u8])> = names
+                .iter()
+                .map(|name| (name.as_str(), MEDIA_BYTES))
+                .collect();
+            let (_directory, view) = listing_of(&files);
+            let (_provider, drawer, video) = video_drawer(&view, 0);
+            let state = &drawer.state;
+            wait_until("every clip to be read", || {
+                video.caption() == "1 of 10 in folder"
+            });
+            let queued = media_content::queued_reads();
+            assert_eq!(queued, 10, "each clip is queued once");
+            for _ in 0..2 {
+                assert_eq!(
+                    state
+                        .listing_position(MediaFamily::Video)
+                        .0
+                        .map(|position| position.count),
+                    Some(10)
+                );
+                pump(std::time::Duration::from_millis(50));
+            }
+            assert_eq!(
+                media_content::queued_reads(),
+                queued,
+                "walking the listing again reads nothing"
+            );
+            drawer.close();
+        },
+    );
+}
+
+#[test]
+fn content_reads_start_beside_the_shown_file() {
+    let mut unread = media_content::Unread::new(3);
+    for (index, name) in [
+        (0, "a.mp4"),
+        (1, "b.mp4"),
+        (2, "c.mp4"),
+        (4, "e.mp4"),
+        (5, "f.mp4"),
+        (6, "g.mp4"),
+    ] {
+        unread.push(index, &entry(name));
+    }
+    let order: Vec<_> = unread
+        .nearest_first()
+        .into_iter()
+        .map(|(path, _)| path)
+        .collect();
+    assert_eq!(
+        order,
+        ["e.mp4", "c.mp4", "f.mp4", "b.mp4", "g.mp4", "a.mp4"].map(std::path::PathBuf::from)
+    );
+}
+
+#[test]
+fn a_file_that_cannot_be_read_is_asked_again_once_readable() {
+    crate::test_support::gtk_test(
+        "ui::preview::tests::video::a_file_that_cannot_be_read_is_asked_again_once_readable",
+        || {
+            let directory = tempfile::tempdir().expect("media directory");
+            for name in ["a.mp4", "c.mp4"] {
+                std::fs::write(directory.path().join(name), MEDIA_BYTES).expect("clip");
+            }
+            let elsewhere = tempfile::tempdir().expect("link target folder");
+            let target = elsewhere.path().join("clip");
+            std::os::unix::fs::symlink(&target, directory.path().join("b.mp4"))
+                .expect("dangling link");
+            let (_directory, view) = listed(directory);
+            let (provider, drawer, video) = video_drawer(&view, 0);
+            let state = &drawer.state;
+            wait_until("the readable clips to be counted", || {
+                video.caption() == "1 of 2 in folder"
+            });
+
+            std::fs::write(&target, MEDIA_BYTES).expect("link target");
+            assert!(state.step_media(1, true));
+            let landed = view.browser().cursor_entry(0).expect("stepped cursor");
+            assert_eq!(landed.display_name, "c.mp4", "the unread link is skipped");
+            state.show(landed, Some(0));
+            ready(&provider, 1, "video/mp4");
+            wait_until("the failed read to be asked again", || {
+                video.caption() == "3 of 3 in folder"
+            });
             drawer.close();
         },
     );
