@@ -210,7 +210,7 @@ pub(in crate::ui) fn icon_for_name(name: &str) -> &'static str {
         ) => crate::assets::icons::PICTURES,
         Some(
             "mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v" | "mpeg" | "mpg" | "ogv" | "3gp" | "3g2"
-            | "flv" | "wmv" | "asf" | "m2ts" | "vob",
+            | "flv" | "wmv" | "asf" | "m2ts" | "vob" | "h264" | "264" | "h265" | "265" | "hevc",
         ) => crate::assets::icons::VIDEOS,
         Some("mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus" | "wma" | "aiff") => {
             crate::assets::icons::FILE_AUDIO

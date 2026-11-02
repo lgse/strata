@@ -3,9 +3,10 @@
 use super::{
     ArchiveDirectory, ArchiveFileEntry, ArchiveNode, MediaPreviewSize, PreviewContent,
     archive_preview_format, archive_preview_tree, bytes_support_named_family, content_family,
-    has_plain_text_extension, is_extensionless_dotfile, is_image_path, is_media_path,
-    is_non_executable_extensionless_dotfile, looks_like_text, normalize_preview_text,
-    read_supports_named_family, reconcile_with_sample,
+    guess_content_type, has_plain_text_extension, is_extensionless_dotfile, is_image_path,
+    is_media_path, is_non_executable_extensionless_dotfile, looks_like_text,
+    normalize_preview_text, read_supports_named_family, reconcile_with_sample,
+    refine_reported_content_type,
 };
 
 #[test]
@@ -39,11 +40,40 @@ fn recognizes_image_paths_for_metadata_probes() {
     assert!(!is_image_path(std::path::Path::new("notes.txt")));
     assert!(is_media_path(std::path::Path::new("movie.mp4")));
     assert!(is_media_path(std::path::Path::new("song.flac")));
-    for name in ["stream.h264", "STREAM.H264"] {
+    for (name, expected) in [
+        ("stream.h264", "video/h264"),
+        ("STREAM.H264", "video/h264"),
+        ("stream.264", "video/h264"),
+        ("stream.h265", "video/h265"),
+        ("stream.265", "video/h265"),
+        ("stream.HEVC", "video/h265"),
+    ] {
         assert!(is_media_path(std::path::Path::new(name)), "{name}");
+        assert_eq!(guess_content_type(std::path::Path::new(name)).0, expected);
     }
-    for name in ["photo.png", "stream.h264.txt", "stream.h264.backup"] {
+    for name in ["photo.png", "stream.h264.txt", "stream.hevc.backup"] {
         assert!(!is_media_path(std::path::Path::new(name)), "{name}");
+    }
+}
+
+#[test]
+fn binary_sniffs_defer_to_the_name_and_byte_backed_types_win() {
+    for (reported, name, expected) in [
+        ("application/octet-stream", "clip.hevc", "video/h265"),
+        ("application/octet-stream", "clip.264", "video/h264"),
+        (
+            "application/octet-stream",
+            "blob.bin",
+            "application/octet-stream",
+        ),
+        ("text/plain", "notes.h264", "text/plain"),
+        ("video/mp4", "clip.h264", "video/mp4"),
+    ] {
+        assert_eq!(
+            refine_reported_content_type(reported, std::path::Path::new(name)),
+            expected,
+            "{reported} {name}"
+        );
     }
 }
 

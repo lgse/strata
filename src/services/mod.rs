@@ -97,7 +97,7 @@ pub(crate) use preview::{
     guess_content_type, has_plain_text_extension, is_extensionless_dotfile, is_image_path,
     is_media_path, is_model, is_non_executable_extensionless_dotfile, looks_like_text,
     model_format, normalize_preview_text, read_head_sample, read_supports_named_family,
-    reconcile_with_sample, split_archive_name, supports_remote_video,
+    reconcile_with_sample, refine_reported_content_type, split_archive_name, supports_remote_video,
 };
 pub(crate) use transfer_action::{
     CrossVolumeDropStrategy, DropActionInput, DropCommit, DropOverride, TransferKind,
