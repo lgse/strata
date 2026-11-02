@@ -336,14 +336,14 @@ impl ViewState {
         x: f64,
         y: f64,
     ) {
-        let Some(active_location) = self.browser.active_location() else {
+        let Some(location) = self.displayed_location() else {
             return;
         };
-        if active_location.breadcrumbs().is_empty() {
+        if location.breadcrumbs().is_empty() {
             return;
         }
         let home = Location::local(glib::home_dir());
-        let mut locations = visible_crumbs(&active_location, &home);
+        let mut locations = visible_crumbs(&location, &home);
         locations.reverse();
 
         let menu_box = gtk::Box::new(gtk::Orientation::Vertical, 2);

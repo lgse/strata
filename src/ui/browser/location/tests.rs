@@ -1273,6 +1273,11 @@ fn leaving_columns_names_the_active_folder_instead_of_its_mirrored_child() {
             let beta_path = Location::local(&beta).display_path();
             assert_eq!(view.browser().active_depth(), Some(0));
             assert_eq!(view.state.location_entry.text(), beta_path);
+            assert_eq!(
+                current_hierarchy_item(&view).as_deref(),
+                Some("beta"),
+                "the hierarchy menu marks the child the breadcrumbs name"
+            );
 
             view.set_view_mode(BrowserMode::List);
             assert_eq!(
@@ -1297,4 +1302,27 @@ fn leaving_columns_names_the_active_folder_instead_of_its_mirrored_child() {
             view.browser().clear_observer();
         },
     );
+}
+
+/// Opens the breadcrumb hierarchy menu and reads the label of the item marked current.
+fn current_hierarchy_item(view: &BrowserView) -> Option<String> {
+    let anchor = view.widget();
+    view.state.show_breadcrumb_hierarchy_menu(&anchor, 0.0, 0.0);
+    let popover = descendants(&anchor)
+        .into_iter()
+        .filter(|widget| widget.has_css_class("breadcrumb-popover"))
+        .find_map(|widget| widget.downcast::<gtk::Popover>().ok())
+        .expect("hierarchy menu");
+    let current = descendants(popover.upcast_ref())
+        .into_iter()
+        .filter(|widget| widget.has_css_class("breadcrumb-hierarchy-item"))
+        .find(|widget| widget.has_css_class("current"))
+        .and_then(|item| {
+            descendants(&item)
+                .into_iter()
+                .find_map(|widget| widget.downcast::<gtk::Label>().ok())
+        })
+        .map(|label| label.text().to_string());
+    popover.popdown();
+    current
 }
