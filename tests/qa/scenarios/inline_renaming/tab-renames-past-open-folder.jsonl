@@ -1,0 +1,29 @@
+{"scenario":"tab-renames-past-open-folder","modes":["columns"],"layout":"us","tree":{"delta":{"in-delta.txt":"delta\n"},"epsilon":{"in-epsilon.txt":"epsilon\n"},"notes":{},"alpha.txt":"alpha\n","beta.txt":"beta\n"},"variants":[{"id":"mirrored"},{"id":"unmirrored","prefs":{"columns_mirror_selection":false}}]}
+{"select_with_keyboard":"delta","variants":["mirrored"]}
+{"select":{"entry":"delta"},"variants":["unmirrored"]}
+{"wait":{"panes":["$root","delta"]},"message":"the child column of the selected folder 'delta' to open"}
+{"key":"Left","variants":["unmirrored"]}
+{"wait":{"focused":"delta"},"message":"the cursor to rest on 'delta'"}
+{"expect":{"panes":["$root","delta"]},"message":"the child column of 'delta' to stay open","variants":["unmirrored"]}
+{"key":"F2"}
+{"wait":{"field":{"name":"Rename","focused":true,"text":"delta"}},"message":"the rename editor to take focus on 'delta'"}
+{"type":"d2"}
+{"wait":{"field":{"name":"Rename","focused":true,"text":"d2"}},"message":"typing to replace the whole folder name"}
+{"key":"Tab"}
+{"fs":{"path":"d2/in-delta.txt","text":"delta\n"},"message":"Tab to rename the open folder 'delta' to 'd2' with its contents"}
+{"fs":{"path":"delta","exists":false},"timeout_ms":0}
+{"wait":{"entry":"d2","dir":"$root"},"message":"the renamed folder 'd2' to be listed"}
+{"wait":{"panes":["$root","epsilon"]},"message":"the child column to follow the rename on to 'epsilon'","variants":["mirrored"]}
+{"wait":{"panes":["$root","d2"]},"message":"the open child column to follow its folder's rename to 'd2'","variants":["unmirrored"]}
+{"expect":{"field":{"name":"Rename","focused":true,"text":"epsilon"}},"timeout_ms":5000,"hold_ms":500,"message":"Tab to move the rename on to 'epsilon' and keep it open once the folder rename lands"}
+{"type":"e2"}
+{"wait":{"field":{"name":"Rename","focused":true,"text":"e2"}},"message":"typing to replace the whole folder name"}
+{"key":"shift+Tab"}
+{"fs":{"path":"e2/in-epsilon.txt","text":"epsilon\n"},"message":"Shift+Tab to rename the folder 'epsilon' to 'e2' with its contents"}
+{"fs":{"path":"epsilon","exists":false},"timeout_ms":0}
+{"wait":{"entry":"e2","dir":"$root"},"message":"the renamed folder 'e2' to be listed"}
+{"wait":{"panes":["$root","d2"]},"message":"the child column to show 'd2', where the rename moved back to"}
+{"expect":{"field":{"name":"Rename","focused":true,"text":"d2"}},"timeout_ms":5000,"hold_ms":500,"message":"Shift+Tab to move the rename back to 'd2' and keep it open once the folder rename lands"}
+{"key":"Escape"}
+{"wait":{"editable_fields":0},"message":"Escape to close the rename editor on 'd2'"}
+{"fs":{"path":".","names":["alpha.txt","beta.txt","d2","e2","notes"]},"message":"only the two folders to be renamed"}

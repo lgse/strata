@@ -197,6 +197,26 @@ impl ViewState {
             || self.child_mirror_blocked(force)
     }
 
+    /// Tab carries a rename to the cursor's item, whose open editor would block the
+    /// delayed mirror, so the child column follows it at once. The item is being
+    /// renamed, not browsed, so no preview opens.
+    pub(in crate::ui::browser) fn mirror_rename_target(self: &Rc<Self>) {
+        if let Some(source) = self.pending_mirror.borrow_mut().take() {
+            source.remove();
+        }
+        let Some((depth, _, entry)) = self.browser.focused_item() else {
+            return;
+        };
+        if self.child_mirror_blocked_at(depth, true) {
+            return;
+        }
+        if entry.is_directory() {
+            self.browser.show_child(depth, entry.location);
+        } else {
+            self.browser.close_column(depth + 1);
+        }
+    }
+
     pub(in crate::ui::browser) fn apply_child_mirror(
         self: &Rc<Self>,
         depth: usize,

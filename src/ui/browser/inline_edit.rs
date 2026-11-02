@@ -517,6 +517,7 @@ impl ViewState {
         if let Some((depth, position, entry)) = self.browser.rename_item()
             && before != Some((depth, position))
         {
+            self.mirror_rename_target();
             self.rename_when_shown(depth, position, entry);
         }
         true
