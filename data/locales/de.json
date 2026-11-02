@@ -1018,6 +1018,7 @@
   "The change failed.": "Die Änderung ist fehlgeschlagen.",
   "The command opened in your terminal. Select Refresh when it finishes.": "Der Befehl wurde in Ihrem Terminal geöffnet. Wählen Sie „Aktualisieren“, wenn er abgeschlossen ist.",
   "The connection timed out. Check the host and firewall.": "Zeitüberschreitung bei der Verbindung. Prüfen Sie den Host und die Firewall.",
+  "The connection to the host failed. Check that the server is running, then try again.": "Die Verbindung zum Host ist fehlgeschlagen. Prüfen Sie, ob der Server läuft, und versuchen Sie es dann erneut.",
   "The connection was interrupted": "Die Verbindung wurde unterbrochen",
   "The connection was refused": "Die Verbindung wurde abgelehnt",
   "The connection was reset": "Die Verbindung wurde zurückgesetzt",

@@ -217,6 +217,13 @@ fn sftp_failure_guidance_and_host_key_rejection_do_not_reopen_credentials() {
             .expect("trust rejection is reportable")
             .contains("fingerprint")
     );
+    let lost = glib::Error::new(gio::IOErrorEnum::Failed, "Connection failed");
+    assert!(!mount_error_is_authentication_failure(&location, &lost));
+    assert!(
+        mount_failure_message(&location, &lost)
+            .expect("a dropped session is reportable")
+            .contains("server is running")
+    );
     let wrong_password = glib::Error::new(
         gio::IOErrorEnum::Failed,
         "Permission denied (publickey,password)",

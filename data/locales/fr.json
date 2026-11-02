@@ -1018,6 +1018,7 @@
   "The change failed.": "La modification a échoué.",
   "The command opened in your terminal. Select Refresh when it finishes.": "La commande s’est ouverte dans votre terminal. Sélectionnez Actualiser une fois qu’elle est terminée.",
   "The connection timed out. Check the host and firewall.": "La connexion a expiré. Vérifiez l’hôte et le pare-feu.",
+  "The connection to the host failed. Check that the server is running, then try again.": "La connexion à l’hôte a échoué. Vérifiez que le serveur est en marche, puis réessayez.",
   "The connection was interrupted": "La connexion a été interrompue",
   "The connection was refused": "La connexion a été refusée",
   "The connection was reset": "La connexion a été réinitialisée",

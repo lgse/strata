@@ -1018,6 +1018,7 @@
   "The change failed.": "変更に失敗しました。",
   "The command opened in your terminal. Select Refresh when it finishes.": "コマンドをターミナルで開きました。完了したら「更新」を選択してください。",
   "The connection timed out. Check the host and firewall.": "接続がタイムアウトしました。ホストとファイアウォールを確認してください。",
+  "The connection to the host failed. Check that the server is running, then try again.": "ホストへの接続に失敗しました。サーバーが動作していることを確認してから、もう一度お試しください。",
   "The connection was interrupted": "接続が中断されました",
   "The connection was refused": "接続が拒否されました",
   "The connection was reset": "接続がリセットされました",

@@ -996,6 +996,7 @@
   "The bubblewrap sandbox is not available": "bubblewrap 沙箱無法使用",
   "The command opened in your terminal. Select Refresh when it finishes.": "命令已在終端機中開啟。完成後請選擇「重新整理」。",
   "The connection timed out. Check the host and firewall.": "連線逾時。請檢查主機與防火牆。",
+  "The connection to the host failed. Check that the server is running, then try again.": "與主機的連線失敗。請確認伺服器正在執行，然後再試一次。",
   "The connection was interrupted": "連線中斷",
   "The connection was refused": "連線遭拒",
   "The connection was reset": "連線重設",

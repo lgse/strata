@@ -49,8 +49,9 @@ administrator before accepting.
 ## Failures
 
 Missing backends, name-resolution failures, refused connections, timeouts,
-unreachable hosts and rejected host keys each map to their own actionable
-message. Backend text that reaches a dialog has any URI user-info stripped first.
+unreachable hosts, rejected host keys and a session that ends during sign-in,
+such as when the server stops before a password reply, each map to their own
+actionable message. Backend text that reaches a dialog has any URI user-info stripped first.
 
 Logs never carry a host, path, username, or secret at the default level. `INFO`
 records only the backend name and outcome; the location is logged at `DEBUG`,
@@ -98,6 +99,7 @@ GVfs needs a live session bus.
 | Non-default port | Use `sftp://user@127.0.0.1:PORT/path` | Browses normally |
 | Changed host key | Restart the fixture, reconnect | Themed trust dialog or a `known_hosts` error; verify the new fingerprint before proceeding |
 | Connection refused | Stop the fixture, reconnect | "The host refused the connection…" |
+| Server gone at sign-in | With `STRATA_SFTP_PASSWORD` set, stop the fixture while the password prompt is open, then submit | "The connection to the host failed…" |
 | Host not found | Use a name that does not resolve | "That host couldn't be found…" |
 | Navigation | Breadcrumbs, history, Miller descent, hover peek | Behave as on local paths |
 | Export | Copy, drag out, and open a remote file | Handled by the default application |
