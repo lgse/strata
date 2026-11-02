@@ -274,7 +274,7 @@ fn deleting_focused_result_moves_focus_to_next_result() {
 }
 
 /// Ctrl+Z restores a hit trashed from the results, but stays the field's own
-/// text undo while the field has focus.
+/// text undo while the field has focus; Ctrl+Y on the results trashes it again.
 fn undo_trashed_result_case(mode: BrowserMode) -> Result<(), String> {
     let fixture = filtered_fixture(mode, false);
     let browser = fixture.view.browser();
@@ -320,6 +320,23 @@ fn undo_trashed_result_case(mode: BrowserMode) -> Result<(), String> {
     })?;
     ensure(field.text() == "report", || {
         format!("Ctrl+Z changed the filter text to {:?}", field.text())
+    })?;
+
+    ensure(field.grab_focus(), || {
+        "the field did not take focus".to_owned()
+    })?;
+    focus_first_result(&fixture, &field)?;
+    ensure(
+        settles(|| fixture.press(Key::y, ModifierType::CONTROL_MASK)),
+        || {
+            format!(
+                "Ctrl+Y on the results was not handled; focus on {}",
+                describe_focus(&fixture)
+            )
+        },
+    )?;
+    ensure(settles(|| !path.exists()), || {
+        format!("Ctrl+Y never trashed {hit:?} again")
     })
 }
 
