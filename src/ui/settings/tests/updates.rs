@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::*;
-use super::{FakeInstaller, GUARD_REJECTION, offered_request, page_text, wait_until};
+use super::{
+    FakeInstaller, GUARD_REJECTION, descendants, offered_request, page_text, wait_until,
+};
 use crate::test_support::gtk_test;
 
 fn seed_offer(row: &UpdateCheckRow) {
@@ -162,6 +164,60 @@ fn startup_results_initialize_and_update_existing_settings_rows() {
                 third.responsive_action.1.label().as_deref(),
                 Some("Check now")
             );
+        },
+    );
+}
+
+#[cfg(feature = "qa")]
+fn channel_choice(manager: &Rc<PreferenceManager>) -> (gtk::Widget, gtk::MenuButton) {
+    let (page, _) = updates_page(
+        manager.clone(),
+        Rc::new(|_| {}),
+        install_guard(),
+        UpdateMethod::InPlace,
+    );
+    let choice = descendants(&page)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::MenuButton>().ok())
+        .find(|button| {
+            crate::ui::accessibility::qa::naming(button)
+                .and_then(|naming| naming.label)
+                .as_deref()
+                == Some("Release channel")
+        })
+        .expect("the release channel choice");
+    (page, choice)
+}
+
+/// GTK reports each widget's own sensitivity over AT-SPI, not its row's, and the
+/// menu button's toggle is an accessible of its own.
+#[cfg(feature = "qa")]
+fn assert_channel_choice_sensitive(
+    (_page, choice): &(gtk::Widget, gtk::MenuButton),
+    sensitive: bool,
+    case: &str,
+) {
+    let toggle = choice.first_child().expect("the choice's toggle");
+    assert_eq!(choice.get_sensitive(), sensitive, "{case}: the choice");
+    assert_eq!(toggle.get_sensitive(), sensitive, "{case}: its toggle");
+}
+
+#[cfg(feature = "qa")]
+#[test]
+fn the_release_channel_choice_is_disabled_for_assistive_technology_without_automatic_checks() {
+    gtk_test(
+        "ui::settings::tests::updates::the_release_channel_choice_is_disabled_for_assistive_technology_without_automatic_checks",
+        || {
+            crate::ui::prepare_portal_ui();
+            let manager = PreferenceManager::shared();
+            // Turning checks on runs a check, so the page only sees them turned off.
+            manager.set_checks_for_updates(true);
+            let opened_checking = channel_choice(&manager);
+            assert_channel_choice_sensitive(&opened_checking, true, "opened with checks on");
+            manager.set_checks_for_updates(false);
+            assert_channel_choice_sensitive(&opened_checking, false, "checks turned off");
+            let opened_without = channel_choice(&manager);
+            assert_channel_choice_sensitive(&opened_without, false, "opened with checks off");
         },
     );
 }
