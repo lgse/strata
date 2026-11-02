@@ -440,15 +440,10 @@ impl SidebarState {
 }
 
 /// Like a mount row, a volume row is described by its path: where it is mounted,
-/// else where it would mount, such as an fstab entry's mount point, else its device.
+/// else its device.
 fn volume_description(volume: &gio::Volume, mounted: Option<&Location>) -> Option<String> {
-    if let Some(location) = mounted {
-        return Some(location.display_path());
-    }
-    volume
-        .activation_root()
-        .and_then(|root| location_for_file(&root))
-        .map(|location| location.display_path())
+    mounted
+        .map(Location::display_path)
         .or_else(|| gio_volume_unix_device(volume).map(String::from))
 }
 
