@@ -659,7 +659,10 @@ fn start_release_leaves_before_flush_and_restores_when_gio_fails_while_mounted()
             wait_until(move || settled_for_wait.get());
             assert_eq!(calls.get(), 1);
             assert_eq!(browser.active_location(), Some(Location::local(&mount)));
-            assert_eq!(other_window.active_location(), Some(Location::local(&inside)));
+            assert_eq!(
+                other_window.active_location(),
+                Some(Location::local(&inside))
+            );
             assert_eq!(
                 other_tab.active_location(),
                 Some(Location::local(outside.path()))

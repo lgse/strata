@@ -355,7 +355,11 @@ fn json_only_migrates_and_uninstall_restores_json() {
     assert!(json.is_file(), "uninstall should restore config.json");
     assert!(!yml.exists(), "uninstall should remove the YAML we created");
     let restored_bytes = fs::read(&json).expect("restored json");
-    assert_eq!(restored_bytes.last(), Some(&b'\n'), "restored JSON ends its last line");
+    assert_eq!(
+        restored_bytes.last(),
+        Some(&b'\n'),
+        "restored JSON ends its last line"
+    );
     let restored: serde_json::Value = serde_json::from_slice(&restored_bytes).expect("parse json");
     let mut expected = original;
     expected["keep"] = 2.into();
@@ -491,7 +495,10 @@ fn uninstall_restores_unchanged_originals_byte_for_byte() {
         for _ in 0..installs {
             install_at(&context, &executable).expect("install");
         }
-        assert_ne!(fs::read(config_yml(&context)).expect("managed"), original.as_bytes());
+        assert_ne!(
+            fs::read(config_yml(&context)).expect("managed"),
+            original.as_bytes()
+        );
         uninstall_at(&context).expect("uninstall");
         assert_eq!(
             fs::read_to_string(&path).expect("restored configuration"),

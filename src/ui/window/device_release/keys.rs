@@ -42,7 +42,10 @@ pub(in crate::ui::window) fn ids_for_volume(volume: &gio::Volume) -> DeviceIds {
 
 /// A release key named as the Devices row names the device.
 pub(in crate::ui::window) fn key_for_mount(mount: &gio::Mount) -> ReleaseKey {
-    labelled(system_key_for_mount(mount), PropertiesTarget::Mount(mount.clone()))
+    labelled(
+        system_key_for_mount(mount),
+        PropertiesTarget::Mount(mount.clone()),
+    )
 }
 
 fn system_key_for_mount(mount: &gio::Mount) -> ReleaseKey {
