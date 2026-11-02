@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: MIT
 
 use gtk::{glib, prelude::*, subclass::prelude::*};
+use std::cell::Cell;
 
 mod imp {
     use super::*;
 
-    /// Holds one child and reports the child's minimum width as its natural width. A
-    /// `gtk::FlowBox` chooses its column count from natural widths, so wrapping labels
-    /// would otherwise leave room for one card per line; the box still stretches each
-    /// card across its share of the line.
+    /// Holds one child and reports its minimum width, raised to `column_width`, as its
+    /// natural width. A `gtk::FlowBox` chooses its column count from natural widths, so
+    /// wrapping labels would otherwise leave room for one card per line, while a narrow
+    /// window can still shrink the child to its own minimum.
     #[derive(Default)]
-    pub struct CompactBin;
+    pub struct CompactBin {
+        pub column_width: Cell<i32>,
+    }
 
     #[glib::object_subclass]
     impl ObjectSubclass for CompactBin {
@@ -42,7 +45,7 @@ mod imp {
             };
             let measured = child.measure(orientation, for_size);
             if orientation == gtk::Orientation::Horizontal {
-                (measured.0, measured.0, -1, -1)
+                (measured.0, measured.0.max(self.column_width.get()), -1, -1)
             } else {
                 measured
             }
@@ -63,8 +66,9 @@ glib::wrapper! {
 }
 
 impl CompactBin {
-    pub(super) fn new(child: &impl IsA<gtk::Widget>) -> Self {
+    pub(super) fn new(child: &impl IsA<gtk::Widget>, column_width: i32) -> Self {
         let bin: Self = glib::Object::new();
+        bin.imp().column_width.set(column_width);
         child.set_parent(&bin);
         bin
     }

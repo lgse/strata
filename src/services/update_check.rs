@@ -706,7 +706,8 @@ fn cached_release_notes(cached: CachedReleaseNotes, tag: &str, now: u64) -> Opti
     }
     let url = release_page_url(tag);
     if let Some(checked_at) = cached.unavailable_at {
-        let fresh = now.saturating_sub(checked_at) < CHECK_INTERVAL.as_secs();
+        // A check stamped in the future came from a clock that ran ahead; recheck now.
+        let fresh = checked_at <= now && now - checked_at < CHECK_INTERVAL.as_secs();
         return fresh.then_some(ReleaseNotes::Unavailable { url });
     }
     let (notes, version) = cached.notes.zip(Version::parse(tag))?;

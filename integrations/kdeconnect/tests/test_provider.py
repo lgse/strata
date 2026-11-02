@@ -160,6 +160,13 @@ class MenuTests(unittest.TestCase):
         self.assertEqual(self.backend.submissions[0][1], "phone2")
         self.assertIn(leaves[1]["label"], reply["message"])
 
+    def test_notice_names_the_device_as_the_menu_showed_it(self):
+        leaf = self.menu()[0]
+        self.backend.devices["phone2"] = "Pixel"
+        reply = self.activate(leaf)
+        self.assertEqual(self.backend.submissions[0][1], "phone1")
+        self.assertIn("Files submitted to Pixel: 1.", reply["message"])
+
     def test_unusual_device_names_remain_valid_protocol_labels(self):
         for name in ("\n\x1b\t", "冬" * 200, "A\x00B", "normal"):
             with self.subTest(name=name):

@@ -28,8 +28,10 @@ mod tests;
 
 const TITLE: &str = "Integrations";
 const MAX_COLUMNS: u32 = 3;
-/// The narrowest card; the grid fits as many columns as this, or a card's content, allows.
-const MIN_CARD_WIDTH: i32 = 320;
+/// The narrowest card a window too narrow for one column shrinks to.
+const MIN_CARD_WIDTH: i32 = 240;
+/// The narrowest column; the grid fits as many as this, or a card's content, allows.
+const MIN_COLUMN_WIDTH: i32 = 320;
 
 type Checker = Arc<dyn Fn(&Entry) -> Vec<RequirementResult> + Send + Sync>;
 
@@ -478,7 +480,7 @@ impl Page {
             actions.append(&installed);
         }
         card.append(&self.requirements_section(entry, name));
-        let bin = CompactBin::new(&card);
+        let bin = CompactBin::new(&card, MIN_COLUMN_WIDTH);
         bin.set_widget_name(&format!("integration-{}-card", entry.id));
         bin.upcast()
     }

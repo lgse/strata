@@ -227,6 +227,7 @@ fn a_tag_without_a_release_is_cached_as_unavailable_until_the_recheck_interval()
             Some(unavailable.clone())
         );
         assert_eq!(cached_release_notes(cache.clone(), tag, recheck_at), None);
+        assert_eq!(cached_release_notes(cache.clone(), tag, 999), None);
         assert_eq!(cached_release_notes(cache, "v1.2.0", 1_000), None);
     }
 }

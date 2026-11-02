@@ -53,6 +53,7 @@ class Ticket:
     paths: tuple
     identities: tuple
     expires: float
+    label: str = ""
 
 
 def label(text, limit=90):
@@ -191,13 +192,15 @@ class Provider:
         self.tickets.clear()
         return {"version": 1, "event": "invalidate", "revision": self.revision}
 
-    def ticket(self, snapshot, device, paths, identities):
+    def ticket(self, snapshot, device, paths, identities, label):
         now = self.clock()
         key = (snapshot.owner, device, tuple(paths))
         t = self.tickets.get(key)
         if t is None or t.identities != identities or t.expires < now:
             t = Ticket(secrets.token_hex(24), snapshot.owner, device, tuple(paths), identities, now + 120)
             self.tickets[key] = t
+        # The notice names the device as the menu last showed it.
+        t.label = label
         self.tickets.move_to_end(key)
         while len(self.tickets) > 256:
             self.tickets.popitem(last=False)
@@ -215,7 +218,7 @@ class Provider:
             return []
         actions = []
         for device, name in device_labels(snapshot.devices).items():
-            t = self.ticket(snapshot, device, paths, identities)
+            t = self.ticket(snapshot, device, paths, identities, name)
             actions.append({"id": action_id(device), "label": name, "placement": "send-to",
                             "context": t.token})
         return actions
@@ -253,7 +256,7 @@ class Provider:
             return result("rejected", message)
         return result(
             "accepted", tr("Files submitted to {device}: {count}. KDE Connect handles transfer progress and results.",
-               device=device_labels(snapshot.devices)[t.device], count=total),
+               device=t.label, count=total),
         )
 
     def handle(self, request):
