@@ -730,16 +730,17 @@ impl ChooserState {
                     return;
                 }
             };
-            if !destinations.existing_files {
+            if destinations.existing.is_empty() {
                 state.complete_paths(destinations.paths, None);
                 return;
             }
 
-            state.confirm_overwrite(destinations.paths);
+            state.confirm_overwrite(destinations);
         });
     }
 
-    pub(super) fn confirm_overwrite(self: &Rc<Self>, paths: Vec<PathBuf>) {
+    pub(super) fn confirm_overwrite(self: &Rc<Self>, destinations: DestinationCheck) {
+        let DestinationCheck { paths, existing } = destinations;
         let Some(overlay) = self.window.child().and_downcast::<gtk::Overlay>() else {
             return;
         };
@@ -748,7 +749,7 @@ impl ChooserState {
             root.set_blurred(true);
         }
         let names = crate::i18n::list(
-            paths
+            existing
                 .iter()
                 .take(3)
                 .filter_map(|path| path.file_name())
@@ -756,7 +757,7 @@ impl ChooserState {
         );
         let layout = message_dialog_layout(
             crate::assets::icons::COPY,
-            &crate::i18n::tr(if paths.len() > 1 {
+            &crate::i18n::tr(if existing.len() > 1 {
                 "Replace existing files?"
             } else {
                 "Replace existing file?"
@@ -768,7 +769,7 @@ impl ChooserState {
         layout
             .body
             .append(&crate::ui::controls::message_dialog_description(
-                &crate::i18n::tr(if paths.len() > 1 {
+                &crate::i18n::tr(if existing.len() > 1 {
                     "One or more destination files already exist. Continuing may overwrite them."
                 } else {
                     "The destination file already exists. Continuing may overwrite it."
