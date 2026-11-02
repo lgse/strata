@@ -36,20 +36,12 @@ impl crate::services::FileSource for Listing {
 
     fn start_watch(
         &self,
-        location: Location,
-        include_hidden: bool,
-        began_on: Option<crate::services::ItemIdentity>,
+        request: crate::services::WatchRequest,
         notify: Rc<dyn Fn(crate::services::DirectoryChange)>,
         report: Rc<dyn Fn(crate::services::Watching)>,
     ) -> crate::services::LoadHandle {
         if self.watched {
-            crate::adapters::LocalFileSource.start_watch(
-                location,
-                include_hidden,
-                began_on,
-                notify,
-                report,
-            )
+            crate::adapters::LocalFileSource.start_watch(request, notify, report)
         } else {
             report(crate::services::Watching::Unavailable);
             crate::services::LoadHandle::new(|| {})

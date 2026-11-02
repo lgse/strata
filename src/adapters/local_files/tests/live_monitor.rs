@@ -19,9 +19,11 @@ fn live_watch_of(
     let reported = Rc::new(Cell::new(None));
     let report = reported.clone();
     let handle = LocalFileSource.start_watch(
-        location,
-        false,
-        began_on,
+        crate::services::WatchRequest {
+            location,
+            include_hidden: false,
+            began_on,
+        },
         notify,
         Rc::new(move |watching| report.set(Some(watching))),
     );
@@ -398,9 +400,11 @@ fn a_monitor_is_made_and_released_on_a_worker_while_the_window_keeps_running()
         glib::timeout_add_local_once(Duration::from_millis(10), move || tick.set(true));
 
         let handle = LocalFileSource.start_watch(
-            Location::local(&folder),
-            false,
-            None,
+            crate::services::WatchRequest {
+                location: Location::local(&folder),
+                include_hidden: false,
+                began_on: None,
+            },
             Rc::new(move |change| {
                 let _held = &probe;
                 collected(change);
@@ -459,9 +463,11 @@ fn a_folder_on_a_mount_that_stopped_answering_gets_no_monitor() -> Result<(), Bo
         let reported = Rc::new(Cell::new(None));
         let report = reported.clone();
         let handle = LocalFileSource.start_watch(
-            Location::local(&folder),
-            false,
-            None,
+            crate::services::WatchRequest {
+                location: Location::local(&folder),
+                include_hidden: false,
+                began_on: None,
+            },
             Rc::new(|_| {}),
             Rc::new(move |watching| report.set(Some(watching))),
         );

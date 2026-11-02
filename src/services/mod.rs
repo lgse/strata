@@ -52,8 +52,8 @@ pub(crate) use dropped_content::{
 pub use file_source::{
     DirectoryChange, DirectoryEvent, DirectoryRequest, DirectoryStamp, FileSource, LoadHandle,
     LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, MountToken,
-    RequestId, Responsiveness, StampAnswer, UriCredentials, Watching, backend_unavailable_message,
-    sanitize_uri_credentials, validate_uri_credentials,
+    RequestId, Responsiveness, StampAnswer, UriCredentials, WatchRequest, Watching,
+    backend_unavailable_message, sanitize_uri_credentials, validate_uri_credentials,
 };
 pub(crate) use file_source::{
     INVALID_NAME_REASON, UNEXPECTED_SYSTEM_ERROR, describes_refused_credentials, error_detail,

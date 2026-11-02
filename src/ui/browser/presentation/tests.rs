@@ -57,13 +57,11 @@ impl FileSource for Mount {
 
     fn start_watch(
         &self,
-        location: Location,
-        include_hidden: bool,
-        began_on: Option<crate::services::ItemIdentity>,
+        request: crate::services::WatchRequest,
         notify: Rc<dyn Fn(DirectoryChange)>,
         report: Rc<dyn Fn(Watching)>,
     ) -> LoadHandle {
-        LocalFileSource.start_watch(location, include_hidden, began_on, notify, report)
+        LocalFileSource.start_watch(request, notify, report)
     }
 
     fn probe_stamp(&self, location: Location, emit: Rc<dyn Fn(StampAnswer)>) -> LoadHandle {

@@ -603,6 +603,15 @@ pub struct MetadataUpdate {
     pub listable: MetadataValue<bool>,
 }
 
+/// A folder to watch for changes.
+#[derive(Clone, Debug)]
+pub struct WatchRequest {
+    pub location: Location,
+    pub include_hidden: bool,
+    /// The folder's identity from the load that asked for the watch.
+    pub began_on: Option<ItemIdentity>,
+}
+
 #[derive(Clone, Debug)]
 pub struct MetadataRequest {
     /// Fills for a superseded load are dropped, never applied to a reloaded column.
@@ -700,16 +709,13 @@ pub trait FileSource {
         None
     }
 
-    /// `began_on` is the folder's identity from the load that asked for the watch.
     fn start_watch(
         &self,
-        location: Location,
-        include_hidden: bool,
-        _began_on: Option<ItemIdentity>,
+        request: WatchRequest,
         notify: Rc<dyn Fn(DirectoryChange)>,
         report: Rc<dyn Fn(Watching)>,
     ) -> LoadHandle {
-        match self.watch(location, include_hidden, notify) {
+        match self.watch(request.location, request.include_hidden, notify) {
             Some(watch) => {
                 report(Watching::Live);
                 watch

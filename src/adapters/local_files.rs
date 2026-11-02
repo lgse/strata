@@ -37,8 +37,8 @@ use crate::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, DirectoryStamp, Evidence, FileSource,
         IdentityTraits, ItemIdentity, LoadHandle, LocationValidationError, MetadataOutcome,
         MetadataRequest, MetadataUpdate, MountToken, Proof, RequestId, Responsiveness, StampAnswer,
-        Watching, backend_unavailable_message, bytes_support_named_family, file_activity,
-        is_hidden_name, is_image_path, is_media_path, link_target_kind, listed_kind,
+        WatchRequest, Watching, backend_unavailable_message, bytes_support_named_family,
+        file_activity, is_hidden_name, is_image_path, is_media_path, link_target_kind, listed_kind,
         native_hidden_names, sanitize_failure_message, symlink_kind,
     },
 };
@@ -509,14 +509,12 @@ impl FileSource for LocalFileSource {
 
     fn start_watch(
         &self,
-        location: Location,
-        include_hidden: bool,
-        began_on: Option<ItemIdentity>,
+        request: WatchRequest,
         notify: Rc<dyn Fn(DirectoryChange)>,
         report: Rc<dyn Fn(Watching)>,
     ) -> LoadHandle {
         let started = monitors::start(
-            &location,
+            &request.location,
             super::local_operations::Watched::Folder,
             gio::FileMonitorFlags::WATCH_MOVES,
         );
@@ -525,17 +523,12 @@ impl FileSource for LocalFileSource {
         let task = glib::MainContext::default().spawn_local(async move {
             match started.await {
                 Some(monitor) => {
-                    let folder = WatchedFolder {
-                        location,
-                        include_hidden,
-                        began_on,
-                    };
-                    slot.replace(Some(connect_monitor(monitor, folder, notify)));
+                    slot.replace(Some(connect_monitor(monitor, request, notify)));
                     report(Watching::Live);
                 }
                 None => {
                     tracing::debug!(
-                        location = %location.diagnostic_path(),
+                        location = %request.location.diagnostic_path(),
                         "directory monitoring unavailable"
                     );
                     report(Watching::Unavailable);

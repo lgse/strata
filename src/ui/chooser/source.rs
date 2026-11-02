@@ -142,9 +142,7 @@ impl FileSource for ChooserFileSource {
 
     fn start_watch(
         &self,
-        location: Location,
-        include_hidden: bool,
-        began_on: Option<ItemIdentity>,
+        request: WatchRequest,
         notify: Rc<dyn Fn(DirectoryChange)>,
         report: Rc<dyn Fn(Watching)>,
     ) -> LoadHandle {
@@ -159,15 +157,14 @@ impl FileSource for ChooserFileSource {
                 change,
             ));
         });
-        let (Some(root), Some(path)) = (self.root_limit.clone(), location.native_path()) else {
-            return self
-                .source
-                .start_watch(location, include_hidden, began_on, notify, report);
+        let (Some(root), Some(path)) = (self.root_limit.clone(), request.location.native_path())
+        else {
+            return self.source.start_watch(request, notify, report);
         };
         let path = path.to_owned();
         let source = self.source.clone();
         after_containment(root, path, move |answer| match answer {
-            Ok(()) => Some(source.start_watch(location, include_hidden, began_on, notify, report)),
+            Ok(()) => Some(source.start_watch(request, notify, report)),
             Err(_) => {
                 report(Watching::Unavailable);
                 None

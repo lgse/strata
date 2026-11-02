@@ -24,23 +24,16 @@ pub(super) struct ConnectedMonitor {
     monitor: monitors::BareMonitor,
 }
 
-/// The folder a watch follows, with the identity its load found (`began_on`).
-pub(super) struct WatchedFolder {
-    pub(super) location: Location,
-    pub(super) include_hidden: bool,
-    pub(super) began_on: Option<ItemIdentity>,
-}
-
 pub(super) fn connect_monitor(
     monitor: monitors::BareMonitor,
-    folder: WatchedFolder,
+    request: WatchRequest,
     notify: Rc<dyn Fn(DirectoryChange)>,
 ) -> ConnectedMonitor {
-    let WatchedFolder {
+    let WatchRequest {
         location,
         include_hidden,
         began_on,
-    } = folder;
+    } = request;
     let cancelled = Rc::new(Cell::new(false));
     let pending = Rc::new(RefCell::new(HashMap::<
         PendingMonitorKey,

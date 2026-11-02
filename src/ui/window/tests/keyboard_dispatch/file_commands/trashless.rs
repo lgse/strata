@@ -55,19 +55,11 @@ impl crate::services::FileSource for TrashlessLocal {
 
     fn start_watch(
         &self,
-        location: Location,
-        include_hidden: bool,
-        began_on: Option<crate::services::ItemIdentity>,
+        request: crate::services::WatchRequest,
         notify: Rc<dyn Fn(crate::services::DirectoryChange)>,
         report: Rc<dyn Fn(crate::services::Watching)>,
     ) -> crate::services::LoadHandle {
-        crate::adapters::LocalFileSource.start_watch(
-            location,
-            include_hidden,
-            began_on,
-            notify,
-            report,
-        )
+        crate::adapters::LocalFileSource.start_watch(request, notify, report)
     }
 }
 
