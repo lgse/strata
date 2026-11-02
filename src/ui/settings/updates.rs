@@ -78,7 +78,7 @@ pub(super) fn updates_page(
     preferences.append(&update_row);
     let options = settings_group(&preferences, "PREFERENCES");
     options.append(&automatic_updates_option(&manager, update_method));
-    let channel_row = append_channel_option(&options, manager.clone(), managed, update_method);
+    append_channel_option(&options, manager.clone(), managed, update_method);
     if update_method == UpdateMethod::InPlace {
         options.append(
             &release_picker::release_picker(
@@ -90,7 +90,6 @@ pub(super) fn updates_page(
         );
     }
     append_current_release_notes(&preferences);
-    bind_channel_row_to_auto_check(&manager, &channel_row);
     bind_auto_check_toggle(&manager, &preferences, run_check.clone(), update_notice);
 
     let page = scrollable_page(&preferences, None);
@@ -142,14 +141,6 @@ fn append_current_release_notes(preferences: &gtk::Box) {
     });
     preferences.append(&expander);
     load_current_release_notes(&current_notes);
-}
-
-fn bind_channel_row_to_auto_check(manager: &Rc<PreferenceManager>, channel_row: &gtk::Box) {
-    manager.bind_preference(
-        channel_row,
-        PreferenceManager::checks_for_updates,
-        |widget, enabled| widget.set_sensitive(enabled),
-    );
 }
 
 /// Toggling automatic checks on runs a check at once; off withdraws the sidebar notice.

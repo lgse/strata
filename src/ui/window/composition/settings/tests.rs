@@ -56,7 +56,12 @@ fn settings_launcher_refuses_to_open_over_another_modal() {
                 .arm_chord(crate::ui::tenxer_mode::Chord::Go);
             launcher.show();
             assert_eq!(launcher.shortcuts.armed_chord(), None);
-            let settings = launcher.layer.borrow().clone().expect("Settings layer");
+            let settings = launcher
+                .layer
+                .borrow()
+                .as_ref()
+                .map(|layer| layer.widget.clone())
+                .expect("Settings layer");
             assert!(settings.is_visible());
             assert!(launcher.button.has_css_class("active"));
             settings.set_visible(false);
@@ -77,7 +82,10 @@ fn settings_launcher_refuses_to_open_over_another_modal() {
                 settings.is_visible(),
                 "hidden modals must not block Settings"
             );
-            assert_eq!(launcher.layer.borrow().as_ref(), Some(&settings));
+            assert_eq!(
+                launcher.layer.borrow().as_ref().map(|layer| &layer.widget),
+                Some(&settings)
+            );
             window.destroy();
         },
     );

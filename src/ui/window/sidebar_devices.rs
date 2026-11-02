@@ -179,11 +179,14 @@ impl SidebarState {
         if let Some(id) = PropertiesTarget::Volume(volume.clone()).label_id() {
             device_labels::bind_row_label(&row, &self.preference_manager, &id, &name);
         }
-        crate::ui::accessibility::set_description(&row, Some(&name));
         let mounted_location = volume
             .get_mount()
             .as_ref()
             .and_then(|mount| location_for_file(&mount.root()));
+        crate::ui::accessibility::set_description(
+            &row,
+            volume_description(&volume, mounted_location.as_ref()).as_deref(),
+        );
         if self.hides_volume(&volume, mounted_location.as_ref()) {
             return None;
         }
@@ -427,6 +430,19 @@ impl SidebarState {
             self.append_sidebar_row(row);
         }
     }
+}
+
+/// Like a mount row, a volume row is described by its path: where it is mounted,
+/// else where it would mount, such as an fstab entry's mount point, else its device.
+fn volume_description(volume: &gio::Volume, mounted: Option<&Location>) -> Option<String> {
+    if let Some(location) = mounted {
+        return Some(location.display_path());
+    }
+    volume
+        .activation_root()
+        .and_then(|root| location_for_file(&root))
+        .map(|location| location.display_path())
+        .or_else(|| gio_volume_unix_device(volume).map(String::from))
 }
 
 fn disconnect_mount(parent: &gtk::Widget, mount: gio::Mount) {

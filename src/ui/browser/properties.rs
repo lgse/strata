@@ -10,8 +10,8 @@ use crate::ui::browser::paths::{PinAction, compact_display_path, is_trash_root, 
 use crate::ui::browser::{PinStatus, ViewState};
 use crate::ui::controls::{ModalTone, form_check_button, modal_layout, properties_action};
 use crate::ui::modal::{
-    ModalHost, close_on_escape, dismiss_modal_layer, modal_layer, remember_modal_focus,
-    show_error_dialog,
+    ModalHost, close_on_escape, dismiss_modal_layer, focus_modal_layer, modal_layer,
+    remember_modal_focus, show_error_dialog,
 };
 use gtk::prelude::*;
 use gtk::{gio, glib};
@@ -812,7 +812,7 @@ impl ViewState {
         close_on_escape(&layer, move || {
             dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
         });
-        layer.grab_focus();
+        focus_modal_layer(&layer);
 
         if measuring_directory {
             let measurement = PropertiesMeasurement::new(
@@ -952,7 +952,7 @@ impl ViewState {
         close_on_escape(&layer, move || {
             dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
         });
-        layer.grab_focus();
+        focus_modal_layer(&layer);
 
         let measurement =
             PropertiesMeasurement::new(&size, &size_spinner, Some(&items), &measurement_warning);

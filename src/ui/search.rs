@@ -131,9 +131,7 @@ impl SearchDialog {
         self.state.generation.set(self.state.generation.get() + 1);
         self.state.search.borrow_mut().take();
         self.state.history.replace(Some(history));
-        self.state
-            .field
-            .set_placeholder_text(Some(&crate::i18n::tr("Jump to a folder…")));
+        set_field_prompt(&self.state.field, &crate::i18n::tr("Jump to a folder…"));
         crate::ui::accessibility::set_description(
             &self.state.field,
             Some(&crate::i18n::tr("Folders previously visited in Strata")),
@@ -295,10 +293,15 @@ fn refresh_unless_reconciling(state: &SearchState) {
     }
 }
 
+/// The palette serves file search and folder jumps, so its field is named after
+/// the mode it is in rather than the prompt it was built with.
+fn set_field_prompt(field: &gtk::Entry, prompt: &str) {
+    field.set_placeholder_text(Some(prompt));
+    crate::ui::accessibility::set_label(field, prompt);
+}
+
 fn reset_for_search(state: &SearchState, roots: &[PathBuf]) {
-    state
-        .field
-        .set_placeholder_text(Some(&crate::i18n::tr("Search files and folders…")));
+    set_field_prompt(&state.field, &crate::i18n::tr("Search files and folders…"));
     let locations = roots
         .iter()
         .map(|root| root.display().to_string())
