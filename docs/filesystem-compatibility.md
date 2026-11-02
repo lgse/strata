@@ -1856,9 +1856,10 @@ interface thread makes, and its stall watchdog names the call the interface thre
 ### Request lanes
 
 These worker requests go through their mount's lane in `src/adapters/volume/mount_lanes.rs`: folder
-loads, probes, monitor creation, the release before an operation, the leftover review and its sweep
-of stale probes, imports, exports and program checks of custom actions, and the checks and
-background re-lists of [changes made elsewhere](#changes-made-elsewhere). A lane is keyed by the
+loads, probes, monitor creation, the look a monitor takes at its folder's path after a batch of
+changes, the search for a departed folder by its identity, the release before an operation, the
+leftover review and its sweep of stale probes, imports, exports and program checks of custom
+actions, and the checks and background re-lists of [changes made elsewhere](#changes-made-elsewhere). A lane is keyed by the
 mount's id once a `statx` answer has named it. Until then a request is keyed by its path and the
 mount the table places it on, so a dead target of a symbolic link trips only that path and what lies
 below it, never the home folder the link sits in. A GVfs location is keyed by its scheme, user,
@@ -1957,6 +1958,17 @@ mount that stopped answering, monitors on every folder deliver nothing, and late
 cancels wait, until that server answers. The window stays usable, and folders that are
 [checked](#changes-made-elsewhere) still are, but other folders stop updating by themselves
 meanwhile.
+
+Inotify watches a folder, not its path: when another program renames or moves one of the folder's
+ancestors, the monitor sees nothing and goes on to report later changes under the old path. So after
+each batch of changes the folder is looked up at its path again, as background work on the lane,
+skipped while the lane is busy or stalled. When the path holds no folder, or a folder that the
+mount's [identity rule](#identity) proves to be another than the one the folder's load found, the
+monitor reports its folder's removal, and the browser checks where the folder went, as [Browser
+directory-event routing](architecture.md#browser-directory-event-routing) describes. Searching for
+it lists the nearest ancestor that still exists, as an interactive request on the lane, and never
+looks into a mount point, which cannot be renamed and could be a server that stopped answering or an
+automount.
 
 A column counts as unmonitored until its monitor is live. Once it is, the folder's change stamp is
 read again, and a change since the load re-lists the folder once. Before Linux 6.13, a change in

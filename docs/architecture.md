@@ -427,8 +427,11 @@ controller; event routing does not change those policies.
 A folder's own directory monitor reports its deletion, its rename, and its move alike, as
 the removal of the folder itself. Inotify follows the folder rather than its path, so it
 reports nothing when an ancestor is renamed or moved and goes on to report later changes
-under the old path; the local adapter therefore looks the folder up at its path, off the
-main thread, after each batch of changes, and reports its removal when it is not there.
+under the old path; the local adapter therefore looks the folder up at its path, on its
+mount's lane, after each batch of changes, and reports its removal when the path holds no
+folder or one that the identity recorded by the load that asked for the monitor proves to
+be another. On mounts that renumber folders nothing proves that, so there a folder put
+back at the old path keeps receiving the moved folder's changes until F5.
 A column whose parent column is its parent folder leaves that report to the parent
 column's monitor, which sees the departure as a change to one of its entries, and checks
 only that the first column of that chain is still where it was, since no open monitor sees

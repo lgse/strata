@@ -250,9 +250,10 @@ when the filter is cleared and opened again.
 When another program renames the open folder itself, or a folder that holds it, the view
 follows it and a filter typed in that folder ends, while filters and **Ctrl+K** searches
 rooted above it follow the rename. A renamed folder above the open one is noticed at the
-next change in the open folder, or on **F5**. When the open folder is deleted or moved into another folder, the view
-returns to its nearest parent that still exists, or reloads the folder if it already
-exists again; either way the filter ends. Neither adds a history entry.
+next change in the open folder, or on **F5**. When the open folder is deleted or moved
+into another folder, the view returns to its nearest parent that still exists, or reloads
+the folder if it already exists again; either way the filter ends. Neither adds a history
+entry.
 
 ## Preview while filtering
 
