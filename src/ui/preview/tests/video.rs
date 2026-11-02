@@ -280,29 +280,8 @@ fn steps_skip_files_named_as_video_whose_bytes_are_text() {
                 ("notes.h264", b"just some notes\n"),
             ]);
             let browser = view.browser();
-            let provider = Rc::new(Provider::default());
-            let drawer = PreviewDrawer::new(provider.clone(), false);
-            drawer.state.keyboard_view.replace(Some(view.downgrade()));
-            drawer.observe_browser(&browser);
-            crate::ui::preferences::PreferenceManager::shared().set_preview_autoplay(false);
+            let (provider, drawer, video) = video_drawer(&view, position_of(&view, "alpha.h264"));
             let state = &drawer.state;
-            let alpha = (0..6)
-                .find(|position| {
-                    browser
-                        .entry_at(0, *position)
-                        .is_some_and(|entry| entry.display_name == "alpha.h264")
-                })
-                .expect("alpha listed");
-            browser.select(0, alpha);
-            drawer.show(browser.entry_at(0, alpha).expect("alpha"), Some(0));
-            ready(&provider, 0, "video/h264");
-            let video = state
-                .video
-                .borrow()
-                .as_ref()
-                .expect("video view")
-                .view
-                .clone();
             wait_until("the header to count only real videos", || {
                 video.caption().ends_with(" of 4 in folder")
             });
@@ -340,6 +319,18 @@ fn steps_skip_files_named_as_video_whose_bytes_are_text() {
             drawer.close();
         },
     );
+}
+
+fn position_of(view: &crate::ui::browser::BrowserView, name: &str) -> usize {
+    let browser = view.browser();
+    (0..)
+        .take_while(|position| browser.entry_at(0, *position).is_some())
+        .find(|position| {
+            browser
+                .entry_at(0, *position)
+                .is_some_and(|entry| entry.display_name == name)
+        })
+        .unwrap_or_else(|| panic!("{name} listed"))
 }
 
 fn video_drawer(

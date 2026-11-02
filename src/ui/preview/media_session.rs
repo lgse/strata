@@ -182,6 +182,46 @@ impl PreviewState {
         }
     }
 
+    /// The files of `named` that hold media, plus the shown `current` one; files not read
+    /// yet stay out and are read, refreshing the shown player as they answer.
+    fn media_sequence(
+        self: &Rc<Self>,
+        named: Vec<FileEntry>,
+        family: MediaFamily,
+        current: &crate::model::Location,
+    ) -> Vec<FileEntry> {
+        let checks = self.media_checks.borrow();
+        checks.keep_only(&named);
+        let shown = named
+            .iter()
+            .position(|entry| entry.location == *current)
+            .unwrap_or_default();
+        let mut unread = media_content::Unread::new(shown);
+        let files = named
+            .into_iter()
+            .enumerate()
+            .filter(|(index, entry)| {
+                let media = checks.answer(entry, family);
+                if media.is_none() {
+                    unread.push(*index, entry);
+                }
+                media == Some(true) || entry.location == *current
+            })
+            .map(|(_, entry)| entry)
+            .collect();
+        drop(checks);
+        let weak = Rc::downgrade(self);
+        self.media_checks
+            .borrow_mut()
+            .read(current, unread, move || {
+                weak.upgrade().is_some_and(|state| {
+                    state.refresh_listing_position();
+                    state.stepping_family().is_some()
+                })
+            });
+        files
+    }
+
     /// The shown file anchors the sequence; other files join once their bytes are known
     /// to be media, and the shown player's position updates when they are.
     pub(super) fn family_listing(
@@ -198,35 +238,7 @@ impl PreviewState {
         let current = self.current.borrow().as_ref()?.location.clone();
         let named =
             view.displayed_entries_matching(depth, |entry| entry_family(entry) == Some(family));
-        let checks = self.media_checks.borrow();
-        checks.keep_only(&named);
-        let shown = named
-            .iter()
-            .position(|entry| entry.location == current)
-            .unwrap_or_default();
-        let mut unread = media_content::Unread::new(shown);
-        let files: Vec<FileEntry> = named
-            .into_iter()
-            .enumerate()
-            .filter(|(index, entry)| {
-                let media = checks.answer(entry, family);
-                if media.is_none() {
-                    unread.push(*index, entry);
-                }
-                media == Some(true) || entry.location == current
-            })
-            .map(|(_, entry)| entry)
-            .collect();
-        drop(checks);
-        let weak = Rc::downgrade(self);
-        self.media_checks
-            .borrow_mut()
-            .read(&current, unread, move || {
-                weak.upgrade().is_some_and(|state| {
-                    state.refresh_listing_position();
-                    state.stepping_family().is_some()
-                })
-            });
+        let files = self.media_sequence(named, family, &current);
         let position = |location: &crate::model::Location| {
             files.iter().position(|entry| entry.location == *location)
         };
