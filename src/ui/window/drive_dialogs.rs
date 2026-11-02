@@ -95,34 +95,74 @@ impl PropertiesTarget {
 #[derive(Clone, Copy)]
 enum PropertyAction {
     Label,
-    Eject,
+    Release,
     Format,
+}
+
+/// The footer actions Properties offers for one target.
+struct PropertyActionSet {
+    editable: bool,
+    can_label: bool,
+    release: Option<Rc<dyn Fn()>>,
 }
 
 fn property_action_control(
     action: PropertyAction,
-    editable: bool,
-    can_release: bool,
-    can_label: bool,
+    actions: &PropertyActionSet,
 ) -> Option<gtk::Button> {
+    let can_release = actions.release.is_some();
     let available = match action {
-        PropertyAction::Label => can_label,
-        PropertyAction::Format => editable,
-        PropertyAction::Eject => editable || can_release,
+        PropertyAction::Label => actions.can_label,
+        PropertyAction::Format => actions.editable,
+        PropertyAction::Release => actions.editable || can_release,
     };
     if !available {
         return None;
     }
     let (label, icon, tone) = match action {
         PropertyAction::Label => ("Set label", assets::icons::PENCIL, ModalTone::Accent),
-        PropertyAction::Eject => ("Eject", assets::icons::EJECT, ModalTone::Accent),
+        PropertyAction::Release => ("Eject", assets::icons::EJECT, ModalTone::Accent),
         PropertyAction::Format => ("Format", assets::icons::SHREDDER, ModalTone::Danger),
     };
     let button = properties_action(icon, label, tone);
-    if matches!(action, PropertyAction::Eject) {
+    if matches!(action, PropertyAction::Release) {
         button.set_sensitive(can_release);
     }
     Some(button)
+}
+
+/// Adds the footer actions. Only Set label may take the initial focus, so
+/// Enter never releases or formats the device.
+fn append_property_actions(
+    shell: &ModalShell,
+    actions: &PropertyActionSet,
+    run: Rc<dyn Fn(PropertyAction)>,
+) {
+    shell
+        .layout
+        .actions
+        .set_visible(actions.editable || actions.can_label || actions.release.is_some());
+    for action in [
+        PropertyAction::Label,
+        PropertyAction::Release,
+        PropertyAction::Format,
+    ] {
+        let Some(button) = property_action_control(action, actions) else {
+            continue;
+        };
+        let layer = shell.layer.clone();
+        let overlay = shell.overlay.clone();
+        let root = shell.blurred_root.clone();
+        let run = run.clone();
+        button.connect_clicked(move |_| {
+            dismiss_modal_layer(&layer, &overlay, root.as_ref());
+            run(action);
+        });
+        shell.layout.actions.append(&button);
+        if matches!(action, PropertyAction::Label) {
+            button.grab_focus();
+        }
+    }
 }
 
 struct ModalShell {
@@ -580,7 +620,18 @@ pub(super) fn show_drive_properties(
     );
 
     shell.layout.body.append(&grid);
+    prepare_properties_footer(&shell);
+    let actions = PropertyActionSet {
+        editable: drive_ops::is_eligible(volume.as_ref()),
+        can_label: target.label_id().is_some(),
+        release: on_release,
+    };
+    let run = property_action_runner(parent, target, actions.release.clone());
+    append_property_actions(&shell, &actions, run);
+}
 
+/// Replaces Cancel and Close with a footer that stacks on narrow windows.
+fn prepare_properties_footer(shell: &ModalShell) {
     shell.layout.confirm.set_visible(false);
     shell.layout.cancel.set_visible(false);
     while let Some(child) = shell.layout.actions.first_child() {
@@ -602,52 +653,30 @@ pub(super) fn show_drive_properties(
         }
         glib::ControlFlow::Continue
     });
-    wire_modal_close(&shell);
+    wire_modal_close(shell);
     shell.layout.close.grab_focus();
-    let editable = drive_ops::is_eligible(volume.as_ref());
-    let can_label = target.label_id().is_some();
-    shell
-        .layout
-        .actions
-        .set_visible(editable || can_label || on_release.is_some());
-    for action in [
-        PropertyAction::Label,
-        PropertyAction::Eject,
-        PropertyAction::Format,
-    ] {
-        let Some(button) =
-            property_action_control(action, editable, on_release.is_some(), can_label)
-        else {
-            continue;
-        };
-        let parent = parent.clone();
-        let volume = volume.clone();
-        let target = target.clone();
-        let layer = shell.layer.clone();
-        let overlay = shell.overlay.clone();
-        let root = shell.blurred_root.clone();
-        let on_release = on_release.clone();
-        button.connect_clicked(move |_| {
-            dismiss_modal_layer(&layer, &overlay, root.as_ref());
-            match action {
-                PropertyAction::Label => show_label_dialog(&parent, &target),
-                PropertyAction::Format => {
-                    if let Some(volume) = &volume {
-                        show_format_dialog(&parent, volume);
-                    }
-                }
-                PropertyAction::Eject => {
-                    if let Some(on_release) = &on_release {
-                        on_release();
-                    }
-                }
+}
+
+fn property_action_runner(
+    parent: &gtk::Widget,
+    target: &PropertiesTarget,
+    release: Option<Rc<dyn Fn()>>,
+) -> Rc<dyn Fn(PropertyAction)> {
+    let parent = parent.clone();
+    let target = target.clone();
+    Rc::new(move |action| match action {
+        PropertyAction::Label => show_label_dialog(&parent, &target),
+        PropertyAction::Format => {
+            if let Some(volume) = target.volume() {
+                show_format_dialog(&parent, &volume);
             }
-        });
-        shell.layout.actions.append(&button);
-        if matches!(action, PropertyAction::Label) || !editable {
-            button.grab_focus();
         }
-    }
+        PropertyAction::Release => {
+            if let Some(release) = &release {
+                release();
+            }
+        }
+    })
 }
 
 pub(super) fn show_label_dialog(parent: &gtk::Widget, target: &PropertiesTarget) {
