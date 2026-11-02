@@ -136,9 +136,9 @@ enum TransportFailure {
 /// GVfs' SMB backends fail a mount with `G_IO_ERROR_FAILED` and
 /// "Failed to mount Windows share: %s" (or "Failed to retrieve share list from
 /// server: %s") filled with `g_strerror` of the libsmbclient errno, so the
-/// errno survives only as that trailing text. gvfsd shares the session locale,
-/// so this process's `strerror` matches it; glibc's English wording covers a
-/// daemon left in the C locale.
+/// errno survives only as that trailing text. gvfsd usually shares the session
+/// locale, so this process's `strerror` matches it; when it doesn't, glibc's
+/// English wording covers a daemon left in the C locale.
 const GVFS_ERRNO_FAILURES: [(i32, &str, TransportFailure); 4] = [
     (
         libc::ECONNREFUSED,
