@@ -41,6 +41,9 @@ pub(super) enum PendingActivationKind {
     /// A filtered file whose single click previews instead of launching.
     RecursivePreview,
     Mapped,
+    /// A plain click on a file that neither opens nor previews still ends the open
+    /// path at it, as moving the cursor onto the file does.
+    CloseDeeper,
 }
 
 struct PendingPointerActivation {
