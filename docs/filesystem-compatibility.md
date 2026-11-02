@@ -1859,12 +1859,12 @@ These worker requests go through their mount's lane in `src/adapters/volume/moun
 loads, probes, monitor creation, the look a monitor takes at its folder's path after a batch of
 changes, the search for a departed folder by its identity, the release before an operation, the
 leftover review and its sweep of stale probes, imports, exports and program checks of custom
-actions, and the checks and background re-lists of [changes made elsewhere](#changes-made-elsewhere). A lane is keyed by the
-mount's id once a `statx` answer has named it. Until then a request is keyed by its path and the
-mount the table places it on, so a dead target of a symbolic link trips only that path and what lies
-below it, never the home folder the link sits in. A GVfs location is keyed by its scheme, user,
-server and port. GVfs never times out its own requests, so there the 2 s count from when each
-request, a folder load included, started.
+actions, and the checks and background re-lists of [changes made
+elsewhere](#changes-made-elsewhere). A lane is keyed by the mount's id once a `statx` answer has
+named it. Until then a request is keyed by its path and the mount the table places it on, so a dead
+target of a symbolic link trips only that path and what lies below it, never the home folder the
+link sits in. A GVfs location is keyed by its scheme, user, server and port. GVfs never times out
+its own requests, so there the 2 s count from when each request, a folder load included, started.
 
 - **Progress.** A request makes progress when it gets an answer: success, "not found", "not a
   folder", a stale handle or a permission refusal. `EIO`, `ETIMEDOUT`, `EHOSTDOWN`, `ENOTCONN`, a
@@ -1962,13 +1962,15 @@ meanwhile.
 Inotify watches a folder, not its path: when another program renames or moves one of the folder's
 ancestors, the monitor sees nothing and goes on to report later changes under the old path. So after
 each batch of changes the folder is looked up at its path again, as background work on the lane,
-skipped while the lane is busy or stalled. When the path holds no folder, or a folder that the
-mount's [identity rule](#identity) proves to be another than the one the folder's load found, the
-monitor reports its folder's removal, and the browser checks where the folder went, as [Browser
-directory-event routing](architecture.md#browser-directory-event-routing) describes. Searching for
-it lists the nearest ancestor that still exists, as an interactive request on the lane, and never
-looks into a mount point, which cannot be renamed and could be a server that stopped answering or an
-automount.
+skipped while the lane is busy or stalled. One look runs at a time; batches that arrive meanwhile
+ask for one more when it ends. When the path holds no folder, or a folder that the mount's [identity
+rule](#identity) proves to be another than the one the folder's load found, the monitor reports its
+folder's removal, and the browser checks where the folder went, as [Browser directory-event
+routing](architecture.md#browser-directory-event-routing) describes. Searching for it lists the
+nearest ancestor that still exists, as an interactive request on the lane, and never looks at a path
+that the mount table, read from the ancestor's real path, places on another mount: a mount point
+cannot be renamed, and looking into another mount can wait on a server that stopped answering or
+trigger an automount. So a folder on another mount than the renamed ancestor's counts as departed.
 
 A column counts as unmonitored until its monitor is live. Once it is, the folder's change stamp is
 read again, and a change since the load re-lists the folder once. Before Linux 6.13, a change in
