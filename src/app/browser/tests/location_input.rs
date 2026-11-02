@@ -187,10 +187,23 @@ fn location_input_accepts_uri_schemes_for_local_and_remote_locations() {
         Some(Location::local("/regular/absolute/path"))
     );
 
-    assert_eq!(browser.navigate_input("network:///"), Ok(()));
+    for (typed, root) in [
+        ("network:///", "network:///"),
+        ("network://", "network:///"),
+        ("network:", "network:///"),
+        ("Trash:", "trash:///"),
+        ("trash://", "trash:///"),
+    ] {
+        assert_eq!(browser.navigate_input(typed), Ok(()), "{typed}");
+        assert_eq!(
+            browser.active_location(),
+            Some(Location::uri(root)),
+            "{typed}"
+        );
+    }
     assert_eq!(
-        browser.active_location(),
-        Some(Location::uri("network:///"))
+        Location::uri("network:///").display_name(),
+        crate::i18n::tr("Network")
     );
 
     assert_eq!(browser.navigate_input("recent:///"), Ok(()));
@@ -237,6 +250,7 @@ fn relative_input_resolves_only_against_a_given_native_folder() {
             "smb://host/share/sub",
             Location::uri("smb://host/share/sub"),
         ),
+        ("network:", Location::uri("network:///")),
     ] {
         browser.navigate(Location::local("/fixture"));
         assert_eq!(
