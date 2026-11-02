@@ -30,22 +30,60 @@ impl ChooserShortcuts {
             .then_some(glib::Propagation::Stop)
     }
 
-    /// In 10xer mode Tab moves between the name field and the items or header.
+    /// In 10xer mode Tab goes from the header to the name field, and from the
+    /// name into the request's options, or back to the files without any.
     pub(super) fn tenxer_name_tab(&self, context: &KeyContext<'_>) -> Option<glib::Propagation> {
-        if !context.tenxer() || context.tab().is_none() {
+        if !context.tenxer() || context.focus_in_popover() {
             return None;
         }
+        let direction = context.tab()?;
         let filename = context.state.filename.as_ref()?;
         if context.name_has_focus() {
-            context.browser.focus_active();
+            let into_options = direction == gtk::DirectionType::TabForward
+                && self.focus_options(context, direction);
+            if !into_options {
+                context.browser.focus_active();
+            }
             return STOP;
         }
         if !context.focus_within(&self.header) {
             return None;
         }
-        filename.grab_focus_without_selecting();
-        select_name_stem(filename);
+        focus_name(filename);
         STOP
+    }
+
+    /// In 10xer mode Tab walks the options, then returns to the files;
+    /// Shift+Tab from the first option returns to the name field.
+    pub(super) fn tenxer_options_tab(&self, context: &KeyContext<'_>) -> Option<glib::Propagation> {
+        if !context.tenxer() || context.focus_in_popover() {
+            return None;
+        }
+        let direction = context.tab()?;
+        if !context.focus_within(&self.options) {
+            return None;
+        }
+        if self.focus_options(context, direction) {
+            return STOP;
+        }
+        let back_to_name = context
+            .state
+            .filename
+            .as_ref()
+            .filter(|_| direction == gtk::DirectionType::TabBackward);
+        match back_to_name {
+            Some(filename) => focus_name(filename),
+            None => context.browser.focus_active(),
+        }
+        STOP
+    }
+
+    fn focus_options(&self, context: &KeyContext<'_>, direction: gtk::DirectionType) -> bool {
+        let moved = self.options.child_focus(direction);
+        if moved {
+            context.state.window.set_focus_visible(true);
+        }
+        moved
     }
 
     pub(super) fn focused_widget_key(&self, context: &KeyContext<'_>) -> Option<glib::Propagation> {
@@ -186,6 +224,11 @@ fn move_between_controls(context: &KeyContext<'_>) -> glib::Propagation {
         return glib::Propagation::Stop;
     }
     glib::Propagation::Proceed
+}
+
+fn focus_name(filename: &gtk::Entry) {
+    filename.grab_focus_without_selecting();
+    select_name_stem(filename);
 }
 
 fn focus_direction_key(press: &KeyPress) -> bool {
