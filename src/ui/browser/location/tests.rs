@@ -1287,6 +1287,12 @@ fn leaving_columns_names_the_active_folder_instead_of_its_mirrored_child() {
                 beta_path,
                 "Columns shows the mirrored child again"
             );
+            view.state.cancel_location_edit();
+            assert_eq!(
+                view.state.location_entry.text(),
+                beta_path,
+                "Esc restores the folder the breadcrumbs name"
+            );
             window.destroy();
             view.browser().clear_observer();
         },

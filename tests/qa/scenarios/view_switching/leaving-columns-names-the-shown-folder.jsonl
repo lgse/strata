@@ -1,8 +1,21 @@
-{"scenario":"leaving-columns-names-the-shown-folder","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.2},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Breadcrumb and Ctrl+L name the List folder, not the child Columns mirrored, after Ctrl+3; location::tests pins the view-switch sync, only this drives keys"}}
+{"scenario":"leaving-columns-names-the-shown-folder","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.2},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Ctrl+L and Esc keep the mirrored child in Columns; breadcrumb and Ctrl+L name the List folder after Ctrl+3; location::tests pins the sync, only this drives keys"}}
 {"select_with_keyboard":"documents","message":"the cursor to reach 'documents'"}
 {"wait":{"panes":["$root","documents"]},"message":"'documents' to be mirrored in a child column"}
 {"wait":{"focused_pane":"$root"},"message":"focus to stay in the root column"}
 {"wait":{"present":{"role":"button","name":"$root"}},"message":"Columns to name the mirrored child, with the root as an ancestor crumb"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location field to take focus"}
+{"remember":{"field":true},"as":"columns_location"}
+{"expect":{"field":{"of":"columns_location","text":{"ends_with":"documents"}}},"message":"Ctrl+L in Columns to prefill the mirrored child the breadcrumbs name"}
+{"key":"Escape"}
+{"wait":{"absent":{"field":true}},"message":"Esc to close the location field"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location field to take focus again"}
+{"remember":{"field":true},"as":"columns_location"}
+{"expect":{"field":{"of":"columns_location","text":{"ends_with":"documents"}}},"message":"Esc to restore the mirrored child, not the focused column"}
+{"key":"Escape"}
+{"wait":{"absent":{"field":true}},"message":"Esc to close the location field again"}
+{"wait":{"focused_pane":"$root"},"message":"focus to return to the root column"}
 {"key":"ctrl+3"}
 {"wait":{"view_mode":"List"},"message":"the browser to switch to the List view"}
 {"wait":{"pane":"$root"},"message":"List to show the root folder"}

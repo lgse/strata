@@ -139,7 +139,7 @@ impl ViewState {
         } else {
             self.truncate(len);
         }
-        self.sync_active_location();
+        self.sync_displayed_location();
     }
 
     pub(super) fn on_column_added(self: &Rc<Self>, depth: usize, location: &Location) {
