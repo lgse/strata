@@ -109,7 +109,42 @@ enum RestartMode {
     ReloadIfRunning,
 }
 
-pub(crate) fn install() -> Result<String, String> {
+/// What a udiskie change did, for the terminal and Settings to report.
+#[derive(Debug)]
+pub(crate) struct UdiskieChange {
+    summary: String,
+    restart: RestartOutcome,
+}
+
+impl UdiskieChange {
+    /// The localized request to restart udiskie, when Strata could not.
+    pub(crate) fn restart_warning(&self) -> Option<String> {
+        (self.restart == RestartOutcome::ManualRestartNeeded)
+            .then(|| crate::i18n::tr(RESTART_WARNING))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(restart_needed: bool) -> Self {
+        Self {
+            summary: String::new(),
+            restart: if restart_needed {
+                RestartOutcome::ManualRestartNeeded
+            } else {
+                RestartOutcome::Done
+            },
+        }
+    }
+
+    /// The summary and any restart warning, one per line.
+    pub(crate) fn report(self) -> String {
+        match self.restart_warning() {
+            Some(warning) => format!("{}\n{warning}", self.summary),
+            None => self.summary,
+        }
+    }
+}
+
+pub(crate) fn install() -> Result<UdiskieChange, String> {
     super::require_runtime_integrations()?;
     let executable = crate::services::installed_executable().map_err(|error| {
         rust_i18n::t!(
@@ -120,21 +155,22 @@ pub(crate) fn install() -> Result<String, String> {
     })?;
     let context = SetupContext::from_environment()?;
     let config = install_at(&context, &executable)?;
-    let restart_warning = restart_udiskie(RestartMode::EnsureRunning);
+    let restart = restart_udiskie(RestartMode::EnsureRunning);
     let summary = rust_i18n::t!(
         "Installed Strata as the encrypted-volume unlock handler.\nConfiguration: %{path}",
         path = config.display()
-    );
-    Ok(format!("{summary}{restart_warning}"))
+    )
+    .into_owned();
+    Ok(UdiskieChange { summary, restart })
 }
 
-pub(crate) fn uninstall() -> Result<String, String> {
+pub(crate) fn uninstall() -> Result<UdiskieChange, String> {
     super::require_runtime_integrations()?;
     let context = SetupContext::from_environment()?;
     uninstall_at(&context)?;
-    let restart_warning = restart_udiskie(RestartMode::ReloadIfRunning);
+    let restart = restart_udiskie(RestartMode::ReloadIfRunning);
     let summary = crate::i18n::tr("Removed the Strata encrypted-volume unlock integration.");
-    Ok(format!("{summary}{restart_warning}"))
+    Ok(UdiskieChange { summary, restart })
 }
 
 pub(crate) fn status() -> Result<UdiskieStatus, String> {
@@ -799,7 +835,7 @@ fn program_on_path(name: &str) -> Option<PathBuf> {
     glib::find_program_in_path(name)
 }
 
-fn restart_udiskie(mode: RestartMode) -> String {
+fn restart_udiskie(mode: RestartMode) -> RestartOutcome {
     let mut spawn = |argv: &[String]| spawn_detached_with(argv, program_on_path);
     let mut signal = send_os_signal;
     let mut wait = |duration| std::thread::sleep(duration);
@@ -811,7 +847,7 @@ fn restart_udiskie(mode: RestartMode) -> String {
         wait: &mut wait,
         is_alive: &mut is_alive,
     };
-    let outcome = restart_udiskie_at(
+    restart_udiskie_at(
         Path::new("/proc"),
         rustix::process::geteuid().as_raw(),
         std::process::id(),
@@ -821,11 +857,7 @@ fn restart_udiskie(mode: RestartMode) -> String {
     .unwrap_or_else(|error| {
         tracing::warn!("Could not restart udiskie: {error}");
         RestartOutcome::ManualRestartNeeded
-    });
-    match outcome {
-        RestartOutcome::Done => String::new(),
-        RestartOutcome::ManualRestartNeeded => format!("\n{}", crate::i18n::tr(RESTART_WARNING)),
-    }
+    })
 }
 
 fn restart_udiskie_at(

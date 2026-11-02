@@ -265,10 +265,14 @@ fn main() -> gtk::glib::ExitCode {
         }
         LaunchMode::UdiskieHook => return run_udiskie_hook(&arguments[2..]),
         LaunchMode::InstallUdiskie => {
-            return finish_localized_setup(portal_setup::udiskie::install);
+            return finish_localized_setup(|| {
+                portal_setup::udiskie::install().map(portal_setup::udiskie::UdiskieChange::report)
+            });
         }
         LaunchMode::UninstallUdiskie => {
-            return finish_localized_setup(portal_setup::udiskie::uninstall);
+            return finish_localized_setup(|| {
+                portal_setup::udiskie::uninstall().map(portal_setup::udiskie::UdiskieChange::report)
+            });
         }
         #[cfg(feature = "qa")]
         LaunchMode::Qa => {}
