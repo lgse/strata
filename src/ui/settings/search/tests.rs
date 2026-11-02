@@ -211,7 +211,8 @@ fn settings_layer(manager: &Rc<PreferenceManager>) -> (gtk::Widget, gtk::Entry, 
         Rc::new(|_| {}),
         super::super::install_guard(),
         Rc::new(|_| {}),
-    );
+    )
+    .widget;
     layer.set_visible(true);
     let layer: gtk::Widget = layer.upcast();
     let entry = descendants(&layer)

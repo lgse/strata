@@ -102,6 +102,29 @@ use super::{
 /// Shows a directory in the hosting window's browser.
 pub(crate) type OpenFolder = Rc<dyn Fn(std::path::PathBuf)>;
 
+/// The Settings layer, and the navigation it opens on.
+#[derive(Clone)]
+pub struct SettingsLayer {
+    pub widget: gtk::Box,
+    navigation: CurrentPage,
+}
+
+impl SettingsLayer {
+    /// Settings opens on its current page's navigation entry, which tells a screen
+    /// reader where the user is; the layer itself is an unnamed panel.
+    pub fn focus_current_page(&self) {
+        let focused = self.navigation.button().is_some_and(|button| {
+            button.is_visible()
+                && button.is_sensitive()
+                && button.is_mapped()
+                && button.grab_focus()
+        });
+        if !focused {
+            super::modal::focus_modal_layer(&self.widget);
+        }
+    }
+}
+
 pub fn build_layer(
     settings_button: &gtk::Button,
     root: &BlurBin,
@@ -109,7 +132,7 @@ pub fn build_layer(
     update_notice: UpdateNoticeHandler,
     install_guard: InstallGuard,
     open_folder: OpenFolder,
-) -> gtk::Box {
+) -> SettingsLayer {
     let layer = backdrop_layer();
     let panel = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     panel.add_css_class("settings-dialog");
@@ -168,7 +191,7 @@ pub fn build_layer(
         built: Rc::new(RefCell::new(
             ["general", "diagnostics", "about"].into_iter().collect(),
         )),
-        nav_buttons: Rc::new(RefCell::new(Vec::new())),
+        navigation: CurrentPage::default(),
         preferences,
         update_notice,
         install_guard,
@@ -185,7 +208,7 @@ pub fn build_layer(
         navigation.append(&pages.navigation_button(entry));
     }
 
-    settings_search.install(&stack, &title, &pages.nav_buttons);
+    settings_search.install(&stack, &title, &pages.navigation.buttons);
     let spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
     spacer.set_vexpand(true);
     navigation.append(&spacer);
@@ -210,33 +233,10 @@ pub fn build_layer(
     close_on_escape(&layer, move || escape_hide());
     close_on_outside_click(&layer, &panel, close_settings);
     super::focus_navigation::install(&layer);
-    layer
-}
-
-/// Settings opens on its current page's navigation entry, which tells a screen
-/// reader where the user is; the layer itself is an unnamed panel.
-pub fn focus_current_page(layer: &gtk::Box) {
-    let focused = active_navigation_button(layer.upcast_ref())
-        .is_some_and(|button| button.is_sensitive() && button.is_mapped() && button.grab_focus());
-    if !focused {
-        super::modal::focus_modal_layer(layer);
+    SettingsLayer {
+        widget: layer,
+        navigation: pages.navigation,
     }
-}
-
-fn active_navigation_button(root: &gtk::Widget) -> Option<gtk::Widget> {
-    if root.has_css_class("settings-nav-active") {
-        return Some(root.clone());
-    }
-    let mut child = root.first_child();
-    while let Some(widget) = child {
-        if widget.is_visible()
-            && let Some(button) = active_navigation_button(&widget)
-        {
-            return Some(button);
-        }
-        child = widget.next_sibling();
-    }
-    None
 }
 
 fn backdrop_layer() -> gtk::Box {
@@ -343,13 +343,40 @@ fn close_on_outside_click(layer: &gtk::Box, panel: &gtk::Box, close_settings: Rc
 
 type NavigationButtons = Rc<RefCell<Vec<(gtk::Button, &'static str)>>>;
 
+/// The navigation buttons and the page whose button is active.
+#[derive(Clone)]
+struct CurrentPage {
+    buttons: NavigationButtons,
+    page: Rc<Cell<&'static str>>,
+}
+
+impl Default for CurrentPage {
+    fn default() -> Self {
+        Self {
+            buttons: Rc::default(),
+            page: Rc::new(Cell::new("general")),
+        }
+    }
+}
+
+impl CurrentPage {
+    fn button(&self) -> Option<gtk::Button> {
+        let page = self.page.get();
+        self.buttons
+            .borrow()
+            .iter()
+            .find(|(_, name)| *name == page)
+            .map(|(button, _)| button.clone())
+    }
+}
+
 /// The page stack and everything a lazily built page needs when first shown.
 #[derive(Clone)]
 struct PageHost {
     stack: gtk::Stack,
     title: gtk::Label,
     built: Rc<RefCell<std::collections::HashSet<&'static str>>>,
-    nav_buttons: NavigationButtons,
+    navigation: CurrentPage,
     preferences: Rc<PreferenceManager>,
     update_notice: UpdateNoticeHandler,
     install_guard: InstallGuard,
@@ -367,10 +394,13 @@ impl PageHost {
         let (button, navigation_label, navigation_content) = navigation_button(entry);
         self.responsive_panel
             .add_navigation(navigation_label, navigation_content);
-        if name == "general" {
+        if name == self.navigation.page.get() {
             button.add_css_class("settings-nav-active");
         }
-        self.nav_buttons.borrow_mut().push((button.clone(), name));
+        self.navigation
+            .buttons
+            .borrow_mut()
+            .push((button.clone(), name));
         let host = self.clone();
         let page_title = entry.label;
         button.connect_clicked(move |clicked| host.show(clicked, name, page_title));
@@ -378,7 +408,8 @@ impl PageHost {
     }
 
     fn show(&self, clicked: &gtk::Button, name: &'static str, page_title: &str) {
-        for (candidate, _) in self.nav_buttons.borrow().iter() {
+        self.navigation.page.set(name);
+        for (candidate, _) in self.navigation.buttons.borrow().iter() {
             if candidate == clicked {
                 candidate.add_css_class("settings-nav-active");
             } else {

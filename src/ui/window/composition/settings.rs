@@ -82,7 +82,7 @@ pub(super) fn install(
 }
 
 struct SettingsLauncher {
-    layer: RefCell<Option<gtk::Box>>,
+    layer: RefCell<Option<settings::SettingsLayer>>,
     focus_restore: RefCell<Option<Rc<Cell<bool>>>>,
     browser: WeakBrowserView,
     button: gtk::Button,
@@ -95,7 +95,7 @@ struct SettingsLauncher {
 }
 
 impl SettingsLauncher {
-    fn layer(&self) -> gtk::Box {
+    fn layer(&self) -> settings::SettingsLayer {
         if let Some(layer) = self.layer.borrow().clone() {
             return layer;
         }
@@ -113,10 +113,10 @@ impl SettingsLauncher {
             self.guard.clone(),
             open_folder,
         );
-        self.overlay.add_overlay(&layer);
+        self.overlay.add_overlay(&layer.widget);
         self.focus_restore
             .replace(Some(crate::ui::modal::remember_persistent_modal_focus(
-                layer.upcast_ref(),
+                layer.widget.upcast_ref(),
             )));
         self.layer.borrow_mut().replace(layer.clone());
         layer
@@ -140,13 +140,13 @@ impl SettingsLauncher {
             .is_some_and(|browser| browser.filter_focus().is_some());
         let layer = self.layer();
         self.blurred_root.set_blurred(true);
-        layer.set_visible(true);
+        layer.widget.set_visible(true);
         if let Some(restore_origin) = self.focus_restore.borrow().as_ref() {
             restore_origin.set(filter_had_focus);
         }
-        settings::focus_current_page(&layer);
+        layer.focus_current_page();
         self.button.add_css_class("active");
-        crate::ui::browser::animate_in(&layer);
+        crate::ui::browser::animate_in(&layer.widget);
     }
 }
 
