@@ -11,7 +11,8 @@ use std::{
 use gtk::{gdk, gio, glib, prelude::*};
 
 use super::{
-    install_command::install_command, page_content, scrollable_page, search, settings_group,
+    compact_bin::CompactBin, install_command::install_command, page_content, scrollable_page,
+    search, settings_group, wrap::WrapRow,
 };
 use crate::{
     assets::{self, icons},
@@ -26,8 +27,11 @@ use crate::{
 mod tests;
 
 const TITLE: &str = "Integrations";
-const CARD_CHARS: i32 = 28;
 const MAX_COLUMNS: u32 = 3;
+/// The narrowest card a window narrower than one column shrinks to.
+const MIN_CARD_WIDTH: i32 = 240;
+/// The narrowest column; the grid fits as many as this, or a card's content, allows.
+const MIN_COLUMN_WIDTH: i32 = 320;
 
 type Checker = Arc<dyn Fn(&Entry) -> Vec<RequirementResult> + Send + Sync>;
 
@@ -419,12 +423,16 @@ impl Page {
         });
     }
 
-    fn catalog_card(self: &Rc<Self>, row: &Row, name: &str, heights: &gtk::SizeGroup) -> gtk::Box {
+    fn catalog_card(
+        self: &Rc<Self>,
+        row: &Row,
+        name: &str,
+        heights: &gtk::SizeGroup,
+    ) -> gtk::Widget {
         let entry = &row.entry;
         let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
         card.add_css_class("integration-card");
-        card.set_widget_name(&format!("integration-{}-card", entry.id));
-        card.set_size_request(240, -1);
+        card.set_size_request(MIN_CARD_WIDTH, -1);
         let body = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         body.add_css_class("integration-card-body");
         heights.add_widget(&body);
@@ -434,13 +442,9 @@ impl Page {
         let title = gtk::Label::new(Some(name));
         title.set_xalign(0.0);
         title.set_wrap(true);
-        title.set_max_width_chars(CARD_CHARS);
         title.add_css_class("settings-option-title");
         copy.append(&title);
         let description = note(&crate::i18n::tr(&entry.description));
-        // Wrapping labels otherwise report their unwrapped width, which
-        // leaves one card per grid line.
-        description.set_max_width_chars(CARD_CHARS);
         description.set_lines(2);
         description.set_ellipsize(gtk::pango::EllipsizeMode::End);
         copy.append(&description);
@@ -476,7 +480,9 @@ impl Page {
             actions.append(&installed);
         }
         card.append(&self.requirements_section(entry, name));
-        card
+        let bin = CompactBin::new(&card, MIN_COLUMN_WIDTH);
+        bin.set_widget_name(&format!("integration-{}-card", entry.id));
+        bin.upcast()
     }
 
     fn requirements_section(self: &Rc<Self>, entry: &Entry, name: &str) -> gtk::Box {
@@ -568,7 +574,7 @@ impl Page {
     fn requirements_details(&self, results: Option<&[RequirementResult]>) -> gtk::Box {
         let container = gtk::Box::new(gtk::Orientation::Vertical, 10);
         container.add_css_class("integration-requirements");
-        let chips = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let chips = WrapRow::new(6);
         chips.add_css_class("integration-requirement-list");
         let label = gtk::Label::new(Some(&crate::i18n::tr("Requires:")));
         label.add_css_class("settings-option-description");

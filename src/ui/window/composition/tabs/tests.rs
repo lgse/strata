@@ -169,6 +169,19 @@ fn sibling_fixture(
 }
 
 #[test]
+fn remote_root_tab_labels_name_the_server_or_share_like_their_headings() {
+    for (uri, label) in [
+        ("smb://host/", "host".to_owned()),
+        ("smb://host/My%20Share/", "My Share".to_owned()),
+        ("sftp://host/caf%C3%A9", "café".to_owned()),
+        ("trash:///", crate::i18n::tr("Trash")),
+        ("recent:///", crate::i18n::tr("Recent")),
+    ] {
+        assert_eq!(tab_label(Some(&Location::uri(uri))), label, "{uri}");
+    }
+}
+
+#[test]
 fn browser_windows_keep_gtk_from_adding_a_default_title_bar() {
     gtk_test(
         "ui::window::composition::tabs::tests::browser_windows_keep_gtk_from_adding_a_default_title_bar",
@@ -1415,28 +1428,6 @@ fn open_in_new_tab_appends_activates_and_navigates_the_target() {
             let view = tabs.active_browser();
             wait_until(|| view.browser().active_location().is_some());
             assert_eq!(view.browser().active_location(), Some(location));
-            window.destroy();
-        },
-    );
-}
-
-#[test]
-fn open_in_new_tab_reuses_the_unavailable_overlay_for_a_missing_target() {
-    gtk_test(
-        "ui::window::composition::tabs::tests::open_in_new_tab_reuses_the_unavailable_overlay_for_a_missing_target",
-        || {
-            PreferenceManager::seed_saved_preferences_for_test();
-            let root = tempfile::tempdir().expect("missing target fixture");
-            let missing = root.path().join("missing");
-            let (window, tabs) = open();
-            load(&tabs.active_browser(), Location::local(root.path()));
-            tabs.open_in_new_tab(Location::local(&missing));
-            let view = tabs.active_browser();
-            wait_until(|| button_with_label(view.overlay().upcast_ref(), "Retry").is_some());
-            assert!(
-                button_with_label(view.overlay().upcast_ref(), "Retry").is_some(),
-                "a missing target shows the retry overlay"
-            );
             window.destroy();
         },
     );

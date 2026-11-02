@@ -32,23 +32,10 @@ fn syntax_pickers_preview_cancel_and_save_to_custom_theme() {
                 fields,
                 ..
             } = theme_editor(manager.clone());
-            let mut child = fields.first_child();
-            while let Some(wrapper) = child {
-                let row = wrapper.first_child().expect("color field row");
-                let label = row
-                    .last_child()
-                    .expect("field label")
-                    .downcast::<gtk::Label>()
-                    .expect("label widget");
+            for (_, picker, label) in field_cells(&fields) {
                 if label.text().starts_with("Syntax ") {
-                    let picker = row
-                        .first_child()
-                        .expect("color picker")
-                        .downcast::<gtk::ColorDialogButton>()
-                        .expect("picker widget");
                     picker.set_rgba(&gdk::RGBA::parse("#123abc").expect("fixture color"));
                 }
-                child = wrapper.next_sibling();
             }
             crate::storage::writer::settle();
             for buffer in &buffers {
@@ -108,23 +95,47 @@ fn syntax_pickers_preview_cancel_and_save_to_custom_theme() {
     );
 }
 
-fn accent_picker(fields: &gtk::FlowBox) -> gtk::ColorDialogButton {
-    let mut child = fields.first_child();
-    while let Some(wrapper) = child {
-        let row = wrapper.first_child().expect("color field row");
-        let label = row
-            .last_child()
-            .and_downcast::<gtk::Label>()
-            .expect("field label");
-        if label.text() == "Accent" {
-            return row
+fn field_cells(fields: &gtk::FlowBox) -> Vec<(gtk::Widget, gtk::ColorDialogButton, gtk::Label)> {
+    std::iter::successors(fields.first_child(), gtk::Widget::next_sibling)
+        .map(|cell| {
+            let row = cell.first_child().expect("color field row");
+            let picker = row
                 .first_child()
                 .and_downcast::<gtk::ColorDialogButton>()
-                .expect("accent picker");
-        }
-        child = wrapper.next_sibling();
-    }
-    panic!("accent field");
+                .expect("color picker");
+            let label = row
+                .last_child()
+                .and_downcast::<gtk::Label>()
+                .expect("field label");
+            (cell, picker, label)
+        })
+        .collect()
+}
+
+fn accent_picker(fields: &gtk::FlowBox) -> gtk::ColorDialogButton {
+    field_cells(fields)
+        .into_iter()
+        .find_map(|(_, picker, label)| (label.text() == "Accent").then_some(picker))
+        .expect("accent field")
+}
+
+#[cfg(feature = "qa")]
+#[test]
+fn each_color_cell_is_named_once_after_its_field() {
+    gtk_test(
+        "ui::settings::theme::editor::tests::each_color_cell_is_named_once_after_its_field",
+        || {
+            let ThemeEditor { fields, .. } = theme_editor(ThemeManager::shared());
+            let cells = field_cells(&fields);
+            assert_eq!(cells.len(), ColorField::ALL.len());
+            for (cell, _, label) in cells {
+                assert_eq!(
+                    crate::ui::accessibility::qa::naming(&cell).and_then(|naming| naming.label),
+                    Some(label.text().to_string())
+                );
+            }
+        },
+    );
 }
 
 #[test]

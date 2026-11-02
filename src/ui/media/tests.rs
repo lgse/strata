@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: MIT
 
+use super::history::HISTORY_SAMPLES;
 use super::*;
 use gstreamer as gst;
-use std::{path::PathBuf, rc::Rc, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    rc::Rc,
+    time::Duration,
+};
 
 const TEST_DURATION_US: u64 = 60_000_000;
 

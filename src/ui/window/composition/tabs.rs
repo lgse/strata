@@ -254,6 +254,7 @@ impl TabWindow {
         }
         tracing::debug!(location = %location.diagnostic_path(), "opening location in new tab");
         self.add(None);
+        self.await_location(&self.active_tab(), location.clone());
         super::super::open_argument::route_location(self.active_browser(), location);
     }
 
@@ -295,9 +296,7 @@ impl TabWindow {
         let weak = Rc::downgrade(self);
         content.browser.observe_tab_location(move |location| {
             if let Some(state) = weak.upgrade() {
-                let label = tab_label(location);
-                state.strip.label(id, &label);
-                state.set_folder(id, location.map(|_| label));
+                state.relabel(id, location);
                 state.persist_session();
             }
         });
@@ -419,6 +418,34 @@ impl TabWindow {
         self.strip.remove(id);
         self.refresh_chrome();
         self.persist_session();
+    }
+
+    /// Names a tab after its folder, or while it has none, after the location it is
+    /// waiting on or failed to open, as its pane does. A folder ends the wait.
+    fn relabel(&self, id: u64, location: Option<&Location>) {
+        let awaited = self
+            .tabs
+            .borrow()
+            .iter()
+            .find(|tab| tab.id == id)
+            .and_then(|tab| match location {
+                Some(_) => {
+                    tab.checking.take();
+                    None
+                }
+                None => tab.checking.borrow().clone(),
+            });
+        let shown = location.or(awaited.as_ref());
+        let label = tab_label(shown);
+        self.strip.label(id, &label);
+        self.set_folder(id, shown.map(|_| label));
+    }
+
+    fn await_location(&self, tab: &Tab, location: Location) {
+        tab.checking.replace(Some(location));
+        if tab.content.browser.browser().active_location().is_none() {
+            self.relabel(tab.id, None);
+        }
     }
 
     fn set_folder(&self, id: u64, folder: Option<String>) {
@@ -700,8 +727,7 @@ impl TabWindow {
             tab.content.browser.navigate_location(location);
             return;
         }
-        self.strip.label(tab.id, &tab_label(Some(&location)));
-        tab.checking.replace(Some(location.clone()));
+        self.await_location(tab, location.clone());
         let weak = Rc::downgrade(self);
         let id = tab.id;
         super::super::open_checked(&tab.content.browser.browser(), location, move || {
@@ -835,14 +861,5 @@ fn tab_label(location: Option<&Location>) -> String {
             .file_name()
             .map_or_else(|| "/".into(), |name| name.to_string_lossy().into_owned());
     }
-    let uri = location.uri_value().unwrap_or_default();
-    match uri {
-        "trash:///" => crate::i18n::tr("Trash"),
-        "recent:///" => crate::i18n::tr("Recent"),
-        "network:///" => crate::i18n::tr("Network"),
-        _ => gio::File::for_uri(uri).basename().map_or_else(
-            || crate::i18n::tr("Location"),
-            |name| name.to_string_lossy().into_owned(),
-        ),
-    }
+    location.display_name()
 }

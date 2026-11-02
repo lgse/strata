@@ -1,24 +1,29 @@
 // SPDX-License-Identifier: MIT
 
+mod panel;
+mod results;
+
 use std::{
     cell::{Cell, RefCell},
     collections::{HashMap, HashSet},
     path::PathBuf,
     rc::Rc,
-    sync::mpsc::TryRecvError,
+    sync::mpsc::{Receiver, TryRecvError},
     time::Duration,
 };
 
-use gtk::{gdk, glib, prelude::*};
+use gtk::{glib, prelude::*};
 
 use super::keys::{
-    self,
+    self, KeyPress,
     bindings::{DOWN, ENTER_ANY_SHIFT, ESCAPE_ANY, OPEN_CONTAINING_FOLDER, UP},
 };
 use crate::services::{
     NavigationHistory, SearchCoverage, SearchEvent, SearchHandle, SearchItem,
     index_trees_with_exclusions,
 };
+use panel::SearchWidgets;
+use results::{refresh_visible_thumbnails, render_results, scroll_row_into_view};
 
 const MAX_RESULT_UPDATES_PER_FRAME: usize = 8;
 
@@ -58,10 +63,6 @@ struct SearchState {
 }
 
 impl SearchDialog {
-    #[expect(
-        deprecated,
-        reason = "GTK 4.12 deprecated translate_coordinates and allocation without a replacement for click-in-bounds checks"
-    )]
     pub fn new(
         activate: Rc<dyn Fn(SearchItem)>,
         reveal: Rc<dyn Fn(SearchItem)>,
@@ -69,153 +70,23 @@ impl SearchDialog {
     ) -> Self {
         let themes = super::theme::ThemeManager::shared();
         let preferences = super::preferences::PreferenceManager::shared();
-        let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        layer.add_css_class("search-backdrop");
-        layer.add_css_class("app-modal-layer");
-        layer.set_halign(gtk::Align::Fill);
-        layer.set_valign(gtk::Align::Fill);
-        layer.set_hexpand(true);
-        layer.set_vexpand(true);
-        layer.set_focusable(true);
-        layer.set_visible(false);
-
-        let panel = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        panel.add_css_class("search-dialog");
-        panel.set_halign(gtk::Align::Center);
-        panel.set_valign(gtk::Align::Center);
-        panel.set_size_request(760, 452);
-        panel.set_vexpand(false);
-        panel.set_overflow(gtk::Overflow::Hidden);
-
-        let search_bar = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        search_bar.add_css_class("search-bar");
-        search_bar.append(&crate::assets::primary_icon(
-            crate::assets::icons::SEARCH,
-            20,
-        ));
-        let field = gtk::Entry::builder()
-            .placeholder_text(crate::i18n::tr("Search files and folders…"))
-            .hexpand(true)
-            .build();
-        field.add_css_class("search-field");
-        crate::ui::accessibility::set_label(&field, &crate::i18n::tr("Search files and folders…"));
-        search_bar.append(&field);
-        let indexing_spinner = gtk::Spinner::new();
-        indexing_spinner.add_css_class("search-indexing-spinner");
-        crate::ui::accessibility::set_description(
-            &indexing_spinner,
-            Some(&crate::i18n::tr("Indexing files…")),
-        );
-        indexing_spinner.set_valign(gtk::Align::Center);
-        indexing_spinner.set_visible(false);
-        search_bar.append(&indexing_spinner);
-        panel.append(&search_bar);
-
-        let status = gtk::Label::new(Some(&crate::i18n::tr(
-            "Type to search Home and mounted local drives",
-        )));
-        status.add_css_class("search-status");
-        status.set_wrap(true);
-        status.set_justify(gtk::Justification::Center);
-        status.set_halign(gtk::Align::Center);
-        status.set_valign(gtk::Align::Center);
-
-        let list = gtk::ListBox::new();
-        list.add_css_class("search-results");
-        list.set_selection_mode(gtk::SelectionMode::Single);
-        list.set_activate_on_single_click(true);
-        let positions = Rc::new(RefCell::new(HashMap::new()));
-        let sorted_positions = positions.clone();
-        list.set_sort_func(move |left, right| {
-            let positions = sorted_positions.borrow();
-            positions.get(left).cmp(&positions.get(right)).into()
-        });
-        let scroller = gtk::ScrolledWindow::builder()
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .vexpand(true)
-            .child(&list)
-            .build();
-        scroller.add_css_class("search-results-scroll");
-        let results = gtk::Stack::new();
-        results.add_css_class("search-results-stack");
-        results.set_size_request(-1, 360);
-        results.add_named(&status, Some("status"));
-        results.add_named(&scroller, Some("results"));
-        results.set_visible_child_name("status");
-        panel.append(&results);
-
-        let footer = gtk::Box::new(gtk::Orientation::Horizontal, 18);
-        footer.add_css_class("search-footer");
-        // Key hints shorten in narrow windows so "Partial results" stays visible.
-        let hint_label = |text: &str| {
-            let label = gtk::Label::new(Some(text));
-            label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-            label
-        };
-        let followed_hint = |message: &'static str, keys: keys::Keys| {
-            let label = hint_label("");
-            super::shortcut_reference::follow_keys(&label, move |label| {
-                label.set_text(&super::shortcut_reference::with_keys(message, keys));
-            });
-            label
-        };
-        let navigation = followed_hint(
-            "%{keys}  navigate",
-            keys::Keys::Any(crate::ui::keys::shown![UP.alternate(0), DOWN.alternate(0)]),
-        );
-        let open = gtk::Box::new(gtk::Orientation::Horizontal, 5);
-        open.set_valign(gtk::Align::Center);
-        open.append(&crate::assets::primary_icon(
-            crate::assets::icons::CORNER_DOWN_LEFT,
-            13,
-        ));
-        open.append(&hint_label(&crate::i18n::tr("open")));
-        navigation.add_css_class("search-hint");
-        open.add_css_class("search-hint");
-        footer.append(&navigation);
-        footer.append(&open);
-        let reveal_hint = gtk::Box::new(gtk::Orientation::Horizontal, 5);
-        reveal_hint.set_valign(gtk::Align::Center);
-        reveal_hint.append(&crate::assets::primary_icon(
-            crate::assets::icons::FOLDER_OPEN,
-            13,
-        ));
-        reveal_hint.append(&followed_hint(
-            "%{keys}  open containing folder",
-            keys::Keys::One(OPEN_CONTAINING_FOLDER.shown()),
-        ));
-        reveal_hint.add_css_class("search-hint");
-        footer.append(&reveal_hint);
-        let truncated_hint = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-        truncated_hint.append(&crate::assets::primary_icon(
-            crate::assets::icons::TRIANGLE_ALERT,
-            14,
-        ));
-        truncated_hint.append(&gtk::Label::new(Some(&crate::i18n::tr("Partial results"))));
-        truncated_hint.add_css_class("search-hint");
-        truncated_hint.add_css_class("search-hint-warning");
-        truncated_hint.set_hexpand(true);
-        truncated_hint.set_halign(gtk::Align::End);
-        truncated_hint.set_visible(false);
-        footer.append(&truncated_hint);
-        panel.append(&footer);
-        super::modal::layout::install(&layer, &panel);
-
-        let focus_restore = super::modal::remember_persistent_modal_focus(layer.upcast_ref());
+        let widgets = SearchWidgets::build();
+        let focus_restore =
+            super::modal::remember_persistent_modal_focus(widgets.layer.upcast_ref());
+        let panel = widgets.panel;
         let state = Rc::new(SearchState {
             _themes: themes,
             preferences,
-            layer,
-            field,
-            indexing_spinner,
-            list,
-            scroller,
-            results,
-            status,
-            truncated_hint,
+            layer: widgets.layer,
+            field: widgets.field,
+            indexing_spinner: widgets.indexing_spinner,
+            list: widgets.list,
+            scroller: widgets.scroller,
+            results: widgets.results,
+            status: widgets.status,
+            truncated_hint: widgets.truncated_hint,
             visible_results: RefCell::new(Vec::new()),
-            positions,
+            positions: widgets.positions,
             requested_thumbnails: RefCell::new(HashSet::new()),
             rendered_query: RefCell::new(String::new()),
             search: RefCell::new(None),
@@ -231,114 +102,11 @@ impl SearchDialog {
             focus_restore,
         });
 
-        let changed = Rc::downgrade(&state);
-        state.field.connect_changed(move |field| {
-            if let Some(state) = changed.upgrade() {
-                begin_query(&state, &field.text());
-            }
-        });
-        // Enter reaches the field only after an input method commits and passes
-        // it back; otherwise the key handler below opens the result.
-        let entered = Rc::downgrade(&state);
-        state.field.connect_activate(move |_| {
-            if let Some(state) = entered.upgrade() {
-                activate_selected(&state);
-            }
-        });
-        let activated = Rc::downgrade(&state);
-        state.list.connect_row_activated(move |_, row| {
-            if let Some(state) = activated.upgrade() {
-                activate_position(&state, row.index());
-            }
-        });
-        let keys = gtk::EventControllerKey::new();
-        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-        let keyed = Rc::downgrade(&state);
-        keys::on_press(&keys, move |_, press| {
-            let Some(state) = keyed.upgrade() else {
-                return glib::Propagation::Proceed;
-            };
-            record_interaction(&state);
-            let press = &press.untyped();
-            if press.is(ESCAPE_ANY) {
-                hide(&state);
-                return glib::Propagation::Stop;
-            }
-            if press.is(OPEN_CONTAINING_FOLDER) {
-                if let Some(item) = state.list.selected_row().and_then(|row| {
-                    state
-                        .visible_results
-                        .borrow()
-                        .get(row.index() as usize)
-                        .cloned()
-                }) {
-                    reveal_result(&state, item);
-                }
-                return glib::Propagation::Stop;
-            }
-            if press.is_any(&[DOWN, UP]) {
-                move_selection(&state, if press.is(DOWN) { 1 } else { -1 });
-                return glib::Propagation::Stop;
-            }
-            if press.is(ENTER_ANY_SHIFT) && activate_selected(&state) {
-                return glib::Propagation::Stop;
-            }
-            glib::Propagation::Proceed
-        });
-        state.layer.add_controller(keys);
-
-        let click_state = Rc::downgrade(&state);
-        let click_panel = panel.clone();
-        let click = gtk::GestureClick::new();
-        click.set_button(0);
-        click.set_propagation_phase(gtk::PropagationPhase::Capture);
-        click.connect_pressed(move |_, _, x, y| {
-            let Some(state) = click_state.upgrade() else {
-                return;
-            };
-            record_interaction(&state);
-            let on_panel = click_panel
-                .translate_coordinates(&state.layer, 0.0, 0.0)
-                .is_some_and(|(px, py)| {
-                    let alloc = click_panel.allocation();
-                    x >= px
-                        && x < px + alloc.width() as f64
-                        && y >= py
-                        && y < py + alloc.height() as f64
-                });
-            if !on_panel {
-                hide(&state);
-            }
-        });
-        state.layer.add_controller(click);
-        let wheel_state = Rc::downgrade(&state);
-        let wheel = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::BOTH_AXES);
-        wheel.set_propagation_phase(gtk::PropagationPhase::Capture);
-        wheel.connect_scroll(move |_, _, _| {
-            if let Some(state) = wheel_state.upgrade() {
-                record_interaction(&state);
-            }
-            glib::Propagation::Proceed
-        });
-        state.layer.add_controller(wheel);
-        let adjustment = state.scroller.vadjustment();
-        let changed = Rc::downgrade(&state);
-        adjustment.connect_changed(move |_| {
-            if let Some(state) = changed.upgrade()
-                && !state.reconciling_results.get()
-            {
-                refresh_visible_thumbnails(&state);
-            }
-        });
-        let scrolled = Rc::downgrade(&state);
-        adjustment.connect_value_changed(move |_| {
-            if let Some(state) = scrolled.upgrade()
-                && !state.reconciling_results.get()
-            {
-                refresh_visible_thumbnails(&state);
-            }
-        });
-
+        connect_field_and_list(&state);
+        install_keys(&state);
+        install_backdrop_click(&state, &panel);
+        install_wheel(&state);
+        follow_scrolling(&state);
         Self { state }
     }
 
@@ -351,99 +119,19 @@ impl SearchDialog {
         let generation = self.state.generation.get();
         self.state.search.borrow_mut().take();
         self.state.history.borrow_mut().take();
-        self.state
-            .field
-            .set_placeholder_text(Some(&crate::i18n::tr("Search files and folders…")));
-        let locations = roots
-            .iter()
-            .map(|root| root.display().to_string())
-            .collect::<Vec<_>>()
-            .join("\n");
-        crate::ui::accessibility::set_description(
-            &self.state.field,
-            Some(&rust_i18n::t!(
-                "Search locations:\n%{locations}\nRemote shares are not included.",
-                locations = locations
-            )),
-        );
-        self.state.field.set_sensitive(!roots.is_empty());
-        clear_results(&self.state);
-        self.state.results.set_visible_child_name("status");
-        self.state.field.set_text("");
-        self.state.status.set_visible(true);
-        self.state.status.set_text(&crate::i18n::tr(
-            "Type to search Home and mounted local drives",
-        ));
-        self.state.truncated_hint.set_visible(false);
-        self.state.indexing_spinner.set_visible(true);
-        self.state.indexing_spinner.start();
-        self.state.layer.set_visible(true);
-        super::browser::animate_in(&self.state.layer);
-        self.state.field.grab_focus_without_selecting();
-
+        reset_for_search(&self.state, &roots);
         if roots.is_empty() {
-            self.state
-                .status
-                .set_text(&crate::i18n::tr("No local search locations available."));
-            self.state.indexing_spinner.stop();
-            self.state.indexing_spinner.set_visible(false);
-            self.state.layer.grab_focus();
+            show_no_locations(&self.state);
             return;
         }
-        let exclusions = self.state.preferences.search_exclusions();
-        let limits = self.state.preferences.search_limits();
-        let (handle, receiver) =
-            index_trees_with_exclusions(roots, show_hidden, exclusions, limits);
-        self.state.search.replace(Some(handle));
-        let weak = Rc::downgrade(&self.state);
-        let _poll = glib::timeout_add_local(Duration::from_millis(16), move || {
-            let Some(state) = weak.upgrade() else {
-                return glib::ControlFlow::Break;
-            };
-            if !state.layer.is_visible() || state.generation.get() != generation {
-                return glib::ControlFlow::Break;
-            }
-            let mut latest = None;
-            for _ in 0..MAX_RESULT_UPDATES_PER_FRAME {
-                match receiver.try_recv() {
-                    Ok(event) => latest = Some(event),
-                    Err(TryRecvError::Empty) => break,
-                    Err(TryRecvError::Disconnected) => return glib::ControlFlow::Break,
-                }
-            }
-            if let Some(SearchEvent::Results {
-                query,
-                items,
-                indexing,
-                coverage,
-                ..
-            }) = latest
-            {
-                if indexing {
-                    state.indexing_spinner.set_visible(true);
-                    state.indexing_spinner.start();
-                } else {
-                    state.indexing_spinner.stop();
-                    state.indexing_spinner.set_visible(false);
-                }
-                if query == state.field.text().trim() {
-                    show_coverage(&state.truncated_hint, coverage);
-                }
-                if !query.is_empty() && query == state.field.text().trim() {
-                    render_results(&state, items, indexing, coverage);
-                }
-            }
-            glib::ControlFlow::Continue
-        });
+        start_search(&self.state, roots, show_hidden, generation);
     }
 
     pub(crate) fn show_history(&self, history: Rc<NavigationHistory>) {
         self.state.generation.set(self.state.generation.get() + 1);
         self.state.search.borrow_mut().take();
         self.state.history.replace(Some(history));
-        self.state
-            .field
-            .set_placeholder_text(Some(&crate::i18n::tr("Jump to a folder…")));
+        set_field_prompt(&self.state.field, &crate::i18n::tr("Jump to a folder…"));
         crate::ui::accessibility::set_description(
             &self.state.field,
             Some(&crate::i18n::tr("Folders previously visited in Strata")),
@@ -467,6 +155,249 @@ impl SearchDialog {
 
     pub fn is_visible(&self) -> bool {
         self.state.layer.is_visible()
+    }
+}
+
+fn connect_field_and_list(state: &Rc<SearchState>) {
+    let changed = Rc::downgrade(state);
+    state.field.connect_changed(move |field| {
+        if let Some(state) = changed.upgrade() {
+            begin_query(&state, &field.text());
+        }
+    });
+    // Enter reaches the field only after an input method commits and passes
+    // it back; otherwise the key handler below opens the result.
+    let entered = Rc::downgrade(state);
+    state.field.connect_activate(move |_| {
+        if let Some(state) = entered.upgrade() {
+            activate_selected(&state);
+        }
+    });
+    let activated = Rc::downgrade(state);
+    state.list.connect_row_activated(move |_, row| {
+        if let Some(state) = activated.upgrade() {
+            activate_position(&state, row.index());
+        }
+    });
+}
+
+fn install_keys(state: &Rc<SearchState>) {
+    let keys = gtk::EventControllerKey::new();
+    keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let keyed = Rc::downgrade(state);
+    keys::on_press(&keys, move |_, press| {
+        let Some(state) = keyed.upgrade() else {
+            return glib::Propagation::Proceed;
+        };
+        handle_key(&state, press)
+    });
+    state.layer.add_controller(keys);
+}
+
+fn handle_key(state: &Rc<SearchState>, press: &KeyPress) -> glib::Propagation {
+    record_interaction(state);
+    let press = &press.untyped();
+    if press.is(ESCAPE_ANY) {
+        hide(state);
+        return glib::Propagation::Stop;
+    }
+    if press.is(OPEN_CONTAINING_FOLDER) {
+        reveal_selected(state);
+        return glib::Propagation::Stop;
+    }
+    if press.is_any(&[DOWN, UP]) {
+        move_selection(state, if press.is(DOWN) { 1 } else { -1 });
+        return glib::Propagation::Stop;
+    }
+    if press.is(ENTER_ANY_SHIFT) && activate_selected(state) {
+        return glib::Propagation::Stop;
+    }
+    glib::Propagation::Proceed
+}
+
+fn reveal_selected(state: &SearchState) {
+    if let Some(item) = state.list.selected_row().and_then(|row| {
+        state
+            .visible_results
+            .borrow()
+            .get(row.index() as usize)
+            .cloned()
+    }) {
+        reveal_result(state, item);
+    }
+}
+
+#[expect(
+    deprecated,
+    reason = "GTK 4.12 deprecated translate_coordinates and allocation without a replacement for click-in-bounds checks"
+)]
+fn install_backdrop_click(state: &Rc<SearchState>, panel: &gtk::Box) {
+    let click_state = Rc::downgrade(state);
+    let click_panel = panel.clone();
+    let click = gtk::GestureClick::new();
+    click.set_button(0);
+    click.set_propagation_phase(gtk::PropagationPhase::Capture);
+    click.connect_pressed(move |_, _, x, y| {
+        let Some(state) = click_state.upgrade() else {
+            return;
+        };
+        record_interaction(&state);
+        let on_panel = click_panel
+            .translate_coordinates(&state.layer, 0.0, 0.0)
+            .is_some_and(|(px, py)| {
+                let alloc = click_panel.allocation();
+                x >= px
+                    && x < px + alloc.width() as f64
+                    && y >= py
+                    && y < py + alloc.height() as f64
+            });
+        if !on_panel {
+            hide(&state);
+        }
+    });
+    state.layer.add_controller(click);
+}
+
+fn install_wheel(state: &Rc<SearchState>) {
+    let wheel_state = Rc::downgrade(state);
+    let wheel = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::BOTH_AXES);
+    wheel.set_propagation_phase(gtk::PropagationPhase::Capture);
+    wheel.connect_scroll(move |_, _, _| {
+        if let Some(state) = wheel_state.upgrade() {
+            record_interaction(&state);
+        }
+        glib::Propagation::Proceed
+    });
+    state.layer.add_controller(wheel);
+}
+
+fn follow_scrolling(state: &Rc<SearchState>) {
+    let adjustment = state.scroller.vadjustment();
+    let changed = Rc::downgrade(state);
+    adjustment.connect_changed(move |_| {
+        if let Some(state) = changed.upgrade() {
+            refresh_unless_reconciling(&state);
+        }
+    });
+    let scrolled = Rc::downgrade(state);
+    adjustment.connect_value_changed(move |_| {
+        if let Some(state) = scrolled.upgrade() {
+            refresh_unless_reconciling(&state);
+        }
+    });
+}
+
+fn refresh_unless_reconciling(state: &SearchState) {
+    if !state.reconciling_results.get() {
+        refresh_visible_thumbnails(state);
+    }
+}
+
+/// The palette serves file search and folder jumps, so its field is named after
+/// the mode it is in rather than the prompt it was built with.
+fn set_field_prompt(field: &gtk::Entry, prompt: &str) {
+    field.set_placeholder_text(Some(prompt));
+    crate::ui::accessibility::set_label(field, prompt);
+}
+
+fn reset_for_search(state: &SearchState, roots: &[PathBuf]) {
+    set_field_prompt(&state.field, &crate::i18n::tr("Search files and folders…"));
+    let locations = roots
+        .iter()
+        .map(|root| root.display().to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
+    crate::ui::accessibility::set_description(
+        &state.field,
+        Some(&rust_i18n::t!(
+            "Search locations:\n%{locations}\nRemote shares are not included.",
+            locations = locations
+        )),
+    );
+    state.field.set_sensitive(!roots.is_empty());
+    clear_results(state);
+    state.results.set_visible_child_name("status");
+    state.field.set_text("");
+    state.status.set_visible(true);
+    state.status.set_text(&crate::i18n::tr(
+        "Type to search Home and mounted local drives",
+    ));
+    state.truncated_hint.set_visible(false);
+    show_indexing(state, true);
+    state.layer.set_visible(true);
+    super::browser::animate_in(&state.layer);
+    state.field.grab_focus_without_selecting();
+}
+
+fn show_no_locations(state: &SearchState) {
+    state
+        .status
+        .set_text(&crate::i18n::tr("No local search locations available."));
+    show_indexing(state, false);
+    state.layer.grab_focus();
+}
+
+fn show_indexing(state: &SearchState, indexing: bool) {
+    if indexing {
+        state.indexing_spinner.set_visible(true);
+        state.indexing_spinner.start();
+    } else {
+        state.indexing_spinner.stop();
+        state.indexing_spinner.set_visible(false);
+    }
+}
+
+fn start_search(state: &Rc<SearchState>, roots: Vec<PathBuf>, show_hidden: bool, generation: u64) {
+    let exclusions = state.preferences.search_exclusions();
+    let limits = state.preferences.search_limits();
+    let (handle, receiver) = index_trees_with_exclusions(roots, show_hidden, exclusions, limits);
+    state.search.replace(Some(handle));
+    let weak = Rc::downgrade(state);
+    let _poll = glib::timeout_add_local(Duration::from_millis(16), move || {
+        let Some(state) = weak.upgrade() else {
+            return glib::ControlFlow::Break;
+        };
+        if !state.layer.is_visible() || state.generation.get() != generation {
+            return glib::ControlFlow::Break;
+        }
+        let Ok(latest) = latest_event(&receiver) else {
+            return glib::ControlFlow::Break;
+        };
+        if let Some(event) = latest {
+            apply_search_event(&state, event);
+        }
+        glib::ControlFlow::Continue
+    });
+}
+
+/// The newest of up to a frame's worth of queued events.
+fn latest_event(receiver: &Receiver<SearchEvent>) -> Result<Option<SearchEvent>, TryRecvError> {
+    let mut latest = None;
+    for _ in 0..MAX_RESULT_UPDATES_PER_FRAME {
+        match receiver.try_recv() {
+            Ok(event) => latest = Some(event),
+            Err(TryRecvError::Empty) => break,
+            Err(TryRecvError::Disconnected) => return Err(TryRecvError::Disconnected),
+        }
+    }
+    Ok(latest)
+}
+
+fn apply_search_event(state: &Rc<SearchState>, event: SearchEvent) {
+    let SearchEvent::Results {
+        query,
+        items,
+        indexing,
+        coverage,
+        ..
+    } = event;
+    show_indexing(state, indexing);
+    let current = query == state.field.text().trim();
+    if current {
+        show_coverage(&state.truncated_hint, coverage);
+    }
+    if current && !query.is_empty() {
+        render_results(state, items, indexing, coverage);
     }
 }
 
@@ -497,259 +428,6 @@ fn begin_query(state: &Rc<SearchState>, query: &str) {
     }
 }
 
-fn render_results(
-    state: &Rc<SearchState>,
-    results: Vec<SearchItem>,
-    indexing: bool,
-    coverage: SearchCoverage,
-) {
-    let query = state.field.text().trim().to_owned();
-    let query_changed = state.rendered_query.borrow().as_str() != query;
-    let old_items = state.visible_results.borrow().clone();
-    let results_changed = old_items != results;
-    let selected_index = state.list.selected_row().map(|row| row.index());
-    let selected_path = selected_index
-        .and_then(|position| usize::try_from(position).ok())
-        .and_then(|position| old_items.get(position))
-        .map(|item| item.path.clone());
-    let focused = state.list.root().and_then(|root| root.focus());
-    let focused_path = old_items.iter().enumerate().find_map(|(position, item)| {
-        let row = state.list.row_at_index(position as i32)?;
-        focused
-            .as_ref()
-            .filter(|focused| **focused == row || focused.is_ancestor(&row))
-            .map(|_| item.path.clone())
-    });
-    let had_result_focus = focused_path.is_some();
-    let scroll_position = state.scroller.vadjustment().value();
-
-    if results_changed {
-        state.reconciling_results.set(true);
-        let mut rows = old_items
-            .iter()
-            .enumerate()
-            .filter_map(|(position, item)| {
-                state
-                    .list
-                    .row_at_index(position as i32)
-                    .map(|row| (item.path.clone(), (item.clone(), row)))
-            })
-            .collect::<HashMap<_, _>>();
-        let mut ordered_rows = Vec::with_capacity(results.len());
-        let mut requested = state.requested_thumbnails.borrow_mut();
-
-        for item in &results {
-            let row = if let Some((previous, row)) = rows.remove(&item.path) {
-                if previous == *item {
-                    row
-                } else {
-                    requested.remove(&item.path);
-                    super::thumbnail::cancel_thumbnails_in(row.upcast_ref());
-                    state.list.remove(&row);
-                    let row = result_row(state, item);
-                    state.list.append(&row);
-                    row
-                }
-            } else {
-                let row = result_row(state, item);
-                state.list.append(&row);
-                row
-            };
-            ordered_rows.push(row);
-        }
-        for (path, (_, row)) in rows {
-            requested.remove(&path);
-            super::thumbnail::cancel_thumbnails_in(row.upcast_ref());
-            state.list.remove(&row);
-        }
-        drop(requested);
-
-        state.positions.replace(
-            ordered_rows
-                .into_iter()
-                .enumerate()
-                .map(|(position, row)| (row, position))
-                .collect(),
-        );
-        state.visible_results.replace(results);
-        state.list.invalidate_sort();
-        state.reconciling_results.set(false);
-    }
-
-    let query_empty = query.is_empty();
-    state.rendered_query.replace(query);
-    let has_results = !state.visible_results.borrow().is_empty();
-    show_coverage(&state.truncated_hint, coverage);
-    state
-        .results
-        .set_visible_child_name(if has_results { "results" } else { "status" });
-    if has_results && (results_changed || query_changed) {
-        let items = state.visible_results.borrow();
-        let restored = if query_changed {
-            0
-        } else {
-            selected_path
-                .as_ref()
-                .and_then(|path| items.iter().position(|item| &item.path == path))
-                .or_else(|| {
-                    selected_index.map(|position| {
-                        usize::try_from(position)
-                            .unwrap_or_default()
-                            .min(items.len() - 1)
-                    })
-                })
-                .unwrap_or(0)
-        };
-        drop(items);
-        state
-            .list
-            .select_row(state.list.row_at_index(restored as i32).as_ref());
-    } else if !has_results {
-        let message = if state.history.borrow().is_some() {
-            if query_empty {
-                "No folder history yet"
-            } else {
-                "No matching folders"
-            }
-        } else if indexing {
-            "Searching…"
-        } else {
-            "No matching files or folders"
-        };
-        state.status.set_text(&crate::i18n::tr(message));
-    }
-
-    if results_changed
-        && had_result_focus
-        && focused
-            .as_ref()
-            .is_some_and(|focused| focused.root().is_none())
-    {
-        let focused_position = focused_path.and_then(|path| {
-            state
-                .visible_results
-                .borrow()
-                .iter()
-                .position(|item| item.path == path)
-        });
-        if let Some(row) = focused_position
-            .and_then(|position| state.list.row_at_index(position as i32))
-            .or_else(|| state.list.selected_row())
-        {
-            row.grab_focus();
-        } else {
-            state.field.grab_focus_without_selecting();
-        }
-    }
-
-    if results_changed {
-        record_interaction(state);
-        let revision = state.interaction_revision.get();
-        let weak = Rc::downgrade(state);
-        state.list.add_tick_callback(move |_, _| {
-            let weak = weak.clone();
-            // Reordered rows keep their old allocation until this frame's layout.
-            glib::idle_add_local_once(move || {
-                if let Some(state) = weak.upgrade() {
-                    if state.layer.is_visible() && state.interaction_revision.get() == revision {
-                        if state.navigation_started.get() {
-                            if let Some(row) = state.list.selected_row() {
-                                scroll_row_into_view(&state, &row);
-                            }
-                        } else {
-                            state.scroller.vadjustment().set_value(scroll_position);
-                        }
-                    }
-                    refresh_visible_thumbnails(&state);
-                }
-            });
-            glib::ControlFlow::Break
-        });
-    }
-}
-
-fn result_row(state: &Rc<SearchState>, item: &SearchItem) -> gtk::ListBoxRow {
-    let row = gtk::ListBoxRow::new();
-    row.add_css_class("search-result");
-    let content = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    let icon = super::thumbnail::ThumbnailSlot::new(19);
-    icon.add_css_class("search-result-thumbnail");
-    let fallback = if item.is_directory {
-        crate::assets::icons::FOLDER
-    } else {
-        crate::ui::browser::icon_for_name(&item.name)
-    };
-    super::thumbnail::show_customized_icon(&icon, &item.path, fallback, 19);
-    content.append(&icon);
-    let labels = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    labels.set_hexpand(true);
-    let name = gtk::Label::new(Some(&item.name));
-    name.add_css_class("search-result-name");
-    name.set_xalign(0.0);
-    name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
-    let full_path = item.path.to_string_lossy();
-    crate::ui::accessibility::set_label(&row, &full_path);
-    let path = gtk::Label::new(Some(&full_path));
-    path.add_css_class("search-result-path");
-    path.set_xalign(0.0);
-    path.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
-    labels.append(&name);
-    labels.append(&path);
-    content.append(&labels);
-    row.set_child(Some(&content));
-    let click = gtk::GestureClick::new();
-    click.set_button(gdk::BUTTON_SECONDARY);
-    click.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let weak = Rc::downgrade(state);
-    let target = item.clone();
-    click.connect_pressed(move |gesture, _, x, y| {
-        gesture.set_state(gtk::EventSequenceState::Claimed);
-        if let Some(state) = weak.upgrade()
-            && let Some(row) = gesture.widget().and_downcast::<gtk::ListBoxRow>()
-        {
-            show_result_menu(&state, &row, target.clone(), x, y);
-        }
-    });
-    row.add_controller(click);
-    row
-}
-
-fn show_result_menu(
-    state: &Rc<SearchState>,
-    row: &gtk::ListBoxRow,
-    item: SearchItem,
-    x: f64,
-    y: f64,
-) {
-    use super::browser::context_menu::{
-        context_menu_option, context_menu_popover, show_context_popover,
-    };
-
-    close_result_menu(state);
-    record_interaction(state);
-    state.list.select_row(Some(row));
-    let content = super::accessibility::menu_box();
-    content.add_css_class("folder-context-menu");
-    let reveal = context_menu_option(
-        crate::assets::icons::FOLDER_OPEN,
-        "Open containing folder",
-        crate::ui::shortcut_reference::ContextHint::ContainingFolder,
-    );
-    reveal.set_sensitive(item.path.parent().is_some());
-    content.append(&reveal);
-    let (popover, scroll) = context_menu_popover(&content);
-    popover.add_css_class("folder-context-popover");
-    popover.connect_closed(|popover| popover.unparent());
-    let weak = Rc::downgrade(state);
-    reveal.connect_clicked(move |_| {
-        if let Some(state) = weak.upgrade() {
-            reveal_result(&state, item.clone());
-        }
-    });
-    show_context_popover(&popover, &scroll, row.upcast_ref(), x, y);
-    state.context_menu.replace(Some(popover));
-}
-
 fn close_result_menu(state: &SearchState) {
     if let Some(popover) = state.context_menu.take() {
         popover.popdown();
@@ -760,68 +438,6 @@ fn reveal_result(state: &SearchState, item: SearchItem) {
     skip_focus_restore(state);
     let reveal = state.reveal.clone();
     hide_then(state, move || reveal(item));
-}
-
-fn refresh_visible_thumbnails(state: &SearchState) {
-    let adjustment = state.scroller.vadjustment();
-    let viewport_top = adjustment.value();
-    let viewport_height = adjustment.page_size();
-    let changes = {
-        let items = state.visible_results.borrow();
-        let mut requested = state.requested_thumbnails.borrow_mut();
-        let mut changes = Vec::new();
-        for (position, item) in items.iter().enumerate() {
-            let Some(row) = i32::try_from(position)
-                .ok()
-                .and_then(|position| state.list.row_at_index(position))
-            else {
-                continue;
-            };
-            let Some(bounds) = row.compute_bounds(&state.list) else {
-                continue;
-            };
-            let visible = intersects_viewport(
-                f64::from(bounds.y()),
-                f64::from(bounds.height()),
-                viewport_top,
-                viewport_height,
-            );
-            let Some(image) = row
-                .child()
-                .and_then(|content| content.first_child())
-                .and_then(|child| child.downcast::<super::thumbnail::ThumbnailSlot>().ok())
-            else {
-                continue;
-            };
-            let fallback = if item.is_directory {
-                crate::assets::icons::FOLDER
-            } else {
-                crate::ui::browser::icon_for_name(&item.name)
-            };
-            if visible && requested.insert(item.path.clone()) {
-                changes.push((image, Some(item.path.clone()), fallback));
-            } else if !visible && requested.remove(&item.path) {
-                changes.push((image, None, fallback));
-            }
-        }
-        changes
-    };
-    for (image, path, fallback) in changes {
-        if let Some(path) = path {
-            super::thumbnail::set_thumbnail_or_icon_for_path(&image, &path, fallback, 19, 32);
-        } else {
-            super::thumbnail::show_fallback_icon(&image, fallback, 19);
-        }
-    }
-}
-
-fn intersects_viewport(
-    row_top: f64,
-    row_height: f64,
-    viewport_top: f64,
-    viewport_height: f64,
-) -> bool {
-    row_top < viewport_top + viewport_height && row_top + row_height > viewport_top
 }
 
 fn contains_keyboard_focus(widget: &gtk::Widget) -> bool {
@@ -856,22 +472,6 @@ fn move_selection(state: &SearchState, direction: i32) {
     if let Some(row) = state.list.row_at_index(next) {
         state.list.select_row(Some(&row));
         scroll_row_into_view(state, &row);
-    }
-}
-
-fn scroll_row_into_view(state: &SearchState, row: &gtk::ListBoxRow) {
-    let Some(bounds) = row.compute_bounds(&state.list) else {
-        return;
-    };
-    let adjustment = state.scroller.vadjustment();
-    let viewport_top = adjustment.value();
-    let viewport_bottom = viewport_top + adjustment.page_size();
-    let row_top = f64::from(bounds.y());
-    let row_bottom = row_top + f64::from(bounds.height());
-    if row_top < viewport_top {
-        adjustment.set_value(row_top);
-    } else if row_bottom > viewport_bottom {
-        adjustment.set_value(row_bottom - adjustment.page_size());
     }
 }
 

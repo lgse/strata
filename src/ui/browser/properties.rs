@@ -10,12 +10,13 @@ use crate::ui::browser::paths::{PinAction, compact_display_path, is_trash_root, 
 use crate::ui::browser::{PinStatus, ViewState};
 use crate::ui::controls::{ModalTone, form_check_button, modal_layout, properties_action};
 use crate::ui::modal::{
-    ModalHost, close_on_escape, dismiss_modal_layer, modal_layer, remember_modal_focus,
-    show_error_dialog,
+    ModalHost, close_on_escape, dismiss_modal_layer, focus_modal_layer, modal_layer,
+    remember_modal_focus, show_error_dialog,
 };
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::Cell;
+use std::path::Path;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -812,7 +813,7 @@ impl ViewState {
         close_on_escape(&layer, move || {
             dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
         });
-        layer.grab_focus();
+        focus_modal_layer(&layer);
 
         if measuring_directory {
             let measurement = PropertiesMeasurement::new(
@@ -856,7 +857,9 @@ impl ViewState {
             } else {
                 "No"
             }));
-            if let Some(content_type) = crate::adapters::content_type_of(&info) {
+            if let Some(reported) = crate::adapters::content_type_of(&info) {
+                let content_type =
+                    crate::services::refine_reported_content_type(&reported, Path::new(&name));
                 kind.set_text(&gio::content_type_get_description(&content_type));
                 if let Some(app) = gio::AppInfo::default_for_type(&content_type, false) {
                     opens_with.set_text(&app.display_name());
@@ -952,7 +955,7 @@ impl ViewState {
         close_on_escape(&layer, move || {
             dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
         });
-        layer.grab_focus();
+        focus_modal_layer(&layer);
 
         let measurement =
             PropertiesMeasurement::new(&size, &size_spinner, Some(&items), &measurement_warning);

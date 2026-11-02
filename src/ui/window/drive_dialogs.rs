@@ -21,7 +21,10 @@ use crate::{
     },
 };
 
-use super::drive_ops::{self, FilesystemType};
+use super::{
+    device_actions::{MediaRelease, media_release_label},
+    drive_ops::{self, FilesystemType},
+};
 
 mod format_progress;
 
@@ -92,37 +95,87 @@ impl PropertiesTarget {
     }
 }
 
+/// The release a device row offers, so Properties names and runs it the same way.
+#[derive(Clone)]
+pub(super) struct PropertiesRelease {
+    pub(super) action: MediaRelease,
+    pub(super) run: Rc<dyn Fn()>,
+}
+
 #[derive(Clone, Copy)]
 enum PropertyAction {
     Label,
-    Eject,
+    Release,
     Format,
+}
+
+struct PropertyActionSet {
+    editable: bool,
+    can_label: bool,
+    release: Option<PropertiesRelease>,
 }
 
 fn property_action_control(
     action: PropertyAction,
-    editable: bool,
-    can_release: bool,
-    can_label: bool,
+    actions: &PropertyActionSet,
 ) -> Option<gtk::Button> {
+    let can_release = actions.release.is_some();
     let available = match action {
-        PropertyAction::Label => can_label,
-        PropertyAction::Format => editable,
-        PropertyAction::Eject => editable || can_release,
+        PropertyAction::Label => actions.can_label,
+        PropertyAction::Format => actions.editable,
+        PropertyAction::Release => actions.editable || can_release,
     };
     if !available {
         return None;
     }
+    let release_label = actions
+        .release
+        .as_ref()
+        .map_or("Eject", |release| media_release_label(release.action));
     let (label, icon, tone) = match action {
         PropertyAction::Label => ("Set label", assets::icons::PENCIL, ModalTone::Accent),
-        PropertyAction::Eject => ("Eject", assets::icons::EJECT, ModalTone::Accent),
+        PropertyAction::Release => (release_label, assets::icons::EJECT, ModalTone::Accent),
         PropertyAction::Format => ("Format", assets::icons::SHREDDER, ModalTone::Danger),
     };
     let button = properties_action(icon, label, tone);
-    if matches!(action, PropertyAction::Eject) {
+    if matches!(action, PropertyAction::Release) {
         button.set_sensitive(can_release);
     }
     Some(button)
+}
+
+/// Only Set label may take the initial focus, so Enter never releases or
+/// formats the device.
+fn append_property_actions(
+    shell: &ModalShell,
+    actions: &PropertyActionSet,
+    run: Rc<dyn Fn(PropertyAction)>,
+) {
+    shell
+        .layout
+        .actions
+        .set_visible(actions.editable || actions.can_label || actions.release.is_some());
+    for action in [
+        PropertyAction::Label,
+        PropertyAction::Release,
+        PropertyAction::Format,
+    ] {
+        let Some(button) = property_action_control(action, actions) else {
+            continue;
+        };
+        let layer = shell.layer.clone();
+        let overlay = shell.overlay.clone();
+        let root = shell.blurred_root.clone();
+        let run = run.clone();
+        button.connect_clicked(move |_| {
+            dismiss_modal_layer(&layer, &overlay, root.as_ref());
+            run(action);
+        });
+        shell.layout.actions.append(&button);
+        if matches!(action, PropertyAction::Label) {
+            button.grab_focus();
+        }
+    }
 }
 
 struct ModalShell {
@@ -333,6 +386,15 @@ pub(super) struct DriveFacts {
 }
 
 fn gather_drive_facts(request: DriveFactsRequest) -> DriveFacts {
+    gather_drive_facts_with(request, drive_ops::fstab_type_for_device)
+}
+
+/// `fstab` reads the filesystem type an unmounted volume declares when the
+/// device itself cannot be probed, as for a network or FUSE fstab entry.
+fn gather_drive_facts_with(
+    request: DriveFactsRequest,
+    fstab: fn(&std::path::Path) -> Option<String>,
+) -> DriveFacts {
     let device = request.device.as_deref();
     let mount_root = request.mount_root.or_else(|| {
         device
@@ -352,6 +414,11 @@ fn gather_drive_facts(request: DriveFactsRequest) -> DriveFacts {
                     info.attribute_string("filesystem::type")
                         .map(|name| name.to_string())
                 })
+        })
+        .or_else(|| {
+            device
+                .and_then(fstab)
+                .and_then(|fstype| drive_ops::fstab_display_name(&fstype))
         });
     let mount_point = mount_root.as_ref().and_then(|root| root.path());
     DriveFacts {
@@ -535,7 +602,7 @@ fn drive_properties_grid(
 pub(super) fn show_drive_properties(
     parent: &gtk::Widget,
     target: &PropertiesTarget,
-    on_release: Option<Rc<dyn Fn()>>,
+    release: Option<PropertiesRelease>,
 ) {
     let name = target.name();
     let volume = target.volume();
@@ -560,6 +627,14 @@ pub(super) fn show_drive_properties(
         .layout
         .subtitle
         .set_ellipsize(gtk::pango::EllipsizeMode::End);
+    if let Some(id) = target.label_id() {
+        super::device_labels::bind_label_text(
+            &shell.layout.subtitle,
+            &super::super::preferences::PreferenceManager::shared(),
+            &id,
+            &name,
+        );
+    }
 
     let block_device = volume
         .as_ref()
@@ -580,7 +655,17 @@ pub(super) fn show_drive_properties(
     );
 
     shell.layout.body.append(&grid);
+    prepare_properties_footer(&shell);
+    let actions = PropertyActionSet {
+        editable: drive_ops::is_eligible(volume.as_ref()),
+        can_label: target.label_id().is_some(),
+        release,
+    };
+    let run = property_action_runner(parent, target, actions.release.clone());
+    append_property_actions(&shell, &actions, run);
+}
 
+fn prepare_properties_footer(shell: &ModalShell) {
     shell.layout.confirm.set_visible(false);
     shell.layout.cancel.set_visible(false);
     while let Some(child) = shell.layout.actions.first_child() {
@@ -602,52 +687,30 @@ pub(super) fn show_drive_properties(
         }
         glib::ControlFlow::Continue
     });
-    wire_modal_close(&shell);
+    wire_modal_close(shell);
     shell.layout.close.grab_focus();
-    let editable = drive_ops::is_eligible(volume.as_ref());
-    let can_label = target.label_id().is_some();
-    shell
-        .layout
-        .actions
-        .set_visible(editable || can_label || on_release.is_some());
-    for action in [
-        PropertyAction::Label,
-        PropertyAction::Eject,
-        PropertyAction::Format,
-    ] {
-        let Some(button) =
-            property_action_control(action, editable, on_release.is_some(), can_label)
-        else {
-            continue;
-        };
-        let parent = parent.clone();
-        let volume = volume.clone();
-        let target = target.clone();
-        let layer = shell.layer.clone();
-        let overlay = shell.overlay.clone();
-        let root = shell.blurred_root.clone();
-        let on_release = on_release.clone();
-        button.connect_clicked(move |_| {
-            dismiss_modal_layer(&layer, &overlay, root.as_ref());
-            match action {
-                PropertyAction::Label => show_label_dialog(&parent, &target),
-                PropertyAction::Format => {
-                    if let Some(volume) = &volume {
-                        show_format_dialog(&parent, volume);
-                    }
-                }
-                PropertyAction::Eject => {
-                    if let Some(on_release) = &on_release {
-                        on_release();
-                    }
-                }
+}
+
+fn property_action_runner(
+    parent: &gtk::Widget,
+    target: &PropertiesTarget,
+    release: Option<PropertiesRelease>,
+) -> Rc<dyn Fn(PropertyAction)> {
+    let parent = parent.clone();
+    let target = target.clone();
+    Rc::new(move |action| match action {
+        PropertyAction::Label => show_label_dialog(&parent, &target),
+        PropertyAction::Format => {
+            if let Some(volume) = target.volume() {
+                show_format_dialog(&parent, &volume);
             }
-        });
-        shell.layout.actions.append(&button);
-        if matches!(action, PropertyAction::Label) || !editable {
-            button.grab_focus();
         }
-    }
+        PropertyAction::Release => {
+            if let Some(release) = &release {
+                (release.run)();
+            }
+        }
+    })
 }
 
 pub(super) fn show_label_dialog(parent: &gtk::Widget, target: &PropertiesTarget) {
