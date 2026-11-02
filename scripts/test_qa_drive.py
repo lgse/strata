@@ -1,15 +1,24 @@
 # SPDX-License-Identifier: MIT
 
 """scripts/qa-drive.sh launches `strata --qa` as tests/qa.rs launches each
-run; these tests fail when a value it copies from the runner drifts."""
+run; these tests fail when a value it copies from the runner drifts, or when
+scripts/qa_drive.py writes a settings.toml the application cannot read."""
 
+import io
+import os
 import re
+import tempfile
+import tomllib
 import unittest
 from pathlib import Path
+from unittest import mock
+
+import qa_drive
 
 REPOSITORY = Path(__file__).resolve().parent.parent
 RUNNER = (REPOSITORY / "tests/qa.rs").read_text(encoding="utf-8")
 DRIVE = (REPOSITORY / "scripts/qa-drive.sh").read_text(encoding="utf-8")
+SEED = (REPOSITORY / "scripts/qa_drive.py").read_text(encoding="utf-8")
 
 
 def runner_pairs(constant):
@@ -94,7 +103,103 @@ class QaDriveMatchesTheRunner(unittest.TestCase):
         ):
             with self.subTest(runner=runner):
                 self.assertIn(runner, RUNNER, "tests/qa.rs changed; update qa-drive.sh and this test")
-                self.assertIn(drive, DRIVE)
+                self.assertIn(drive, DRIVE + SEED)
+
+
+SAVED = """\
+browser_mode = "columns"
+list_column_order = [
+    "name",
+    "size",
+    "modified",
+]
+show_hidden = false
+
+[keymap.default]
+copy = ["ctrl+c"]
+rename = ["F2"]
+
+[folder_customization."/tmp/fixture/pictures"]
+icon = "camera"
+"""
+
+
+class PreferencesAreMergedIntoTheSavedSettings(unittest.TestCase):
+    def merged(self, *changes):
+        merged = qa_drive.merge(SAVED, list(changes))
+        return tomllib.loads(merged)
+
+    def test_a_multi_line_array_is_replaced_whole(self):
+        settings = self.merged(("list_column_order", ["size", "name"]))
+        self.assertEqual(settings["list_column_order"], ["size", "name"])
+        self.assertEqual(settings["browser_mode"], "columns")
+        self.assertEqual(settings["show_hidden"], False)
+
+    def test_a_nested_table_replaces_the_saved_table(self):
+        keymap = {"default": {"copy": ["ctrl+shift+c"]}, "vim": {"left": ["h"]}}
+        settings = self.merged(("keymap", keymap))
+        self.assertEqual(settings["keymap"], keymap)
+        self.assertEqual(settings["folder_customization"], {"/tmp/fixture/pictures": {"icon": "camera"}})
+
+    def test_a_new_key_stays_out_of_the_saved_tables(self):
+        settings = self.merged(("text_size", "large"))
+        self.assertEqual(settings["text_size"], "large")
+        self.assertNotIn("text_size", settings["keymap"]["default"])
+
+    def test_a_saved_file_that_does_not_parse_is_refused_unchanged(self):
+        with self.assertRaises(qa_drive.PreferenceError):
+            qa_drive.merge("list_column_order = [\n", [("show_hidden", True)])
+
+
+class PreferenceValuesAreWrittenAsTheyWereGiven(unittest.TestCase):
+    def test_each_value_reads_back_unchanged(self):
+        for value in (
+            True,
+            7,
+            1.5,
+            "plain",
+            'quote " and \\ backslash',
+            "line\nbreak\ttab\x7fdel\x01",
+            "Ünïcode 名前",
+            [],
+            ["a", 2, [False]],
+            {},
+            {"default": {"copy": ["ctrl+c"]}, "needs quotes": 1},
+            [{"name": "a"}, {"name": "b"}],
+        ):
+            with self.subTest(value=value):
+                written = f"key = {qa_drive.toml(value)}\n"
+                self.assertEqual(tomllib.loads(written)["key"], value)
+                self.assertEqual(tomllib.loads(qa_drive.dumps({"key": value}))["key"], value)
+
+    def test_a_value_is_json_or_else_a_string(self):
+        prefs = "list_file_clicks=1\ntext_size=large\nkeymap={\"vim\":{\"left\":[\"h\"]}}\nlabel=a=b\n"
+        self.assertEqual(
+            list(qa_drive.parse_prefs(prefs)),
+            [("list_file_clicks", 1), ("text_size", "large"), ("keymap", {"vim": {"left": ["h"]}}),
+             ("label", "a=b")],
+        )
+
+    def test_values_settings_toml_cannot_hold_are_refused(self):
+        for prefs in ("show_hidden=null", "show_hidden", "=true"):
+            with self.subTest(prefs=prefs), self.assertRaises(qa_drive.PreferenceError):
+                list(qa_drive.parse_prefs(prefs))
+
+    def test_restart_rewrites_the_file_only_when_every_value_is_valid(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.toml"
+            path.write_text(SAVED, encoding="utf-8")
+            for prefs, status in (("show_hidden=null\ntext_size=large", 1), ("list_column_order=[\"size\"]", 0)):
+                with (
+                    self.subTest(prefs=prefs),
+                    mock.patch.dict(os.environ, {"QA_DRIVE_PREFS": prefs}),
+                    mock.patch("sys.stderr", io.StringIO()),
+                ):
+                    self.assertEqual(qa_drive.main(["check"]), status)
+                    self.assertEqual(qa_drive.main(["prefs", str(path)]), status)
+            settings = tomllib.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(settings["list_column_order"], ["size"])
+            self.assertNotIn("text_size", settings)
 
 
 if __name__ == "__main__":

@@ -60,7 +60,8 @@ and wait for it.
   `archive/`, `documents/{notes.txt,report.md,spreadsheet.csv}`,
   `pictures/{diagram.txt,photo.txt}`, `readme.md`, `todo.txt`, `.hidden.txt`.
 - `--pref KEY=VALUE` overrides a seeded preference; the value is JSON, or
-  else a string (`--pref text_size=large`, `--pref list_file_clicks=1`).
+  else a string (`--pref text_size=large`, `--pref list_file_clicks=1`,
+  `--pref 'keymap={"default":{"rename":["<Control>e"]}}'`).
 - The fixture directory is `/tmp/strata-qa-fixture-XXXXXX`. Its name is the
   root pane's name and the first `directory`. Get it with
   `./scripts/qa-drive.sh exec pwd`.
@@ -125,7 +126,7 @@ pane while it was open, and Escape gave focus back to `plan.txt` in `notes`.
 | --- | --- |
 | `send JSON...` | Sends each command in order and prints one reply line each. Exit 0 when a reply came back, whatever `ok` says; 1 when the app exited (with its log tail) or no reply came in 90 s (or the command's `timeout_ms` + 30 s), in which case that reply is skipped if it comes later; 2 for text that is not JSON. |
 | `screenshot NAME.png` | Captures the whole Xvfb screen to `target/qa-drive/NAME.png`. |
-| `restart [--pref K=V]... [--env N=V]...` | Closes the app's stdin, waits up to 10 s for it to quit, then signals its group; rewrites those keys in its saved `settings.toml`; relaunches on the same fixture and HOME and prints the launch reply. |
+| `restart [--pref K=V]... [--env N=V]...` | Closes the app's stdin, waits up to 10 s for it to quit, then signals its group; replaces those keys whole (arrays and tables too) in its saved `settings.toml`; relaunches on the same fixture and HOME and prints the launch reply. A value TOML cannot hold is refused before the app quits. |
 | `exec 'SHELL'` | Runs in the fixture directory with `$FIXTURE`, the session's `HOME`, `XDG_*_HOME`, `XDG_RUNTIME_DIR`, `DISPLAY`, and `DBUS_SESSION_BUS_ADDRESS`, so `gio` and similar tools see the session. |
 | `log` | The application's log without colour codes. |
 | `stop` | Quits the app and removes the container. Safe to repeat. |

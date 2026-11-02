@@ -57,90 +57,7 @@ inside() {
 }
 
 prepare() {
-  python3 - "$@" <<'PYTHON'
-import json, os, re, sys
-
-def toml(value):
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, (int, float)):
-        return json.dumps(value)
-    if isinstance(value, list):
-        return "[" + ", ".join(toml(item) for item in value) + "]"
-    if isinstance(value, str):
-        return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
-    raise SystemExit(f"settings.toml cannot hold {value!r}")
-
-def changed_prefs():
-    for line in filter(None, os.environ.get("QA_DRIVE_PREFS", "").split("\n")):
-        key, _, text = line.partition("=")
-        try:
-            value = json.loads(text)
-        except ValueError:
-            value = text
-        toml(value)
-        yield key, value
-
-def populate(directory, tree):
-    for name, value in tree.items():
-        path = os.path.join(directory, name)
-        if isinstance(value, dict):
-            os.makedirs(path, exist_ok=True)
-            os.chmod(path, 0o755)
-            populate(path, value)
-        elif isinstance(value, str):
-            with open(path, "w") as file:
-                file.write(value)
-            os.chmod(path, 0o644)
-        else:
-            raise SystemExit(f"fixture {name} must be a file's text or a directory")
-
-def pin(path, mtime):
-    for root, directories, files in os.walk(path, topdown=False):
-        for name in files + directories:
-            os.utime(os.path.join(root, name), (mtime, mtime), follow_symlinks=False)
-    os.utime(path, (mtime, mtime))
-
-if sys.argv[1] == "prefs":
-    path = sys.argv[2]
-    lines = open(path).read().splitlines()
-    for key, value in changed_prefs():
-        entry = f"{key} = {toml(value)}"
-        tables = [index for index, line in enumerate(lines) if line.startswith("[")]
-        top = tables[0] if tables else len(lines)
-        found = [index for index in range(top) if re.match(rf"\s*{re.escape(key)}\s*=", lines[index])]
-        if found:
-            lines[found[0]] = entry
-        else:
-            lines.insert(top, entry)
-    open(path, "w").write("\n".join(lines) + "\n")
-    raise SystemExit
-
-session, fixture = sys.argv[2], sys.argv[3]
-manifest = json.load(open("/workspace/tests/fixtures/harness.json"))
-home = f"{session}/home"
-os.makedirs(f"{home}/config/gtk-4.0", exist_ok=True)
-with open(f"{home}/config/gtk-4.0/settings.ini", "w") as file:
-    file.write(manifest["gtk_settings"])
-os.makedirs(f"{home}/config/strata", exist_ok=True)
-with open(f"{home}/config/strata/{manifest['portal_offer_marker']}", "w") as file:
-    file.write("1\n")
-preferences = dict(manifest["preferences"])
-preferences.update(changed_prefs())
-with open(f"{home}/config/strata/settings.toml", "w") as file:
-    file.writelines(f"{key} = {toml(value)}\n" for key, value in preferences.items())
-
-tree = os.environ.get("QA_DRIVE_TREE") or "canonical"
-tree = manifest["trees"][tree] if tree in manifest["trees"] else json.loads(tree)
-if not isinstance(tree, dict):
-    raise SystemExit("--tree must be a manifest tree's name or a JSON object")
-populate(fixture, tree)
-pin(fixture, manifest["mtime"])
-
-with open(f"{session}/app.env", "w") as file:
-    for key, value in manifest["environment"].items():
-        file.write(f"{key}={value}\n")
-PYTHON
+  python3 /workspace/scripts/qa_drive.py "$@"
 }
 
 session_variables() {
@@ -303,11 +220,17 @@ PYTHON
     ;;
   _restart)
     inside "$1"
+    # Refuse a bad value while the app still runs, so a typo never leaves it stopped.
+    prepare check || exit 2
     stop_app
-    prepare prefs "$session/home/config/strata/settings.toml"
+    status=0
+    if ! prepare prefs "$session/home/config/strata/settings.toml"; then
+      echo "settings.toml left unchanged; relaunching with it" >&2
+      status=1
+    fi
     printf '%s\n' "${QA_DRIVE_ENV:-}" | sed '/^$/d' >> "$session/app.env"
     launch_app
-    exit
+    exit "$status"
     ;;
   _exec)
     inside "$1"
