@@ -599,24 +599,27 @@ fn every_page_heading_is_in_every_catalog() {
             // so each heading's text is the key every language must translate.
             rust_i18n::set_locale("en");
             let catalogs = crate::i18n::Catalogs::compiled();
-            let mut checked = 0;
-            let mut missing = Vec::new();
-            for (page, root) in navigation_pages() {
-                for heading in descendants(&root)
-                    .into_iter()
-                    .filter(|widget| widget.has_css_class("menu-heading"))
-                    .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
-                {
-                    checked += 1;
-                    let text = heading.text();
-                    for locale in catalogs.available_locales() {
-                        if catalogs.translate(&locale, &text).is_none() {
-                            missing.push(format!("{page}: {text:?} is missing from {locale}"));
-                        }
-                    }
-                }
-            }
-            assert!(checked > 0, "no Settings headings found");
+            let headings: Vec<(&str, String)> = navigation_pages()
+                .into_iter()
+                .flat_map(|(page, root)| {
+                    descendants(&root)
+                        .into_iter()
+                        .filter(|widget| widget.has_css_class("menu-heading"))
+                        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+                        .map(move |heading| (page, heading.text().to_string()))
+                })
+                .collect();
+            assert!(!headings.is_empty(), "no Settings headings found");
+            let locales = catalogs.available_locales();
+            let missing: Vec<String> = headings
+                .iter()
+                .flat_map(|(page, text)| {
+                    locales
+                        .iter()
+                        .filter(|locale| catalogs.translate(locale, text).is_none())
+                        .map(move |locale| format!("{page}: {text:?} is missing from {locale}"))
+                })
+                .collect();
             assert!(missing.is_empty(), "{}", missing.join("\n"));
         },
     );
