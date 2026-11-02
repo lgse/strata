@@ -209,6 +209,8 @@ fn mount_roots_without_a_gio_leaf_name_are_named_by_their_decoded_uri() {
         ("smb://host/", "host"),
         ("sftp://host/?tok=SECRET", "host"),
         ("sftp://[::1]:2222/", "::1"),
+        ("mtp://Caf%C3%A9_Phone/", "Café_Phone"),
+        ("smb://user@h%C3%B6st:445/", "höst"),
         ("smb://host/caf%FF", "caf\u{fffd}"),
         ("smb://host/bad%zz", "bad%zz"),
     ] {

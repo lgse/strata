@@ -133,9 +133,11 @@ fn uri_display_name(uri: &str, file_name: Option<OsString>) -> String {
         .unwrap_or_else(|| uri_leaf_name(uri))
 }
 
-/// The decoded last path segment, or the host at a server root.
+/// The decoded last path segment, or the host at a server root. `NON_DNS` keeps a non-ASCII
+/// host as typed instead of converting it to punycode.
 fn uri_leaf_name(uri: &str) -> String {
-    let Ok(parsed) = gio::glib::Uri::parse(uri, GIO_URI_PARSE_FLAGS) else {
+    let flags = GIO_URI_PARSE_FLAGS.union(gio::glib::UriFlags::NON_DNS);
+    let Ok(parsed) = gio::glib::Uri::parse(uri, flags) else {
         return uri
             .trim_end_matches('/')
             .rsplit('/')
