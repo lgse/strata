@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::test_support::widgets::{mapped_back_button, press_on_widget};
 
 /// Hyper, Meta and Caps Lock are not shortcut modifiers.
 const OPENS: [(Key, ModifierType); 8] = [
@@ -118,34 +119,6 @@ fn visible_popovers(widget: &gtk::Widget) -> Vec<gtk::Popover> {
     found
 }
 
-/// GTK offers a key the window's capture controller declines to the focused
-/// widget's own controllers.
-fn deliver_to(widget: &gtk::Widget, key: Key, modifiers: ModifierType) {
-    let controllers = widget.observe_controllers();
-    for index in 0..controllers.n_items() {
-        if let Some(keys) = controllers
-            .item(index)
-            .and_downcast::<gtk::EventControllerKey>()
-        {
-            keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]);
-        }
-    }
-}
-
-/// The rendered Back button; a view-mode switch leaves the old header until it rebuilds.
-fn mapped_back(widget: &gtk::Widget) -> Option<gtk::Widget> {
-    if !widget.is_mapped() {
-        return None;
-    }
-    if widget.has_css_class("list-navigation") {
-        return widget
-            .first_child()
-            .filter(|back| back.is_mapped() && back.width() > 0);
-    }
-    std::iter::successors(widget.first_child(), gtk::Widget::next_sibling)
-        .find_map(|child| mapped_back(&child))
-}
-
 #[test]
 fn context_menu_keys_on_back_list_the_back_history() {
     crate::test_support::gtk_test(
@@ -164,7 +137,7 @@ fn context_menu_keys_on_back_list_the_back_history() {
                     let case = format!("{mode:?} {modifiers:?}+{key:?}");
                     let back = RefCell::new(None);
                     wait_until(|| {
-                        back.replace(mapped_back(fixture.window.upcast_ref()));
+                        back.replace(mapped_back_button(fixture.window.upcast_ref()));
                         back.borrow().is_some()
                     });
                     let back = back
@@ -178,7 +151,7 @@ fn context_menu_keys_on_back_list_the_back_history() {
                         !fixture.press(*key, *modifiers),
                         "{case}: the window claimed the key from Back"
                     );
-                    deliver_to(&back, *key, *modifiers);
+                    press_on_widget(&back, *key, *modifiers);
                     wait_until(|| history.is_visible());
                     let others = visible_popovers(fixture.window.upcast_ref())
                         .into_iter()

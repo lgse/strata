@@ -434,7 +434,8 @@ While a dialog or Settings is open, **Ctrl+K**, **Ctrl+Shift+K**, **F5**,
 context menu without the pointer. With an item keyboard-focused, the menu opens for
 that item — or the full multi-selection, if the focused item is part of one. With no
 selection, it opens the active pane's background menu. The menu is anchored to the
-focused item or pane, never to the pointer.
+focused item or pane, never to the pointer. On a focused Back button in List or
+Icons, in the browser or the file chooser, they list the back history instead.
 
 Right-clicking an item also makes it the keyboard cursor, without opening it.
 An already-selected item keeps the existing multi-selection; an unselected item

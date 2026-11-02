@@ -2,6 +2,7 @@
 
 use super::acceptance::{request, visible_collection_selection, wait_until};
 use super::*;
+use crate::test_support::widgets::{mapped_back_button, press_on_widget};
 use crate::ui::browser_modes::BrowserMode;
 use gtk::gdk::{Key, ModifierType};
 use std::{
@@ -1196,20 +1197,6 @@ fn enter_in_the_filter_field_chooses_the_top_result_in_every_view() {
     );
 }
 
-/// The rendered Back button; a view-mode switch leaves the old header until it rebuilds.
-fn mapped_back(widget: &gtk::Widget) -> Option<gtk::Widget> {
-    if !widget.is_mapped() {
-        return None;
-    }
-    if widget.has_css_class("list-navigation") {
-        return widget
-            .first_child()
-            .filter(|back| back.is_mapped() && back.width() > 0);
-    }
-    std::iter::successors(widget.first_child(), gtk::Widget::next_sibling)
-        .find_map(|child| mapped_back(&child))
-}
-
 #[test]
 fn context_menu_keys_on_back_list_the_back_history() {
     crate::test_support::gtk_test(
@@ -1234,7 +1221,7 @@ fn context_menu_keys_on_back_list_the_back_history() {
                     let case = format!("{mode:?} {modifiers:?}+{key:?}");
                     let back = RefCell::new(None);
                     wait_until(|| {
-                        back.replace(mapped_back(chooser.state.window.upcast_ref()));
+                        back.replace(mapped_back_button(chooser.state.window.upcast_ref()));
                         back.borrow().is_some()
                     });
                     let back = back
@@ -1248,16 +1235,7 @@ fn context_menu_keys_on_back_list_the_back_history() {
                         !chooser.press_with(key, modifiers),
                         "{case}: the chooser claimed the key from Back"
                     );
-                    // GTK then offers the declined key to Back's own controllers.
-                    let controllers = back.observe_controllers();
-                    for index in 0..controllers.n_items() {
-                        if let Some(keys) = controllers
-                            .item(index)
-                            .and_downcast::<gtk::EventControllerKey>()
-                        {
-                            keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]);
-                        }
-                    }
+                    press_on_widget(&back, key, modifiers);
                     wait_until(|| history.is_visible());
                     assert_eq!(
                         browser.active_location().as_ref(),
