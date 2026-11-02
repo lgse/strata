@@ -398,7 +398,7 @@ fn a_cancel_that_cuts_off_a_move_back_counts_it_as_not_attempted() -> Result<(),
 #[test]
 fn undoing_a_grouping_reports_the_trashed_group_folder() {
     crate::test_support::gtk_test(
-        "adapters::local_operations::tests::undo::undoing_a_grouping_reports_the_trashed_group_folder",
+        "adapters::local_operations::tests::undo::moves::undoing_a_grouping_reports_the_trashed_group_folder",
         || {
             let root = tempfile::tempdir().expect("root");
             let group = root.path().join("group");
