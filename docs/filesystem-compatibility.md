@@ -1828,7 +1828,11 @@ The exceptions are:
 - The reads at start, before the first window shows: Strata's settings and state files, GTK's
   bookmarks file, the install marker beside Strata's executable and the check for a Flatpak
   sandbox. The bundled font Strata writes at start is read by fontconfig whenever it lays out
-  text.
+  text. Before any of them, and before anything asks GIO for its default VFS, which waits about
+  25 s on a `gvfsd` that does not answer, Strata checks in a subprocess that GVfs answers within
+  2 s; if it does not, Strata restarts with GIO's local file and volume backends. Loading the
+  settings already asks GIO for its default VFS, so a debug build stops at that check if anything
+  before it has loaded GIO's modules.
 - GLib's volume monitor, which works only on the main thread. Strata takes it once, in the primary
   instance's start-up, right after checking that GVfs answers and before the first window shows.
   Strata skips that check while the marker it wrote after the last passing check still matches the
