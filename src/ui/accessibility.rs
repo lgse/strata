@@ -106,6 +106,34 @@ fn tristate(value: bool) -> gtk::AccessibleTristate {
     }
 }
 
+/// GTK leaves the links in a label's markup unnamed, so a screen reader announces
+/// an empty link; each link is named after its text.
+pub(super) fn set_link_markup(label: &gtk::Label, markup: &str) {
+    label.set_markup(markup);
+    let mut link = label.first_accessible_child();
+    for text in link_texts(markup) {
+        let Some(current) = link else {
+            break;
+        };
+        set_label(&current, &text);
+        link = current.next_accessible_sibling();
+    }
+}
+
+fn link_texts(markup: &str) -> Vec<String> {
+    markup
+        .split("<a ")
+        .skip(1)
+        .map(|tail| {
+            tail.split_once('>')
+                .and_then(|(_, rest)| rest.split_once("</a>"))
+                .and_then(|(inner, _)| gtk::pango::parse_markup(inner, '\0').ok())
+                .map(|(_, text, _)| text.to_string())
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
 pub(super) fn set_checked(widget: &impl IsA<gtk::Accessible>, checked: bool) {
     widget.update_state(&[gtk::accessible::State::Checked(tristate(checked))]);
     #[cfg(feature = "qa")]

@@ -135,11 +135,10 @@ impl View {
         } else {
             update_check_message(result, self.method)
         };
-        self.status.set_markup(&update_status_markup(
-            message,
-            result,
-            InstallSource::detect(),
-        ));
+        crate::ui::accessibility::set_link_markup(
+            &self.status,
+            &update_status_markup(message, result, InstallSource::detect()),
+        );
         self.pending.take();
         self.managed.set(false);
         self.button.set_label(&crate::i18n::tr("Check now"));

@@ -169,6 +169,60 @@ fn startup_results_initialize_and_update_existing_settings_rows() {
 }
 
 #[cfg(feature = "qa")]
+fn link_names(label: &gtk::Label) -> Vec<Option<String>> {
+    std::iter::successors(label.first_accessible_child(), |link| {
+        link.next_accessible_sibling()
+    })
+    .map(|link| crate::ui::accessibility::qa::naming(&link).and_then(|naming| naming.label))
+    .collect()
+}
+
+#[cfg(feature = "qa")]
+#[test]
+fn update_status_links_are_named_after_their_text() {
+    gtk_test(
+        "ui::settings::tests::updates::update_status_links_are_named_after_their_text",
+        || {
+            let manager = PreferenceManager::shared();
+            manager.set_checks_for_updates(true);
+            manager.set_release_channel(Channel::Stable);
+            clear_cached_update_notice();
+            let row = update_check_row_with(
+                manager.clone(),
+                release_notes_card(ReleaseNotesKind::Available, "Available release", ""),
+                install_guard(),
+                UpdateMethod::InPlace,
+                FakeInstaller::default().launcher(),
+            );
+            for (result, link) in [
+                (
+                    UpdateCheck::Failed("test connection failure".into()),
+                    "View releases on GitHub",
+                ),
+                (
+                    UpdateCheck::Available {
+                        release: super::update_dialog::release(),
+                        install: offered_request(),
+                    },
+                    "v99.0.0",
+                ),
+            ] {
+                let generation = next_check_generation();
+                complete_due_update_check(
+                    &Rc::downgrade(&manager),
+                    Channel::Stable,
+                    result,
+                    UpdateMethod::InPlace,
+                    generation,
+                );
+                assert_eq!(link_names(&row.status), [Some(link.to_owned())]);
+            }
+            clear_cached_update_notice();
+        },
+    );
+}
+
+#[cfg(feature = "qa")]
 fn channel_choice(manager: &Rc<PreferenceManager>) -> (gtk::Widget, gtk::MenuButton) {
     let (page, _) = updates_page(
         manager.clone(),
