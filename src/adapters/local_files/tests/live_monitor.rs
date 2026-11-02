@@ -153,6 +153,49 @@ fn a_watched_folder_reports_its_removal_when_an_ancestor_was_renamed() -> Result
 }
 
 #[test]
+fn a_look_at_the_path_that_outlasts_later_batches_still_reports_the_departure()
+-> Result<(), Box<dyn Error>> {
+    use crate::adapters::{FsOp, FsQuirks, Quirks};
+
+    let _serial = serial();
+    let root = tempfile::tempdir()?;
+    let (ancestor, renamed) = (root.path().join("b"), root.path().join("b2"));
+    fs::create_dir_all(ancestor.join("c"))?;
+    let watched = Location::local(ancestor.join("c"));
+    let began_on = folder_identity(&ancestor.join("c"))?;
+    let gate = Gate::default();
+    let _scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            before: vec![(FsOp::FolderStamp, "c", 0, gate.racer())],
+            ..Quirks::default()
+        },
+    );
+    let (changes, notify) = change_recorder();
+    let handle = live_watch_of(watched.clone(), Some(began_on), notify);
+    let removed = |location: &Location| {
+        changes
+            .borrow()
+            .iter()
+            .any(|change| matches!(change, DirectoryChange::Remove(removed) if removed == location))
+    };
+
+    fs::write(ancestor.join("c/one.txt"), b"1")?;
+    drain_until(|| gate.reached());
+    fs::rename(&ancestor, &renamed)?;
+    // Each write is a batch of its own, flushed while the first look still waits.
+    for name in ["two.txt", "three.txt"] {
+        fs::write(renamed.join("c").join(name), b"")?;
+        let stale = Location::local(ancestor.join("c").join(name));
+        drain_until(|| removed(&stale));
+    }
+    gate.release();
+    drain_until(|| removed(&watched));
+    drop(handle);
+    Ok(())
+}
+
+#[test]
 fn change_events_for_unnamed_temporary_files_are_ignored() -> Result<(), Box<dyn Error>> {
     let _serial = serial();
     let directory = unique_fixture_root("monitor-unnamed");

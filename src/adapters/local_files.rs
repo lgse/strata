@@ -694,25 +694,34 @@ fn native_relocated_folder(
     if below.as_os_str().is_empty() {
         return native_entry_with_identity(directory, identity, mounts, progress);
     }
-    native_folders(directory, mounts, progress)?
+    native_folders(directory, below, mounts, progress)?
         .iter()
         .map(|folder| folder.path().join(below))
         .find(|candidate| has_identity(candidate, identity, progress))
 }
 
-/// A mount point cannot be renamed, and looking into one can wait on a server that stopped
-/// answering or trigger an automount, so none is a candidate.
+/// The folders of `directory` whose path `below` stays on the mount of `directory`, judged
+/// from its real path by the mount table: a mount point cannot be renamed, and looking into
+/// another mount can wait on a server that stopped answering or trigger an automount.
 fn native_folders(
     directory: &Path,
+    below: &Path,
     mounts: &MountTable,
     progress: &Progress,
 ) -> Option<Vec<fs::DirEntry>> {
+    let real = fs::canonicalize(directory);
+    progress.answered(&real);
+    let real = real.ok()?;
+    let mount = mounts.mount_point_for(&real);
+    let stays_on_the_mount = |entry: &fs::DirEntry| {
+        mounts.mount_point_for(&real.join(entry.file_name()).join(below)) == mount
+    };
     let mut listing = file_activity::list(directory).ok()?;
     let folders = listing
         .by_ref()
         .flatten()
         .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
-        .filter(|entry| !mounts.is_mount_point(&entry.path()))
+        .filter(stays_on_the_mount)
         .collect();
     progress.beat();
     (!listing.stopped()).then_some(folders)
@@ -742,7 +751,7 @@ fn native_entry_with_identity(
     progress: &Progress,
 ) -> Option<PathBuf> {
     use std::os::unix::fs::DirEntryExt;
-    let folders = native_folders(directory, mounts, progress)?;
+    let folders = native_folders(directory, Path::new(""), mounts, progress)?;
     let matches = |entry: &&fs::DirEntry| has_identity(&entry.path(), identity, progress);
     // Btrfs subvolumes, overlayfs and FUSE can list a different inode than stat reports.
     folders

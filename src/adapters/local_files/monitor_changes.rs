@@ -20,7 +20,7 @@ pub(super) struct ConnectedMonitor {
     cancelled: Rc<Cell<bool>>,
     pending: Rc<RefCell<HashMap<PendingMonitorKey, PendingMonitorChange>>>,
     timeout: Rc<RefCell<Option<glib::SourceId>>>,
-    departure_check: Rc<RefCell<Option<glib::JoinHandle<()>>>>,
+    departure_checks: Rc<RefCell<DepartureChecks>>,
     monitor: monitors::BareMonitor,
 }
 
@@ -38,8 +38,8 @@ pub(super) fn connect_monitor(
     >::new()));
     let timeout = Rc::new(RefCell::new(None::<glib::SourceId>));
     let numbered = Rc::new(RefCell::new(NumberedNames::default()));
-    let departure_check = Rc::new(RefCell::new(None::<glib::JoinHandle<()>>));
-    let departure_check_for_change = departure_check.clone();
+    let departure_checks = Rc::new(RefCell::new(DepartureChecks::default()));
+    let departure_checks_for_change = departure_checks.clone();
     let awaited = RefCell::new(AwaitedHints::default());
     let pending_for_change = pending.clone();
     let timeout_for_change = timeout.clone();
@@ -100,17 +100,13 @@ pub(super) fn connect_monitor(
                 let notify = notify.clone();
                 let cancelled = cancelled_for_change.clone();
                 let watched = watched.clone();
-                let departure_check = departure_check_for_change.clone();
+                let departure_checks = departure_checks_for_change.clone();
                 let source = glib::timeout_add_local_once(Duration::from_millis(100), move || {
                     timeout.take();
                     let reported = reports_departure(&pending.borrow(), &watched);
                     flush_monitor_changes(&pending, &notify, &cancelled);
                     if !reported {
-                        let check = report_if_departed(watched, began_on, notify, cancelled);
-                        // A newer look supersedes one still waiting on its lane.
-                        if let Some(superseded) = departure_check.replace(check) {
-                            superseded.abort();
-                        }
+                        report_if_departed(&departure_checks, watched, began_on, notify, cancelled);
                     }
                 });
                 timeout_for_change.replace(Some(source));
@@ -122,7 +118,7 @@ pub(super) fn connect_monitor(
         cancelled,
         pending,
         timeout,
-        departure_check,
+        departure_checks,
         monitor,
     }
 }
@@ -481,6 +477,15 @@ pub(super) fn reports_departure(
     })
 }
 
+/// A background request is skipped while another holds its lane, so a watch looks at its
+/// folder's path once at a time, and the batches that arrive meanwhile ask for one more
+/// look when it ends.
+#[derive(Default)]
+pub(super) struct DepartureChecks {
+    running: Option<glib::JoinHandle<()>>,
+    again: bool,
+}
+
 /// Inotify watches the folder, not its path, so it reports no rename or move of an
 /// ancestor and goes on to report changes under the old path. After each batch, the
 /// folder is looked up at its path as background work on its mount's lane, and its
@@ -488,20 +493,40 @@ pub(super) fn reports_departure(
 /// the folder the load that asked for the watch found (`began_on`). A busy or stalled
 /// lane leaves the look to the next batch.
 pub(super) fn report_if_departed(
+    checks: &Rc<RefCell<DepartureChecks>>,
     watched: Location,
     began_on: Option<ItemIdentity>,
     notify: Rc<dyn Fn(DirectoryChange)>,
     cancelled: Rc<Cell<bool>>,
-) -> Option<glib::JoinHandle<()>> {
-    let path = watched.native_path()?.to_path_buf();
+) {
+    if checks.borrow().running.is_some() {
+        checks.borrow_mut().again = true;
+        return;
+    }
+    let Some(path) = watched.native_path().map(Path::to_path_buf) else {
+        return;
+    };
     let job = mount_lanes::run(&path.clone(), Class::Background, move |progress| {
         departed_from(&path, began_on, progress)
     });
-    Some(glib::MainContext::default().spawn_local(async move {
-        if job.await.unwrap_or(false) && !cancelled.get() {
-            notify(DirectoryChange::Remove(watched));
+    let finished = checks.clone();
+    let task = glib::MainContext::default().spawn_local(async move {
+        let departed = job.await.unwrap_or(false);
+        let again = {
+            let mut checks = finished.borrow_mut();
+            checks.running = None;
+            std::mem::take(&mut checks.again)
+        };
+        if cancelled.get() {
+            return;
         }
-    }))
+        if departed {
+            notify(DirectoryChange::Remove(watched));
+        } else if again {
+            report_if_departed(&finished, watched, began_on, notify, cancelled);
+        }
+    });
+    checks.borrow_mut().running = Some(task);
 }
 
 /// Mounts that renumber folders prove nothing either way, so only proof of another folder
@@ -576,7 +601,7 @@ impl Drop for ConnectedMonitor {
             source.remove();
         }
         self.pending.borrow_mut().clear();
-        if let Some(task) = self.departure_check.take() {
+        if let Some(task) = self.departure_checks.borrow_mut().running.take() {
             task.abort();
         }
         if let Some(handler) = self.handler.take() {

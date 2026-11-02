@@ -368,21 +368,37 @@ fn a_folder_is_found_where_a_renamed_ancestor_took_it() -> Result<(), Box<dyn Er
 }
 
 #[test]
-fn a_mount_point_is_never_searched_for_a_renamed_folder() -> Result<(), Box<dyn Error>> {
-    let root = tempfile::tempdir()?;
-    let open = root.path().join("a/b/c");
-    fs::create_dir_all(&open)?;
-    let identity = folder_identity(&open)?;
-    fs::rename(root.path().join("a/b"), root.path().join("a/b2"))?;
-    let renamed = root.path().join("a/b2");
-    let mounted_there = MountTable::parse(format!(
-        "36 35 98:0 / {} rw - ext4 /dev/sdb1 rw\n",
-        renamed.display()
-    ));
+fn a_renamed_folder_is_never_searched_for_on_another_mount() -> Result<(), Box<dyn Error>> {
+    // The open folder `a/b/c/d` after `a/b` became `a/b2`, with a mount at each row's path.
+    let rows = [
+        ("no mount", None, true),
+        ("the renamed folder is a mount point", Some("a/b2"), false),
+        (
+            "a folder below the renamed one is a mount point",
+            Some("a/b2/c"),
+            false,
+        ),
+        ("the searched folder is a mount point", Some("a"), true),
+    ];
+    for (row, mounted, found) in rows {
+        let root = tempfile::tempdir()?;
+        let root = fs::canonicalize(root.path())?;
+        let open = root.join("a/b/c/d");
+        fs::create_dir_all(&open)?;
+        let identity = folder_identity(&open)?;
+        fs::rename(root.join("a/b"), root.join("a/b2"))?;
+        let mounts = MountTable::parse(mounted.map_or_else(String::new, |mounted| {
+            format!(
+                "36 35 98:0 / {} rw - ext4 /dev/sdb1 rw\n",
+                root.join(mounted).display()
+            )
+        }));
 
-    let progress = Progress::unlaned();
-    let found = |mounts: &MountTable| native_relocated_folder(&open, identity, mounts, &progress);
-    assert_eq!(found(&MountTable::parse(b"")), Some(renamed.join("c")));
-    assert_eq!(found(&mounted_there), None);
+        assert_eq!(
+            native_relocated_folder(&open, identity, &mounts, &Progress::unlaned()),
+            found.then(|| root.join("a/b2/c/d")),
+            "{row}"
+        );
+    }
     Ok(())
 }
