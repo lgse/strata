@@ -15,6 +15,10 @@ and how to exercise it against a disposable server.
 Passwords are never accepted in the address bar. A password typed there is
 stripped from the URI, used once for the connection, and never saved.
 
+A typed address also drops any query (`?…`) or fragment (`#…`). GVfs would fold
+them into the mount it looks up, so the folder would never list; a literal `?`
+or `#` in a name is typed as `%3F` or `%23`.
+
 ## Authentication
 
 The SFTP backend decides which credentials it needs and asks Strata for them:
