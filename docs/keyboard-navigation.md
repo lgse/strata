@@ -175,8 +175,8 @@ contents and never replaces anything, a link or file in the way of a folder
 stops it, and a new file that is no longer empty is not turned into a folder. If
 any step fails, the folders it created are removed again, the item keeps its
 name, and the error is shown. **Undo** of a new item moves what the naming
-created to Trash: the outermost new folder, or the item itself when its folders
-already existed. **Undo** of a rename moves the item back and moves the folders
+created to Trash in one step, whether it was given a plain name or a path: the
+outermost new folder, or the item itself when its folders already existed. **Undo** of a rename moves the item back and moves the folders
 the rename created to Trash. Naming **New Folder with Selection** and the
 [10xer](10xer-mode.md) **a** prompt still take a single name.
 
@@ -184,7 +184,8 @@ For **any file or folder rename**, Enter, clicking outside the field (even empty
 pane space), or moving keyboard focus away commits a valid name. **Tab** and
 **Shift+Tab** commit it too, then open the rename on the next or previous item,
 so a run of files is renamed without leaving the editor; at either end of the
-listing they only commit. In Columns, where keyboard selection mirrors (with
+listing they only commit. A name refused there, such as one another item has,
+shows the error and returns focus to the item, as after Enter. In Columns, where keyboard selection mirrors (with
 **Mirror columns selection** on, outside a filtered column), the child column
 follows the item the rename moves to, without opening a preview; otherwise a
 renamed folder's open column stays open under its new name. Switching to another
@@ -417,7 +418,9 @@ inline editor closed, focus goes to the file list cursor, or to the pane of an e
 loading folder. File-operation progress always returns focus to the file list cursor,
 because the operation changes the listing. While Ctrl+F results replace the listing,
 the file list cursor is the results' cursor, so these returns, such as dismissing a
-delete confirmation opened on a result, focus that result. Choosing a search result hands focus to the
+delete confirmation opened on a result, focus that result. Cancelling a delete
+confirmation also puts the cursor back on the items it asked about when an operation
+finishing meanwhile, such as a compression selecting its archive, moved it. Choosing a search result hands focus to the
 browser instead, and a result the browser selects while a dialog closes, such as an
 extracted folder, keeps focus.
 
