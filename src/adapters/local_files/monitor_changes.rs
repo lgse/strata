@@ -24,13 +24,23 @@ pub(super) struct ConnectedMonitor {
     monitor: monitors::BareMonitor,
 }
 
+/// The folder a watch follows, with the identity its load found (`began_on`).
+pub(super) struct WatchedFolder {
+    pub(super) location: Location,
+    pub(super) include_hidden: bool,
+    pub(super) began_on: Option<ItemIdentity>,
+}
+
 pub(super) fn connect_monitor(
     monitor: monitors::BareMonitor,
-    location: Location,
-    include_hidden: bool,
-    began_on: Option<ItemIdentity>,
+    folder: WatchedFolder,
     notify: Rc<dyn Fn(DirectoryChange)>,
 ) -> ConnectedMonitor {
+    let WatchedFolder {
+        location,
+        include_hidden,
+        began_on,
+    } = folder;
     let cancelled = Rc::new(Cell::new(false));
     let pending = Rc::new(RefCell::new(HashMap::<
         PendingMonitorKey,
@@ -38,7 +48,14 @@ pub(super) fn connect_monitor(
     >::new()));
     let timeout = Rc::new(RefCell::new(None::<glib::SourceId>));
     let numbered = Rc::new(RefCell::new(NumberedNames::default()));
-    let departure_checks = Rc::new(RefCell::new(DepartureChecks::default()));
+    let departure_checks = Rc::new(RefCell::new(DepartureChecks {
+        watched: location.clone(),
+        began_on,
+        notify: notify.clone(),
+        cancelled: cancelled.clone(),
+        running: None,
+        again: false,
+    }));
     let departure_checks_for_change = departure_checks.clone();
     let awaited = RefCell::new(AwaitedHints::default());
     let pending_for_change = pending.clone();
@@ -106,7 +123,7 @@ pub(super) fn connect_monitor(
                     let reported = reports_departure(&pending.borrow(), &watched);
                     flush_monitor_changes(&pending, &notify, &cancelled);
                     if !reported {
-                        report_if_departed(&departure_checks, watched, began_on, notify, cancelled);
+                        report_if_departed(&departure_checks);
                     }
                 });
                 timeout_for_change.replace(Some(source));
@@ -480,8 +497,11 @@ pub(super) fn reports_departure(
 /// A background request is skipped while another holds its lane, so a watch looks at its
 /// folder's path once at a time, and the batches that arrive meanwhile ask for one more
 /// look when it ends.
-#[derive(Default)]
 pub(super) struct DepartureChecks {
+    watched: Location,
+    began_on: Option<ItemIdentity>,
+    notify: Rc<dyn Fn(DirectoryChange)>,
+    cancelled: Rc<Cell<bool>>,
     running: Option<glib::JoinHandle<()>>,
     again: bool,
 }
@@ -492,17 +512,15 @@ pub(super) struct DepartureChecks {
 /// removal is reported when the path holds no folder, or one proven to be another than
 /// the folder the load that asked for the watch found (`began_on`). A busy or stalled
 /// lane leaves the look to the next batch.
-pub(super) fn report_if_departed(
-    checks: &Rc<RefCell<DepartureChecks>>,
-    watched: Location,
-    began_on: Option<ItemIdentity>,
-    notify: Rc<dyn Fn(DirectoryChange)>,
-    cancelled: Rc<Cell<bool>>,
-) {
+pub(super) fn report_if_departed(checks: &Rc<RefCell<DepartureChecks>>) {
     if checks.borrow().running.is_some() {
         checks.borrow_mut().again = true;
         return;
     }
+    let (watched, began_on) = {
+        let checks = checks.borrow();
+        (checks.watched.clone(), checks.began_on)
+    };
     let Some(path) = watched.native_path().map(Path::to_path_buf) else {
         return;
     };
@@ -512,18 +530,19 @@ pub(super) fn report_if_departed(
     let finished = checks.clone();
     let task = glib::MainContext::default().spawn_local(async move {
         let departed = job.await.unwrap_or(false);
-        let again = {
+        let (again, notify, cancelled) = {
             let mut checks = finished.borrow_mut();
             checks.running = None;
-            std::mem::take(&mut checks.again)
+            let again = std::mem::take(&mut checks.again);
+            (again, checks.notify.clone(), checks.cancelled.get())
         };
-        if cancelled.get() {
+        if cancelled {
             return;
         }
         if departed {
             notify(DirectoryChange::Remove(watched));
         } else if again {
-            report_if_departed(&finished, watched, began_on, notify, cancelled);
+            report_if_departed(&finished);
         }
     });
     checks.borrow_mut().running = Some(task);

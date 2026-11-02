@@ -525,13 +525,12 @@ impl FileSource for LocalFileSource {
         let task = glib::MainContext::default().spawn_local(async move {
             match started.await {
                 Some(monitor) => {
-                    slot.replace(Some(connect_monitor(
-                        monitor,
+                    let folder = WatchedFolder {
                         location,
                         include_hidden,
                         began_on,
-                        notify,
-                    )));
+                    };
+                    slot.replace(Some(connect_monitor(monitor, folder, notify)));
                     report(Watching::Live);
                 }
                 None => {

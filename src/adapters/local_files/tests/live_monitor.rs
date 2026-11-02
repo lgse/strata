@@ -167,7 +167,7 @@ fn a_look_at_the_path_that_outlasts_later_batches_still_reports_the_departure()
     let _scope = FsQuirks::install(
         root.path(),
         Quirks {
-            before: vec![(FsOp::FolderStamp, "c", 0, gate.racer())],
+            after: vec![(FsOp::FolderStamp, "c", 0, gate.racer())],
             ..Quirks::default()
         },
     );
@@ -181,9 +181,11 @@ fn a_look_at_the_path_that_outlasts_later_batches_still_reports_the_departure()
     };
 
     fs::write(ancestor.join("c/one.txt"), b"1")?;
+    // The first look has found the folder at its path, and waits to answer.
     drain_until(|| gate.reached());
     fs::rename(&ancestor, &renamed)?;
-    // Each write is a batch of its own, flushed while the first look still waits.
+    // Each write is a batch of its own, flushed while the first look still waits, so only
+    // the look they ask for once it ends can see the folder gone.
     for name in ["two.txt", "three.txt"] {
         fs::write(renamed.join("c").join(name), b"")?;
         let stale = Location::local(ancestor.join("c").join(name));
