@@ -64,7 +64,8 @@ one tab remains. Scroll the strip horizontally (or use the wheel) when it
 outgrows the window; selecting a tab brings it into view without a scrollbar.
 Drag a tab label to reorder tabs; an accent-colored insertion line shows where
 it will land. Sidebar locations offer **Open in New Tab** in their context menu
-and open in a new tab on middle-click. Dragging a sidebar location or folders
+and open in a new tab on middle-click, as do the folders in the path bar.
+Dragging a sidebar location or folders
 from a file view marks on the strip where new tabs will open; drop there to
 create tabs at that position. **+** also accepts these drags, and is the drop
 target when a single tab leaves the strip hidden. Escape cancels the drag.
