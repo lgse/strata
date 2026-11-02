@@ -586,6 +586,20 @@ fn start_release_leaves_before_flush_and_restores_when_gio_fails_while_mounted()
             }));
             browser.navigate(Location::local(&mount));
             assert!(!dropped.load(Ordering::SeqCst));
+            let other_browser = || {
+                Browser::new(Rc::new(DropWatch {
+                    dropped: Arc::new(AtomicBool::new(false)),
+                }))
+            };
+            let inside = mount.join("photos");
+            std::fs::create_dir(&inside).expect("folder on the device");
+            let outside = tempfile::tempdir().expect("folder off the device");
+            let other_window = other_browser();
+            other_window.navigate(Location::local(&inside));
+            let other_tab = other_browser();
+            other_tab.navigate(Location::local(outside.path()));
+            let watches = [&browser, &other_window, &other_tab]
+                .map(|browser| super::watch_sidebars(Some(browser), || {}));
             let publish = |mounted: bool| {
                 let mut mountinfo = "1 0 8:1 / / rw - ext4 /dev/root rw\n".to_owned();
                 if mounted {
@@ -631,11 +645,29 @@ fn start_release_leaves_before_flush_and_restores_when_gio_fails_while_mounted()
                 browser.active_location(),
                 Some(Location::local(super::super::home_directory()))
             );
+            assert_eq!(
+                other_window.active_location(),
+                Some(Location::local(super::super::home_directory())),
+                "every window and tab inside the device leaves it"
+            );
+            assert_eq!(
+                other_tab.active_location(),
+                Some(Location::local(outside.path()))
+            );
             crate::adapters::release_sync_probe();
             let settled_for_wait = Rc::clone(&settled);
             wait_until(move || settled_for_wait.get());
             assert_eq!(calls.get(), 1);
             assert_eq!(browser.active_location(), Some(Location::local(&mount)));
+            assert_eq!(
+                other_window.active_location(),
+                Some(Location::local(&inside))
+            );
+            assert_eq!(
+                other_tab.active_location(),
+                Some(Location::local(outside.path()))
+            );
+            drop(watches);
             window.destroy();
             crate::adapters::clear_sync_probe();
             reset_releases();

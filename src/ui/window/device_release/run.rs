@@ -20,7 +20,8 @@ use super::{
     PendingRelease, ReleaseDecision, ReleaseKey, ReleaseKind, ReleasePhase, enter_releasing,
     inspect_release, keys_match,
     overlay::{ReleaseOverlay, mount_operation, schedule_present, show_safe_to_remove},
-    refresh_sidebars, release_is_pending, remove_release, update_release, with_releases,
+    refresh_sidebars, release_is_pending, remove_release, sidebar_browsers, update_release,
+    with_releases,
 };
 
 pub(in crate::ui::window) fn decide_flush(
@@ -268,29 +269,44 @@ struct ReleaseRun {
     target: ReleaseTarget,
 }
 
-/// Where the browser was before a release moved it off the device.
+/// Where each browser a release moved off the device was before.
+#[derive(Default)]
 struct WayBack {
-    previous: Option<Location>,
+    left: Vec<LeftBrowser>,
+}
+
+struct LeftBrowser {
+    browser: std::rc::Weak<Browser>,
+    previous: Location,
     left_at: Option<Location>,
 }
 
 impl ReleaseRun {
-    fn active_location(&self) -> Option<Location> {
-        self.browser
-            .as_ref()
-            .and_then(|browser| browser.active_location())
-    }
-
+    /// Moves every window and tab browsing inside the device off it.
     fn leave_device(&self) -> WayBack {
-        let previous = self.active_location();
-        if let (Some(browser), Some(root)) = (self.browser.as_ref(), self.target.away_root.as_ref())
+        let Some(root) = self.target.away_root.as_ref() else {
+            return WayBack::default();
+        };
+        let mut browsers = sidebar_browsers();
+        if let Some(browser) = &self.browser
+            && !browsers.iter().any(|known| Rc::ptr_eq(known, browser))
         {
-            navigate_home_if_within(browser, root);
+            browsers.insert(0, Rc::clone(browser));
         }
-        WayBack {
-            previous,
-            left_at: self.active_location(),
-        }
+        let left = browsers
+            .into_iter()
+            .filter_map(|browser| {
+                let previous = browser.active_location()?;
+                navigate_home_if_within(&browser, root);
+                let left_at = browser.active_location();
+                (left_at.as_ref() != Some(&previous)).then(|| LeftBrowser {
+                    browser: Rc::downgrade(&browser),
+                    previous,
+                    left_at,
+                })
+            })
+            .collect();
+        WayBack { left }
     }
 
     async fn flush_and_release<F, Fut>(&self, way_back: &WayBack, run_gio: F) -> ReleaseDecision
@@ -315,25 +331,25 @@ impl ReleaseRun {
         decide_gio(kind, progress.as_deref(), result, unplug)
     }
 
-    /// A failed release that left the device mounted returns the browser to
-    /// where it was, unless the user has navigated since.
+    /// A failed release that left the device mounted returns each browser to
+    /// where it was, unless the user has navigated it since.
     async fn restore_if_mounted(&self, way_back: &WayBack) {
         let Some(root) = self.target.sync_root.as_deref() else {
             return;
         };
-        if !crate::adapters::mount_watch::fresh()
-            .await
-            .is_mount_point(root)
+        if way_back.left.is_empty()
+            || !crate::adapters::mount_watch::fresh()
+                .await
+                .is_mount_point(root)
         {
             return;
         }
-        let (Some(browser), Some(previous)) = (self.browser.as_ref(), way_back.previous.as_ref())
-        else {
-            return;
-        };
-        let unmoved = browser.active_location() == way_back.left_at;
-        if unmoved && way_back.left_at.as_ref() != Some(previous) {
-            browser.navigate(previous.clone());
+        for left in &way_back.left {
+            if let Some(browser) = left.browser.upgrade()
+                && browser.active_location() == left.left_at
+            {
+                browser.navigate(left.previous.clone());
+            }
         }
     }
 }

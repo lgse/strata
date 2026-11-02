@@ -265,10 +265,14 @@ fn main() -> gtk::glib::ExitCode {
         }
         LaunchMode::UdiskieHook => return run_udiskie_hook(&arguments[2..]),
         LaunchMode::InstallUdiskie => {
-            return finish_localized_setup(portal_setup::udiskie::install);
+            return finish_localized_setup(|| {
+                portal_setup::udiskie::install().map(portal_setup::udiskie::UdiskieChange::report)
+            });
         }
         LaunchMode::UninstallUdiskie => {
-            return finish_localized_setup(portal_setup::udiskie::uninstall);
+            return finish_localized_setup(|| {
+                portal_setup::udiskie::uninstall().map(portal_setup::udiskie::UdiskieChange::report)
+            });
         }
         #[cfg(feature = "qa")]
         LaunchMode::Qa => {}
@@ -505,9 +509,31 @@ fn handle_command_line(
         }
         CommandLineAction::ServiceNoop => glib::ExitCode::SUCCESS,
         CommandLineAction::Usage(message) => {
-            eprintln!("{message}");
+            print_command_line_error(cmdline, message);
             glib::ExitCode::FAILURE
         }
+    }
+}
+
+/// Prints to the stderr of the process that ran the command, which is not
+/// this one when Strata was already running.
+#[expect(
+    unsafe_code,
+    reason = "gio-rs binds printerr_literal only from GLib 2.80, above the 2.72 Strata supports"
+)]
+fn print_command_line_error(cmdline: &gio::ApplicationCommandLine, message: &str) {
+    use glib::translate::ToGlibPtr as _;
+    let Ok(line) = std::ffi::CString::new(format!("{message}\n")) else {
+        return;
+    };
+    // SAFETY: the command line and both strings outlive the call, and the "%s"
+    // format consumes exactly the one NUL-terminated string passed after it.
+    unsafe {
+        gio::ffi::g_application_command_line_printerr(
+            cmdline.to_glib_none().0,
+            c"%s".as_ptr(),
+            line.as_ptr(),
+        );
     }
 }
 

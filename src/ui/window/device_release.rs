@@ -142,6 +142,7 @@ thread_local! {
 
 struct RebuildHook {
     rebuild: Box<dyn Fn()>,
+    browser: Option<std::rc::Weak<crate::app::Browser>>,
 }
 
 pub(super) struct SidebarWatch {
@@ -155,7 +156,12 @@ impl Drop for SidebarWatch {
     }
 }
 
-pub(super) fn watch_sidebars(rebuild: impl Fn() + 'static) -> SidebarWatch {
+/// Rebuilds a sidebar while a release is pending; its `browser` leaves a
+/// device that any window or tab releases.
+pub(super) fn watch_sidebars(
+    browser: Option<&Rc<crate::app::Browser>>,
+    rebuild: impl Fn() + 'static,
+) -> SidebarWatch {
     let id = NEXT_WATCH.with(|next| {
         let id = next.get();
         next.set(id.saturating_add(1));
@@ -163,9 +169,25 @@ pub(super) fn watch_sidebars(rebuild: impl Fn() + 'static) -> SidebarWatch {
     });
     let hook = Rc::new(RebuildHook {
         rebuild: Box::new(rebuild),
+        browser: browser.map(Rc::downgrade),
     });
     REBUILDERS.with(|hooks| hooks.borrow_mut().push((id, Rc::downgrade(&hook))));
     SidebarWatch { id, _hook: hook }
+}
+
+/// The browser of every live sidebar, in every window and tab.
+fn sidebar_browsers() -> Vec<Rc<crate::app::Browser>> {
+    REBUILDERS.with(|hooks| {
+        let mut browsers: Vec<Rc<crate::app::Browser>> = Vec::new();
+        for hook in hooks.borrow().iter().filter_map(|(_, hook)| hook.upgrade()) {
+            if let Some(browser) = hook.browser.as_ref().and_then(std::rc::Weak::upgrade)
+                && !browsers.iter().any(|known| Rc::ptr_eq(known, &browser))
+            {
+                browsers.push(browser);
+            }
+        }
+        browsers
+    })
 }
 
 pub(super) fn refresh_sidebars() {
