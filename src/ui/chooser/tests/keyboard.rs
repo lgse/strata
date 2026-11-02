@@ -761,37 +761,41 @@ fn focus_is_within(chooser: &Chooser, widget: &gtk::Widget) -> bool {
         .is_some_and(|focus| focus == *widget || focus.is_ancestor(widget))
 }
 
+fn save_report(request: &mut ChooserRequest) {
+    request.kind = ChooserKind::SaveFile {
+        current_name: Some("report.draft.pdf".into()),
+    };
+}
+
+fn filtered_save_report(request: &mut ChooserRequest) {
+    save_report(request);
+    request.filters = vec![
+        FileFilter::new("PDF").glob("*.pdf"),
+        FileFilter::new("All files").glob("*"),
+    ];
+}
+
+fn open_with_choice(request: &mut ChooserRequest) {
+    request.choices = vec![Choice::boolean("extension", "Automatic extension", true)];
+}
+
+fn folder_with_choice(request: &mut ChooserRequest) {
+    open_with_choice(request);
+    request.kind = ChooserKind::Open {
+        directory: true,
+        multiple: false,
+    };
+}
+
 #[test]
 fn tenxer_tab_cycles_files_header_name_options_and_back_to_files() {
     crate::test_support::gtk_test(
         "ui::chooser::tests::keyboard::tenxer_tab_cycles_files_header_name_options_and_back_to_files",
         || {
-            fn save(request: &mut ChooserRequest) {
-                request.kind = ChooserKind::SaveFile {
-                    current_name: Some("report.draft.pdf".into()),
-                };
-            }
-            fn filtered_save(request: &mut ChooserRequest) {
-                save(request);
-                request.filters = vec![
-                    FileFilter::new("PDF").glob("*.pdf"),
-                    FileFilter::new("All files").glob("*"),
-                ];
-            }
-            fn open_with_choice(request: &mut ChooserRequest) {
-                request.choices = vec![Choice::boolean("extension", "Automatic extension", true)];
-            }
-            fn folder_with_choice(request: &mut ChooserRequest) {
-                open_with_choice(request);
-                request.kind = ChooserKind::Open {
-                    directory: true,
-                    multiple: false,
-                };
-            }
             // Each case's stops after the header: name field, then options.
             let cases: [(&str, ConfigureRequest, usize); 4] = [
-                ("save", save, 1),
-                ("filtered save", filtered_save, 2),
+                ("save", save_report, 1),
+                ("filtered save", filtered_save_report, 2),
                 ("open with a choice", open_with_choice, 3),
                 ("folder with a choice", folder_with_choice, 1),
             ];
