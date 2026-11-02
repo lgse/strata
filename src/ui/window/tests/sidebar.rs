@@ -431,7 +431,7 @@ fn sidebar_reorders_only_distinct_rows_in_the_same_section() {
 }
 
 #[test]
-fn network_share_mounts_take_the_disconnectable_network_row() {
+fn network_share_locations_are_recognised_by_scheme() {
     for (uri, share) in [
         ("smb://server/share/", true),
         ("SFTP://user@host/", true),

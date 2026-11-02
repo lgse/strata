@@ -33,7 +33,7 @@
 {"click":{"role":"button","name":"Reveal Alpha column"}}
 {"wait":{"focused":"Beta"},"message":"the parent to receive focus"}
 {"key":"Down"}
-{"wait":{"focused":"a.txt"},"message":"the cursor to reach the parent's file while the deeper columns stay open"}
+{"wait":{"focused":"a.txt"},"message":"the cursor to reach the parent's file"}
 {"key":"space"}
 {"wait":{"preview":"alpha preview"},"message":"the focused parent's preview"}
 {"wait":{"all":[{"compare":{"left":{"of":{"pane":"Alpha"},"get":"x"},"op":">=","right":"$browser_left"}},{"compare":{"left":{"of":{"pane":"Alpha"},"get":"right"},"op":"<=","right":{"of":{"preview":true},"get":"x"}}}]},"message":"the focused parent, not the rightmost column, to remain visible"}

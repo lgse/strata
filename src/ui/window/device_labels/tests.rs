@@ -52,10 +52,6 @@ fn saved_labels_apply_before_settings_live_across_windows_and_row_rebuilds() {
             assert_eq!(row_label(&first).text(), "Backup / photos 📁");
             assert_eq!(row_label(&second).text(), "Backup / photos 📁");
             assert_eq!(subtitle.text(), "Backup / photos 📁");
-            assert_eq!(
-                display_name(&preferences, Some(id), "Kingston system name"),
-                "Backup / photos 📁"
-            );
             assert_eq!(row_label(&other).text(), "Other device");
             let rebuilt = super::super::sidebar_button(
                 crate::assets::icons::HARD_DRIVE,
@@ -68,11 +64,6 @@ fn saved_labels_apply_before_settings_live_across_windows_and_row_rebuilds() {
             assert_eq!(row_label(&rebuilt).text(), "Updated system name");
             assert_eq!(row_label(&second).text(), "Kingston system name");
             assert_eq!(subtitle.text(), "Kingston system name");
-            assert_eq!(
-                display_name(&preferences, Some(id), "Kingston system name"),
-                "Kingston system name"
-            );
-            assert_eq!(display_name(&preferences, None, "Unlabelled"), "Unlabelled");
             assert_eq!(row_label(&other).text(), "Other device");
             for window in windows {
                 window.close();

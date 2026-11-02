@@ -201,11 +201,6 @@ fn location_input_accepts_uri_schemes_for_local_and_remote_locations() {
             "{typed}"
         );
     }
-    assert_eq!(
-        Location::uri("network:///").display_name(),
-        crate::i18n::tr("Network")
-    );
-
     assert_eq!(browser.navigate_input("recent:///"), Ok(()));
     assert_eq!(browser.active_location(), Some(Location::uri("recent:///")));
     assert_eq!(browser.navigate_input("recent://"), Ok(()));

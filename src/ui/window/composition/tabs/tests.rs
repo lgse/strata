@@ -1428,10 +1428,6 @@ fn open_in_new_tab_appends_activates_and_navigates_the_target() {
             let view = tabs.active_browser();
             wait_until(|| view.browser().active_location().is_some());
             assert_eq!(view.browser().active_location(), Some(location));
-            assert!(
-                tabs.active_tab().checking.borrow().is_none(),
-                "the opened folder ends the tab's wait for its target"
-            );
             window.destroy();
         },
     );

@@ -162,7 +162,7 @@ class MenuTests(unittest.TestCase):
 
     def test_notice_names_the_device_as_the_menu_showed_it(self):
         leaf = self.menu()[0]
-        self.backend.devices["phone2"] = "Pixel"
+        self.backend.devices["phone1"] = "Tablet"
         reply = self.activate(leaf)
         self.assertEqual(self.backend.submissions[0][1], "phone1")
         self.assertIn("Files submitted to Pixel: 1.", reply["message"])
