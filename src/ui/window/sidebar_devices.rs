@@ -373,9 +373,15 @@ impl SidebarState {
         let disconnect_popover = popover.downgrade();
         let parent = self.view.widget();
         let browser = Rc::downgrade(&self.browser);
+        let in_flight = Rc::new(Cell::new(false));
         disconnect.connect_clicked(move |_| {
             popdown(&disconnect_popover);
-            device_release::disconnect_share(&parent, browser.upgrade(), mount.clone());
+            device_release::disconnect_share(
+                &parent,
+                browser.upgrade(),
+                mount.clone(),
+                Rc::clone(&in_flight),
+            );
         });
         open_on_secondary_click(&row, &popover);
     }

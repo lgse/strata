@@ -765,6 +765,29 @@ fn start_release_leaves_before_flush_and_restores_when_gio_fails_while_mounted()
 }
 
 #[test]
+fn dismissed_and_cancelled_releases_and_disconnects_report_no_error() {
+    for (error, quiet) in [
+        (gio::IOErrorEnum::Cancelled, "cancelled", true),
+        (
+            gio::IOErrorEnum::FailedHandled,
+            "busy dialog dismissed",
+            true,
+        ),
+        (gio::IOErrorEnum::Failed, "Operation aborted", true),
+        (gio::IOErrorEnum::Busy, "target is busy", false),
+    ]
+    .map(|(code, message, quiet)| (glib::Error::new(code, message), quiet))
+    {
+        assert_eq!(
+            super::run::release_error_is_quiet(&error),
+            quiet,
+            "{}",
+            error.message()
+        );
+    }
+}
+
+#[test]
 fn disconnecting_a_share_leaves_every_browser_and_returns_them_while_it_stays_mounted() {
     crate::test_support::gtk_test(
         "ui::window::device_release::tests::disconnecting_a_share_leaves_every_browser_and_returns_them_while_it_stays_mounted",
