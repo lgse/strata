@@ -545,6 +545,86 @@ fn describe(widget: &gtk::Widget) -> String {
     format!("{} {text:?}", widget.type_().name())
 }
 
+fn navigation_pages() -> Vec<(&'static str, gtk::Widget)> {
+    let manager = PreferenceManager::shared();
+    let pages = vec![
+        ("general", super::super::general_page(manager.clone()).0),
+        (
+            "theme",
+            super::super::theme_page(manager.clone(), crate::ui::theme::ThemeManager::shared())
+                .widget,
+        ),
+        ("actions", super::super::actions::actions_page()),
+        (
+            "keyboard",
+            super::super::keyboard::keyboard_page(manager.clone()),
+        ),
+        (
+            "integrations",
+            super::super::integrations::integrations_page(None),
+        ),
+        (
+            "updates",
+            super::super::updates_page(
+                manager.clone(),
+                Rc::new(|_| {}),
+                super::super::install_guard(),
+                crate::services::UpdateMethod::InPlace,
+            )
+            .0,
+        ),
+        ("diagnostics", super::super::diagnostics::diagnostics_page()),
+        ("about", super::super::about_page()),
+    ];
+    assert_eq!(
+        pages.iter().map(|(page, _)| *page).collect::<Vec<_>>(),
+        super::super::NAVIGATION
+            .iter()
+            .map(|entry| entry.page)
+            .collect::<Vec<_>>(),
+        "build every navigation page"
+    );
+    pages
+}
+
+#[test]
+fn every_page_heading_is_in_every_catalog() {
+    crate::test_support::gtk_test(
+        "ui::settings::search::tests::every_page_heading_is_in_every_catalog",
+        || {
+            use rust_i18n::Backend;
+            crate::ui::prepare_portal_ui();
+            let _ = PreferenceManager::shared();
+            // Under English a heading with no catalog entry shows its source text
+            // unchanged, so each heading's text is the key every language must translate.
+            rust_i18n::set_locale("en");
+            let catalogs = crate::i18n::Catalogs::compiled();
+            let headings: Vec<(&str, String)> = navigation_pages()
+                .into_iter()
+                .flat_map(|(page, root)| {
+                    descendants(&root)
+                        .into_iter()
+                        .filter(|widget| widget.has_css_class("menu-heading"))
+                        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+                        .map(move |heading| (page, heading.text().to_string()))
+                })
+                .collect();
+            assert!(!headings.is_empty(), "no Settings headings found");
+            let locales = catalogs.available_locales();
+            let missing: Vec<String> = headings
+                .iter()
+                .flat_map(|(page, text)| {
+                    locales
+                        .iter()
+                        .filter(|locale| catalogs.translate(locale, text).is_none())
+                        .map(move |locale| format!("{page}: {text:?} is missing from {locale}"))
+                })
+                .collect();
+            assert!(missing.is_empty(), "{}", missing.join("\n"));
+        },
+    );
+}
+
 #[test]
 fn every_page_row_is_registered_for_search() {
     crate::test_support::gtk_test(
@@ -561,47 +641,7 @@ fn every_page_row_is_registered_for_search() {
             )
             .expect("action manifest");
             std::fs::create_dir_all(actions.join("broken")).expect("broken action folder");
-            let manager = PreferenceManager::shared();
-            let pages = [
-                ("general", super::super::general_page(manager.clone()).0),
-                (
-                    "theme",
-                    super::super::theme_page(
-                        manager.clone(),
-                        crate::ui::theme::ThemeManager::shared(),
-                    )
-                    .widget,
-                ),
-                ("actions", super::super::actions::actions_page()),
-                (
-                    "keyboard",
-                    super::super::keyboard::keyboard_page(manager.clone()),
-                ),
-                (
-                    "integrations",
-                    super::super::integrations::integrations_page(None),
-                ),
-                (
-                    "updates",
-                    super::super::updates_page(
-                        manager.clone(),
-                        Rc::new(|_| {}),
-                        super::super::install_guard(),
-                        crate::services::UpdateMethod::InPlace,
-                    )
-                    .0,
-                ),
-                ("diagnostics", super::super::diagnostics::diagnostics_page()),
-                ("about", super::super::about_page()),
-            ];
-            assert_eq!(
-                pages.iter().map(|(page, _)| *page).collect::<Vec<_>>(),
-                super::super::NAVIGATION
-                    .iter()
-                    .map(|entry| entry.page)
-                    .collect::<Vec<_>>(),
-                "build every navigation page"
-            );
+            let pages = navigation_pages();
             gtk::glib::MainContext::default().block_on(crate::ui::actions::shared().reload());
             let (_, actions_page) = pages
                 .iter()

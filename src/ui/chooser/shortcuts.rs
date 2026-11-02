@@ -54,6 +54,7 @@ const NAVIGATION_STAGES: &[Stage] = &[
     ChooserShortcuts::column_popover_focus,
     ChooserShortcuts::default_tab,
     ChooserShortcuts::tenxer_name_tab,
+    ChooserShortcuts::tenxer_options_tab,
     ChooserShortcuts::focused_widget_key,
     ChooserShortcuts::tenxer_tab_to_header,
     ChooserShortcuts::tenxer_tab,
@@ -76,6 +77,7 @@ pub(super) struct ShortcutParts<'a> {
     pub(super) sidebar: &'a SidebarView,
     pub(super) sidebar_toggle: &'a gtk::ToggleButton,
     pub(super) header: &'a gtk::Box,
+    pub(super) options: &'a gtk::FlowBox,
     pub(super) preview: &'a PreviewDrawer,
     pub(super) footer: &'a ShortcutFooter,
 }
@@ -159,6 +161,8 @@ struct ChooserShortcuts {
     sidebar_widget: gtk::Widget,
     sidebar_toggle: gtk::ToggleButton,
     header: gtk::Widget,
+    /// The request's filter, choices and read-only option, in Tab order.
+    options: gtk::Widget,
     preview: PreviewDrawer,
     focus_before_sidebar: RefCell<Option<gtk::Widget>>,
     tenxer: ChooserKeys,
@@ -183,6 +187,7 @@ impl ChooserShortcuts {
             sidebar_widget: parts.sidebar.widget.clone(),
             sidebar_toggle: parts.sidebar_toggle.clone(),
             header: parts.header.clone().upcast(),
+            options: parts.options.clone().upcast(),
             preview: parts.preview.clone(),
             focus_before_sidebar: RefCell::new(None),
             tenxer,

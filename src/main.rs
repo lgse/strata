@@ -265,10 +265,10 @@ fn main() -> gtk::glib::ExitCode {
         }
         LaunchMode::UdiskieHook => return run_udiskie_hook(&arguments[2..]),
         LaunchMode::InstallUdiskie => {
-            return finish_portal_setup(portal_setup::udiskie::install());
+            return finish_localized_setup(portal_setup::udiskie::install);
         }
         LaunchMode::UninstallUdiskie => {
-            return finish_portal_setup(portal_setup::udiskie::uninstall());
+            return finish_localized_setup(portal_setup::udiskie::uninstall);
         }
         #[cfg(feature = "qa")]
         LaunchMode::Qa => {}
@@ -543,6 +543,12 @@ fn run_preview_helper(arguments: &[OsString]) -> Result<(), String> {
         })
         .collect::<Result<Vec<_>, _>>()?;
     sandbox_helper::run(&arguments)
+}
+
+/// Terminal setup output follows the system locale, as the installer that runs it does.
+fn finish_localized_setup(setup: fn() -> Result<String, String>) -> gtk::glib::ExitCode {
+    rust_i18n::set_locale(i18n::detected_locale());
+    finish_portal_setup(setup())
 }
 
 fn finish_portal_setup(result: Result<String, String>) -> gtk::glib::ExitCode {

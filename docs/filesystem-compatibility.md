@@ -11,6 +11,11 @@ semantics come from the GVfs backend. This document covers them only where it sa
 [names](#names) they get by their address, the links they refuse, and how a native item moved to
 one is deleted.
 
+A failed `smb://` connection gets the same refused, timed-out and unreachable messages as
+[SFTP](remote-sftp.md#failures), read from the system error text GVfs-SMB appends to its generic
+failure. An SMB host that does not resolve still shows the generic error, because GVfs reports
+only "Invalid argument" for it.
+
 ## Guarantees
 
 - **Never replace a concurrent arrival.** An item that appears at a destination while Strata is
