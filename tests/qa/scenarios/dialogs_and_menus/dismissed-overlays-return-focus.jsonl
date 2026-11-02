@@ -11,7 +11,7 @@
 {"key":"ctrl+2"}
 {"wait":{"all":[{"view_mode":"Icons"},{"focused":"readme.md"}]},"message":"the switch to Icons to keep focus on 'readme.md'"}
 {"key":"ctrl+k"}
-{"wait":{"field":{}},"message":"Ctrl+K to open the command palette with its field focused"}
+{"wait":{"field":{"name":"Search files and folders…"}},"message":"Ctrl+K to open the search palette with its field focused and named for search"}
 {"key":"ctrl+k"}
 {"wait":{"editable_fields":0},"message":"Ctrl+K again to close the command palette"}
 {"wait":{"focused":"readme.md"},"message":"focus to return to 'readme.md' after Ctrl+K closed the palette in Icons"}
@@ -20,7 +20,7 @@
 {"key":"ctrl+3"}
 {"wait":{"all":[{"view_mode":"List"},{"focused":"todo.txt"}]},"message":"the switch to List to keep focus on 'todo.txt'"}
 {"key":"ctrl+shift+k"}
-{"wait":{"field":{}},"message":"Ctrl+Shift+K to open the palette with its field focused"}
+{"wait":{"field":{"name":"Jump to a folder…"}},"message":"Ctrl+Shift+K to open the palette with its field focused and named for folder jumps"}
 {"key":"Escape"}
 {"wait":{"editable_fields":0},"message":"Escape to close the palette"}
 {"wait":{"focused":"todo.txt"},"message":"focus to return to 'todo.txt' after Escape closed the palette in List"}
