@@ -95,9 +95,14 @@ pub(super) fn connect_monitor(
                 let timeout = timeout_for_change.clone();
                 let notify = notify.clone();
                 let cancelled = cancelled_for_change.clone();
+                let watched = watched.clone();
                 let source = glib::timeout_add_local_once(Duration::from_millis(100), move || {
                     timeout.take();
+                    let reported = reports_departure(&pending.borrow(), &watched);
                     flush_monitor_changes(&pending, &notify, &cancelled);
+                    if !reported {
+                        report_if_departed(watched, notify, cancelled);
+                    }
                 });
                 timeout_for_change.replace(Some(source));
             }
@@ -454,6 +459,43 @@ pub(super) fn flush_monitor_changes(
             PendingMonitorChange::Rescan => {}
         }
     }
+}
+
+pub(super) fn reports_departure(
+    pending: &HashMap<PendingMonitorKey, PendingMonitorChange>,
+    watched: &Location,
+) -> bool {
+    pending.values().any(|change| {
+        matches!(change, PendingMonitorChange::Remove(location)
+            | PendingMonitorChange::Move { from: location, .. } if location == watched)
+    })
+}
+
+/// Inotify watches the folder, not its path, so it reports no rename or move of an
+/// ancestor and goes on to report changes under the old path. After each batch, the
+/// folder is looked up at its path, and its removal is reported when it is not there.
+pub(super) fn report_if_departed(
+    watched: Location,
+    notify: Rc<dyn Fn(DirectoryChange)>,
+    cancelled: Rc<Cell<bool>>,
+) {
+    let Some(path) = watched.native_path().map(Path::to_path_buf) else {
+        return;
+    };
+    glib::MainContext::default().spawn_local(async move {
+        let departed = gio::spawn_blocking(move || match fs::metadata(&path) {
+            Ok(metadata) => !metadata.is_dir(),
+            Err(error) => matches!(
+                error.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+            ),
+        })
+        .await
+        .unwrap_or(false);
+        if departed && !cancelled.get() {
+            notify(DirectoryChange::Remove(watched));
+        }
+    });
 }
 
 pub(super) fn log_monitor_metadata_error(location: &Location, error: &glib::Error) {

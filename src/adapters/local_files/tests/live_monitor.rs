@@ -111,6 +111,28 @@ fn exchanged_files_stay_listed_unless_they_are_deleted() -> Result<(), Box<dyn E
 }
 
 #[test]
+fn a_watched_folder_reports_its_removal_when_an_ancestor_was_renamed() -> Result<(), Box<dyn Error>>
+{
+    let _serial = serial();
+    let root = tempfile::tempdir()?;
+    let (ancestor, renamed) = (root.path().join("b"), root.path().join("b2"));
+    fs::create_dir_all(ancestor.join("c"))?;
+    let watched = Location::local(ancestor.join("c"));
+    let (changes, notify) = change_recorder();
+    let handle = live_watch(watched.clone(), notify);
+
+    fs::rename(&ancestor, &renamed)?;
+    fs::write(renamed.join("c/two.txt"), b"2")?;
+    drain_until(|| {
+        changes.borrow().iter().any(
+            |change| matches!(change, DirectoryChange::Remove(location) if *location == watched),
+        )
+    });
+    drop(handle);
+    Ok(())
+}
+
+#[test]
 fn change_events_for_unnamed_temporary_files_are_ignored() -> Result<(), Box<dyn Error>> {
     let _serial = serial();
     let directory = unique_fixture_root("monitor-unnamed");

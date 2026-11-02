@@ -629,20 +629,19 @@ impl FileSource for LocalFileSource {
 
     fn find_by_identity(
         &self,
-        parent: Location,
+        departed: Location,
         identity: ItemIdentity,
         emit: Rc<dyn Fn(Option<Location>)>,
     ) -> LoadHandle {
-        let Some(directory) = parent.native_path().map(Path::to_path_buf) else {
+        let Some(departed) = departed.native_path().map(Path::to_path_buf) else {
             emit(None);
             return LoadHandle::new(|| {});
         };
         let task = glib::MainContext::default().spawn_local(async move {
-            let found =
-                gio::spawn_blocking(move || native_entry_with_identity(&directory, identity))
-                    .await
-                    .ok()
-                    .flatten();
+            let found = gio::spawn_blocking(move || native_relocated_folder(&departed, identity))
+                .await
+                .ok()
+                .flatten();
             emit(found.map(Location::local));
         });
         LoadHandle::new(move || task.abort())
@@ -662,25 +661,57 @@ fn log_directory_load_started(request_id: RequestId, location: &Location) {
     );
 }
 
-fn native_entry_with_identity(directory: &Path, identity: ItemIdentity) -> Option<PathBuf> {
-    use std::os::unix::fs::DirEntryExt;
+/// Where the folder last seen at `departed` is now: renamed in place, or moved along with
+/// its deepest missing ancestor renamed within the nearest ancestor that remains, a rename
+/// that inotify does not report to the folder's own watch.
+fn native_relocated_folder(departed: &Path, identity: ItemIdentity) -> Option<PathBuf> {
+    let mut renamed = departed;
+    let directory = loop {
+        let parent = renamed.parent()?;
+        match fs::metadata(parent) {
+            Ok(metadata) if metadata.is_dir() => break parent,
+            Ok(_) => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                ) => {}
+            Err(_) => return None,
+        }
+        renamed = parent;
+    };
+    let below = departed.strip_prefix(renamed).ok()?;
+    if below.as_os_str().is_empty() {
+        return native_entry_with_identity(directory, identity);
+    }
+    native_folders(directory)?
+        .iter()
+        .map(|folder| folder.path().join(below))
+        .find(|candidate| has_identity(candidate, identity))
+}
+
+fn native_folders(directory: &Path) -> Option<Vec<fs::DirEntry>> {
     let mut listing = file_activity::list(directory).ok()?;
-    let folders: Vec<fs::DirEntry> = listing
+    let folders = listing
         .by_ref()
         .flatten()
         .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
         .collect();
-    if listing.stopped() {
-        return None;
-    }
-    let matches = |entry: &&fs::DirEntry| {
-        let path = entry.path();
-        super::local_operations::folder_stamp(&path, false).is_ok_and(|stamp| {
-            directory_stamp(&path, &stamp, SystemTime::now())
-                .identity
-                .is_some_and(|candidate| identity.same(&candidate))
-        })
-    };
+    (!listing.stopped()).then_some(folders)
+}
+
+fn has_identity(path: &Path, identity: ItemIdentity) -> bool {
+    super::local_operations::folder_stamp(path, false).is_ok_and(|stamp| {
+        directory_stamp(path, &stamp, SystemTime::now())
+            .identity
+            .is_some_and(|candidate| identity.same(&candidate))
+    })
+}
+
+fn native_entry_with_identity(directory: &Path, identity: ItemIdentity) -> Option<PathBuf> {
+    use std::os::unix::fs::DirEntryExt;
+    let folders = native_folders(directory)?;
+    let matches = |entry: &&fs::DirEntry| has_identity(&entry.path(), identity);
     // Btrfs subvolumes, overlayfs and FUSE can list a different inode than stat reports.
     folders
         .iter()

@@ -200,11 +200,11 @@ impl FileSource for ChooserFileSource {
 
     fn find_by_identity(
         &self,
-        parent: Location,
+        departed: Location,
         identity: ItemIdentity,
         emit: Rc<dyn Fn(Option<Location>)>,
     ) -> LoadHandle {
-        self.source.find_by_identity(parent, identity, emit)
+        self.source.find_by_identity(departed, identity, emit)
     }
 }
 

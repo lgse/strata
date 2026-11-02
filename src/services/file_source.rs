@@ -744,11 +744,13 @@ pub trait FileSource {
         LoadHandle::new(|| {})
     }
 
-    /// Finds the folder in `parent` that matches `identity`, such as one renamed in place.
-    /// Emits `None` when nothing matches or `parent` cannot be listed.
+    /// Finds where the folder last seen at `departed` went by its `identity`: renamed in
+    /// place, or carried along by an ancestor renamed in place. Only the nearest existing
+    /// ancestor of `departed` is searched. Emits `None` when nothing matches or that
+    /// ancestor cannot be listed.
     fn find_by_identity(
         &self,
-        _parent: Location,
+        _departed: Location,
         _identity: ItemIdentity,
         emit: Rc<dyn Fn(Option<Location>)>,
     ) -> LoadHandle {
