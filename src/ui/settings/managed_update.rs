@@ -25,14 +25,14 @@ fn aur_update_command(terminal: &terminal::Terminal, helper: &str, package: &str
 pub(super) async fn launch_managed_update(method: UpdateMethod) -> Result<String, String> {
     if method == UpdateMethod::Aur {
         return launch_aur_update().await.map_err(|error| {
-            rust_i18n::t!("Couldn’t open AUR update: %{error}", error = error).into_owned()
+            rust_i18n::t!("Couldn't open AUR update: %{error}", error = error).into_owned()
         });
     }
     launch_omarchy_update()
         .await
         .map(|()| crate::i18n::tr("Omarchy Update opened in your terminal."))
         .map_err(|error| {
-            rust_i18n::t!("Couldn’t open Omarchy Update: %{error}", error = error).into_owned()
+            rust_i18n::t!("Couldn't open Omarchy Update: %{error}", error = error).into_owned()
         })
 }
 
