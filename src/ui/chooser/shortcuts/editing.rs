@@ -68,6 +68,19 @@ impl ChooserShortcuts {
             .then_some(glib::Propagation::Proceed)
     }
 
+    /// A focused Back button lists its history for the context-menu key itself.
+    pub(super) fn back_history_keeps_key(
+        &self,
+        context: &KeyContext<'_>,
+    ) -> Option<glib::Propagation> {
+        (context.press.is(CONTEXT_MENU)
+            && context
+                .focused
+                .as_ref()
+                .is_some_and(crate::ui::browser::lists_back_history))
+        .then_some(glib::Propagation::Proceed)
+    }
+
     pub(super) fn context_menu(&self, context: &KeyContext<'_>) -> Option<glib::Propagation> {
         if !context.press.is(CONTEXT_MENU) || context.focus_in_text_or_popover() {
             return None;

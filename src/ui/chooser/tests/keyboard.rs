@@ -1195,3 +1195,79 @@ fn enter_in_the_filter_field_chooses_the_top_result_in_every_view() {
         },
     );
 }
+
+/// The rendered Back button; a view-mode switch leaves the old header until it rebuilds.
+fn mapped_back(widget: &gtk::Widget) -> Option<gtk::Widget> {
+    if !widget.is_mapped() {
+        return None;
+    }
+    if widget.has_css_class("list-navigation") {
+        return widget
+            .first_child()
+            .filter(|back| back.is_mapped() && back.width() > 0);
+    }
+    std::iter::successors(widget.first_child(), gtk::Widget::next_sibling)
+        .find_map(|child| mapped_back(&child))
+}
+
+#[test]
+fn context_menu_keys_on_back_list_the_back_history() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::context_menu_keys_on_back_list_the_back_history",
+        || {
+            for mode in [BrowserMode::Icons, BrowserMode::List] {
+                let chooser =
+                    Chooser::open_with(single_file(), mode, &["alpha/", "notes.txt"], false);
+                let browser = chooser.state.view.browser();
+                let alpha = Location::local(chooser.root.path().join("alpha"));
+                browser.navigate(alpha.clone());
+                wait_until(|| {
+                    browser.active_location().as_ref() == Some(&alpha)
+                        && browser
+                            .column_snapshot(0)
+                            .is_some_and(|column| !column.loading)
+                });
+                for (key, modifiers) in [
+                    (Key::Menu, ModifierType::empty()),
+                    (Key::F10, ModifierType::SHIFT_MASK),
+                ] {
+                    let case = format!("{mode:?} {modifiers:?}+{key:?}");
+                    let back = RefCell::new(None);
+                    wait_until(|| {
+                        back.replace(mapped_back(chooser.state.window.upcast_ref()));
+                        back.borrow().is_some()
+                    });
+                    let back = back
+                        .take()
+                        .unwrap_or_else(|| panic!("{case}: no Back button"));
+                    let history = widget_with_class(&back, "back-history-popover")
+                        .and_downcast::<gtk::Popover>()
+                        .unwrap_or_else(|| panic!("{case}: Back has no history menu"));
+                    assert!(back.grab_focus(), "{case}: Back took no focus");
+                    assert!(
+                        !chooser.press_with(key, modifiers),
+                        "{case}: the chooser claimed the key from Back"
+                    );
+                    // GTK then offers the declined key to Back's own controllers.
+                    let controllers = back.observe_controllers();
+                    for index in 0..controllers.n_items() {
+                        if let Some(keys) = controllers
+                            .item(index)
+                            .and_downcast::<gtk::EventControllerKey>()
+                        {
+                            keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]);
+                        }
+                    }
+                    wait_until(|| history.is_visible());
+                    assert_eq!(
+                        browser.active_location().as_ref(),
+                        Some(&alpha),
+                        "{case}: the key went back"
+                    );
+                    history.popdown();
+                    wait_until(|| !history.is_visible());
+                }
+            }
+        },
+    );
+}
