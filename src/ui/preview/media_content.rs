@@ -82,6 +82,8 @@ struct Limits {
     busy: Duration,
     #[cfg(test)]
     abandoned: Rc<std::cell::Cell<usize>>,
+    #[cfg(test)]
+    attempts: Rc<RefCell<HashMap<PathBuf, usize>>>,
 }
 
 impl Default for Limits {
@@ -90,6 +92,8 @@ impl Default for Limits {
             busy: mount_lanes::NOT_RESPONDING_AFTER,
             #[cfg(test)]
             abandoned: Rc::default(),
+            #[cfg(test)]
+            attempts: Rc::default(),
         }
     }
 }
@@ -218,6 +222,17 @@ impl MediaChecks {
     pub(super) fn abandoned(&self) -> usize {
         self.limits.abandoned.get()
     }
+
+    /// Lane requests made for `folder`'s reads.
+    #[cfg(test)]
+    pub(super) fn attempts(&self, folder: &Path) -> usize {
+        self.limits
+            .attempts
+            .borrow()
+            .get(folder)
+            .copied()
+            .unwrap_or_default()
+    }
 }
 
 /// A metadata probe only runs on bytes that already back the media name.
@@ -260,8 +275,8 @@ impl Unread {
 struct Waits {
     /// Folders that got no answer, not asked again by the same reads.
     given_up: HashSet<PathBuf>,
-    /// When reads last started being skipped for a busy mount; one wait covers every
-    /// folder, since a request that learned its mount keeps all of them busy.
+    /// When reads were first skipped for a busy mount; one wait covers every folder of
+    /// the run, since a request that learned its mount keeps all of them busy.
     busy_since: Option<Instant>,
 }
 
@@ -305,9 +320,9 @@ async fn read_chunk(
 }
 
 /// Background work through the folder's mount lane: it waits its turn while the mount
-/// is busy with other requests, for at most `limits.busy` across all its folders, and
-/// gives up at once when the mount has stalled. Each read follows symbolic links through `reach`, so a dead
-/// link target trips only itself.
+/// is busy with other requests, for at most `limits.busy` across all the folders of a
+/// run, and gives up at once when the mount has stalled. Each read follows symbolic
+/// links through `reach`, so a dead link target trips only itself.
 async fn read_folder(
     folder: &Path,
     paths: Vec<PathBuf>,
@@ -321,6 +336,14 @@ async fn read_folder(
         }
         let paths = paths.clone();
         let stop = cancellable.clone();
+        #[cfg(test)]
+        {
+            *limits
+                .attempts
+                .borrow_mut()
+                .entry(folder.to_path_buf())
+                .or_default() += 1;
+        }
         let job = mount_lanes::run(folder, Class::Background, move |progress| {
             paths
                 .iter()
@@ -337,10 +360,7 @@ async fn read_folder(
                 .collect::<Vec<_>>()
         });
         match job.await {
-            Ok(read) => {
-                waits.busy_since = None;
-                return Some(read);
-            }
+            Ok(read) => return Some(read),
             Err(Unanswered::Skipped)
                 if mount_lanes::responsiveness(folder) == Responsiveness::Answering =>
             {

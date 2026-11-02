@@ -444,7 +444,7 @@ fn reads_stop_waiting_for_a_mount_that_stays_busy() {
     crate::test_support::gtk_test(
         "ui::preview::tests::video::reads_stop_waiting_for_a_mount_that_stays_busy",
         || {
-            const LIMIT: std::time::Duration = std::time::Duration::from_secs(1);
+            const LIMIT: std::time::Duration = std::time::Duration::from_millis(200);
             let root = tempfile::tempdir().expect("media root");
             let clips = ["one", "two"].map(|folder| {
                 let folder = root.path().join(folder);
@@ -479,13 +479,16 @@ fn reads_stop_waiting_for_a_mount_that_stays_busy() {
             for (index, clip) in clips.iter().enumerate() {
                 unread.push(index, clip);
             }
-            let started = std::time::Instant::now();
             checks.read(&clips[0].location, unread, || true);
             wait_until("both folders to stop waiting", || checks.abandoned() == 2);
-            let waited = started.elapsed();
             assert!(
-                waited < LIMIT * 8 / 5,
-                "one wait covers every folder on the busy mount ({waited:?})"
+                checks.attempts(&root.path().join("one")) > 1,
+                "the first folder waits for the busy mount"
+            );
+            assert_eq!(
+                checks.attempts(&root.path().join("two")),
+                1,
+                "one wait covers every folder on the busy mount"
             );
 
             release.send(()).expect("release");
