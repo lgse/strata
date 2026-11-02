@@ -119,8 +119,8 @@ This is a compatibility mitigation for the activated process, not a replacement
 for asynchronous dispatch in the desktop portal. GTK portal integration is
 disabled for that process's lifetime, and later launches of Strata reuse that
 process until it exits. Programs it launches, file providers, and a restart from
-Settings get the original `GDK_DEBUG` back; ordinary launches and the separate
-`--portal` FileChooser backend never acquire the override. Do not set
+Settings get the original `GDK_DEBUG` back; ordinary application launches
+never acquire the override. Do not set
 `GDK_DEBUG=no-portals` globally to address this problem.
 
 ## Nix

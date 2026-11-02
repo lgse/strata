@@ -96,17 +96,19 @@ fn has_desktop_theme_override() -> bool {
     std::env::var_os(DESKTOP_THEME_OVERRIDE).is_some()
 }
 
-fn file_manager_debug_environment(
+fn service_debug_environment(
     arguments: &[OsString],
     debug: Option<&std::ffi::OsStr>,
 ) -> Option<OsString> {
-    if launch_mode(arguments) != LaunchMode::Application
-        || !arguments
-            .iter()
-            .skip(1)
-            .take_while(|argument| *argument != "--")
-            .any(|argument| argument == "--gapplication-service")
-    {
+    let mode = launch_mode(arguments);
+    let is_service = mode == LaunchMode::Portal
+        || (mode == LaunchMode::Application
+            && arguments
+                .iter()
+                .skip(1)
+                .take_while(|argument| *argument != "--")
+                .any(|argument| argument == "--gapplication-service"));
+    if !is_service {
         return None;
     }
     let debug = debug.unwrap_or_default();
@@ -123,6 +125,14 @@ fn file_manager_debug_environment(
     }
     debug.push("no-portals");
     Some(debug)
+}
+
+#[cfg(test)]
+fn file_manager_debug_environment(
+    arguments: &[OsString],
+    debug: Option<&std::ffi::OsStr>,
+) -> Option<OsString> {
+    service_debug_environment(arguments, debug)
 }
 
 /// GTK reads its renderer and theme override during startup. Re-exec before
@@ -142,8 +152,9 @@ fn restart_for_gtk_environment(
         .args(&arguments[1..])
         .env_remove(DESKTOP_THEME_OVERRIDE);
     if let Some(debug) = service_debug {
-        // OpenDirectory synchronously waits for FileManager1. GTK must not
-        // query that same portal while initializing this D-Bus-activated app.
+        // OpenDirectory synchronously waits for FileManager1, and OpenFile
+        // synchronously waits for FileChooser. GTK must not query that same
+        // portal while initializing this D-Bus-activated process.
         command
             .env(
                 child_environment::ORIGINAL_GDK_DEBUG,
@@ -240,8 +251,10 @@ fn main() -> gtk::glib::ExitCode {
             return gtk::glib::ExitCode::SUCCESS;
         }
         LaunchMode::Portal => {
-            if has_desktop_theme_override() {
-                return restart_for_gtk_environment(&arguments, false, None);
+            let service_debug =
+                service_debug_environment(&arguments, std::env::var_os("GDK_DEBUG").as_deref());
+            if has_desktop_theme_override() || service_debug.is_some() {
+                return restart_for_gtk_environment(&arguments, false, service_debug);
             }
             restart_with_local_vfs_if_gvfs_is_unresponsive();
             let _volumes = gio::VolumeMonitor::get();
@@ -317,7 +330,7 @@ fn main() -> gtk::glib::ExitCode {
         ui::preferences::PreferenceManager::shared().interface_renderer(),
     );
     let service_debug =
-        file_manager_debug_environment(&arguments, std::env::var_os("GDK_DEBUG").as_deref());
+        service_debug_environment(&arguments, std::env::var_os("GDK_DEBUG").as_deref());
     if select_cairo || has_desktop_theme_override() || service_debug.is_some() {
         // Replies already own the original stdout, which a restart would lose.
         #[cfg(feature = "qa")]
