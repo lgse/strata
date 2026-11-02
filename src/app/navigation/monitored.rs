@@ -233,6 +233,7 @@ impl NavigationState {
             &mut column.selection_target,
             &mut column.selection_anchor,
             &mut column.load_cursor,
+            &mut column.open_child_on_load,
         ] {
             *target = target
                 .as_ref()

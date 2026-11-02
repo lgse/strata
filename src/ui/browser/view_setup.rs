@@ -401,6 +401,7 @@ fn new_view_state(parts: StateParts) -> Rc<ViewState> {
         rename_generation: Cell::new(0),
         rename_reveal_generation: Cell::new(0),
         keyboard_refocus: Cell::new(None),
+        typed_rename: RefCell::new(None),
         pending_click_rename: RefCell::new(None),
         click_rename_generation: Cell::new(0),
         pending_new_entry: RefCell::new(None),

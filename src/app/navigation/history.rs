@@ -123,6 +123,7 @@ impl NavigationState {
                 request_id,
                 select_first_on_load: false,
                 preferred_on_load: None,
+                open_child_on_load: None,
                 reload_cursor: None,
                 load_cursor: None,
             })
@@ -204,6 +205,7 @@ impl NavigationState {
             request_id,
             select_first_on_load: false,
             preferred_on_load: None,
+            open_child_on_load: None,
             reload_cursor: None,
             load_cursor: None,
         });

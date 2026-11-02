@@ -306,6 +306,48 @@ fn close_column_skips_exit_animation_when_animations_disabled() {
 }
 
 #[test]
+fn closing_columns_cancels_only_a_rename_inside_them() {
+    crate::test_support::gtk_test(
+        "ui::browser::columns::tests::closing_columns_cancels_only_a_rename_inside_them",
+        || {
+            let fixture = Columns::new(2, 900);
+            let view = &fixture.view;
+            let browser = view.browser();
+            let rename_in = |depth: usize, name: &str| {
+                assert!(browser.select_entries_by_name_at(depth, &[name.to_owned()]));
+                pump_until(
+                    || view.rename_is_active() || view.begin_rename(),
+                    "the rename editor to open",
+                );
+                let field = view.active_rename_field().expect("rename field");
+                assert_eq!(field.text().as_str(), name);
+                assert!(field.is_ancestor(&fixture.shell(depth)), "{name}");
+            };
+
+            rename_in(1, "note.txt");
+            browser.close_column(1);
+            assert!(
+                !view.rename_is_active(),
+                "closing the column holding the rename ends it"
+            );
+
+            let child = browser
+                .location_at(0)
+                .and_then(|root| root.child(std::ffi::OsStr::new("level-0")));
+            browser.show_child(0, child.expect("child location"));
+            pump_until(|| column_loaded(view, 1), "child column load");
+            rename_in(0, "level-0");
+            browser.close_column(1);
+            assert!(
+                view.rename_is_active(),
+                "closing a column to the right keeps the rename in the parent column"
+            );
+            assert!(view.cancel_rename());
+        },
+    );
+}
+
+#[test]
 fn a_finished_edge_drag_resizes_every_open_column() {
     crate::test_support::gtk_test(
         "ui::browser::columns::tests::a_finished_edge_drag_resizes_every_open_column",

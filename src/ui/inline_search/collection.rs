@@ -83,6 +83,7 @@ pub(super) struct ResultCollection {
     pub(super) reconciling: Rc<Cell<bool>>,
     pub(super) highlights: Rc<RefCell<NameHighlights>>,
     pub(super) behavior: CollectionBehavior,
+    pub(super) renamed: super::RenamedResult,
 }
 
 impl ResultCollection {
@@ -217,6 +218,12 @@ impl ResultCollection {
     pub(super) fn update(&self, items: &[SearchItem], recursive: bool, keep_selection: bool) {
         self.reconciling.set(true);
         self.gesture_selection.borrow_mut().take();
+        let settled = self.renamed.settle(items);
+        let follow = |path: PathBuf| match &settled {
+            Some(settled) => settled.follow(path),
+            None => path,
+        };
+        let left = settled == Some(super::Settled::Left);
         let kept = if keep_selection {
             self.selected_positions()
         } else {
@@ -224,7 +231,7 @@ impl ResultCollection {
         };
         let selected_paths: Vec<_> = kept
             .iter()
-            .filter_map(|position| self.item(*position as u32).map(|item| item.path))
+            .filter_map(|position| self.item(*position as u32).map(|item| follow(item.path)))
             .collect();
         let selected_slot = kept.first().copied();
         let anchor_path = self
@@ -232,7 +239,7 @@ impl ResultCollection {
             .get()
             .filter(|_| keep_selection)
             .and_then(|position| self.item(position))
-            .map(|item| item.path);
+            .map(|item| follow(item.path));
         let focused_widget = self.view.root().and_then(|root| root.focus());
         // Deleting a result refocuses the listing's own row, which the results hide; an
         // unmapped list item cannot take keys, so the results reclaim focus from it.
@@ -246,7 +253,7 @@ impl ResultCollection {
             .filter(|_| focused_in_collection)
             .and_then(|focus| self.position_at(focus));
         let focused_path =
-            focused_slot.and_then(|position| self.item(position).map(|item| item.path));
+            focused_slot.and_then(|position| self.item(position).map(|item| follow(item.path)));
 
         self.positions.replace(
             items
@@ -255,6 +262,57 @@ impl ResultCollection {
                 .map(|(position, item)| (item.path.clone(), position))
                 .collect(),
         );
+        self.replace_items(items);
+        let selected = gtk::Bitset::new_empty();
+        for position in 0..self.selection.n_items() {
+            if self
+                .item(position)
+                .is_some_and(|item| selected_paths.contains(&item.path))
+            {
+                selected.add(position);
+            }
+        }
+        let slot = selected_slot
+            .filter(|_| !items.is_empty())
+            .map(|position| position.min(items.len() - 1) as u32);
+        // A result moved to another folder leaves no selection behind.
+        if selected.is_empty()
+            && !left
+            && let Some(position) = slot
+        {
+            selected.add(position);
+        }
+        self.selection.set_selection(
+            &selected,
+            &gtk::Bitset::new_range(0, self.selection.n_items()),
+        );
+        self.gesture_selection.replace(Some(selected.copy()));
+        self.anchor.set(anchor_path.and_then(|path| {
+            (0..self.selection.n_items())
+                .find(|position| self.item(*position).is_some_and(|item| item.path == path))
+        }));
+        if let Some(position) = focused_path.as_ref().and_then(|path| {
+            (0..self.selection.n_items())
+                .find(|position| self.item(*position).is_some_and(|item| &item.path == path))
+        }) {
+            self.restore_focus(position);
+        } else if focused_in_collection {
+            if items.is_empty() {
+                if !(self.behavior.focus_entry)() {
+                    self.view.grab_focus();
+                }
+            } else if !selected.is_empty() {
+                self.restore_focus(selected.minimum());
+            } else if let Some(position) = slot.filter(|_| left) {
+                self.restore_focus(position);
+            }
+        }
+        self.refresh_bindings(recursive);
+        self.reconciling.set(false);
+    }
+
+    /// Edits the model into `items`, keeping the objects of unchanged results.
+    fn replace_items(&self, items: &[SearchItem]) {
         let wanted: HashSet<_> = items.iter().map(|item| item.path.clone()).collect();
         for position in (0..self.model.n_items()).rev() {
             let remove = self
@@ -292,45 +350,6 @@ impl ResultCollection {
             }
         }
         self.sorter.changed(gtk::SorterChange::Different);
-        let selected = gtk::Bitset::new_empty();
-        for position in 0..self.selection.n_items() {
-            if self
-                .item(position)
-                .is_some_and(|item| selected_paths.contains(&item.path))
-            {
-                selected.add(position);
-            }
-        }
-        if selected.is_empty()
-            && let Some(position) = selected_slot.filter(|_| !items.is_empty())
-        {
-            selected.add(position.min(items.len() - 1) as u32);
-        }
-        self.selection.set_selection(
-            &selected,
-            &gtk::Bitset::new_range(0, self.selection.n_items()),
-        );
-        self.gesture_selection.replace(Some(selected.copy()));
-        self.anchor.set(anchor_path.and_then(|path| {
-            (0..self.selection.n_items())
-                .find(|position| self.item(*position).is_some_and(|item| item.path == path))
-        }));
-        if let Some(position) = focused_path.as_ref().and_then(|path| {
-            (0..self.selection.n_items())
-                .find(|position| self.item(*position).is_some_and(|item| &item.path == path))
-        }) {
-            self.restore_focus(position);
-        } else if focused_in_collection {
-            if items.is_empty() {
-                if !(self.behavior.focus_entry)() {
-                    self.view.grab_focus();
-                }
-            } else if !selected.is_empty() {
-                self.restore_focus(selected.minimum());
-            }
-        }
-        self.refresh_bindings(recursive);
-        self.reconciling.set(false);
     }
 
     pub(super) fn refresh_bindings(&self, recursive: bool) {
@@ -370,6 +389,7 @@ impl ResultCollection {
         crate::ui::thumbnail::cancel_thumbnails_in(&self.view);
         self.model.remove_all();
         self.positions.borrow_mut().clear();
+        self.renamed.clear();
         self.anchor.set(None);
         self.gesture_selection.borrow_mut().take();
     }
@@ -797,6 +817,7 @@ pub(super) fn build_collection(
             reconciling,
             highlights,
             behavior,
+            renamed: super::RenamedResult::default(),
         },
         scroll,
         overlay,

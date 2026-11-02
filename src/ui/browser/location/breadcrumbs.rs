@@ -7,6 +7,7 @@ use crate::ui::browser::clipboard::{
 use crate::ui::browser::{
     DropHandler, ViewState, attach_drop_target, commit_dropped_value, file_drop_action,
 };
+use crate::ui::browser_modes::BrowserMode;
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::Cell;
@@ -234,8 +235,19 @@ fn hierarchy_item_row(crumb: &Location, home: &Location) -> gtk::Box {
 }
 
 impl ViewState {
-    pub(in crate::ui::browser) fn sync_active_location(self: &Rc<Self>) {
-        if let Some(location) = self.browser.active_location() {
+    /// The folder the view shows: Columns ends at its deepest column, while Icons
+    /// and List show only the active folder, however many columns stay open.
+    pub(in crate::ui::browser) fn displayed_location(&self) -> Option<Location> {
+        match self.mode.get() {
+            BrowserMode::Columns => (0..)
+                .map_while(|depth| self.browser.location_at(depth))
+                .last(),
+            BrowserMode::Icons | BrowserMode::List => self.browser.active_location(),
+        }
+    }
+
+    pub(in crate::ui::browser) fn sync_displayed_location(self: &Rc<Self>) {
+        if let Some(location) = self.displayed_location() {
             self.set_location(&location);
         }
     }
@@ -324,14 +336,14 @@ impl ViewState {
         x: f64,
         y: f64,
     ) {
-        let Some(active_location) = self.browser.active_location() else {
+        let Some(location) = self.displayed_location() else {
             return;
         };
-        if active_location.breadcrumbs().is_empty() {
+        if location.breadcrumbs().is_empty() {
             return;
         }
         let home = Location::local(glib::home_dir());
-        let mut locations = visible_crumbs(&active_location, &home);
+        let mut locations = visible_crumbs(&location, &home);
         locations.reverse();
 
         let menu_box = gtk::Box::new(gtk::Orientation::Vertical, 2);

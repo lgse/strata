@@ -2,11 +2,11 @@
 
 //! A column's filter query: in-place filtering and the recursive search behind it.
 
-use super::super::{ColumnHits, search::update_results};
+use super::super::{ColumnHits, search::ResultLists};
 use super::header::ColumnHeader;
 use super::models::ColumnModels;
 use crate::app::Browser;
-use crate::services::{SearchItem, fold_for_search};
+use crate::services::fold_for_search;
 use crate::ui::browser::ViewState;
 use crate::ui::browser::collection::{
     FilterQueryBinding, apply_filter_query, bind_filter_query, deactivate_recursive_search,
@@ -22,25 +22,9 @@ use std::rc::{Rc, Weak};
 /// The search-hit list a query fills, shared with each search batch.
 #[derive(Clone)]
 struct SearchHits {
-    model: gtk::StringList,
-    results: Rc<RefCell<Vec<SearchItem>>>,
-    selection: gtk::MultiSelection,
-    syncing: Rc<Cell<bool>>,
+    lists: ResultLists,
     hits: Rc<RefCell<ColumnHits>>,
     enter: EnterTarget,
-}
-
-impl SearchHits {
-    fn update(&self, items: Vec<SearchItem>, keep_selection: bool) -> bool {
-        update_results(
-            &self.model,
-            &self.results,
-            &self.selection,
-            &self.syncing,
-            items,
-            keep_selection,
-        )
-    }
 }
 
 /// Delivers one recursive search's batches into the column at `depth`.
@@ -83,7 +67,11 @@ impl SearchBatches {
             recursive: self.scope.recursive(),
         });
         let keep_selection = !self.hits.enter.show_query(&batch.query);
-        if self.hits.update(items, keep_selection) {
+        let update = self.hits.lists.update(items, keep_selection);
+        if let Some(position) = update.renamed {
+            state.focus_renamed_column_result(self.depth, position);
+        }
+        if update.selection_changed {
             state.notify_search_selection_changed();
         }
         state.refresh_name_highlights();
@@ -146,7 +134,7 @@ impl ColumnQuery {
     fn restart(&self) {
         self.hits.enter.restart();
         self.session.cancel();
-        let changed = self.hits.update(Vec::new(), false);
+        let changed = self.hits.lists.update(Vec::new(), false).selection_changed;
         if changed && let Some(state) = self.state.upgrade() {
             state.notify_search_selection_changed();
         }
@@ -164,14 +152,15 @@ impl ColumnQuery {
     fn deactivate_search(&self) {
         deactivate_recursive_search(
             &self.search_active,
-            &self.hits.results,
-            &self.hits.model,
+            &self.hits.lists.results,
+            &self.hits.lists.model,
             &self.filtered_model,
             &self.model,
         );
     }
 
     fn clear(&self, text: &str) {
+        self.hits.lists.renamed.clear();
         self.hits.enter.clear();
         self.session.cancel();
         // Keep the hidden-file filter installed while swapping back to the directory
@@ -202,7 +191,7 @@ impl ColumnQuery {
         self.search_active.set(true);
         if !self.session.is_active() {
             self.filtered_model.set_filter(None::<&gtk::CustomFilter>);
-            self.filtered_model.set_model(Some(&self.hits.model));
+            self.filtered_model.set_model(Some(&self.hits.lists.model));
         }
         let show_hidden = state
             .browser
@@ -249,10 +238,13 @@ impl ViewState {
             search_active: models.recursive_search_active.clone(),
             session: models.search_session.clone(),
             hits: SearchHits {
-                model: models.search_model.clone(),
-                results: models.search_results.clone(),
-                selection: models.selection.clone(),
-                syncing: models.syncing_selection.clone(),
+                lists: ResultLists {
+                    model: models.search_model.clone(),
+                    results: models.search_results.clone(),
+                    selection: models.selection.clone(),
+                    syncing: models.syncing_selection.clone(),
+                    renamed: models.renamed_result.clone(),
+                },
                 hits: models.hits.clone(),
                 enter: header.enter_target.clone(),
             },

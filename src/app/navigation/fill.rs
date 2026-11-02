@@ -6,7 +6,7 @@ use crate::model::{FileEntry, Location};
 
 use super::{
     ColumnState, CursorToggle, NavigationState, SelectedLocations, lists_each_location_once,
-    place_cursor, visible_positions,
+    place_committed_cursor, place_cursor, visible_positions,
 };
 
 impl NavigationState {
@@ -14,13 +14,10 @@ impl NavigationState {
         let Some(column) = self.columns.get_mut(depth) else {
             return false;
         };
-        let Some(entry) = column.entries.get(position) else {
+        if position >= column.entries.len() {
             return false;
-        };
-        let location = entry.location.clone();
-        adopt_selected_locations(column, HashSet::from([location.clone()]), true);
-        column.selected = Some(position);
-        column.selection_anchor = Some(location);
+        }
+        place_committed_cursor(column, position);
         self.active_column = Some(depth);
         self.visual = None;
         true
