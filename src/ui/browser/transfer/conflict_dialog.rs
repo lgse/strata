@@ -25,12 +25,13 @@ pub(super) enum ConflictChoice {
 
 #[derive(Clone, Copy, Default)]
 pub(super) struct ConflictActions {
+    pub(super) replace: bool,
     pub(super) keep_both: bool,
     pub(super) merge: bool,
     pub(super) focus: ConflictFocus,
 }
 
-/// What one conflict prompt shows besides Replace and Cancel.
+/// What one conflict prompt shows besides Cancel.
 pub(super) struct ConflictPrompt<'a> {
     pub(super) name: &'a str,
     pub(super) explanation: &'a str,
@@ -84,6 +85,7 @@ impl ConflictDialog {
         layout.actions.insert_child_after(&keep_both, Some(&skip));
         let merge = secondary_action("Merge", prompt.actions.merge);
         layout.actions.insert_child_after(&merge, Some(&keep_both));
+        layout.confirm.set_visible(prompt.actions.replace);
         for button in [&layout.cancel, &skip, &keep_both, &merge, &layout.confirm] {
             wrap_button_label(button);
         }
@@ -174,7 +176,8 @@ impl ViewState {
         dialog.connect_choices(&modal, &on_choice);
         dialog.install_keys(&modal);
         let actions = prompt.actions;
-        if actions.focus == ConflictFocus::KeepBoth && actions.keep_both {
+        let keep_both_first = actions.focus == ConflictFocus::KeepBoth || !actions.replace;
+        if keep_both_first && actions.keep_both {
             focus_button(&dialog.keep_both);
         } else {
             focus_button(&dialog.layout.confirm);

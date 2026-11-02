@@ -36,6 +36,8 @@ pub(crate) struct TransferTarget {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct Collision {
     pub mergeable: bool,
+    /// Both items are folders or neither is: a file and a folder never replace one another.
+    pub replaceable: bool,
 }
 
 /// Nothing collides with a link the paste leaves out, as the destination is known not to hold
@@ -137,6 +139,7 @@ pub(crate) async fn transfer_targets(
         .map(|((target, folder), existing)| TransferTarget {
             collision: existing.map(|existing_folder| Collision {
                 mergeable: folder && existing_folder,
+                replaceable: folder == existing_folder,
             }),
             ..target
         })

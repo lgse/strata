@@ -306,7 +306,7 @@ impl PreviewState {
     }
 
     /// A retained audio or video player shows the next file while it loads.
-    fn prepare_player(&self) -> bool {
+    fn prepare_player(self: &Rc<Self>) -> bool {
         if let Some(audio) = self.audio.borrow().as_ref() {
             let (folder, previous, next) = self.listing_position(MediaFamily::Audio);
             if let Some(entry) = self.current.borrow().as_ref() {

@@ -112,7 +112,7 @@ impl View {
         self.title.set_text(&crate::i18n::tr(match result {
             UpdateCheck::UpToDate => "Strata is up to date",
             UpdateCheck::Available { .. } => "An update is available",
-            UpdateCheck::Failed(_) => "Couldn’t check for updates",
+            UpdateCheck::Failed(_) => "Couldn't check for updates",
         }));
         let returns_to_stable = matches!(result,
             UpdateCheck::Available { release, .. }
@@ -135,11 +135,10 @@ impl View {
         } else {
             update_check_message(result, self.method)
         };
-        self.status.set_markup(&update_status_markup(
-            message,
-            result,
-            InstallSource::detect(),
-        ));
+        crate::ui::accessibility::set_link_markup(
+            &self.status,
+            &update_status_markup(message, result, InstallSource::detect()),
+        );
         self.pending.take();
         self.managed.set(false);
         self.button.set_label(&crate::i18n::tr("Check now"));

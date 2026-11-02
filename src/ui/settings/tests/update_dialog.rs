@@ -133,7 +133,7 @@ fn fail_download(dialog: &UpdateDialog, installer: &FakeInstaller, outcome: Opti
         None => installer.disconnect(),
     }
     wait_until("the download to fail", || {
-        dialog.status.text().starts_with("Couldn’t install update")
+        dialog.status.text().starts_with("Couldn't install update")
     });
 }
 
@@ -216,7 +216,7 @@ fn failed_download_leaves_every_dismisser_working() {
 
                 assert_eq!(
                     dialog.status.text(),
-                    "Couldn’t install update: checksum",
+                    "Couldn't install update: checksum",
                     "{dismisser:?}"
                 );
                 assert!(
@@ -279,7 +279,7 @@ fn disconnected_installer_counts_as_a_failure() {
 
             fail_download(&dialog, &installer, None);
 
-            assert_eq!(dialog.status.text(), "Couldn’t install update");
+            assert_eq!(dialog.status.text(), "Couldn't install update");
             assert!(!guard.get(), "a disconnected installer releases the guard");
             dismiss_with(&dialog, Dismisser::Close);
             wait_until_dismissed(&dialog);
@@ -441,7 +441,7 @@ fn omarchy_update_without_a_terminal_reports_and_reenables_the_action() {
             });
             let status = dialog.status.text();
             assert!(
-                status.starts_with("Couldn’t open Omarchy Update"),
+                status.starts_with("Couldn't open Omarchy Update"),
                 "{status}"
             );
             assert!(dialog.action.is_sensitive(), "the action retries");

@@ -46,6 +46,7 @@ mod keyboard;
 mod layout;
 mod lifecycle;
 mod loading;
+mod media_content;
 mod media_controls;
 mod media_render;
 mod media_session;
@@ -191,6 +192,7 @@ struct PreviewState {
     model_view: Cell<crate::services::ModelView>,
     handed_off: RefCell<Option<crate::model::Location>>,
     continue_playback: RefCell<Option<PlaybackContinuation>>,
+    media_checks: RefCell<media_content::MediaChecks>,
     split: RefCell<Option<gtk::Paned>>,
     sizing: layout::SplitSizing,
     current: RefCell<Option<FileEntry>>,

@@ -100,11 +100,12 @@ impl FileSource for TreeSource {
 
     fn find_by_identity(
         &self,
-        parent: Location,
+        departed: Location,
         identity: ItemIdentity,
         emit: Rc<dyn Fn(Option<Location>)>,
     ) -> LoadHandle {
-        emit(self.identities.find(&parent, identity));
+        let missing = |location: &Location| self.missing.borrow().contains(location);
+        emit(self.identities.find(&departed, identity, missing));
         LoadHandle::new(|| {})
     }
 }

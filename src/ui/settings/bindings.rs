@@ -60,6 +60,16 @@ pub(super) fn choice_menu<T: Copy + PartialEq + 'static>(
     button
 }
 
+/// GTK reports only a widget's own sensitivity to assistive technology, so a
+/// choice in an insensitive row would still announce itself as usable. The menu
+/// button's toggle is an accessible of its own, so it follows the button.
+pub(super) fn set_choice_sensitive(button: &gtk::MenuButton, sensitive: bool) {
+    button.set_sensitive(sensitive);
+    if let Some(toggle) = button.first_child() {
+        toggle.set_sensitive(sensitive);
+    }
+}
+
 /// A choice keeps its row title as its accessible name, so the value it shows
 /// is announced as the description.
 pub(super) fn show_choice_value(button: &gtk::MenuButton, value: &str) {

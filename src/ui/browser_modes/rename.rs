@@ -101,6 +101,26 @@ impl ModeViews {
         collection_edit::cancel(&self.active_rename)
     }
 
+    pub(in crate::ui) fn follow_renamed_result(
+        &self,
+        from: &std::path::Path,
+        to: Option<&std::path::Path>,
+    ) {
+        for pane in self.all_panes() {
+            pane.search.follow_rename(from, to);
+        }
+    }
+
+    pub(in crate::ui) fn forget_renamed_result(
+        &self,
+        from: &std::path::Path,
+        to: Option<&std::path::Path>,
+    ) {
+        for pane in self.all_panes() {
+            pane.search.forget_rename(from, to);
+        }
+    }
+
     fn rename_submit(&self) -> collection_edit::Submit {
         let state = self.context_state.borrow().clone().unwrap_or_default();
         let active = Rc::downgrade(&self.active_rename);

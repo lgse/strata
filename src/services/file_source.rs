@@ -201,6 +201,7 @@ pub(crate) fn io_error_reason(error: &std::io::Error) -> Option<&'static str> {
         ErrorKind::NotConnected => "The location is no longer connected",
         ErrorKind::StaleNetworkFileHandle => "The network file handle is no longer valid",
         ErrorKind::ExecutableFileBusy => "The file is running and cannot be changed",
+        ErrorKind::CrossesDevices => "The destination is on a different file system",
         _ => return None,
     })
 }
@@ -604,6 +605,14 @@ pub struct MetadataUpdate {
 }
 
 #[derive(Clone, Debug)]
+pub struct WatchRequest {
+    pub location: Location,
+    pub include_hidden: bool,
+    /// The folder's identity from the load that asked for the watch.
+    pub began_on: Option<ItemIdentity>,
+}
+
+#[derive(Clone, Debug)]
 pub struct MetadataRequest {
     /// Fills for a superseded load are dropped, never applied to a reloaded column.
     pub id: RequestId,
@@ -702,12 +711,11 @@ pub trait FileSource {
 
     fn start_watch(
         &self,
-        location: Location,
-        include_hidden: bool,
+        request: WatchRequest,
         notify: Rc<dyn Fn(DirectoryChange)>,
         report: Rc<dyn Fn(Watching)>,
     ) -> LoadHandle {
-        match self.watch(location, include_hidden, notify) {
+        match self.watch(request.location, request.include_hidden, notify) {
             Some(watch) => {
                 report(Watching::Live);
                 watch
@@ -744,11 +752,13 @@ pub trait FileSource {
         LoadHandle::new(|| {})
     }
 
-    /// Finds the folder in `parent` that matches `identity`, such as one renamed in place.
-    /// Emits `None` when nothing matches or `parent` cannot be listed.
+    /// Finds where the folder last seen at `departed` went by its `identity`: renamed in
+    /// place, or carried along by an ancestor renamed in place. Only the nearest existing
+    /// ancestor of `departed` is searched. Emits `None` when nothing matches or that
+    /// ancestor cannot be listed.
     fn find_by_identity(
         &self,
-        _parent: Location,
+        _departed: Location,
         _identity: ItemIdentity,
         emit: Rc<dyn Fn(Option<Location>)>,
     ) -> LoadHandle {

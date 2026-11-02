@@ -45,6 +45,13 @@ pub(crate) enum Event {
     Motion { x: i16, y: i16 },
 }
 
+/// A keycode the layout leaves empty, lent a keysym it lacks, and the row it had.
+pub(crate) struct BorrowedKey {
+    pub(crate) keycode: u8,
+    keysyms_per_keycode: u8,
+    previous: Vec<u32>,
+}
+
 enum Backend {
     X11(Box<X11>),
     Wayland(Box<wayland::Wayland>),
@@ -107,6 +114,25 @@ impl Injector {
             .get(&keysym)
             .copied()
             .ok_or_else(|| format!("keysym {keysym:#06x} is not on the keyboard layout"))
+    }
+
+    /// Puts `keysym` on an empty keycode, as xdotool does, for text the layout cannot type.
+    pub(crate) fn borrow_keycode(&self, keysym: u32) -> Result<BorrowedKey, String> {
+        match &self.backend {
+            Backend::X11(x11) => x11.borrow_keycode(keysym),
+            Backend::Wayland(_) => Err(format!(
+                "keysym {keysym:#06x} is not on the keyboard layout, and only X11 can lend it a key"
+            )),
+        }
+    }
+
+    pub(crate) fn return_keycode(&self, key: &BorrowedKey) -> Result<(), String> {
+        match &self.backend {
+            Backend::X11(x11) => {
+                x11.set_keysyms(key.keycode, key.keysyms_per_keycode, &key.previous)
+            }
+            Backend::Wayland(_) => Ok(()),
+        }
     }
 
     pub(crate) fn send(&self, event: Event) -> Result<(), String> {
@@ -265,6 +291,49 @@ impl X11 {
         xtest::fake_input(&self.connection, kind, detail, delay, self.root, x, y, 0)
             .map_err(|error| error.to_string())?;
         Ok(())
+    }
+
+    fn borrow_keycode(&self, keysym: u32) -> Result<BorrowedKey, String> {
+        let setup = self.connection.setup();
+        let (first, last) = (setup.min_keycode, setup.max_keycode);
+        let mapping = self
+            .connection
+            .get_keyboard_mapping(first, last - first + 1)
+            .map_err(|error| error.to_string())?
+            .reply()
+            .map_err(|error| error.to_string())?;
+        let width = mapping.keysyms_per_keycode;
+        if width == 0 {
+            return Err("the X server returned no keyboard mapping".to_owned());
+        }
+        let (offset, previous) = mapping
+            .keysyms
+            .chunks(usize::from(width))
+            .enumerate()
+            .rev()
+            .find(|(_, keysyms)| keysyms.iter().all(|keysym| *keysym == 0))
+            .ok_or("the keyboard layout has no empty keycode to lend a character")?;
+        let keycode = u8::try_from(offset)
+            .ok()
+            .and_then(|offset| first.checked_add(offset))
+            .ok_or("the empty keycode is out of range")?;
+        let mut lent = vec![0; usize::from(width)];
+        for level in lent.iter_mut().take(2) {
+            *level = keysym;
+        }
+        self.set_keysyms(keycode, width, &lent)?;
+        Ok(BorrowedKey {
+            keycode,
+            keysyms_per_keycode: width,
+            previous: previous.to_vec(),
+        })
+    }
+
+    fn set_keysyms(&self, keycode: u8, width: u8, keysyms: &[u32]) -> Result<(), String> {
+        self.connection
+            .change_keyboard_mapping(1, keycode, width, keysyms)
+            .map_err(|error| error.to_string())?;
+        self.connection.sync().map_err(|error| error.to_string())
     }
 
     fn pointer_position(&self) -> Result<(i16, i16), String> {

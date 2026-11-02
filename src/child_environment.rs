@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 //! Launched programs get the `GDK_DEBUG` Strata started with, not the
-//! `no-portals` override it added for its own FileManager1 activation.
+//! `no-portals` override it added for its own D-Bus service activation.
 
 use std::{ffi::OsStr, process::Command};
 

@@ -359,22 +359,7 @@ impl BrowserView {
         };
         self.state.mode_views.borrow().suppress_focus_scroll();
         if extend {
-            let order = self
-                .state
-                .browser
-                .active_depth()
-                .and_then(|depth| self.displayed_order(depth));
-            self.state
-                .browser
-                .extend_page_selection(direction, items, order.as_deref());
-            let position = self.cursor_view_position(&view);
-            crate::ui::scrolling::reveal_cursor(
-                &view,
-                &scroll,
-                direction,
-                crate::ui::scrolling::CursorMotion::Page,
-                position,
-            );
+            self.extend_selection_by(&view, &scroll, direction, items);
             return true;
         }
         let target = self.state.browser.active_depth().and_then(|depth| {
@@ -397,8 +382,56 @@ impl BrowserView {
                 .browser
                 .page_along(direction, items, order.as_deref());
         }
+        self.anchor_native_range();
         crate::ui::scrolling::reveal_selection(&view, &scroll, direction, &page);
         true
+    }
+
+    /// Shift+Home and Shift+End in Columns, which extend from the anchor as its
+    /// Shift+arrows do; List and Icons leave them to GTK.
+    pub fn extend_selection_to_edge(&self, direction: i32) -> bool {
+        let focused = self.state.overlay.root().and_then(|root| root.focus());
+        let Some((view, scroll)) = focused
+            .as_ref()
+            .and_then(crate::ui::scrolling::focused_collection)
+        else {
+            return false;
+        };
+        self.keyboard_navigation();
+        self.extend_selection_by(&view, &scroll, direction, usize::MAX);
+        true
+    }
+
+    fn extend_selection_by(
+        &self,
+        view: &gtk::Widget,
+        scroll: &gtk::ScrolledWindow,
+        direction: i32,
+        items: usize,
+    ) {
+        // A full jump reveals like Home and End; a page reveals by page.
+        let motion = if items == usize::MAX {
+            crate::ui::scrolling::CursorMotion::Jump
+        } else {
+            crate::ui::scrolling::CursorMotion::Page
+        };
+        let order = self
+            .state
+            .browser
+            .active_depth()
+            .and_then(|depth| self.displayed_order(depth));
+        self.state
+            .browser
+            .extend_page_selection(direction, items, order.as_deref());
+        let position = self.cursor_view_position(view);
+        crate::ui::scrolling::reveal_cursor(view, scroll, direction, motion, position);
+    }
+
+    /// The model moved the cursor, selection and anchor without GTK.
+    fn anchor_native_range(&self) {
+        if let Some(depth) = self.state.browser.active_depth() {
+            self.state.mode_views.borrow().anchor_native_range(depth);
+        }
     }
 
     pub fn move_displayed_cursor(&self, direction: i32, steps: usize) {
@@ -521,6 +554,7 @@ impl BrowserView {
         self.state
             .browser
             .page_along(direction, usize::MAX, order.as_deref());
+        self.anchor_native_range();
         if let Some((view, scroll)) = collection {
             crate::ui::scrolling::reveal_jump(&view, &scroll, direction);
         }

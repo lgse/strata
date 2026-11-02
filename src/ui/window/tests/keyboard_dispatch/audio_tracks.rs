@@ -33,6 +33,15 @@ impl PreviewProvider for AudioPreview {
     }
 }
 
+/// Leading bytes that keep a `.wav` fixture audio for the preview's content check.
+const WAV_BYTES: &[u8] = b"RIFF\x24\0\0\0WAVEfmt \x10\0\0\0";
+
+pub(super) fn caption_reads(fixture: &KeyboardFixture, caption: &str) -> bool {
+    widget_with_class(&fixture.preview.widget(), "preview-details-eyebrow")
+        .and_downcast::<gtk::Label>()
+        .is_some_and(|label| label.text() == caption)
+}
+
 pub(super) fn settle(step: &str, condition: impl Fn() -> bool) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while !condition() {
@@ -68,7 +77,12 @@ fn audio_steps_follow_search_results_including_subfolders() {
                 "d-song.m3u",
                 "e-song.mid",
             ] {
-                std::fs::write(root.join(name), []).expect("filter fixture");
+                let bytes = if name.ends_with(".wav") {
+                    WAV_BYTES
+                } else {
+                    &[]
+                };
+                std::fs::write(root.join(name), bytes).expect("filter fixture");
             }
             let preferences = footer_prompt::enable_tenxer(&fixture);
             preferences.set_group_by_type(false);
@@ -112,6 +126,9 @@ fn audio_steps_follow_search_results_including_subfolders() {
                 settle("first filtered track", || {
                     shows_track(&fixture, "a-song.wav") && preview_has_focus(&fixture)
                 });
+                settle("filtered sequence", || {
+                    caption_reads(&fixture, "1 of 2 in results")
+                });
                 assert!(
                     fixture.press(Key::greater, ModifierType::SHIFT_MASK),
                     "{mode:?}"
@@ -119,9 +136,7 @@ fn audio_steps_follow_search_results_including_subfolders() {
                 settle("nested track", || shows_track(&fixture, "c-song.wav"));
                 assert!(preview_has_focus(&fixture));
                 settle("results caption", || {
-                    widget_with_class(&fixture.preview.widget(), "preview-details-eyebrow")
-                        .and_downcast::<gtk::Label>()
-                        .is_some_and(|label| label.text() == "2 of 2 in results")
+                    caption_reads(&fixture, "2 of 2 in results")
                 });
                 assert_eq!(hidden_cursor(), hidden);
                 fixture.press(Key::h, ModifierType::empty());
@@ -144,7 +159,7 @@ fn tenxer_angle_brackets_step_through_audio_files_from_the_preview() {
             let fixture = KeyboardFixture::with_provider(Rc::new(AudioPreview));
             let root = fixture._directory.path();
             for name in ["a.wav", "c.wav", "d.wav"] {
-                std::fs::write(root.join(name), []).expect("audio fixture");
+                std::fs::write(root.join(name), WAV_BYTES).expect("audio fixture");
             }
             let preferences = PreferenceManager::shared();
             preferences.set_tenxer_mode(true);
@@ -164,6 +179,9 @@ fn tenxer_angle_brackets_step_through_audio_files_from_the_preview() {
             fixture.press(Key::l, ModifierType::empty());
             settle("first track", || {
                 preview_has_focus(&fixture) && shows_track(&fixture, "a.wav")
+            });
+            settle("folder sequence", || {
+                caption_reads(&fixture, "1 of 3 in folder")
             });
 
             assert!(fixture.press(Key::greater, ModifierType::SHIFT_MASK));

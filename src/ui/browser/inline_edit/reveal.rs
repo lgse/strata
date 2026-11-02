@@ -223,6 +223,10 @@ impl ViewState {
         source_position: usize,
     ) -> Result<(gtk::Widget, u32, Option<gtk::Widget>), RenameRevealTarget> {
         let column = self.columns.borrow()[depth].clone();
+        // Filter results own the rows and follow the rename themselves.
+        if column.recursive_search_active.get() {
+            return Err(RenameRevealTarget::Stop);
+        }
         let Some(position) = column.map.view_position(source_position) else {
             return Err(RenameRevealTarget::Stop);
         };

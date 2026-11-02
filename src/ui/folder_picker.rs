@@ -49,7 +49,8 @@ pub(crate) fn scope(
     let base = if stem == "~" {
         home.to_path_buf()
     } else if let Some(relative) = stem.strip_prefix("~/") {
-        home.join(relative)
+        // `~//x` means `~/x`; joining an absolute remainder would replace home.
+        home.join(relative.trim_start_matches('/'))
     } else if stem.starts_with('/') {
         PathBuf::from(stem)
     } else {

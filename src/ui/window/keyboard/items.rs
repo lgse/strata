@@ -2,7 +2,11 @@
 
 use std::rc::Rc;
 
-use gtk::{gdk::ModifierType as Modifiers, glib::Propagation, prelude::*};
+use gtk::{
+    gdk::{Key, ModifierType as Modifiers},
+    glib::Propagation,
+    prelude::*,
+};
 
 use super::{Dispatcher, KeyEvent, KeyResult};
 use crate::{
@@ -10,7 +14,7 @@ use crate::{
     model::Location,
     ui::{
         browser_modes::BrowserMode,
-        keys::{KeyPress, Map, Match, bindings::*},
+        keys::{Binding, Command, KeyPress, Map, Match, bindings::*},
         preview::preview_target,
         window::{
             SinglePaneArrow, home_directory, sidebar_focus_direction, single_pane_arrow_action,
@@ -91,9 +95,10 @@ impl Dispatcher {
         None
     }
 
-    /// Delete keys act on files, never on text being edited.
+    /// Delete keys act on files, never on text being edited or from inside the
+    /// preview.
     fn confirms_delete(&self, event: &KeyEvent, permanent: bool) -> bool {
-        if self.view.filter_has_focus() || event.text_has_focus() {
+        if self.view.filter_has_focus() || event.text_has_focus() || self.preview_has_focus(event) {
             return false;
         }
         self.view.confirm_delete(permanent)
@@ -181,11 +186,44 @@ impl Dispatcher {
         {
             return Propagation::Stop;
         }
-        let Some(arrow) = event.vim_arrow() else {
+        let Some((arrow, alias)) = event
+            .vim_arrow()
+            .map(|arrow| (arrow, true))
+            .or_else(|| plain_arrow(&event.press).map(|arrow| (arrow, false)))
+        else {
             return Propagation::Proceed;
         };
-        crate::ui::focus_navigation::activate_native_arrow(&self.window, arrow);
-        Propagation::Stop
+        // Stopping here hides the key from the browser's own capture handler.
+        self.view.cancel_pending_click_rename();
+        let moved = self.run_arrow_binding(arrow);
+        // An alias passed on would type its letter.
+        if moved || alias {
+            Propagation::Stop
+        } else {
+            Propagation::Proceed
+        }
+    }
+
+    /// Runs GTK's arrow binding. GTK's plain move resets its own Shift range origin; the
+    /// model's anchor, which Shift+page keys and Shift+click extend from, follows it
+    /// when the move replaced and changed the selection, and not when GTK kept a range at
+    /// an edge.
+    fn run_arrow_binding(&self, arrow: Key) -> bool {
+        let browser = self.view.browser();
+        let selection = || {
+            browser
+                .focused_item()
+                .map(|(depth, position, _)| (depth, position, browser.selected_positions(depth)))
+        };
+        let before = selection();
+        let moved = crate::ui::focus_navigation::activate_native_arrow(&self.window, arrow);
+        if moved
+            && let Some((depth, position, selected)) = selection()
+            && replaced_selection(before, depth, position, &selected)
+        {
+            browser.set_selection_anchor(depth, position);
+        }
+        moved
     }
 
     fn item_commands(&self, browser: &Browser, event: &KeyEvent) -> KeyResult {
@@ -203,21 +241,19 @@ impl Dispatcher {
     }
 
     fn first_or_last_item(&self, press: &KeyPress) -> bool {
-        let edge_key = press
-            .is_any(&[FIRST_ITEM, LAST_ITEM].map(|command| command.in_map(Map::Default)))
-            || press.is_any(&[EXTEND_TO_FIRST, EXTEND_TO_LAST]);
-        if !self.view.item_view_has_focus() || !edge_key {
+        if !self.view.item_view_has_focus() {
             return false;
         }
-        self.view.commit_selection();
-        let jump = if press.is(FIRST_ITEM.in_map(Map::Default)) {
-            Some(-1)
-        } else if press.is(LAST_ITEM.in_map(Map::Default)) {
-            Some(1)
-        } else {
-            None
+        let Some((direction, extend)) = edge_key(press) else {
+            return false;
         };
-        jump.is_some_and(|direction| self.view.jump_selection(direction))
+        self.view.commit_selection();
+        if extend {
+            self.view.view_mode() == BrowserMode::Columns
+                && self.view.extend_selection_to_edge(direction)
+        } else {
+            self.view.jump_selection(direction)
+        }
     }
 
     fn item_action(&self, browser: &Browser, press: &KeyPress) -> bool {
@@ -369,6 +405,43 @@ fn edge_jump(press: &KeyPress) -> Option<i32> {
     } else {
         None
     }
+}
+
+/// Home and End, and with Shift whether they extend the selection.
+fn edge_key(press: &KeyPress) -> Option<(i32, bool)> {
+    let edge: [(&dyn Match, _, _); 4] = [
+        (&FIRST_ITEM.in_map(Map::Default), -1, false),
+        (&LAST_ITEM.in_map(Map::Default), 1, false),
+        (&EXTEND_TO_FIRST, -1, true),
+        (&EXTEND_TO_LAST, 1, true),
+    ];
+    edge.into_iter()
+        .find(|(key, _, _)| press.is(key))
+        .map(|(_, direction, extend)| (direction, extend))
+}
+
+/// The move left only `position` selected where the selection before it differed, rather
+/// than GTK keeping a range at an edge. `before` is the cursor's depth, position and
+/// selection ahead of the move.
+fn replaced_selection(
+    before: Option<(usize, usize, Vec<usize>)>,
+    depth: usize,
+    position: usize,
+    selected: &[usize],
+) -> bool {
+    selected == [position]
+        && before.is_none_or(|(before_depth, _, before_selected)| {
+            before_depth != depth || before_selected != selected
+        })
+}
+
+/// An unmodified arrow key itself, not an alias read as one.
+fn plain_arrow(press: &KeyPress) -> Option<Key> {
+    [UP, DOWN, LEFT, RIGHT]
+        .into_iter()
+        .find(|arrow| !press.aliased() && press.is(*arrow))
+        .and_then(Command::canonical)
+        .map(Binding::key)
 }
 
 fn page_key(press: &KeyPress) -> Option<(i32, bool)> {

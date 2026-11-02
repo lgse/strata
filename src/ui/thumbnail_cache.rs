@@ -34,7 +34,11 @@ const RAW_RENDER_REVISION: &str = "1";
 
 pub fn lookup(path: &Path, mtime: i64) -> Option<Vec<u8>> {
     let (uri, name) = cache_key(path)?;
-    let bytes = read_bounded(&shared_cache_dir()?.join(name))?;
+    let dir = shared_cache_dir()?;
+    if is_inside_thumbnail_tree(path, &dir) {
+        return None;
+    }
+    let bytes = read_bounded(&dir.join(name))?;
     let (width, height) = png_dimensions(&bytes)?;
     if width == 0 || height == 0 || width > MAX_CACHED_DIMENSION || height > MAX_CACHED_DIMENSION {
         return None;
@@ -65,7 +69,7 @@ pub fn store(path: &Path, mtime: i64, png: &[u8]) {
     let Some(dir) = shared_cache_dir() else {
         return;
     };
-    if ensure_cache_dir(&dir).is_err() {
+    if is_inside_thumbnail_tree(path, &dir) || ensure_cache_dir(&dir).is_err() {
         return;
     }
     let raw = crate::sandbox::raw_metadata::is_raw(path);
@@ -136,6 +140,18 @@ fn shared_cache_dir() -> Option<PathBuf> {
                 .map(|home| PathBuf::from(home).join(".cache"))
         })?;
     Some(base.join("thumbnails").join("large"))
+}
+
+/// Thumbnailing the cache's own entries adds a file per file and never converges, so the whole `thumbnails` tree is excluded; lexical and resolved paths both count so symlinks cannot slip through.
+fn is_inside_thumbnail_tree(path: &Path, bucket: &Path) -> bool {
+    let Some(root) = bucket.parent() else {
+        return false;
+    };
+    let resolved_root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let resolved_path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    [path, resolved_path.as_path()]
+        .iter()
+        .any(|candidate| candidate.starts_with(root) || candidate.starts_with(&resolved_root))
 }
 
 /// 0700 so other users cannot plant symlinks or FIFOs in the bucket; repairs the mode when the directory already exists.

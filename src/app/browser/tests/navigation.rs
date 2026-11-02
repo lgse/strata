@@ -727,6 +727,9 @@ fn previewing_a_file_in_a_parent_column_closes_deeper_columns_before_requesting(
 #[derive(Default)]
 struct FolderTree {
     listings: RefCell<HashMap<Location, Vec<FileEntry>>>,
+    /// While set, listings wait for `release` instead of answering at once.
+    held: Cell<bool>,
+    pending: RefCell<Vec<(DirectoryRequest, DirectoryEmit)>>,
 }
 
 impl FolderTree {
@@ -754,6 +757,33 @@ impl FolderTree {
             .borrow_mut()
             .insert(tree_location(directory), entries);
     }
+
+    fn release(&self) {
+        self.held.set(false);
+        let pending = self.pending.take();
+        for (request, emit) in pending {
+            self.answer(&request, &emit);
+        }
+    }
+
+    fn answer(&self, request: &DirectoryRequest, emit: &DirectoryEmit) {
+        let entries = self
+            .listings
+            .borrow()
+            .get(&request.location)
+            .cloned()
+            .unwrap_or_default();
+        emit(DirectoryEvent::Batch {
+            request_id: request.id,
+            entries,
+        });
+        emit(DirectoryEvent::Finished {
+            request_id: request.id,
+            truncated: false,
+            can_trash: None,
+            can_delete: None,
+        });
+    }
 }
 
 /// Paths with a scheme are remote, which load in batches instead of a sorted snapshot.
@@ -771,22 +801,11 @@ impl FileSource for FolderTree {
     }
 
     fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
-        let entries = self
-            .listings
-            .borrow()
-            .get(&request.location)
-            .cloned()
-            .unwrap_or_default();
-        emit(DirectoryEvent::Batch {
-            request_id: request.id,
-            entries,
-        });
-        emit(DirectoryEvent::Finished {
-            request_id: request.id,
-            truncated: false,
-            can_trash: None,
-            can_delete: None,
-        });
+        if self.held.get() {
+            self.pending.borrow_mut().push((request, emit));
+        } else {
+            self.answer(&request, &emit);
+        }
         LoadHandle::new(|| {})
     }
 }
@@ -893,6 +912,119 @@ fn returning_to_an_ancestor_selects_the_folder_you_came_from() {
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[derive(Clone, Copy, Debug)]
+enum AncestorReach {
+    LeftAfterLoad,
+    LeftWhileLoading,
+    LeftWhileLoadingThenFolderGone,
+    FocusWithoutLeft,
+}
+
+impl AncestorReach {
+    fn while_loading(self) -> bool {
+        matches!(
+            self,
+            AncestorReach::LeftWhileLoading | AncestorReach::LeftWhileLoadingThenFolderGone
+        )
+    }
+}
+
+fn after_back_path() -> [Location; 4] {
+    [
+        Location::local("/fx"),
+        Location::local("/fx/alpha"),
+        Location::local("/fx/alpha/sub"),
+        Location::local("/fx/alpha/sub/inner"),
+    ]
+}
+
+/// Opens `/fx/alpha/sub/inner`, leaves, goes Back and reaches the `alpha` column.
+fn reach_ancestor_after_back(reach: AncestorReach) -> Rc<Browser> {
+    let (browser, _, tree) = folder_browser(FolderTree::with(&[
+        ("/fx", &["aa", "alpha"]),
+        ("/fx/alpha", &["a0", "sub"]),
+        ("/fx/alpha/sub", &["inner"]),
+        ("/fx/alpha/sub/inner", &["x"]),
+        ("/elsewhere", &["e"]),
+    ]));
+    let path = after_back_path();
+    browser.navigate(path[0].clone());
+    for depth in 0..3 {
+        browser.descend(depth, path[depth + 1].clone());
+    }
+    browser.navigate(Location::local("/elsewhere"));
+    let all_loaded = || {
+        (0..path.len()).all(|depth| {
+            browser
+                .column_snapshot(depth)
+                .is_some_and(|snapshot| !snapshot.loading)
+        })
+    };
+
+    tree.held.set(reach.while_loading());
+    browser.back();
+    if !reach.while_loading() {
+        pump_until(all_loaded);
+    }
+    match reach {
+        // Focus reaching the column without Left, as Tab or a click on its chrome does.
+        AncestorReach::FocusWithoutLeft => browser.set_active_column(1),
+        _ => {
+            browser.focus_parent();
+            browser.focus_parent();
+        }
+    }
+    if reach.while_loading() {
+        assert!(
+            browser
+                .column_snapshot(1)
+                .is_some_and(|snapshot| snapshot.loading),
+            "Left must reach the parent before it lists"
+        );
+        if matches!(reach, AncestorReach::LeftWhileLoadingThenFolderGone) {
+            tree.list("/fx/alpha", &["a0"]);
+        }
+        tree.release();
+        pump_until(all_loaded);
+    }
+    browser
+}
+
+#[test]
+fn after_back_file_commands_in_an_ancestor_column_never_target_its_parents_folder() {
+    let sub = Location::local("/fx/alpha/sub");
+    for (reach, target) in [
+        (AncestorReach::LeftAfterLoad, Some(&sub)),
+        (AncestorReach::LeftWhileLoading, Some(&sub)),
+        (AncestorReach::LeftWhileLoadingThenFolderGone, None),
+        (AncestorReach::FocusWithoutLeft, None),
+    ] {
+        let browser = reach_ancestor_after_back(reach);
+        let case = format!("{reach:?}");
+        assert_eq!(browser.active_depth(), Some(1), "{case}");
+        let open: Vec<_> = (0..)
+            .map_while(|depth| browser.location_at(depth))
+            .collect();
+        assert_eq!(open, after_back_path(), "{case}: every column stays open");
+        let renamed = browser.rename_item().map(|(_, _, entry)| entry.location);
+        let deleted: Vec<_> = browser
+            .deletion_entries()
+            .into_iter()
+            .map(|entry| entry.location)
+            .collect();
+        assert_eq!(renamed.as_ref(), target, "{case}");
+        assert_eq!(
+            deleted,
+            target.into_iter().cloned().collect::<Vec<_>>(),
+            "{case}"
+        );
+        if target.is_some() {
+            // A load cursor would send a paste into the column's folder instead.
+            assert!(!browser.selection_is_load_cursor(), "{case}");
+        }
+    }
 }
 
 #[test]

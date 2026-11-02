@@ -337,6 +337,7 @@ impl PreviewState {
             model_view: Cell::default(),
             handed_off: RefCell::new(None),
             continue_playback: RefCell::new(None),
+            media_checks: RefCell::default(),
             claim_on_resume: Cell::new(false),
             released_from: Cell::new(None),
             operations: RefCell::new(None),

@@ -73,6 +73,25 @@ fn naming_a_created_file_with_a_path_makes_undo_trash_the_outermost_new_folder()
 }
 
 #[test]
+fn naming_a_created_file_makes_one_undo_trash_it_under_its_new_name() {
+    let browser = operating_browser();
+    forget_requests(&UNDO_COPY_REQUESTS);
+    browser.create_new_file(Location::local("/fixture"));
+    let named = Location::local("/fixture/notes.txt");
+
+    browser.name_new_item(fixture_entry("/fixture/new file"), "notes.txt".to_owned());
+
+    let (generation, locations) = browser.pending_undo_copy().expect("pending copy undo");
+    assert_eq!(locations, std::slice::from_ref(&named));
+    assert!(browser.undo_copy(generation, locations));
+    assert_eq!(
+        (requests_in(&UNDO_COPY_REQUESTS), pending_undo_entry()),
+        (vec![vec![named]], None),
+        "the creation and its name are undone in one step"
+    );
+}
+
+#[test]
 fn a_failed_path_naming_leaves_the_created_file_to_undo() {
     let browser = operating_browser();
     browser.create_new_file(Location::local("/fixture"));
