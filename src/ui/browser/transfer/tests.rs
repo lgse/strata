@@ -2,7 +2,8 @@
 
 use super::*;
 use crate::model::{FileEntry, Location};
-use crate::services::{DropCommit, RenameCause, TransferKind};
+use crate::services::{DropCommit, MoveRecord, RenameCause, TransferKind};
+use crate::ui::browser::Browser;
 use std::{
     cell::{Cell, RefCell},
     collections::HashSet,
