@@ -246,7 +246,6 @@ fn heading_label(popover: &gtk::PopoverMenu, with_icon: bool) -> gtk::Label {
         .expect("heading label")
 }
 
-/// A provider menu model drawn by a popover that holds the provider actions.
 struct RenderedMenu {
     model: gio::Menu,
     popover: gtk::PopoverMenu,
@@ -266,7 +265,6 @@ impl RenderedMenu {
         }
     }
 
-    /// A renderer for `/file` in its own live `epoch`.
     fn renderer(&self, epoch: u64) -> menus::Renderer {
         menus::Renderer::new(
             (self.model.clone(), None),

@@ -604,7 +604,6 @@ pub struct MetadataUpdate {
     pub listable: MetadataValue<bool>,
 }
 
-/// A folder to watch for changes.
 #[derive(Clone, Debug)]
 pub struct WatchRequest {
     pub location: Location,

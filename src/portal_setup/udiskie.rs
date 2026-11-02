@@ -98,7 +98,6 @@ struct RestartOps<'a> {
     is_alive: &'a mut dyn FnMut(u32) -> bool,
 }
 
-/// Whether the user must restart udiskie, shown as the localized `RESTART_WARNING`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RestartOutcome {
     Done,

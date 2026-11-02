@@ -147,7 +147,6 @@ impl MediaChecks {
         })
     }
 
-    /// Forgets answers for files no longer in the walked listing.
     pub(super) fn keep_only(&self, listing: &[FileEntry]) {
         let keep: HashSet<&Path> = listing
             .iter()
@@ -191,7 +190,6 @@ impl MediaChecks {
         glib::MainContext::default().spawn_local(run.read_all(files, answers, answered));
     }
 
-    /// Whether reads for the same shown file already took up every file of `unread`.
     fn already_reading(&self, anchor: &Location, unread: &Unread) -> bool {
         self.reads.as_ref().is_some_and(|reads| {
             reads.anchor == *anchor
@@ -284,7 +282,6 @@ struct ReadRun {
 type Read = (PathBuf, Fingerprint, bool);
 
 impl ReadRun {
-    /// Reads `files` in growing chunks, remembering each chunk's answers in `answers`.
     async fn read_all(
         mut self,
         files: Vec<(PathBuf, Fingerprint)>,
@@ -391,7 +388,6 @@ fn answered_files(
         .filter_map(|((path, fingerprint), media)| Some((path, fingerprint, media?)))
 }
 
-/// Reads `paths` as background work in `folder`'s mount lane.
 fn read_in_lane(
     folder: &Path,
     paths: Vec<PathBuf>,
