@@ -396,7 +396,10 @@ impl UnderlyingModal {
         layer.set_focusable(true);
         let first = gtk::Button::with_label("First control");
         let scroller = gtk::ScrolledWindow::builder().child(&first).build();
-        assert!(scroller.is_focusable(), "the container under test takes focus");
+        assert!(
+            scroller.is_focusable(),
+            "the container under test takes focus"
+        );
         let group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         let opener = gtk::Button::with_label("Opener");
         let neighbour = gtk::Button::with_label("Neighbour");

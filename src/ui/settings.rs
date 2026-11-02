@@ -216,9 +216,8 @@ pub fn build_layer(
 /// Settings opens on its current page's navigation entry, which tells a screen
 /// reader where the user is; the layer itself is an unnamed panel.
 pub fn focus_current_page(layer: &gtk::Box) {
-    let focused = active_navigation_button(layer.upcast_ref()).is_some_and(|button| {
-        button.is_sensitive() && button.is_mapped() && button.grab_focus()
-    });
+    let focused = active_navigation_button(layer.upcast_ref())
+        .is_some_and(|button| button.is_sensitive() && button.is_mapped() && button.grab_focus());
     if !focused {
         super::modal::focus_modal_layer(layer);
     }

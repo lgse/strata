@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::*;
-use super::{
-    FakeInstaller, GUARD_REJECTION, descendants, offered_request, page_text, wait_until,
-};
+use super::{FakeInstaller, GUARD_REJECTION, offered_request, page_text, wait_until};
 use crate::test_support::gtk_test;
 
 fn seed_offer(row: &UpdateCheckRow) {
@@ -230,7 +228,7 @@ fn channel_choice(manager: &Rc<PreferenceManager>) -> (gtk::Widget, gtk::MenuBut
         install_guard(),
         UpdateMethod::InPlace,
     );
-    let choice = descendants(&page)
+    let choice = super::descendants(&page)
         .into_iter()
         .filter_map(|widget| widget.downcast::<gtk::MenuButton>().ok())
         .find(|button| {

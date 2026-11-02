@@ -14,8 +14,8 @@ mod messages;
 #[cfg(test)]
 mod tests;
 
-pub(in crate::ui) use focus::{focus_modal_layer, is_closing_layer};
 use focus::track_removed_layer;
+pub(in crate::ui) use focus::{focus_modal_layer, is_closing_layer};
 pub(super) use focus::{
     remember_modal_focus, remember_modal_focus_for_listing, set_modal_focus_restore,
 };
