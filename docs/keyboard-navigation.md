@@ -410,7 +410,9 @@ Ctrl+K search, Ctrl+Shift+K folder jump, Compress, archive conflicts, Customize,
 error dialogs. If that control is gone, for example after the view was rebuilt or an
 inline editor closed, focus goes to the file list cursor, or to the pane of an empty or
 loading folder. File-operation progress always returns focus to the file list cursor,
-because the operation changes the listing. Choosing a search result hands focus to the
+because the operation changes the listing. While Ctrl+F results replace the listing,
+the file list cursor is the results' cursor, so these returns, such as dismissing a
+delete confirmation opened on a result, focus that result. Choosing a search result hands focus to the
 browser instead, and a result the browser selects while a dialog closes, such as an
 extracted folder, keeps focus.
 
