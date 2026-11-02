@@ -274,7 +274,7 @@ fn install_browser_actions(
     );
 }
 
-/// Disposes `root`, which must already be unparented, and whatever of its tree
+/// Disposes `root`, which must no longer have a parent, and whatever of its tree
 /// survives that. Dispose drops a widget's signal handlers and controllers, so
 /// a cycle through closures capturing the widget is broken while references
 /// to it remain. Widgets nothing else holds are freed by their parent's
