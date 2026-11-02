@@ -28,6 +28,10 @@ class PreferenceError(ValueError):
 
 
 def toml_string(text: str) -> str:
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise PreferenceError(f"settings.toml cannot hold {text!r}: {error.reason}") from error
     # JSON's escapes are a subset of a TOML basic string's; TOML also needs DEL escaped.
     return json.dumps(text, ensure_ascii=False).replace("\x7f", "\\u007f")
 
@@ -63,7 +67,7 @@ def toml(value) -> str:
 
 
 def dumps(document: dict) -> str:
-    """A whole settings file: plain keys first, then each table under its header."""
+    """A whole settings file. Plain keys come before any `[table]` header, or they would join it."""
 
     lines: list[str] = []
 
@@ -102,8 +106,6 @@ def parse_prefs(text: str) -> Iterator[tuple[str, object]]:
 
 
 def merge(settings: str, changes: list[tuple[str, object]]) -> str:
-    """SETTINGS with each changed key replaced whole, in place, or added."""
-
     try:
         document = tomllib.loads(settings)
     except tomllib.TOMLDecodeError as error:
@@ -172,8 +174,10 @@ def main(arguments: list[str]) -> int:
             case ["prefs", path]:
                 with open(path, encoding="utf-8") as file:
                     merged = merge(file.read(), list(parse_prefs(prefs)))
-                with open(path, "w", encoding="utf-8") as file:
+                temporary = f"{path}.tmp"
+                with open(temporary, "w", encoding="utf-8") as file:
                     file.write(merged)
+                os.replace(temporary, path)
             case _:
                 print(__doc__, file=sys.stderr)
                 return 2
