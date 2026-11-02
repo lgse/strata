@@ -459,7 +459,10 @@ fn storage_properties_separate_strata_labels_from_formatting() {
                 let actions = PropertyActionSet {
                     editable,
                     can_label,
-                    release: can_release.then(|| Rc::new(|| {}) as Rc<dyn Fn()>),
+                    release: can_release.then(|| PropertiesRelease {
+                        action: MediaRelease::EjectVolume,
+                        run: Rc::new(|| {}),
+                    }),
                 };
                 let invoked: [Rc<Cell<usize>>; 3] = std::array::from_fn(|_| Rc::new(Cell::new(0)));
                 for (index, action) in [
@@ -477,6 +480,35 @@ fn storage_properties_separate_strata_labels_from_formatting() {
                     }
                 }
                 assert_eq!(invoked.map(|count| count.get()), expected);
+            }
+        },
+    );
+}
+
+#[test]
+fn properties_name_the_release_the_device_row_offers() {
+    crate::test_support::gtk_test(
+        "ui::window::drive_dialogs::tests::properties_name_the_release_the_device_row_offers",
+        || {
+            for (editable, release, expected) in [
+                (false, Some(MediaRelease::UnmountMount), "Unmount"),
+                (true, Some(MediaRelease::UnmountMount), "Unmount"),
+                (false, Some(MediaRelease::EjectMount), "Eject"),
+                (true, Some(MediaRelease::EjectVolume), "Eject"),
+                (true, None, "Eject"),
+            ] {
+                let actions = PropertyActionSet {
+                    editable,
+                    can_label: false,
+                    release: release.map(|action| PropertiesRelease {
+                        action,
+                        run: Rc::new(|| {}),
+                    }),
+                };
+                let button = property_action_control(PropertyAction::Release, &actions)
+                    .expect("release action");
+                assert!(has_label(button.upcast_ref(), expected), "{release:?}");
+                assert_eq!(button.is_sensitive(), release.is_some());
             }
         },
     );
@@ -518,7 +550,10 @@ fn properties_open_on_a_harmless_action_so_enter_never_releases_or_formats() {
                 let actions = PropertyActionSet {
                     editable,
                     can_label,
-                    release: Some(Rc::new(|| {})),
+                    release: Some(PropertiesRelease {
+                        action: MediaRelease::UnmountMount,
+                        run: Rc::new(|| {}),
+                    }),
                 };
                 append_property_actions(
                     &shell,

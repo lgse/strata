@@ -21,7 +21,10 @@ use crate::{
     },
 };
 
-use super::drive_ops::{self, FilesystemType};
+use super::{
+    device_actions::{MediaRelease, media_release_label},
+    drive_ops::{self, FilesystemType},
+};
 
 mod format_progress;
 
@@ -92,6 +95,13 @@ impl PropertiesTarget {
     }
 }
 
+/// The release a device row offers, so Properties names and runs it the same way.
+#[derive(Clone)]
+pub(super) struct PropertiesRelease {
+    pub(super) action: MediaRelease,
+    pub(super) run: Rc<dyn Fn()>,
+}
+
 #[derive(Clone, Copy)]
 enum PropertyAction {
     Label,
@@ -103,7 +113,7 @@ enum PropertyAction {
 struct PropertyActionSet {
     editable: bool,
     can_label: bool,
-    release: Option<Rc<dyn Fn()>>,
+    release: Option<PropertiesRelease>,
 }
 
 fn property_action_control(
@@ -119,9 +129,13 @@ fn property_action_control(
     if !available {
         return None;
     }
+    let release_label = actions
+        .release
+        .as_ref()
+        .map_or("Eject", |release| media_release_label(release.action));
     let (label, icon, tone) = match action {
         PropertyAction::Label => ("Set label", assets::icons::PENCIL, ModalTone::Accent),
-        PropertyAction::Release => ("Eject", assets::icons::EJECT, ModalTone::Accent),
+        PropertyAction::Release => (release_label, assets::icons::EJECT, ModalTone::Accent),
         PropertyAction::Format => ("Format", assets::icons::SHREDDER, ModalTone::Danger),
     };
     let button = properties_action(icon, label, tone);
@@ -575,7 +589,7 @@ fn drive_properties_grid(
 pub(super) fn show_drive_properties(
     parent: &gtk::Widget,
     target: &PropertiesTarget,
-    on_release: Option<Rc<dyn Fn()>>,
+    release: Option<PropertiesRelease>,
 ) {
     let name = target.name();
     let volume = target.volume();
@@ -624,7 +638,7 @@ pub(super) fn show_drive_properties(
     let actions = PropertyActionSet {
         editable: drive_ops::is_eligible(volume.as_ref()),
         can_label: target.label_id().is_some(),
-        release: on_release,
+        release,
     };
     let run = property_action_runner(parent, target, actions.release.clone());
     append_property_actions(&shell, &actions, run);
@@ -660,7 +674,7 @@ fn prepare_properties_footer(shell: &ModalShell) {
 fn property_action_runner(
     parent: &gtk::Widget,
     target: &PropertiesTarget,
-    release: Option<Rc<dyn Fn()>>,
+    release: Option<PropertiesRelease>,
 ) -> Rc<dyn Fn(PropertyAction)> {
     let parent = parent.clone();
     let target = target.clone();
@@ -673,7 +687,7 @@ fn property_action_runner(
         }
         PropertyAction::Release => {
             if let Some(release) = &release {
-                release();
+                (release.run)();
             }
         }
     })
