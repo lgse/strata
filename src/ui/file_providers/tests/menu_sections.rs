@@ -256,13 +256,43 @@ fn heading_labels(root: &gtk::Widget, name: &str) -> usize {
             .sum::<usize>()
 }
 
+static HEADING_SLOT_FAULTS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// Records GTK's complaints about a reused custom slot ID or a role set on a
+/// realized accessible, and writes every message as usual. Install it once,
+/// in an isolated GTK test's own process.
+fn record_heading_slot_faults() {
+    glib::log_set_writer_func(|level, fields| {
+        let field = |key: &str| {
+            fields
+                .iter()
+                .find(|field| field.key() == key)
+                .and_then(glib::LogField::value_str)
+                .unwrap_or_default()
+                .to_owned()
+        };
+        let message = field("MESSAGE");
+        let relevant = message.contains("Duplicate custom ID")
+            || message.contains("gtk_at_context_set_accessible_role");
+        if field("GLIB_DOMAIN") == "Gtk"
+            && matches!(level, glib::LogLevel::Warning | glib::LogLevel::Critical)
+            && relevant
+        {
+            HEADING_SLOT_FAULTS
+                .lock()
+                .expect("heading slot faults")
+                .push(message);
+        }
+        glib::log_writer_default(level, fields)
+    });
+}
+
 #[test]
 fn reopened_menu_renders_a_fresh_provider_heading_row() {
-    // GTK warns when a heading reuses a custom slot ID it still remembers.
-    crate::test_support::gtk_test_with_env(
+    crate::test_support::gtk_test(
         "ui::file_providers::tests::menu_sections::reopened_menu_renders_a_fresh_provider_heading_row",
-        [("G_DEBUG", "fatal-warnings")],
         || {
+            record_heading_slot_faults();
             install_hub();
             let model = gio::Menu::new();
             let popover = gtk::PopoverMenu::from_model(Some(&model));
@@ -292,6 +322,11 @@ fn reopened_menu_renders_a_fresh_provider_heading_row() {
                     "one heading row on open {open}"
                 );
             }
+            assert_eq!(
+                *HEADING_SLOT_FAULTS.lock().expect("heading slot faults"),
+                Vec::<String>::new(),
+                "GTK slot warnings across reopened menus"
+            );
             clear_hub();
         },
     );
