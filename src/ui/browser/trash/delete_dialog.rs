@@ -371,6 +371,7 @@ fn delete_confirmed_permanently(
     reach: DeletionReach,
 ) {
     if let Some(ui) = weak_ui.upgrade() {
+        ui.leave_folder_being_deleted(&entries);
         ui.prepare_delete_dissolve(&entries);
     }
     let entries = unshare_entries(entries);
