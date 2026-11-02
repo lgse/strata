@@ -58,6 +58,7 @@ impl Dispatcher {
 
     pub(super) fn inline_editing(&self, event: &KeyEvent) -> KeyResult {
         if event.press.is(RENAME.in_map(Map::Default))
+            && !self.preview_has_focus(event)
             && (self.view.filter_has_focus()
                 || !event
                     .focused
@@ -210,7 +211,7 @@ impl Dispatcher {
             self.view.create_new_folder();
             return Some(Propagation::Stop);
         }
-        if event.press.is(NEW_FOLDER_WITH_SELECTION) {
+        if event.press.is(NEW_FOLDER_WITH_SELECTION) && !self.preview_has_focus(event) {
             if !self.view.create_new_folder_for_selection() {
                 self.view.create_new_folder();
             }
@@ -241,16 +242,15 @@ impl Dispatcher {
         } else {
             return None;
         };
-        if self.view.filter_has_focus()
-            || event.text_has_focus()
-            || (self.preview_has_focus(event) && press.is_any(&[SELECT_ALL, COPY, PASTE, CUT]))
-        {
+        if self.view.filter_has_focus() || event.text_has_focus() || self.preview_has_focus(event) {
             return Some(Propagation::Proceed);
         }
         action(&self.view).then_some(Propagation::Stop)
     }
 
-    fn preview_has_focus(&self, event: &KeyEvent) -> bool {
+    /// Whatever widget a preview renders, keys typed inside it never act on
+    /// the previewed file.
+    pub(super) fn preview_has_focus(&self, event: &KeyEvent) -> bool {
         let preview = self.preview.widget();
         event
             .focused

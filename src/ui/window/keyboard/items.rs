@@ -95,9 +95,10 @@ impl Dispatcher {
         None
     }
 
-    /// Delete keys act on files, never on text being edited.
+    /// Delete keys act on files, never on text being edited or from inside the
+    /// preview.
     fn confirms_delete(&self, event: &KeyEvent, permanent: bool) -> bool {
-        if self.view.filter_has_focus() || event.text_has_focus() {
+        if self.view.filter_has_focus() || event.text_has_focus() || self.preview_has_focus(event) {
             return false;
         }
         self.view.confirm_delete(permanent)

@@ -1,0 +1,24 @@
+{"scenario":"preview-focus-ignores-file-commands","modes":["columns","list"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"md","vars":{"filename":"notes.md","first":"notes (1).md","second":"notes (2).md"},"tree":{"notes.md":"# Notes\n\nalpha bravo charlie\n"}},{"id":"pdf","modes":["columns"],"vars":{"filename":"page.pdf","first":"page (1).pdf","second":"page (2).pdf"},"tree":{"page.pdf":""},"setup":[{"fs":{"path":"page.pdf","from_repository":"tests/fixtures/documents/text.pdf"}}]},{"id":"docx","modes":["columns"],"vars":{"filename":"report.docx","first":"report (1).docx","second":"report (2).docx"},"tree":{"report.docx":""},"setup":[{"fs":{"path":"report.docx","from_repository":"tests/fixtures/documents/report.docx"}}]},{"id":"csv","modes":["columns"],"vars":{"filename":"table.csv","first":"table (1).csv","second":"table (2).csv"},"tree":{"table.csv":"name,value\nalpha,1\n"}}],"cost":{"columns-md":0.7,"list-md":0.6,"columns-pdf":0.7,"columns-docx":0.7,"columns-csv":0.7}}
+{"select_with_keyboard":"$filename"}
+{"key":"space"}
+{"wait":{"preview":"alpha bravo"},"message":"the rendered Markdown","variants":["md"]}
+{"wait":{"present":{"role":"image","name":"PDF page text","within":{"preview":true}}},"message":"the PDF page","variants":["pdf"]}
+{"wait":{"preview":"Quarterly"},"message":"the rendered document","variants":["docx"]}
+{"wait":{"preview":"alpha"},"message":"the table","variants":["csv"]}
+{"key":"Right"}
+{"wait":{"focus_within":{"preview":true}},"message":"Right to move keyboard focus into the preview"}
+{"key":"ctrl+d"}
+{"key":"Delete"}
+{"key":"shift+Delete"}
+{"key":"F2"}
+{"key":"ctrl+alt+n"}
+{"expect":{"dialog":null},"message":"Delete in the preview must not ask to delete the file","timeout_ms":0}
+{"expect":{"focus_within":{"preview":true}},"message":"file commands must leave focus in the preview","timeout_ms":0}
+{"key":"Escape"}
+{"wait":{"preview":null},"message":"Escape to close the preview"}
+{"wait":{"focused":"$filename"},"message":"focus to return to the previewed file"}
+{"key":"ctrl+d"}
+{"fs":{"path":"$first","exists":true},"message":"Ctrl+D in the listing to duplicate the file"}
+{"fs":{"path":"$filename","exists":true},"message":"Delete in the preview must not trash the file","timeout_ms":0}
+{"fs":{"path":"$second","exists":false},"message":"Ctrl+D in the preview must not duplicate the file","timeout_ms":0}
+{"wait":{"entries":{"set":["$filename","$first"]},"dir":"$root"},"message":"the folder to list only the file and its one copy"}
