@@ -261,7 +261,24 @@ impl ViewState {
         self.show_delete_dialog(entries, kind);
     }
 
+    /// Deleting the folder whose column is active acts on its row in the
+    /// parent, so the cursor goes there first: a deletion moves it on to a
+    /// neighbour, and a cancelled one leaves focus on the folder's row. A
+    /// deletion that will not start leaves the cursor where it is.
+    pub(super) fn leave_folder_being_deleted(&self, entries: &[FileEntry]) {
+        let open = self
+            .browser
+            .active_depth()
+            .and_then(|depth| self.browser.location_at(depth));
+        let deleting_open =
+            open.is_some_and(|open| entries.iter().any(|entry| entry.location == open));
+        if deleting_open && self.browser.can_start_operation() {
+            self.browser.focus_parent();
+        }
+    }
+
     fn move_to_trash(self: &Rc<Self>, entries: Vec<FileEntry>) {
+        self.leave_folder_being_deleted(&entries);
         self.pending_delete_entries.replace(entries.clone());
         let source = self.delete_animation_source();
         let trash_button = self.trash_button.upgrade();

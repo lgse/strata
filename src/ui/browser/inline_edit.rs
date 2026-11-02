@@ -510,7 +510,9 @@ impl ViewState {
             .browser
             .rename_item()
             .map(|(depth, position, _)| (depth, position));
+        let generation = self.rename_generation.get();
         self.submit_rename(&field);
+        self.note_rename_advanced(generation);
         // The committed row must not pull the cursor back once its rename lands.
         self.yield_rename_reveal();
         self.browser.move_selection(direction);
@@ -590,7 +592,13 @@ impl ViewState {
         let generation = self.start_pending_rename(&entry, name.clone(), None);
         self.follow_pending_rename();
         self.update_rename_labels(&entry.location, None, &name);
-        self.queue_pending_rename(generation, move |browser| browser.rename(entry, name));
+        self.queue_pending_rename(generation, move |browser| {
+            if new_item {
+                browser.name_new_item(entry, name)
+            } else {
+                browser.rename(entry, name)
+            }
+        });
     }
 
     /// Filter results keep their selection and focus by path. Tells those listing

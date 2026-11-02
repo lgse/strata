@@ -1037,6 +1037,7 @@
   "The file has no audio track": "파일에 오디오 트랙이 없습니다",
   "The file has no seekable video stream": "파일에 탐색 가능한 동영상 스트림이 없습니다",
   "The file is running and cannot be changed": "파일이 실행 중이어서 변경할 수 없습니다",
+  "The destination is on a different file system": "대상이 다른 파일 시스템에 있습니다",
   "The file is too large for this file system": "파일이 이 파일 시스템에 비해 너무 큽니다",
   "The file is truncated or damaged": "파일이 잘렸거나 손상되었습니다",
   "The file system is read-only": "파일 시스템이 읽기 전용입니다",

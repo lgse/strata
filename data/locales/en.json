@@ -1037,6 +1037,7 @@
   "The file has no audio track": "The file has no audio track",
   "The file has no seekable video stream": "The file has no seekable video stream",
   "The file is running and cannot be changed": "The file is running and cannot be changed",
+  "The destination is on a different file system": "The destination is on a different file system",
   "The file is too large for this file system": "The file is too large for this file system",
   "The file is truncated or damaged": "The file is truncated or damaged",
   "The file system is read-only": "The file system is read-only",

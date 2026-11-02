@@ -375,7 +375,10 @@ impl ViewState {
                 explanation: &explanation,
                 apply_to_all_visible,
                 skip_visible,
-                actions: ConflictActions::default(),
+                actions: ConflictActions {
+                    replace: true,
+                    ..ConflictActions::default()
+                },
             },
             Rc::new(move |choice, apply_to_all| {
                 let mut accepted = accepted.clone();

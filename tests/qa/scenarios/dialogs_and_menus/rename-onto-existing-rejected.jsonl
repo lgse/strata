@@ -1,16 +1,17 @@
-{"scenario":"rename-onto-existing-rejected","modes":["columns"],"layout":"us","mutation":"rename-error-dialog","known_bug":null,"cost":{"columns":0.8},"quality":{"impact":5,"coverage":3,"criticality":4,"diagnostic":4,"score":42,"note":"Columns F2 rename onto an existing name shows the Unable to rename item dialog and keeps both files; overlaps the footer inline-conflict scenario in tenxer mode only in refusal, not in the dialog route"}}
-{"select":{"entry":"todo.txt"}}
+{"scenario":"rename-onto-existing-rejected","modes":["columns"],"layout":"us","mutation":"rename-error-dialog","known_bug":null,"variants":[{"id":"enter","vars":{"item":"todo.txt","taken":"readme.md","contents":"# Fixture\n","commit":"Return","neighbour":"readme.md","back":"Up"}},{"id":"tab","modes":["columns","list"],"vars":{"item":"readme.md","taken":"todo.txt","contents":"todo\n","commit":"Tab","neighbour":"todo.txt","back":"Down"}}],"cost":{"columns-enter":0.8,"columns-tab":0.8,"list-tab":0.8},"quality":{"impact":5,"coverage":3,"criticality":4,"diagnostic":4,"score":42,"note":"F2 rename onto an existing name, committed with Enter or with Tab toward that name, shows the Unable to rename item dialog, keeps both files and gives focus back to the renamed row; overlaps the footer inline-conflict scenario in tenxer mode only in refusal, not in the dialog route"}}
+{"select":{"entry":"$item"}}
 {"key":"F2"}
 {"wait":{"field":{}},"message":"an editable field to take focus"}
 {"key":"ctrl+a"}
-{"type":"readme.md"}
-{"key":"Return"}
+{"type":"$taken"}
+{"key":"$commit"}
 {"wait":{"dialog":true},"message":"a dialog to appear"}
 {"expect":{"dialog":"Unable to rename item"}}
-{"fs":{"path":"todo.txt","exists":true},"timeout_ms":0,"message":"the rename must not silently succeed"}
-{"fs":{"path":"readme.md","text":"# Fixture\n"},"timeout_ms":0,"message":"the existing file must keep its contents"}
+{"fs":{"path":"$item","exists":true},"timeout_ms":0,"message":"the rename must not silently succeed"}
+{"fs":{"path":"$taken","text":"$contents"},"timeout_ms":0,"message":"the existing file must keep its contents"}
 {"key":"Escape"}
 {"wait":{"dialog":null},"message":"the rename error to close"}
-{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'"}
-{"key":"Up"}
-{"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
+{"wait":{"focused":"$item"},"message":"keyboard focus to return to '$item', whose rename failed"}
+{"expect":[{"selected":["$item"],"dir":"$root"},{"editable_fields":0}],"message":"the failed rename keeps '$item' selected and opens no editor on its neighbour"}
+{"key":"$back"}
+{"wait":{"focused":"$neighbour"},"message":"keyboard focus to reach '$neighbour'"}

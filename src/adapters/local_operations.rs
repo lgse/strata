@@ -181,7 +181,7 @@ pub(in crate::adapters) use fs_ops::{
 };
 #[cfg(test)]
 pub(crate) use tests::fs_quirks::{Births, FsQuirks, Op as FsOp, Quirks, evict};
-pub(crate) use transfer_targets::transfer_targets;
+pub(crate) use transfer_targets::{Collision as TransferTargetCollision, transfer_targets};
 pub(crate) use typed_names::{
     blocked_folder as typed_folder_blocked, refused_in as typed_name_refusal,
     rename_taken as typed_rename_is_taken,

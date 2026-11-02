@@ -13,15 +13,29 @@ type Met = (&'static str, Option<Collision>);
 /// names inside it change on vfat. `own.txt` and `same` are pasted from
 /// the destination itself and `old.txt` from a Trash on another disk.
 fn prompt_rows() -> [(&'static str, Met, Met, bool); 10] {
-    let file = Some(Collision { mergeable: false });
-    let folder = Some(Collision { mergeable: true });
+    let collision = |mergeable, replaceable| {
+        Some(Collision {
+            mergeable,
+            replaceable,
+        })
+    };
+    let (file, folder, file_on_folder) = (
+        collision(false, true),
+        collision(true, true),
+        collision(false, false),
+    );
     [
         ("a:b", ("a_b", file), ("a:b", None), false),
         ("Photo.jpg", ("Photo.jpg", file), ("Photo.jpg", None), false),
         ("x:y", ("x_y", folder), ("x:y", None), true),
         ("folder", ("folder", folder), ("folder", folder), true),
         ("same", ("same", folder), ("same", folder), false),
-        ("data", ("data", file), ("data", file), false),
+        (
+            "data",
+            ("data", file_on_folder),
+            ("data", file_on_folder),
+            false,
+        ),
         ("link", ("link", None), ("link", file), false),
         ("new.txt", ("new.txt", None), ("new.txt", None), false),
         ("own.txt", ("own.txt", None), ("own.txt", None), false),

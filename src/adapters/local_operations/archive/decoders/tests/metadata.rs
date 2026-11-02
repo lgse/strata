@@ -310,10 +310,15 @@ fn a_member_cannot_be_written_through_an_extracted_symlink() -> Result<(), Box<d
 
         let result = Decoder::new(format).run(&archive, &destination);
 
+        let Err(ArchiveError::Failed(message)) = &result else {
+            panic!(
+                "{context}: {result:?}; destination holds {:?}",
+                names_in(&destination)?
+            );
+        };
         assert!(
-            matches!(result, Err(ArchiveError::Failed(_))),
-            "{context}: {result:?}; destination holds {:?}",
-            names_in(&destination)?
+            message.starts_with("Refusing to extract through the symbolic link “lnk”."),
+            "{context}: {message}"
         );
         assert!(!external.join("escape.txt").exists(), "{context}");
         assert_symlink(&destination.join("escape/lnk"), target, &context)?;

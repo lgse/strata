@@ -99,7 +99,7 @@ Pressing blank column content focuses that directory, including empty directorie
 
 **Shift+Up/Down** extends the selection from the range anchor by one item, **Shift+Page Up/Page Down** by one page. Plain arrow moves, **Home**, **End**, **Page Up** and **Page Down** set the range anchor, so **Shift+Home/End** select from it to the first or last item, including in Columns. After Escape clears the selection, the range starts at the cursor.
 
-Copy/cut use the selection in the focused column, never a hovered row. In Columns, Delete/Shift+Delete with no selected items does nothing: an open parent-path marker is not an implicit deletion target. In List and Icons, Delete acts on the selection only. Delete in a location without Trash support, or after a Trash attempt fails because Trash is unsupported, opens the permanent-deletion confirmation with Cancel focused and the reason stated; Shift+Delete is unchanged. GIO reports Trash on most writable FUSE mounts (sshfs, rclone, cloud drives), so a refusal there is confirmed by a quick, read-only check of the mount and then remembered for that mount until Reload or a remount: later Deletes confirm up front and Move to Trash is hidden. Empty trash folders left by the failed attempt are removed. On network and cloud locations the confirmation says the items are deleted without Trash and that recovery depends on the storage provider, instead of promising permanent deletion; local disks, including `fuseblk` drives, keep the permanent wording, and a mixed selection uses it too. Folders opened as administrator are known to lack Trash, so Delete there confirms permanent deletion up front, with the local wording; see [Administrator access](administrator-access.md).
+Copy/cut use the selection in the focused column, never a hovered row. In Columns, Delete/Shift+Delete act on the selection, or on the cursor's item when nothing is selected; in an open folder's column that has neither, they delete that folder, first moving the cursor to the folder's row in the parent. In List and Icons, Delete acts on the selection only. Delete in a location without Trash support, or after a Trash attempt fails because Trash is unsupported, opens the permanent-deletion confirmation with Cancel focused and the reason stated; Shift+Delete is unchanged. GIO reports Trash on most writable FUSE mounts (sshfs, rclone, cloud drives), so a refusal there is confirmed by a quick, read-only check of the mount and then remembered for that mount until Reload or a remount: later Deletes confirm up front and Move to Trash is hidden. Empty trash folders left by the failed attempt are removed. On network and cloud locations the confirmation says the items are deleted without Trash and that recovery depends on the storage provider, instead of promising permanent deletion; local disks, including `fuseblk` drives, keep the permanent wording, and a mixed selection uses it too. Folders opened as administrator are known to lack Trash, so Delete there confirms permanent deletion up front, with the local wording; see [Administrator access](administrator-access.md).
 
 Background selection updates from directory loading must not move keyboard focus to an inactive column.
 
@@ -175,25 +175,28 @@ contents and never replaces anything, a link or file in the way of a folder
 stops it, and a new file that is no longer empty is not turned into a folder. If
 any step fails, the folders it created are removed again, the item keeps its
 name, and the error is shown. **Undo** of a new item moves what the naming
-created to Trash: the outermost new folder, or the item itself when its folders
-already existed. **Undo** of a rename moves the item back and moves the folders
-the rename created to Trash. Naming **New Folder with Selection** and the
+created to Trash in one step, whether it was given a plain name or a path: the
+outermost new folder, or the item itself when its folders already existed.
+**Undo** of a rename moves the item back and moves the folders the rename
+created to Trash. Naming **New Folder with Selection** and the
 [10xer](10xer-mode.md) **a** prompt still take a single name.
 
 For **any file or folder rename**, Enter, clicking outside the field (even empty
 pane space), or moving keyboard focus away commits a valid name. **Tab** and
 **Shift+Tab** commit it too, then open the rename on the next or previous item,
 so a run of files is renamed without leaving the editor; at either end of the
-listing they only commit. In Columns, where keyboard selection mirrors (with
-**Mirror columns selection** on, outside a filtered column), the child column
-follows the item the rename moves to, without opening a preview; otherwise a
-renamed folder's open column stays open under its new name. Switching to another
-window, or an input method switcher taking the keyboard, leaves the edit open.
-Escape keeps the original name. Finishing with an empty or invalid name also
-keeps the original. Cancelling the initial rename does **not** delete the new
-item: it remains under its allocated default name. File contents are preserved.
-While a name is being edited, **F5**, **Ctrl+K**, **Ctrl+Shift+K**,
-**Ctrl+Alt+T** and **Ctrl+\\** do nothing; finish or cancel the edit first.
+listing they only commit. A name refused there, such as one another item has,
+shows the error and returns focus to the item, as after Enter. In Columns, where
+keyboard selection mirrors (with **Mirror columns selection** on, outside a
+filtered column), the child column follows the item the rename moves to, without
+opening a preview; otherwise a renamed folder's open column stays open under its
+new name. Switching to another window, or an input method switcher taking the
+keyboard, leaves the edit open. Escape keeps the original name. Finishing with
+an empty or invalid name also keeps the original. Cancelling the initial rename
+does **not** delete the new item: it remains under its allocated default name.
+File contents are preserved. While a name is being edited, **F5**, **Ctrl+K**,
+**Ctrl+Shift+K**, **Ctrl+Alt+T** and **Ctrl+\\** do nothing; finish or cancel
+the edit first.
 
 Clicking inside the field continues editing. Existing files retain extension-aware
 selection (the stem is selected); folder names containing dots are selected in full.
@@ -417,9 +420,11 @@ inline editor closed, focus goes to the file list cursor, or to the pane of an e
 loading folder. File-operation progress always returns focus to the file list cursor,
 because the operation changes the listing. While Ctrl+F results replace the listing,
 the file list cursor is the results' cursor, so these returns, such as dismissing a
-delete confirmation opened on a result, focus that result. Choosing a search result hands focus to the
-browser instead, and a result the browser selects while a dialog closes, such as an
-extracted folder, keeps focus.
+delete confirmation opened on a result, focus that result. Cancelling a delete
+confirmation also puts the cursor back on the items it asked about when an operation
+finishing meanwhile, such as a compression selecting its archive, moved it. Choosing a
+search result hands focus to the browser instead, and a result the browser selects
+while a dialog closes, such as an extracted folder, keeps focus.
 
 Closing Settings always returns focus to the file list cursor, even when Settings was
 opened with the gear button. The one exception is a filter field or filter result that

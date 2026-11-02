@@ -201,7 +201,7 @@ fn save_files_preserve_order_and_report_collisions_once() {
         checked.paths,
         vec![folder.path().join("first"), folder.path().join("second")]
     );
-    assert!(checked.existing_files);
+    assert_eq!(checked.existing, vec![folder.path().join("second")]);
 }
 
 #[test]

@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use super::*;
+use crate::test_support::operations::HeldOperations;
 use crate::ui::tenxer_mode::Prompt;
 
 mod after_back;
@@ -12,6 +13,19 @@ mod create;
 mod delete;
 mod send_to;
 mod trashless;
+
+/// A fixture browsing through `source` whose operations wait for the test to finish them.
+fn held_fixture(
+    held: &Rc<HeldOperations>,
+    source: Rc<dyn crate::services::FileSource>,
+) -> KeyboardFixture {
+    let provider = held.clone();
+    KeyboardFixture::with_parts(Rc::new(TextPreview), move || {
+        let view = BrowserView::new(source, crate::ui::browser::PeekBehavior::default());
+        view.set_operation_provider(provider);
+        view
+    })
+}
 
 fn enable_tenxer(fixture: &KeyboardFixture) {
     let preferences = PreferenceManager::shared();
