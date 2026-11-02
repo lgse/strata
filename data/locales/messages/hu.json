@@ -468,7 +468,7 @@
   "Install %{package} or your distribution's equivalent.": "Telepítse a(z) %{package} csomagot vagy annak egy megfelelőjét a disztribúciójában.",
   "Install Strata v%{value1}": "Strata v%{value1} telepítése",
   "Install the required tools to continue": "Telepítse a szükséges eszközöket a folytatáshoz",
-  "Installed Strata as the encrypted-volume unlock handler.\nConfiguration: %{path}": "A Strata telepítve lett mint a titkosított kötetek feloldásának kezelőjeként.\nBeállítások: %{path}",
+  "Installed Strata as the encrypted-volume unlock handler.\nConfiguration: %{path}": "A Strata telepítve lett mint a titkosított kötetek feloldási kezelője.\nBeállítások: %{path}",
   "Installed by %{manager} as %{package}.": "Telepítve ezzel: %{manager} mint %{package}.",
   "Installed by %{manager}.": "Telepítve ezzel: %{manager}.",
   "Installed v%{value1}  →  Available v%{value2}": "Telepítve: v%{value1}  →  Elérhető: v%{value2}",
