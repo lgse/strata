@@ -184,7 +184,11 @@ For **any file or folder rename**, Enter, clicking outside the field (even empty
 pane space), or moving keyboard focus away commits a valid name. **Tab** and
 **Shift+Tab** commit it too, then open the rename on the next or previous item,
 so a run of files is renamed without leaving the editor; at either end of the
-listing they only commit. Switching to
+listing they only commit. In Columns, where keyboard selection mirrors (with
+**Mirror columns selection** on, outside a filtered column), the child column
+follows the item the rename moves to, without opening a preview; otherwise a
+renamed folder's open column stays open under its new name.
+Switching to
 another window, or an input method switcher taking the keyboard, leaves the
 edit open. Escape keeps the original name. Finishing with an empty or invalid name also keeps the
 original. Cancelling the initial rename does **not** delete the new item: it

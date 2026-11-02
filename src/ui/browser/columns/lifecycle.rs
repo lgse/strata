@@ -182,8 +182,30 @@ impl ViewState {
         {
             self.context_menu_column.set(None);
         }
-        self.cancel_rename();
+        if self.rename_in_retained_column(len) {
+            self.cancel_click_rename();
+        } else {
+            self.cancel_rename();
+        }
         self.cancel_new_entry();
+    }
+
+    /// Renaming a folder whose child column is open relocates that column, which
+    /// must not end the rename that Tab has meanwhile opened in the parent column.
+    fn rename_in_retained_column(&self, len: usize) -> bool {
+        let Some(field) = self
+            .active_rename
+            .borrow()
+            .as_ref()
+            .map(|active| active.field.clone())
+        else {
+            return false;
+        };
+        self.columns
+            .borrow()
+            .iter()
+            .take(len)
+            .any(|column| field.is_ancestor(&column.shell))
     }
 
     fn remove_column(self: &Rc<Self>, column: ColumnView, animate: bool) {
