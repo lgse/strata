@@ -226,13 +226,14 @@ impl SidebarState {
 
     fn connect_volume_click(&self, row: &gtk::Button, volume: &gio::Volume) {
         let weak_browser = Rc::downgrade(&self.browser);
-        let sidebar = self.widget.clone();
-        let selected_row = row.clone();
+        let sidebar = self.widget.downgrade();
         let clicked_volume = volume.clone();
-        let mount_view = self.view.clone();
-        row.connect_clicked(move |_| {
+        let mount_view = self.view.downgrade();
+        row.connect_clicked(move |row| {
             let volume = clicked_volume.clone();
-            select_sidebar_row(&sidebar, &selected_row);
+            if let Some(sidebar) = sidebar.upgrade() {
+                select_sidebar_row(&sidebar, row);
+            }
             let Some(browser) = weak_browser.upgrade() else {
                 return;
             };
@@ -240,8 +241,9 @@ impl SidebarState {
                 navigate_to_gio_file(&browser, &mount.root());
                 return;
             }
-
-            mount_view.mount_volume(volume);
+            if let Some(view) = mount_view.upgrade() {
+                view.mount_volume(volume);
+            }
         });
     }
 
@@ -301,13 +303,16 @@ impl SidebarState {
         if self.append_if_releasing(&row, &ids) {
             return Some(ids);
         }
-        let sidebar = self.widget.clone();
-        let selected_row = row.clone();
+        let sidebar = self.widget.downgrade();
         let clicked_drive = drive.clone();
-        let mount_view = self.view.clone();
-        row.connect_clicked(move |_| {
-            select_sidebar_row(&sidebar, &selected_row);
-            mount_view.start_password_drive(clicked_drive.clone(), true);
+        let mount_view = self.view.downgrade();
+        row.connect_clicked(move |row| {
+            if let Some(sidebar) = sidebar.upgrade() {
+                select_sidebar_row(&sidebar, row);
+            }
+            if let Some(view) = mount_view.upgrade() {
+                view.start_password_drive(clicked_drive.clone(), true);
+            }
         });
         let entries = self.password_drive_menu_entries(drive);
         self.append_device_chrome(&row, entries);
