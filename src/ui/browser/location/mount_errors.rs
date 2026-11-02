@@ -120,8 +120,8 @@ pub(super) fn mount_failure_message(location: &Location, error: &glib::Error) ->
 }
 
 fn transport_failure_message(error: &glib::Error) -> Option<String> {
-    let failure = TransportFailure::from_code(error)
-        .or_else(|| TransportFailure::from_gvfs_text(error))?;
+    let failure =
+        TransportFailure::from_code(error).or_else(|| TransportFailure::from_gvfs_text(error))?;
     Some(crate::i18n::tr(failure.guidance()))
 }
 

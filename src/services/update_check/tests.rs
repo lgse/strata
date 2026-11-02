@@ -213,8 +213,7 @@ fn a_tag_without_a_release_is_cached_as_unavailable_until_the_recheck_interval()
     let unavailable = ReleaseNotes::Unavailable {
         url: release_page_url(tag),
     };
-    let unparsable =
-        r#"{"tag_name":"not-a-version","draft":false,"prerelease":false,"assets":[]}"#;
+    let unparsable = r#"{"tag_name":"not-a-version","draft":false,"prerelease":false,"assets":[]}"#;
     for response in [
         Err(ureq::Error::StatusCode(404)),
         Ok(release_response(unparsable)),
@@ -250,8 +249,7 @@ fn found_release_notes_stay_cached_in_the_format_earlier_versions_wrote() {
 
 #[test]
 fn a_failed_release_notes_request_is_not_cached() {
-    let (notes, cache) =
-        exact_release_outcome("v1.2.3", Err(ureq::Error::StatusCode(500)), 1_000);
+    let (notes, cache) = exact_release_outcome("v1.2.3", Err(ureq::Error::StatusCode(500)), 1_000);
     assert!(matches!(notes, ReleaseNotes::Failed { .. }), "{notes:?}");
     assert_eq!(cache, None);
 }

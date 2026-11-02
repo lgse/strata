@@ -260,7 +260,10 @@ fn typed_remote_addresses_drop_the_query_and_fragment_gvfs_would_mount() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     for (input, expected) in [
         ("sftp://host/served?tok=QTOKEN#frag", "sftp://host/served"),
-        ("sftp://user@host:2222/?tok=QTOKEN", "sftp://user@host:2222/"),
+        (
+            "sftp://user@host:2222/?tok=QTOKEN",
+            "sftp://user@host:2222/",
+        ),
         ("smb://host/my share#frag", "smb://host/my%20share"),
         ("ftp://host/pub/a%2Fb?x=%FF", "ftp://host/pub/a%2Fb"),
     ] {
