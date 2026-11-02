@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use gtk::prelude::*;
+use std::rc::Rc;
 
 #[test]
 fn known_players_get_a_start_option_before_their_file_arguments() {

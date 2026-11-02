@@ -3,6 +3,7 @@
 use super::*;
 use gtk::gdk;
 use gtk::subclass::prelude::ObjectSubclassIsExt;
+use std::cell::Cell;
 use std::time::Instant;
 
 #[test]
