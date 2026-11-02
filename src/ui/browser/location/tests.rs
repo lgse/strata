@@ -227,6 +227,36 @@ fn sftp_failure_guidance_and_host_key_rejection_do_not_reopen_credentials() {
     ));
 }
 
+/// GVfs-SMB carries the connection errno only as `g_strerror` text after a
+/// `G_IO_ERROR_FAILED` prefix; an unresolvable host reports just EINVAL.
+#[test]
+fn smb_connection_failures_reported_as_errno_text_get_transport_guidance() {
+    let location = Location::uri("smb://127.0.0.1:1/share");
+    let unexpected = crate::i18n::tr(crate::services::UNEXPECTED_SYSTEM_ERROR);
+    for (message, expected) in [
+        ("Failed to mount Windows share: Connection refused", "port"),
+        (
+            "Failed to retrieve share list from server: Connection refused",
+            "port",
+        ),
+        (
+            "Failed to mount Windows share: Connection timed out",
+            "firewall",
+        ),
+        ("Failed to mount Windows share: No route to host", "network"),
+        (
+            "Failed to mount Windows share: Invalid argument",
+            &unexpected,
+        ),
+        ("Connection refused: proxy handshake", &unexpected),
+    ] {
+        let error = glib::Error::new(gio::IOErrorEnum::Failed, message);
+        assert!(!mount_error_is_authentication_failure(&location, &error));
+        let reported = mount_failure_message(&location, &error).expect("reportable failure");
+        assert!(reported.contains(expected), "{message}: {reported}");
+    }
+}
+
 #[test]
 fn backend_failures_do_not_echo_uri_secrets() {
     let location = Location::uri("sftp://host.example/home/alice");
