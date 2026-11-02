@@ -704,7 +704,8 @@ current folder, and moving the cursor changes neither the name nor the
 destination. While the name or location field has focus, every key but **F1**,
 **Ctrl+Shift+M**, and **Esc** is typed; **Ctrl+A** selects the text. Every
 request starts with focus in the files. **Tab** goes from the files to the
-header, from the header to the Save name, and from the name back to the files.
+header, from the header to the Save name, and from the name back to the files;
+**Shift+Tab** from the name also returns to the files.
 Saving over an existing file asks first with Cancel focused. Beside Cancel and
 Save, a Save request shows hints for **Enter**, plus **r** and **o** when it
 saves one named file.

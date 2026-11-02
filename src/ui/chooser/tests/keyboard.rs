@@ -732,6 +732,46 @@ fn save_starts_in_the_files_r_edits_the_name_and_enter_saves_here() {
 }
 
 #[test]
+fn tenxer_save_tab_cycles_files_header_name_and_back_to_files() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::tenxer_save_tab_cycles_files_header_name_and_back_to_files",
+        || {
+            let chooser = Chooser::open(
+                ChooserKind::SaveFile {
+                    current_name: Some("report.draft.pdf".into()),
+                },
+                BrowserMode::List,
+                &["existing.txt"],
+            );
+            let name = chooser.state.filename.clone().expect("name field");
+            let header = widget_with_class(chooser.state.window.upcast_ref(), "browser-header")
+                .expect("header");
+            let focus_within = |widget: &gtk::Widget| {
+                gtk::prelude::RootExt::focus(&chooser.state.window)
+                    .is_some_and(|focus| focus == *widget || focus.is_ancestor(widget))
+            };
+            wait_until(|| chooser.state.view.item_view_has_focus());
+            for _ in 0..2 {
+                assert!(chooser.press(Key::Tab));
+                assert!(focus_within(&header), "Tab from the files left the header");
+                assert!(chooser.press(Key::Tab));
+                assert!(focus_within(name.upcast_ref()), "Tab from the header");
+                assert!(chooser.press(Key::Tab));
+                assert!(
+                    chooser.state.view.item_view_has_focus(),
+                    "Tab from the name skipped the files"
+                );
+            }
+            chooser.state.edit_name();
+            assert!(chooser.press_with(Key::ISO_Left_Tab, ModifierType::SHIFT_MASK));
+            assert!(chooser.state.view.item_view_has_focus());
+            assert_eq!(name.text(), "report.draft.pdf");
+            assert!(chooser.open_request());
+        },
+    );
+}
+
+#[test]
 fn save_name_and_location_do_not_dispatch_listing_shortcuts() {
     crate::test_support::gtk_test(
         "ui::chooser::tests::keyboard::save_name_and_location_do_not_dispatch_listing_shortcuts",
