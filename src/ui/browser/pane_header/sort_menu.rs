@@ -384,6 +384,7 @@ fn children(widget: &gtk::Widget) -> Vec<gtk::Widget> {
 }
 
 fn set_summary(widget: &gtk::Widget, children: &[gtk::Widget], text: &str) {
+    hide_native_indicators(children);
     let label = children
         .iter()
         .find(|child| child.has_css_class("sort-submenu-value"))
@@ -489,11 +490,7 @@ fn present_check(widget: &gtk::Widget, children: &[gtk::Widget], prefs: ViewPref
         );
     }
     crate::ui::accessibility::set_checked(widget, checked);
-    for child in children {
-        if child.type_().name() == "GtkBuiltinIcon" || self_contained_indicator(child) {
-            child.set_visible(false);
-        }
-    }
+    hide_native_indicators(children);
     let check = children
         .iter()
         .find(|child| child.has_css_class("sort-selection-check"))
@@ -521,11 +518,22 @@ fn unparent_on_destroy(owner: &gtk::Widget, child: &gtk::Widget) {
     });
 }
 
+fn hide_native_indicators(children: &[gtk::Widget]) {
+    for child in children {
+        if (child.type_().name() == "GtkBuiltinIcon" && child.css_name() != "arrow")
+            || self_contained_indicator(child)
+        {
+            child.set_visible(false);
+        }
+    }
+}
+
 fn self_contained_indicator(widget: &gtk::Widget) -> bool {
+    // Empty indicator boxes still reserve space through GTK's size group.
     widget.downcast_ref::<gtk::Box>().is_some()
         && children(widget)
             .iter()
-            .any(|child| child.type_().name() == "GtkBuiltinIcon")
+            .all(|child| child.type_().name() == "GtkBuiltinIcon")
 }
 
 pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gtk::MenuButton {

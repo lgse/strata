@@ -7652,3 +7652,9 @@ popover.settings-action-library > contents {
 menubutton.sort-menu-button > button {
   color: @strata_text;
 }
+
+.actions-context-popover label.sort-submenu-value {
+  font-size: 0.85em;
+  color: @strata_dim_text;
+  opacity: 1;
+}

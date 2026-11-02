@@ -197,7 +197,7 @@ discovery order, retaining that order within the folder/file groups when Folders
 first is on. Returning to Unsorted reloads the directory. Its direction and
 name-comparison controls are disabled.
 
-List view keeps an icon-only sort menu beside Columns. A labelled **Sort** control
+List view keeps an icon-only sort menu before Refresh. A labelled **Sort** control
 appears when the active field has no visible matching column, or Name uses a
 non-default comparison. Unsorted and camera device order have no label or column arrow. Selecting a
 standard field clears the extra-sort summary; a hidden sort column remains active.

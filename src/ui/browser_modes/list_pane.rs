@@ -99,13 +99,15 @@ impl ListActions {
         let depth = inputs.depth;
         let widget = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         widget.add_css_class("icons-header-actions");
+        let sort_menu = browser::list_sort_menu(browser, depth);
+        browser::sync_list_sort_menu(browser, depth, &sort_menu);
+        sort_menu.set_margin_end(12);
+        widget.append(&sort_menu);
         let content = ContentActions::append(&widget, browser, depth);
         if let Some(state) = inputs.new_folder_state.as_ref() {
             widget.append(&browser::pane_new_folder_button(state.clone(), depth));
         }
         widget.append(&browser::pane_refresh_button(browser, depth));
-        let sort_menu = browser::list_sort_menu(browser, depth);
-        browser::sync_list_sort_menu(browser, depth, &sort_menu);
         let actions = Self {
             widget,
             content,
@@ -126,7 +128,6 @@ impl ListActions {
                 inputs.depth,
             ));
         }
-        self.widget.append(&self.sort_menu);
     }
 
     fn append_columns_menu(&self, table: &ListTable) {

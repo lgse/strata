@@ -6,5 +6,5 @@
 {"key":"Down"}
 {"wait":{"selected":["pictures"]},"message":"the rendered list to respond to keyboard selection"}
 {"key":"Up"}
-{"wait":{"selected":["documents"]},"message":"the baseline selection to return to documents"}
+{"wait":{"selected":["documents"]},"samples":3,"message":"the baseline selection to return to documents"}
 {"baseline":"list-view"}
