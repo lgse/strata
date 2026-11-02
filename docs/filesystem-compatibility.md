@@ -1810,7 +1810,10 @@ worker:
   it has entered its working folder.
 - Once it has resolved its command-line paths, Strata makes `/` its working folder, so libraries
   that look files up relative to the working folder never wait on the folder Strata was started
-  from. A program that Open With starts without a working folder of its own starts in `/` too.
+  from. A program that Open or Open With starts begins in the folder of the first opened file
+  unless its desktop entry sets `Path`: Strata enters that folder only while GIO spawns the
+  program and returns to `/` as soon as it has started, so the folder stays busy only for the
+  program. Files without a local path, and a folder Strata cannot enter, leave the program in `/`.
 - Strata's own settings and state files are saved by one background writer and read again there
   after another program changes them; see [Saved preferences](preferences.md).
 - An enumerator or stream the interface lets go of is closed in the background

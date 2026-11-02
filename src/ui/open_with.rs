@@ -11,6 +11,8 @@ pub(super) use apps::{Choices, choices_for_type, requires_uri_handlers, resolve}
 pub(super) use dialog::{OpenWithContext, show};
 #[cfg(test)]
 use launch::command_line_at;
+#[cfg(test)]
+use launch::launch_in_folder;
 pub(super) use launch::{launch, launch_at, launch_with_portal};
 
 /// Inside a Flatpak sandbox GIO only sees the runtime's desktop entries, so

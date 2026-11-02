@@ -92,3 +92,39 @@ fn dialogs_dismiss_on_escape_alternate() {
         },
     );
 }
+
+#[test]
+fn launched_programs_start_in_the_folder_of_the_first_file() {
+    let folder = tempfile::tempdir().expect("fixture");
+    let folder = folder.path().canonicalize().expect("fixture path");
+    let file = folder.join("notes.txt");
+    std::fs::write(&file, "").expect("fixture file");
+    let launcher = gio::AppInfo::create_from_commandline(
+        "sh -c 'pwd > started-in' sh %f",
+        Some("pwd"),
+        gio::AppInfoCreateFlags::NONE,
+    )
+    .expect("launcher");
+    let before = std::env::current_dir().expect("current folder");
+
+    launch_in_folder(
+        &launcher,
+        &[gio::File::for_path(&file)],
+        None::<&gio::AppLaunchContext>,
+    )
+    .expect("launch");
+
+    assert_eq!(std::env::current_dir().expect("current folder"), before);
+    let marker = folder.join("started-in");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let started_in = loop {
+        match std::fs::read_to_string(&marker) {
+            Ok(text) if text.ends_with('\n') => break text,
+            _ if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            result => panic!("the launched program wrote no folder: {result:?}"),
+        }
+    };
+    assert_eq!(started_in.trim_end(), folder.to_string_lossy());
+}

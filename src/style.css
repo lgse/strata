@@ -2586,13 +2586,30 @@ scrollbar.horizontal > range > trough > slider {
   padding-bottom: 2px;
 }
 
+/* Section headers draw their own inline rule; the divider only shows in the rail. */
+.sidebar-section-separator {
+  background: transparent;
+}
+
+.sidebar-rail .sidebar-section-separator {
+  background: alpha(@strata_border, 0.24);
+}
+
 .sidebar-heading-toggle {
   background: transparent;
   border: none;
   border-radius: 6px;
   box-shadow: none;
-  min-height: 30px;
-  padding: 3px 8px;
+  min-height: 24px;
+  padding: 0;
+}
+
+.sidebar-heading-rule {
+  background: alpha(@strata_border, 0.24);
+  background-image: none;
+  border: none;
+  margin: 0 8px;
+  min-height: 1px;
 }
 
 .sidebar-heading-toggle:hover {
@@ -2603,22 +2620,26 @@ scrollbar.horizontal > range > trough > slider {
   background: @strata_highlight;
 }
 
-.sidebar-heading-toggle:focus {
+.sidebar-heading-toggle:focus-visible {
   outline: 1px solid @strata_accent;
   outline-offset: -1px;
 }
 
 .sidebar-heading-toggle image {
   -gtk-icon-filter: opacity(0.65);
-  transition: transform 150ms ease-out;
 }
 
-.sidebar-heading-toggle.expanded image {
-  transform: rotate(90deg);
+/* Sized from the theme like .sidebar-device-action. The margin is the device row's 2px
+   right padding plus 1px, which optically centres the chevron over the eject buttons. */
+.sidebar-heading-chevron {
+  margin-right: 3px;
 }
 
+/* Left padding comes from the theme so the title starts where the row icons do. */
 .sidebar-heading-toggle .sidebar-heading {
-  padding: 0;
+  padding-top: 0;
+  padding-right: 0;
+  padding-bottom: 0;
 }
 
 .sidebar-heading-count {
