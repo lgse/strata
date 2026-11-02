@@ -156,7 +156,8 @@ fn columns_shift_delete_targets_the_open_folder_when_the_child_selects_nothing()
     );
 }
 
-/// Shift+Delete in an open folder's column that selects nothing deletes the folder.
+/// Closing the report of a cancelled deletion of the open folder focuses that
+/// folder's row in the parent.
 #[test]
 fn closing_a_cancelled_folder_deletion_focuses_the_folder_row() {
     crate::test_support::gtk_test(
