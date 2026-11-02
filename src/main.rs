@@ -127,14 +127,6 @@ fn service_debug_environment(
     Some(debug)
 }
 
-#[cfg(test)]
-fn file_manager_debug_environment(
-    arguments: &[OsString],
-    debug: Option<&std::ffi::OsStr>,
-) -> Option<OsString> {
-    service_debug_environment(arguments, debug)
-}
-
 /// GTK reads its renderer and theme override during startup. Re-exec before
 /// initializing GTK rather than mutating the environment after libraries may
 /// have started threads. Returns only when the restart fails.
