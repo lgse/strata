@@ -189,7 +189,8 @@ or Alphabetical, with a separate **Case-sensitive names** toggle. Closed submenu
 rows show the current value on the right. Name order and case sensitivity are
 saved with the sort, including defaults and per-folder overrides, and also apply
 to names used to break ties under other fields. Selecting the active sort field
-again in the menu switches to Unsorted.
+again in the menu switches to Unsorted. The menu stays open while options change;
+press Escape or click outside it to dismiss it.
 
 Extension uses the final suffix, so `archive.tar.gz` sorts under `gz`; dotfiles
 such as `.gitignore` and extensionless files have no extension. Created uses birth

@@ -46,6 +46,7 @@ struct SortMenu {
     depth: usize,
     extra: gio::Menu,
     names: gio::Menu,
+    model: gio::Menu,
 }
 
 impl SortMenu {
@@ -55,6 +56,7 @@ impl SortMenu {
         popover.set_has_arrow(false);
         popover.set_halign(gtk::Align::End);
         popover.add_css_class("column-popover");
+        popover.add_css_class("persistent-sort-menu");
         let group = gio::SimpleActionGroup::new();
         popover.insert_action_group("sorting", Some(&group));
         crate::ui::scrolling::popover::dismiss_on_outside_scroll(popover.upcast_ref());
@@ -63,6 +65,7 @@ impl SortMenu {
         let menu = Self {
             popover: popover.downgrade(),
             group,
+            model: root,
             extra,
             names,
             browser: Rc::downgrade(browser),
@@ -175,13 +178,9 @@ impl SortMenu {
     ) {
         let browser = self.browser.clone();
         let depth = self.depth;
-        let popover = self.popover.clone();
         action.connect_activate(move |_, value| {
             if let Some(browser) = browser.upgrade() {
                 run(&browser, depth, value);
-            }
-            if let Some(popover) = popover.upgrade() {
-                popover.popdown();
             }
         });
         self.group.add_action(action);
@@ -264,12 +263,10 @@ impl SortMenu {
         if let Some(popover) = widget.downcast_ref::<gtk::PopoverMenu>() {
             popover.add_css_class("actions-context-popover");
             popover.add_css_class("folder-context-popover");
-            if self.popover.upgrade().as_ref() != Some(popover) {
-                popover.add_css_class("actions-submenu");
-            }
         }
         if widget.type_().name() == "GtkModelButton" {
             hide_native_indicators(&children);
+            keep_sort_menu_open(widget, &self.group, self.model.upcast_ref());
         }
         present_check(widget, &children, prefs);
         if widget.find_property("popover").is_some()
@@ -522,6 +519,87 @@ fn unparent_on_destroy(owner: &gtk::Widget, child: &gtk::Widget) {
     });
 }
 
+fn sort_action(model: &gio::MenuModel, label: &str) -> Option<(String, Option<glib::Variant>)> {
+    for index in 0..model.n_items() {
+        let text = model
+            .item_attribute_value(index, "label", None)
+            .and_then(|value| value.get::<String>());
+        let action = model
+            .item_attribute_value(index, "action", None)
+            .and_then(|value| value.get::<String>());
+        if text.as_deref() == Some(label)
+            && let Some(action) =
+                action.and_then(|name| name.strip_prefix("sorting.").map(str::to_owned))
+        {
+            return Some((action, model.item_attribute_value(index, "target", None)));
+        }
+        for link in ["section", "submenu"] {
+            if let Some(child) = model.item_link(index, link)
+                && let Some(action) = sort_action(&child, label)
+            {
+                return Some(action);
+            }
+        }
+    }
+    None
+}
+
+fn keep_sort_menu_open(
+    widget: &gtk::Widget,
+    group: &gio::SimpleActionGroup,
+    model: &gio::MenuModel,
+) {
+    if widget.has_css_class("sort-stay-open") {
+        return;
+    }
+    let label = widget.property::<String>("text");
+    let Some((action, target)) = sort_action(model, &label) else {
+        return;
+    };
+    widget.add_css_class("sort-stay-open");
+    let weak = widget.downgrade();
+    let group = group.downgrade();
+    let activate = Rc::new(move || {
+        if let (Some(_widget), Some(group)) = (weak.upgrade(), group.upgrade()) {
+            group.activate_action(&action, target.as_ref());
+        }
+    });
+    let row_actions = gio::SimpleActionGroup::new();
+    let row_action = gio::SimpleAction::new("activate", None);
+    let keyboard_activate = activate.clone();
+    row_action.connect_activate(move |_, _| keyboard_activate());
+    row_actions.add_action(&row_action);
+    widget.insert_action_group("sort-row", Some(&row_actions));
+    remove_native_click_controllers(widget);
+    let click = gtk::GestureClick::new();
+    click.set_button(1);
+    click.set_propagation_phase(gtk::PropagationPhase::Capture);
+    click.connect_pressed(|gesture, _, _, _| {
+        if let Some(widget) = gesture.widget() {
+            widget.grab_focus();
+        }
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+    });
+    let clicked = activate.clone();
+    click.connect_released(move |gesture, _, x, y| {
+        if gesture.widget().is_some_and(|widget| widget.contains(x, y)) {
+            clicked();
+        }
+    });
+    widget.add_controller(click);
+}
+
+fn remove_native_click_controllers(widget: &gtk::Widget) {
+    // GTK closes native rows before activating them, including on an unpaired release.
+    let controllers = widget.observe_controllers();
+    let native_clicks: Vec<_> = (0..controllers.n_items())
+        .filter_map(|index| controllers.item(index).and_downcast::<gtk::GestureClick>())
+        .collect();
+    for controller in native_clicks {
+        widget.remove_controller(&controller);
+    }
+}
+
 fn hide_native_indicators(children: &[gtk::Widget]) {
     for child in children {
         if (child.type_().name() == "GtkBuiltinIcon" && child.css_name() != "arrow")
@@ -548,8 +626,50 @@ pub(in crate::ui) fn list_sort_menu(browser: &Rc<Browser>, depth: usize) -> gtk:
     sort_menu_button(browser, depth, true)
 }
 
+fn observe_open_sort_menu(browser: &Rc<Browser>, menu: &Rc<SortMenu>, depth: usize) {
+    let observed = Rc::downgrade(menu);
+    let weak_browser = Rc::downgrade(browser);
+    browser.observe(move |event| {
+        if matches!(
+            event,
+            crate::app::BrowserEvent::SortingFinished { .. }
+                | crate::app::BrowserEvent::ColumnReloaded { .. }
+        ) && let (Some(menu), Some(browser)) = (observed.upgrade(), weak_browser.upgrade())
+            && menu
+                .popover
+                .upgrade()
+                .is_some_and(|popover| popover.is_visible())
+        {
+            menu.sync(&browser, depth);
+        }
+    });
+    if let Some(popover) = menu.popover.upgrade() {
+        let observed = Rc::downgrade(menu);
+        let weak_browser = Rc::downgrade(browser);
+        PreferenceManager::shared().bind_preference(
+            &popover,
+            |manager| {
+                (
+                    manager.default_sort_options(),
+                    manager.folder_sorts_revision(),
+                )
+            },
+            move |popover, _| {
+                if popover.is_visible()
+                    && let (Some(menu), Some(browser)) =
+                        (observed.upgrade(), weak_browser.upgrade())
+                {
+                    menu.sync(&browser, depth);
+                }
+            },
+        );
+    }
+}
+
 fn sort_menu_button(browser: &Rc<Browser>, depth: usize, list: bool) -> gtk::MenuButton {
     let (popover, menu) = SortMenu::build(browser, depth, list);
+    let menu = Rc::new(menu);
+    observe_open_sort_menu(browser, &menu, depth);
     let button = gtk::MenuButton::builder().popover(&popover).build();
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::SETTINGS_2,

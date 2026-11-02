@@ -1,11 +1,37 @@
 {"scenario":"additional-sort-submenus","modes":["columns","icons","list"],"prefs":{"remember_folder_views":false},"tree":{"folder":{},"a.rs":"rs","file2.md":"two","file10.md":"ten","z.csv":"csv","Z.md":"upper"}}
 {"wait":{"entries":["folder","a.rs","file2.md","file10.md","z.csv","Z.md"],"dir":"$root"},"message":"the natural default order"}
 {"click":{"header":"Choose sort field"}}
+{"click":{"role":"radio menu item","name":"Size"}}
+{"wait":{"state":{"target":{"role":"radio menu item","name":"Size"},"checked":true}},"message":"the menu to stay open and update its checked sort"}
+{"key":"Return"}
+{"wait":{"state":{"target":{"role":"radio menu item","name":"Size"},"checked":false}},"message":"keyboard activation to toggle the sort without dismissing the menu"}
+{"click":{"menu_item":"More sorting"}}
+{"click":{"role":"radio menu item","name":"Extension"}}
+{"wait":{"state":{"target":{"role":"radio menu item","name":"Extension"},"checked":true}},"message":"the flyout to stay open and update its checked sort"}
+{"key":"Left"}
+{"wait":{"description":{"target":{"menu_item":"More sorting"},"text":"Extension"}},"message":"the parent summary to update without reopening the menu"}
+{"wait":{"state":{"target":{"menu_item":"More sorting"},"focused":true}},"message":"Left to return focus to the parent submenu row"}
+{"key":"Down"}
+{"wait":{"state":{"target":{"menu_item":"Name order"},"focused":true}},"message":"arrow navigation to remain in the open parent menu after leaving the flyout"}
+{"click":{"role":"check menu item","name":"Case-sensitive names"}}
+{"wait":{"state":{"target":{"role":"check menu item","name":"Case-sensitive names"},"checked":true}},"message":"a second option to apply while the same menu remains open"}
+{"click":{"role":"check menu item","name":"Case-sensitive names"}}
+{"wait":{"state":{"target":{"role":"check menu item","name":"Case-sensitive names"},"checked":false}},"message":"case sensitivity to turn off without dismissing the menu"}
 {"click":{"role":"radio menu item","name":"Name"}}
+{"wait":{"state":{"target":{"role":"radio menu item","name":"Name"},"checked":true}},"message":"Name sorting to be restored while the menu stays open"}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"Escape to explicitly dismiss the sort menu"}
+{"click":{"header":"Choose sort field"}}
+{"click":{"point":[{"extent":{"window":true},"plus":-4},{"extent":{"window":true},"plus":-4}]}}
+{"wait":{"menu_items":null},"message":"clicking outside to explicitly dismiss the sort menu"}
+{"click":{"header":"Choose sort field"}}
+{"click":{"role":"radio menu item","name":"Name"}}
+{"key":"Escape"}
 {"wait":{"pref":{"key":"sort_key","value":"unsorted"}},"message":"selecting the active Name sort to turn sorting off"}
 {"click":{"header":"Choose sort field"}}
 {"wait":{"state":{"target":{"role":"radio menu item","name":"Name"},"checked":false}},"message":"Name to be unchecked after toggling it off"}
 {"click":{"role":"radio menu item","name":"Name"}}
+{"key":"Escape"}
 {"wait":{"pref":{"key":"sort_key","value":"name"}},"message":"Name to be selectable again after toggling off"}
 {"wait":{"entries":["folder","a.rs","file2.md","file10.md","z.csv","Z.md"],"dir":"$root"},"message":"selecting Name again to restore natural sorting"}
 {"click":{"header":"Choose sort field"}}
@@ -13,29 +39,39 @@
 {"click":{"menu_item":"More sorting"}}
 {"wait":{"present":{"role":"radio menu item","name":"Extension"}},"message":"the Extension choice in the flyout"}
 {"click":{"role":"radio menu item","name":"Extension"}}
+{"key":"Escape"}
+{"key":"Escape"}
 {"wait":{"entries":["folder","z.csv","file2.md","file10.md","Z.md","a.rs"],"dir":"$root"},"message":"extension groups with natural name order"}
 {"wait":{"present":{"header":"Sort: Extension ↑"}},"message":"List view to explain Extension sorting","modes":["list"]}
 {"click":{"header":"Choose sort field"},"modes":["columns","icons"]}
 {"click":{"header":"Sort: Extension ↑"},"modes":["list"]}
 {"click":{"menu_item":"More sorting"}}
 {"click":{"role":"radio menu item","name":"Extension"}}
+{"key":"Escape"}
+{"key":"Escape"}
 {"wait":{"pref":{"key":"sort_key","value":"unsorted"}},"message":"selecting the active flyout sort to turn sorting off"}
 {"wait":{"absent":{"header":"Sort: Extension ↑"}},"message":"the List indicator to clear when Extension is toggled off","modes":["list"]}
 {"click":{"header":"Choose sort field"}}
 {"click":{"menu_item":"More sorting"}}
 {"wait":{"state":{"target":{"role":"radio menu item","name":"Unsorted"},"checked":true}},"message":"Unsorted to show that the previous sort was turned off"}
 {"click":{"role":"radio menu item","name":"Unsorted"}}
+{"key":"Escape"}
+{"key":"Escape"}
 {"wait":{"pref":{"key":"sort_key","value":"unsorted"}},"message":"selecting Unsorted again to keep sorting off"}
 {"click":{"header":"Choose sort field"}}
 {"click":{"menu_item":"More sorting"}}
 {"click":{"role":"radio menu item","name":"Extension"}}
+{"key":"Escape"}
+{"key":"Escape"}
 {"wait":{"pref":{"key":"sort_key","value":"extension"}},"message":"Extension to be selectable again after toggling off"}
 {"click":{"header":"Sort: Extension ↑"},"modes":["list"]}
 {"wait":{"present":{"role":"radio menu item","name":"Descending"}},"message":"a direction choice for sorts without a column header","modes":["list"]}
 {"click":{"role":"radio menu item","name":"Descending"},"modes":["list"]}
+{"key":"Escape","modes":["list"]}
 {"wait":{"entries":["folder","a.rs","file2.md","file10.md","Z.md","z.csv"],"dir":"$root"},"message":"reversing Extension sorting through the List menu","modes":["list"]}
 {"click":{"header":"Sort: Extension ↓"},"modes":["list"]}
 {"click":{"role":"radio menu item","name":"Ascending"},"modes":["list"]}
+{"key":"Escape","modes":["list"]}
 {"wait":{"entries":["folder","z.csv","file2.md","file10.md","Z.md","a.rs"],"dir":"$root"},"message":"restoring ascending Extension sorting","modes":["list"]}
 {"click":{"header":"Choose sort field"},"modes":["columns","icons"]}
 {"click":{"header":"Sort: Extension ↑"},"modes":["list"]}
@@ -44,12 +80,15 @@
 {"click":{"menu_item":"Name order"}}
 {"wait":{"present":{"role":"radio menu item","name":"Alphabetical"}},"message":"the alphabetical name-order choice"}
 {"click":{"role":"radio menu item","name":"Alphabetical"}}
+{"key":"Escape"}
+{"key":"Escape"}
 {"wait":{"entries":["folder","z.csv","file10.md","file2.md","Z.md","a.rs"],"dir":"$root"},"message":"alphabetical tie-breaking within the extension group"}
 {"click":{"header":"Choose sort field"},"modes":["columns","icons"]}
 {"click":{"header":"Sort: Extension ↑"},"modes":["list"]}
 {"wait":{"present":{"menu_item":"More sorting"}},"message":"the shared sort menu"}
 {"wait":{"description":{"target":{"menu_item":"Name order"},"text":"Alphabetical"}},"message":"the closed name-order submenu to describe its value"}
 {"click":{"role":"check menu item","name":"Case-sensitive names"}}
+{"key":"Escape"}
 {"wait":{"entries":["folder","z.csv","Z.md","file10.md","file2.md","a.rs"],"dir":"$root"},"message":"case-sensitive names within the extension group"}
 {"wait":{"pref":{"key":"natural_sort","value":false}},"message":"alphabetical order to be saved"}
 {"wait":{"pref":{"key":"case_sensitive_sort","value":true}},"message":"case sensitivity to be saved"}
@@ -62,6 +101,8 @@
 {"click":{"menu_item":"More sorting"}}
 {"wait":{"present":{"role":"radio menu item","name":"Unsorted"}},"message":"the Unsorted choice"}
 {"click":{"role":"radio menu item","name":"Unsorted"}}
+{"key":"Escape"}
+{"key":"Escape"}
 {"wait":{"pref":{"key":"sort_key","value":"unsorted"}},"message":"Unsorted to be saved"}
 {"wait":{"entries":{"contains":["folder","a.rs","file2.md","file10.md","z.csv","Z.md"]},"dir":"$root"},"message":"Unsorted to keep all discovered entries"}
 {"wait":{"absent":{"header":"Sort: Extension ↑"}},"message":"the List sort label to clear for Unsorted","modes":["list"]}
@@ -69,15 +110,18 @@
 {"wait":{"present":{"menu_item":"More sorting"}},"message":"sort choices to remain reachable when the label is hidden"}
 {"wait":{"state":{"target":{"role":"check menu item","name":"Case-sensitive names"},"sensitive":false}},"message":"name comparison to be disabled for Unsorted"}
 {"click":{"role":"radio menu item","name":"Size"}}
+{"key":"Escape"}
 {"wait":{"pref":{"key":"sort_key","value":"size"}},"message":"a standard sort to replace Unsorted"}
 {"wait":{"absent":{"header":"Sort: Size ↑"}},"message":"a visible Size column to explain its sort without a toolbar label","modes":["list"]}
 {"click":{"header":"Columns"},"modes":["list"]}
 {"wait":{"present":{"role":"check menu item","name":"Size"}},"message":"the column visibility choices","modes":["list"]}
 {"click":{"role":"check menu item","name":"Size"},"modes":["list"]}
 {"key":"Escape","modes":["list"]}
+{"key":"Escape","modes":["list"]}
 {"wait":{"present":{"header":"Sort: Size ↑"}},"message":"a hidden active column to reveal the sort label immediately","modes":["list"]}
 {"click":{"header":"Columns"},"modes":["list"]}
 {"click":{"role":"check menu item","name":"Size"},"modes":["list"]}
+{"key":"Escape","modes":["list"]}
 {"key":"Escape","modes":["list"]}
 {"wait":{"absent":{"header":"Sort: Size ↑"}},"message":"restoring the active column to clear the label","modes":["list"]}
 {"click":{"header":"Choose sort field"}}

@@ -220,10 +220,12 @@ pub(super) fn install_submenu_return(
         }
         submenu.stop_signal_emission_by_name("move-focus");
         // Hide without cascading, then let GTK clear its open-submenu state.
-        // Focusing the owner alone leaves arrows routed to the hidden branch.
+        // Regular menus clear GTK's open branch; persistent sort menus route arrows themselves.
         submenu.set_visible(false);
         if let Some(owner) = weak_owner.upgrade() {
-            if let Some(parent) = owner.ancestor(gtk::PopoverMenu::static_type()) {
+            if let Some(parent) = owner.ancestor(gtk::PopoverMenu::static_type())
+                && !parent.has_css_class("persistent-sort-menu")
+            {
                 parent.child_focus(gtk::DirectionType::Left);
             }
             owner.grab_focus();
@@ -231,15 +233,32 @@ pub(super) fn install_submenu_return(
     });
 }
 
+fn focused_sort_menu(root: &gtk::Popover) -> gtk::Popover {
+    if root.has_css_class("persistent-sort-menu")
+        && let Some(active) = root
+            .root()
+            .and_then(|window| window.focus())
+            .and_then(|focus| focus.ancestor(gtk::Popover::static_type()))
+            .and_downcast::<gtk::Popover>()
+    {
+        return active;
+    }
+    root.clone()
+}
+
 pub(super) fn install(popover: &gtk::Popover) {
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    if popover.has_css_class("persistent-sort-menu") {
+        keys.set_propagation_limit(gtk::PropagationLimit::None);
+    }
     let weak = popover.downgrade();
     keys::on_press(&keys, move |_, press| {
         const SHIFT: Modifiers = Modifiers::SHIFT_MASK;
-        let Some(popover) = weak.upgrade() else {
+        let Some(root) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
+        let popover = focused_sort_menu(&root);
         if press
             .modifiers()
             .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
@@ -275,7 +294,9 @@ pub(super) fn install(popover: &gtk::Popover) {
                 .find(|button| button.has_focus())
             {
                 // activate() waits for a key release that this controller consumes.
-                if let Some(button) = button.downcast_ref::<gtk::Button>() {
+                if button.has_css_class("sort-stay-open") {
+                    let _ = button.activate_action("sort-row.activate", None);
+                } else if let Some(button) = button.downcast_ref::<gtk::Button>() {
                     button.emit_clicked();
                 } else {
                     button.activate();
@@ -314,6 +335,7 @@ fn collect_buttons(widget: &gtk::Widget, popover: &gtk::Popover, buttons: &mut V
         return;
     }
     if widget.is::<gtk::Button>()
+        || widget.has_css_class("sort-stay-open")
         || (widget.is_focusable() && widget.accessible_role() == gtk::AccessibleRole::MenuItem)
     {
         buttons.push(widget.clone());

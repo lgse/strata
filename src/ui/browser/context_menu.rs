@@ -126,6 +126,7 @@ mod tests;
 pub(in crate::ui) fn prepare_native_menu(popover: &gtk::PopoverMenu) {
     use gtk::prelude::*;
     let navigation = keyboard::NativeMenuNavigation::new(popover);
+    keyboard::install(popover.upcast_ref());
     actions::refresh_presentation(popover, &navigation);
     popover.connect_map(move |popover| actions::refresh_presentation(popover, &navigation));
 }
