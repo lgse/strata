@@ -64,17 +64,25 @@ impl Browser {
     }
 
     pub(super) fn try_begin_operation(&self) -> Option<OperationRequestId> {
-        if self.transfer_cancel_pending.get()
+        if self.cancellation_pending() {
+            self.emit(BrowserEvent::TransferCancellationPending);
+            return None;
+        }
+        Some(self.begin_operation())
+    }
+
+    /// Whether a file operation requested now would start, without reporting why not.
+    pub(crate) fn can_start_operation(&self) -> bool {
+        self.operation_provider.borrow().is_some() && !self.cancellation_pending()
+    }
+
+    fn cancellation_pending(&self) -> bool {
+        self.transfer_cancel_pending.get()
             || self
                 .background_operations
                 .borrow()
                 .values()
                 .any(|job| job.cancel_pending.get())
-        {
-            self.emit(BrowserEvent::TransferCancellationPending);
-            return None;
-        }
-        Some(self.begin_operation())
     }
 
     pub(crate) fn is_current_operation(&self, request_id: OperationRequestId) -> bool {

@@ -123,6 +123,7 @@ fn cancelling_transfer_blocks_new_mutations_until_its_terminal_event() {
     assert!(browser.transfer_cancel_pending.get());
     assert!(browser.try_begin_operation().is_none());
     browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    assert!(!browser.can_start_operation());
     browser.transfer(
         Location::local("/fixture/destination"),
         vec![PasteItem {
@@ -153,6 +154,7 @@ fn cancelling_transfer_blocks_new_mutations_until_its_terminal_event() {
     });
     assert!(!browser.transfer_cancel_pending.get());
     assert!(!browser.is_current_operation(request_id));
+    assert!(browser.can_start_operation());
     assert!(browser.try_begin_operation().is_some());
 }
 
