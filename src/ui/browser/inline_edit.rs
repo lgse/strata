@@ -510,7 +510,9 @@ impl ViewState {
             .browser
             .rename_item()
             .map(|(depth, position, _)| (depth, position));
+        let generation = self.rename_generation.get();
         self.submit_rename(&field);
+        self.note_rename_advanced(generation);
         // The committed row must not pull the cursor back once its rename lands.
         self.yield_rename_reveal();
         self.browser.move_selection(direction);

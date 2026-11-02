@@ -20,6 +20,8 @@ pub(in crate::ui::browser) struct PendingRename {
     pub(super) new_name: String,
     /// The item went to a typed path, leaving its row for `new_location`.
     placed: bool,
+    /// Tab carried the cursor on to a neighbour, which a failure gives back.
+    advanced: bool,
     generation: u64,
     monitor_reported_rename: bool,
     reveal_generation: u64,
@@ -168,6 +170,7 @@ impl ViewState {
             old_name: entry.display_name.clone(),
             new_name,
             placed,
+            advanced: false,
             generation,
             monitor_reported_rename: false,
             reveal_generation: self.rename_reveal_generation.get(),
@@ -176,6 +179,18 @@ impl ViewState {
             state: PendingRenameState::Queued,
         }));
         generation
+    }
+
+    /// Marks the rename started after `generation` as one Tab moved on from.
+    pub(super) fn note_rename_advanced(&self, generation: u64) {
+        if let Some(pending) = self
+            .pending_rename
+            .borrow_mut()
+            .as_mut()
+            .filter(|pending| pending.generation > generation)
+        {
+            pending.advanced = true;
+        }
     }
 
     fn pending_generation_is(&self, generation: u64) -> bool {
@@ -481,22 +496,30 @@ impl ViewState {
         self.update_rename_labels(&pending.old_location, None, &pending.old_name);
     }
 
+    /// A failed rename that Tab moved on from gives the cursor back to its
+    /// item, as one committed with Enter keeps it there.
     pub(in crate::ui::browser) fn fail_pending_rename_from_browser(
-        &self,
+        self: &Rc<Self>,
         operation_id: Option<OperationRequestId>,
     ) {
-        let owned =
-            self.pending_rename
-                .borrow()
-                .as_ref()
-                .is_some_and(|pending| match operation_id {
-                    None => pending.not_yet_running(),
-                    Some(actual) => {
-                        pending.owns_operation(actual, self.browser.last_started_operation())
-                    }
-                });
-        if owned {
-            self.fail_pending_rename();
+        let owned = self.pending_rename.borrow().as_ref().and_then(|pending| {
+            let owned = match operation_id {
+                None => pending.not_yet_running(),
+                Some(actual) => pending.owns_operation(actual, self.browser.last_started_operation()),
+            };
+            owned.then(|| pending.advanced.then(|| pending.old_location.clone()))
+        });
+        let Some(advanced_from) = owned else {
+            return;
+        };
+        self.fail_pending_rename();
+        if let Some(location) = advanced_from
+            && let Some(depth) = location
+                .parent()
+                .and_then(|parent| self.browser.open_depth(&parent))
+        {
+            self.browser
+                .select_entries_by_location_at(depth, std::slice::from_ref(&location));
         }
     }
 }
