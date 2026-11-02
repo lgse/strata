@@ -86,6 +86,17 @@ struct Limits {
     attempts: Rc<RefCell<HashMap<PathBuf, usize>>>,
 }
 
+#[cfg(test)]
+impl Limits {
+    fn count_attempt(&self, folder: &Path) {
+        *self
+            .attempts
+            .borrow_mut()
+            .entry(folder.to_path_buf())
+            .or_default() += 1;
+    }
+}
+
 impl Default for Limits {
     fn default() -> Self {
         Self {
@@ -156,14 +167,7 @@ impl MediaChecks {
         unread: Unread,
         answered: impl Fn() -> bool + 'static,
     ) {
-        let covered = self.reads.as_ref().is_some_and(|reads| {
-            reads.anchor == *anchor
-                && unread
-                    .files
-                    .iter()
-                    .all(|(_, path, _)| reads.covered.contains(path))
-        });
-        if unread.files.is_empty() || covered {
+        if unread.files.is_empty() || self.already_reading(anchor, &unread) {
             return;
         }
         let files = unread.nearest_first();
@@ -177,29 +181,25 @@ impl MediaChecks {
             covered: files.iter().map(|(path, _)| path.clone()).collect(),
             cancellable: cancellable.clone(),
         });
+        let run = ReadRun {
+            cancellable,
+            limits: self.limits.clone(),
+            given_up: HashSet::new(),
+            busy_since: None,
+        };
         let answers = self.answers.clone();
-        let limits = self.limits.clone();
-        glib::MainContext::default().spawn_local(async move {
-            let mut queue = VecDeque::from(files);
-            let mut size = FIRST_CHUNK;
-            let mut waits = Waits::default();
-            while !queue.is_empty() && !cancellable.is_cancelled() {
-                let chunk: Vec<_> = queue.drain(..size.min(queue.len())).collect();
-                size = (size * 2).min(MAX_CHUNK);
-                let learned = read_chunk(chunk, &cancellable, &limits, &mut waits).await;
-                if learned.is_empty() {
-                    continue;
-                }
-                answers.borrow_mut().extend(
-                    learned
-                        .into_iter()
-                        .map(|(path, fingerprint, media)| (path, (fingerprint, media))),
-                );
-                if !cancellable.is_cancelled() && !answered() {
-                    break;
-                }
-            }
-        });
+        glib::MainContext::default().spawn_local(run.read_all(files, answers, answered));
+    }
+
+    /// Whether reads for the same shown file already took up every file of `unread`.
+    fn already_reading(&self, anchor: &Location, unread: &Unread) -> bool {
+        self.reads.as_ref().is_some_and(|reads| {
+            reads.anchor == *anchor
+                && unread
+                    .files
+                    .iter()
+                    .all(|(_, path, _)| reads.covered.contains(path))
+        })
     }
 
     pub(super) fn stop(&mut self) {
@@ -270,23 +270,106 @@ impl Unread {
     }
 }
 
-/// What one run of reads has learned about busy mounts.
-#[derive(Default)]
-struct Waits {
-    /// Folders that got no answer, not asked again by the same reads.
+/// One run of reads for a shown file, and what it has learned about busy mounts.
+struct ReadRun {
+    cancellable: gio::Cancellable,
+    limits: Limits,
+    /// Folders that got no answer, not asked again by the same run.
     given_up: HashSet<PathBuf>,
     /// When reads were first skipped for a busy mount; one wait covers every folder of
     /// the run, since a request that learned its mount keeps all of them busy.
     busy_since: Option<Instant>,
 }
 
-/// Reads one chunk folder by folder; files whose read gets no answer are left out.
-async fn read_chunk(
-    chunk: Vec<(PathBuf, Fingerprint)>,
-    cancellable: &gio::Cancellable,
-    limits: &Limits,
-    waits: &mut Waits,
-) -> Vec<(PathBuf, Fingerprint, bool)> {
+type Read = (PathBuf, Fingerprint, bool);
+
+impl ReadRun {
+    /// Reads `files` in growing chunks, remembering each chunk's answers in `answers`.
+    async fn read_all(
+        mut self,
+        files: Vec<(PathBuf, Fingerprint)>,
+        answers: Answers,
+        answered: impl Fn() -> bool,
+    ) {
+        let mut queue = VecDeque::from(files);
+        let mut size = FIRST_CHUNK;
+        while !queue.is_empty() && !self.cancellable.is_cancelled() {
+            let chunk: Vec<_> = queue.drain(..size.min(queue.len())).collect();
+            size = (size * 2).min(MAX_CHUNK);
+            let learned = self.read_chunk(chunk).await;
+            if learned.is_empty() {
+                continue;
+            }
+            answers.borrow_mut().extend(
+                learned
+                    .into_iter()
+                    .map(|(path, fingerprint, media)| (path, (fingerprint, media))),
+            );
+            if !self.cancellable.is_cancelled() && !answered() {
+                break;
+            }
+        }
+    }
+
+    /// Reads one chunk folder by folder; files whose read gets no answer are left out.
+    async fn read_chunk(&mut self, chunk: Vec<(PathBuf, Fingerprint)>) -> Vec<Read> {
+        let mut answers = Vec::new();
+        for (folder, files) in by_folder(chunk) {
+            if self.given_up.contains(&folder) {
+                continue;
+            }
+            let paths = files.iter().map(|(path, _)| path.clone()).collect();
+            match self.read_folder(&folder, paths).await {
+                Some(read) => answers.extend(answered_files(files, read)),
+                None => self.give_up(folder),
+            }
+        }
+        answers
+    }
+
+    /// Background work through the folder's mount lane: it waits its turn while the
+    /// mount is busy with other requests, for at most `limits.busy` across all the
+    /// folders of the run, and gives up at once when the mount has stalled.
+    async fn read_folder(
+        &mut self,
+        folder: &Path,
+        paths: Vec<PathBuf>,
+    ) -> Option<Vec<Option<bool>>> {
+        while !self.cancellable.is_cancelled() {
+            #[cfg(test)]
+            self.limits.count_attempt(folder);
+            match read_in_lane(folder, paths.clone(), self.cancellable.clone()).await {
+                Ok(read) => return Some(read),
+                Err(Unanswered::Skipped) if self.may_wait_for(folder) => {
+                    glib::timeout_future(BUSY_RETRY).await;
+                }
+                Err(_) => return None,
+            }
+        }
+        None
+    }
+
+    /// Whether a skipped read should wait: its mount still answers, so it is only busy,
+    /// and the run's wait has not run out.
+    fn may_wait_for(&mut self, folder: &Path) -> bool {
+        if mount_lanes::responsiveness(folder) != Responsiveness::Answering {
+            return false;
+        }
+        let since = *self.busy_since.get_or_insert_with(Instant::now);
+        since.elapsed() < self.limits.busy
+    }
+
+    fn give_up(&mut self, folder: PathBuf) {
+        if self.cancellable.is_cancelled() {
+            return;
+        }
+        #[cfg(test)]
+        self.limits.abandoned.set(self.limits.abandoned.get() + 1);
+        self.given_up.insert(folder);
+    }
+}
+
+fn by_folder(chunk: Vec<(PathBuf, Fingerprint)>) -> Vec<(PathBuf, Vec<(PathBuf, Fingerprint)>)> {
     let mut folders: Vec<(PathBuf, Vec<(PathBuf, Fingerprint)>)> = Vec::new();
     for (path, fingerprint) in chunk {
         let folder = path.parent().unwrap_or(Path::new("/")).to_path_buf();
@@ -295,82 +378,45 @@ async fn read_chunk(
             None => folders.push((folder, vec![(path, fingerprint)])),
         }
     }
-    let mut answers = Vec::new();
-    for (folder, files) in folders {
-        if waits.given_up.contains(&folder) {
-            continue;
-        }
-        let paths: Vec<PathBuf> = files.iter().map(|(path, _)| path.clone()).collect();
-        let Some(read) = read_folder(&folder, paths, cancellable, limits, waits).await else {
-            if !cancellable.is_cancelled() {
-                #[cfg(test)]
-                limits.abandoned.set(limits.abandoned.get() + 1);
-                waits.given_up.insert(folder);
-            }
-            continue;
-        };
-        answers.extend(
-            files
-                .into_iter()
-                .zip(read)
-                .filter_map(|((path, fingerprint), media)| Some((path, fingerprint, media?))),
-        );
-    }
-    answers
+    folders
 }
 
-/// Background work through the folder's mount lane: it waits its turn while the mount
-/// is busy with other requests, for at most `limits.busy` across all the folders of a
-/// run, and gives up at once when the mount has stalled. Each read follows symbolic
-/// links through `reach`, so a dead link target trips only itself.
-async fn read_folder(
+fn answered_files(
+    files: Vec<(PathBuf, Fingerprint)>,
+    read: Vec<Option<bool>>,
+) -> impl Iterator<Item = Read> {
+    files
+        .into_iter()
+        .zip(read)
+        .filter_map(|((path, fingerprint), media)| Some((path, fingerprint, media?)))
+}
+
+/// Reads `paths` as background work in `folder`'s mount lane.
+fn read_in_lane(
     folder: &Path,
     paths: Vec<PathBuf>,
-    cancellable: &gio::Cancellable,
-    limits: &Limits,
-    waits: &mut Waits,
-) -> Option<Vec<Option<bool>>> {
-    loop {
-        if cancellable.is_cancelled() {
-            return None;
-        }
-        let paths = paths.clone();
-        let stop = cancellable.clone();
-        #[cfg(test)]
-        {
-            *limits
-                .attempts
-                .borrow_mut()
-                .entry(folder.to_path_buf())
-                .or_default() += 1;
-        }
-        let job = mount_lanes::run(folder, Class::Background, move |progress| {
-            paths
-                .iter()
-                .map(|path| {
-                    if stop.is_cancelled() {
-                        return None;
-                    }
-                    progress
-                        .reach(path, None, || {
-                            crate::services::read_supports_named_family(path)
-                        })
-                        .and_then(Result::ok)
-                })
-                .collect::<Vec<_>>()
-        });
-        match job.await {
-            Ok(read) => return Some(read),
-            Err(Unanswered::Skipped)
-                if mount_lanes::responsiveness(folder) == Responsiveness::Answering =>
-            {
-                let since = *waits.busy_since.get_or_insert_with(Instant::now);
-                if since.elapsed() >= limits.busy {
-                    return None;
-                }
-                glib::timeout_future(BUSY_RETRY).await;
-            }
-            Err(_) => return None,
-        }
+    stop: gio::Cancellable,
+) -> impl Future<Output = Result<Vec<Option<bool>>, Unanswered>> {
+    mount_lanes::run(folder, Class::Background, move |progress| {
+        paths
+            .iter()
+            .map(|path| read_file(progress, path, &stop))
+            .collect::<Vec<_>>()
+    })
+}
+
+/// Follows symbolic links through `reach`, so a dead link target trips only itself.
+fn read_file(
+    progress: &mount_lanes::Progress,
+    path: &Path,
+    stop: &gio::Cancellable,
+) -> Option<bool> {
+    if stop.is_cancelled() {
+        return None;
     }
+    progress
+        .reach(path, None, || {
+            crate::services::read_supports_named_family(path)
+        })
+        .and_then(Result::ok)
 }
