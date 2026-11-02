@@ -21,8 +21,6 @@ pub(super) struct ConnectedMonitor {
     monitor: monitors::BareMonitor,
 }
 
-/// What a watch's batches share: the changes queued, the timer that flushes them, and the
-/// look at the folder's path that follows each flush.
 #[derive(Clone)]
 pub(super) struct MonitorBatches {
     pending: Rc<RefCell<HashMap<PendingMonitorKey, PendingMonitorChange>>>,
@@ -132,8 +130,6 @@ fn pending_key(change: &PendingMonitorChange) -> PendingMonitorKey {
     }
 }
 
-/// Flushes a batch 100 ms after its first change, then looks for the folder's departure
-/// unless the batch reported it.
 fn schedule_flush(batches: &MonitorBatches) {
     if batches.timeout.borrow().is_some() {
         return;

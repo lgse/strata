@@ -406,7 +406,10 @@ executors; decoder waits never occupy GIO's listing threads. Thumbnail admission
 does not wait for a GIO metadata fill. Lookup resolves local size/mtime off the
 GTK thread, then rechecks the RAM cache before decoding a disk hit.
 All views reuse the canonical 256-pixel RAM rendition irrespective of icon size;
-the Freedesktop `large` disk cache remains unchanged. These thumbnail caches do not
+the Freedesktop `large` disk cache remains unchanged. Files anywhere under
+`$XDG_CACHE_HOME/thumbnails` are never looked up or stored there, so browsing the
+cache itself renders its entries in memory only instead of thumbnailing them
+recursively. These thumbnail caches do not
 carry source dimensions or duration: cache hits still use the separately prioritized
 metadata path, whereas fresh image decodes publish their source dimensions directly.
 PNG texture decoding runs off the GTK thread. Persistence remains bounded and
