@@ -75,12 +75,11 @@ impl crate::services::FileSource for HeldListingLocal {
 
     fn start_watch(
         &self,
-        location: Location,
-        include_hidden: bool,
+        request: crate::services::WatchRequest,
         notify: Rc<dyn Fn(crate::services::DirectoryChange)>,
         report: Rc<dyn Fn(crate::services::Watching)>,
     ) -> crate::services::LoadHandle {
-        crate::adapters::LocalFileSource.start_watch(location, include_hidden, notify, report)
+        crate::adapters::LocalFileSource.start_watch(request, notify, report)
     }
 }
 

@@ -43,8 +43,8 @@ use crate::{
     },
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, ItemIdentity, LoadHandle,
-        LocationValidationError, MetadataRequest, RemoteDownload, StampAnswer, Watching,
-        download_remote, remote_file_url,
+        LocationValidationError, MetadataRequest, RemoteDownload, StampAnswer, WatchRequest,
+        Watching, download_remote, remote_file_url,
     },
 };
 

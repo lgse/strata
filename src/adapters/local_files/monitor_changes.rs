@@ -20,15 +20,20 @@ pub(super) struct ConnectedMonitor {
     cancelled: Rc<Cell<bool>>,
     pending: Rc<RefCell<HashMap<PendingMonitorKey, PendingMonitorChange>>>,
     timeout: Rc<RefCell<Option<glib::SourceId>>>,
+    departure_checks: Rc<RefCell<DepartureChecks>>,
     monitor: monitors::BareMonitor,
 }
 
 pub(super) fn connect_monitor(
     monitor: monitors::BareMonitor,
-    location: Location,
-    include_hidden: bool,
+    request: WatchRequest,
     notify: Rc<dyn Fn(DirectoryChange)>,
 ) -> ConnectedMonitor {
+    let WatchRequest {
+        location,
+        include_hidden,
+        began_on,
+    } = request;
     let cancelled = Rc::new(Cell::new(false));
     let pending = Rc::new(RefCell::new(HashMap::<
         PendingMonitorKey,
@@ -36,6 +41,15 @@ pub(super) fn connect_monitor(
     >::new()));
     let timeout = Rc::new(RefCell::new(None::<glib::SourceId>));
     let numbered = Rc::new(RefCell::new(NumberedNames::default()));
+    let departure_checks = Rc::new(RefCell::new(DepartureChecks {
+        watched: location.clone(),
+        began_on,
+        notify: notify.clone(),
+        cancelled: cancelled.clone(),
+        running: None,
+        again: false,
+    }));
+    let departure_checks_for_change = departure_checks.clone();
     let awaited = RefCell::new(AwaitedHints::default());
     let pending_for_change = pending.clone();
     let timeout_for_change = timeout.clone();
@@ -95,9 +109,15 @@ pub(super) fn connect_monitor(
                 let timeout = timeout_for_change.clone();
                 let notify = notify.clone();
                 let cancelled = cancelled_for_change.clone();
+                let watched = watched.clone();
+                let departure_checks = departure_checks_for_change.clone();
                 let source = glib::timeout_add_local_once(Duration::from_millis(100), move || {
                     timeout.take();
+                    let reported = reports_departure(&pending.borrow(), &watched);
                     flush_monitor_changes(&pending, &notify, &cancelled);
+                    if !reported {
+                        report_if_departed(&departure_checks);
+                    }
                 });
                 timeout_for_change.replace(Some(source));
             }
@@ -108,6 +128,7 @@ pub(super) fn connect_monitor(
         cancelled,
         pending,
         timeout,
+        departure_checks,
         monitor,
     }
 }
@@ -456,6 +477,87 @@ pub(super) fn flush_monitor_changes(
     }
 }
 
+pub(super) fn reports_departure(
+    pending: &HashMap<PendingMonitorKey, PendingMonitorChange>,
+    watched: &Location,
+) -> bool {
+    pending.values().any(|change| {
+        matches!(change, PendingMonitorChange::Remove(location)
+            | PendingMonitorChange::Move { from: location, .. } if location == watched)
+    })
+}
+
+/// A background request is skipped while another holds its lane, so a watch looks at its
+/// folder's path once at a time, and the batches that arrive meanwhile ask for one more
+/// look when it ends.
+pub(super) struct DepartureChecks {
+    watched: Location,
+    began_on: Option<ItemIdentity>,
+    notify: Rc<dyn Fn(DirectoryChange)>,
+    cancelled: Rc<Cell<bool>>,
+    running: Option<glib::JoinHandle<()>>,
+    again: bool,
+}
+
+/// Inotify watches the folder, not its path, so it reports no rename or move of an
+/// ancestor and goes on to report changes under the old path. After each batch, the
+/// folder is looked up at its path as background work on its mount's lane, and its
+/// removal is reported when the path holds no folder, or one proven to be another than
+/// the folder the load that asked for the watch found (`began_on`). A busy or stalled
+/// lane leaves the look to the next batch.
+pub(super) fn report_if_departed(checks: &Rc<RefCell<DepartureChecks>>) {
+    if checks.borrow().running.is_some() {
+        checks.borrow_mut().again = true;
+        return;
+    }
+    let (watched, began_on) = {
+        let checks = checks.borrow();
+        (checks.watched.clone(), checks.began_on)
+    };
+    let Some(path) = watched.native_path().map(Path::to_path_buf) else {
+        return;
+    };
+    let job = mount_lanes::run(&path.clone(), Class::Background, move |progress| {
+        departed_from(&path, began_on, progress)
+    });
+    let finished = checks.clone();
+    let task = glib::MainContext::default().spawn_local(async move {
+        let departed = job.await.unwrap_or(false);
+        let (again, notify, cancelled) = {
+            let mut checks = finished.borrow_mut();
+            checks.running = None;
+            let again = std::mem::take(&mut checks.again);
+            (again, checks.notify.clone(), checks.cancelled.get())
+        };
+        if cancelled {
+            return;
+        }
+        if departed {
+            notify(DirectoryChange::Remove(watched));
+        } else if again {
+            report_if_departed(&finished);
+        }
+    });
+    checks.borrow_mut().running = Some(task);
+}
+
+/// Mounts that renumber folders prove nothing either way, so only proof of another folder
+/// counts as a departure there.
+pub(super) fn departed_from(
+    path: &Path,
+    began_on: Option<ItemIdentity>,
+    progress: &Progress,
+) -> bool {
+    match folder_identity_at(path, progress) {
+        Ok(Some(identity)) => {
+            identity.evidence.kind != FileType::Directory
+                || began_on.is_some_and(|began_on| began_on.proof(&identity) == Proof::Different)
+        }
+        Ok(None) => false,
+        Err(error) => matches!(error, rustix::io::Errno::NOENT | rustix::io::Errno::NOTDIR),
+    }
+}
+
 pub(super) fn log_monitor_metadata_error(location: &Location, error: &glib::Error) {
     tracing::debug!(
         location = %location.diagnostic_path(),
@@ -511,6 +613,9 @@ impl Drop for ConnectedMonitor {
             source.remove();
         }
         self.pending.borrow_mut().clear();
+        if let Some(task) = self.departure_checks.borrow_mut().running.take() {
+            task.abort();
+        }
         if let Some(handler) = self.handler.take() {
             self.monitor.monitor().disconnect(handler);
         }
