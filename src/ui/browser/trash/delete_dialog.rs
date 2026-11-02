@@ -336,7 +336,9 @@ impl ViewState {
                 .focused_item()
                 .is_some_and(|(now, _, entry)| now == depth && entry.location == locations[0]);
             if !stayed {
-                state.browser.select_entries_by_location_at(depth, &locations);
+                state
+                    .browser
+                    .select_entries_by_location_at(depth, &locations);
             }
         });
     }

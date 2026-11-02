@@ -30,7 +30,12 @@ fn prompt_rows() -> [(&'static str, Met, Met, bool); 10] {
         ("x:y", ("x_y", folder), ("x:y", None), true),
         ("folder", ("folder", folder), ("folder", folder), true),
         ("same", ("same", folder), ("same", folder), false),
-        ("data", ("data", file_on_folder), ("data", file_on_folder), false),
+        (
+            "data",
+            ("data", file_on_folder),
+            ("data", file_on_folder),
+            false,
+        ),
         ("link", ("link", None), ("link", file), false),
         ("new.txt", ("new.txt", None), ("new.txt", None), false),
         ("own.txt", ("own.txt", None), ("own.txt", None), false),

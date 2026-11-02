@@ -38,9 +38,8 @@ use crate::{
     app::BrowserEvent,
     model::{EntryKind, FileEntry, Location, MetadataValue},
     portal::{
-        ChooserKind, ChooserRequest, DestinationCheck, check_destinations, local_uri, open_selection,
-        safe_filename,
-        writable_from_read_only,
+        ChooserKind, ChooserRequest, DestinationCheck, check_destinations, local_uri,
+        open_selection, safe_filename, writable_from_read_only,
     },
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, ItemIdentity, LoadHandle,

@@ -505,7 +505,9 @@ impl ViewState {
         let owned = self.pending_rename.borrow().as_ref().and_then(|pending| {
             let owned = match operation_id {
                 None => pending.not_yet_running(),
-                Some(actual) => pending.owns_operation(actual, self.browser.last_started_operation()),
+                Some(actual) => {
+                    pending.owns_operation(actual, self.browser.last_started_operation())
+                }
             };
             owned.then(|| pending.advanced.then(|| pending.old_location.clone()))
         });
