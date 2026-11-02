@@ -1246,3 +1246,49 @@ fn a_folder_arriving_while_a_location_is_typed_keeps_the_entry_open() {
         },
     );
 }
+
+/// Icons and List show only the active folder, so the location bar and Ctrl+L stop
+/// naming a child that Columns mirrored beside it.
+#[test]
+fn leaving_columns_names_the_active_folder_instead_of_its_mirrored_child() {
+    use crate::ui::browser_modes::BrowserMode;
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::leaving_columns_names_the_active_folder_instead_of_its_mirrored_child",
+        || {
+            let root = tempfile::tempdir().expect("fixture");
+            let beta = root.path().join("beta");
+            std::fs::create_dir(&beta).expect("folder");
+            let (view, window, _overlay) = hosted_browser();
+            let loaded = |depth: usize| {
+                view.browser()
+                    .column_snapshot(depth)
+                    .is_some_and(|snapshot| !snapshot.loading)
+            };
+            view.set_view_mode(BrowserMode::Columns);
+            view.browser().navigate(Location::local(root.path()));
+            wait_until(|| loaded(0), "the folder loads");
+            view.browser().show_child(0, Location::local(&beta));
+            wait_until(|| loaded(1), "the mirrored child loads");
+            let root_path = Location::local(root.path()).display_path();
+            let beta_path = Location::local(&beta).display_path();
+            assert_eq!(view.browser().active_depth(), Some(0));
+            assert_eq!(view.state.location_entry.text(), beta_path);
+
+            view.set_view_mode(BrowserMode::List);
+            assert_eq!(
+                view.state.location_entry.text(),
+                root_path,
+                "List shows the active folder"
+            );
+
+            view.set_view_mode(BrowserMode::Columns);
+            assert_eq!(
+                view.state.location_entry.text(),
+                beta_path,
+                "Columns shows the mirrored child again"
+            );
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}

@@ -7,6 +7,7 @@ use crate::ui::browser::clipboard::{
 use crate::ui::browser::{
     DropHandler, ViewState, attach_drop_target, commit_dropped_value, file_drop_action,
 };
+use crate::ui::browser_modes::BrowserMode;
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::Cell;
@@ -236,6 +237,20 @@ fn hierarchy_item_row(crumb: &Location, home: &Location) -> gtk::Box {
 impl ViewState {
     pub(in crate::ui::browser) fn sync_active_location(self: &Rc<Self>) {
         if let Some(location) = self.browser.active_location() {
+            self.set_location(&location);
+        }
+    }
+
+    /// Names the folder the view shows: Columns ends at its deepest column, while
+    /// Icons and List show only the active folder, however many columns stay open.
+    pub(in crate::ui::browser) fn sync_displayed_location(self: &Rc<Self>) {
+        let location = match self.mode.get() {
+            BrowserMode::Columns => (0..)
+                .map_while(|depth| self.browser.location_at(depth))
+                .last(),
+            BrowserMode::Icons | BrowserMode::List => self.browser.active_location(),
+        };
+        if let Some(location) = location {
             self.set_location(&location);
         }
     }
