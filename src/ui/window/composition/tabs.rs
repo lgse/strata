@@ -835,14 +835,5 @@ fn tab_label(location: Option<&Location>) -> String {
             .file_name()
             .map_or_else(|| "/".into(), |name| name.to_string_lossy().into_owned());
     }
-    let uri = location.uri_value().unwrap_or_default();
-    match uri {
-        "trash:///" => crate::i18n::tr("Trash"),
-        "recent:///" => crate::i18n::tr("Recent"),
-        "network:///" => crate::i18n::tr("Network"),
-        _ => gio::File::for_uri(uri).basename().map_or_else(
-            || crate::i18n::tr("Location"),
-            |name| name.to_string_lossy().into_owned(),
-        ),
-    }
+    location.display_name()
 }
