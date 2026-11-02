@@ -545,7 +545,6 @@ fn describe(widget: &gtk::Widget) -> String {
     format!("{} {text:?}", widget.type_().name())
 }
 
-/// Builds every Settings navigation page in navigation order.
 fn navigation_pages() -> Vec<(&'static str, gtk::Widget)> {
     let manager = PreferenceManager::shared();
     let pages = vec![
@@ -596,8 +595,8 @@ fn every_page_heading_is_in_every_catalog() {
             use rust_i18n::Backend;
             crate::ui::prepare_portal_ui();
             let _ = PreferenceManager::shared();
-            // Under English an uncatalogued heading shows its source text unchanged,
-            // so each heading's text is the key every language must translate.
+            // Under English a heading with no catalog entry shows its source text
+            // unchanged, so each heading's text is the key every language must translate.
             rust_i18n::set_locale("en");
             let catalogs = crate::i18n::Catalogs::compiled();
             let headings: Vec<(&str, String)> = navigation_pages()
