@@ -265,6 +265,9 @@ impl SortMenu {
                 popover.add_css_class("actions-submenu");
             }
         }
+        if widget.type_().name() == "GtkModelButton" {
+            hide_native_indicators(&children);
+        }
         present_check(widget, &children, prefs);
         if widget.find_property("popover").is_some()
             && let Some(menu) = widget
@@ -384,7 +387,6 @@ fn children(widget: &gtk::Widget) -> Vec<gtk::Widget> {
 }
 
 fn set_summary(widget: &gtk::Widget, children: &[gtk::Widget], text: &str) {
-    hide_native_indicators(children);
     let label = children
         .iter()
         .find(|child| child.has_css_class("sort-submenu-value"))
@@ -490,7 +492,6 @@ fn present_check(widget: &gtk::Widget, children: &[gtk::Widget], prefs: ViewPref
         );
     }
     crate::ui::accessibility::set_checked(widget, checked);
-    hide_native_indicators(children);
     let check = children
         .iter()
         .find(|child| child.has_css_class("sort-selection-check"))
