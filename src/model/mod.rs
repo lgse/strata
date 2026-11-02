@@ -486,7 +486,7 @@ pub enum FolderSort {
     Unremembered,
     /// Remembered per folder but not set: the default sort applies.
     Default,
-    Saved(SortKey, SortDirection),
+    Saved(SortKey, SortDirection, NameComparison),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -499,6 +499,9 @@ pub enum SortKey {
     Type,
     Size,
     Modified,
+    Extension,
+    Created,
+    Unsorted,
 }
 
 impl SortKey {
@@ -508,6 +511,9 @@ impl SortKey {
             "size" => Some(Self::Size),
             "modified" => Some(Self::Modified),
             "type" => Some(Self::Type),
+            "extension" => Some(Self::Extension),
+            "created" => Some(Self::Created),
+            "unsorted" => Some(Self::Unsorted),
             _ => None,
         }
     }
@@ -518,6 +524,9 @@ impl SortKey {
             Self::Size => Some("size"),
             Self::Modified => Some("modified"),
             Self::Type => Some("type"),
+            Self::Extension => Some("extension"),
+            Self::Created => Some("created"),
+            Self::Unsorted => Some("unsorted"),
             Self::DeviceOrder | Self::Recency => None,
         }
     }
@@ -547,14 +556,41 @@ impl SortDirection {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NameComparison {
+    pub natural: bool,
+    pub case_sensitive: bool,
+}
+
+impl Default for NameComparison {
+    fn default() -> Self {
+        Self {
+            natural: true,
+            case_sensitive: false,
+        }
+    }
+}
+
+pub type SortOptions = (SortKey, SortDirection, NameComparison);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ViewPreferences {
     pub show_hidden: bool,
     pub folders_first: bool,
     pub sort_key: SortKey,
     pub sort_direction: SortDirection,
+    pub name_comparison: NameComparison,
 }
 
 impl ViewPreferences {
+    pub fn sort_options(&self) -> SortOptions {
+        (self.sort_key, self.sort_direction, self.name_comparison)
+    }
+
+    pub fn set_sort_options(&mut self, (key, direction, comparison): SortOptions) {
+        self.set_sort((key, direction));
+        self.name_comparison = comparison;
+    }
+
     pub fn sort(&self) -> (SortKey, SortDirection) {
         (self.sort_key, self.sort_direction)
     }
@@ -572,6 +608,7 @@ impl Default for ViewPreferences {
             folders_first: true,
             sort_key: SortKey::Name,
             sort_direction: SortDirection::Ascending,
+            name_comparison: NameComparison::default(),
         }
     }
 }
@@ -603,6 +640,7 @@ pub struct FileEntry {
     pub kind: EntryKind,
     pub size: MetadataValue<u64>,
     pub modified_unix_seconds: MetadataValue<i64>,
+    pub created_unix_seconds: MetadataValue<i64>,
     pub recent_unix_seconds: MetadataValue<i64>,
     /// Registry handle for Recent rows; `location` instead identifies the real target.
     pub recent_uri: Option<String>,

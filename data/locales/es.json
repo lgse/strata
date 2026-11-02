@@ -1530,5 +1530,15 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} pies",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} pies",
-  "No action": "Ninguna acción"
+  "No action": "Ninguna acción",
+  "Natural": "Natural",
+  "Alphabetical": "Alfabético",
+  "More sorting": "Más opciones de ordenación",
+  "Name order": "Orden de los nombres",
+  "Case-sensitive names": "Distinguir mayúsculas y minúsculas",
+  "Extension": "Extensión",
+  "Unsorted": "Sin ordenar",
+  "Sort: %{field} %{direction}": "Ordenar: %{field} %{direction}",
+  "%{field} · %{order}": "%{field} · %{order}",
+  "%{field} · case-sensitive": "%{field} · distingue mayúsculas"
 }

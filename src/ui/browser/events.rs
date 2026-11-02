@@ -152,11 +152,11 @@ impl ViewState {
                 location,
                 sort_key,
                 sort_direction,
+                name_comparison,
             } => {
-                crate::ui::preferences::PreferenceManager::shared().set_folder_sort(
+                crate::ui::preferences::PreferenceManager::shared().set_folder_sort_options(
                     location,
-                    *sort_key,
-                    *sort_direction,
+                    (*sort_key, *sort_direction, *name_comparison),
                 );
             }
             BrowserEvent::ItemRelocated { from, to, merged } => {

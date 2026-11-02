@@ -1530,5 +1530,15 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} ft",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} ft",
-  "No action": "Nincs művelet"
+  "No action": "Nincs művelet",
+  "Natural": "Természetes",
+  "Alphabetical": "Betűrendes",
+  "More sorting": "További rendezés",
+  "Name order": "Névsorrend",
+  "Case-sensitive names": "Kis- és nagybetűk megkülönböztetése",
+  "Extension": "Kiterjesztés",
+  "Unsorted": "Rendezetlen",
+  "Sort: %{field} %{direction}": "Rendezés: %{field} %{direction}",
+  "%{field} · %{order}": "%{field} · %{order}",
+  "%{field} · case-sensitive": "%{field} · kis- és nagybetűérzékeny"
 }

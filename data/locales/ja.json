@@ -1530,5 +1530,15 @@
   "%{minimum}–%{maximum} ft": "%{minimum}～%{maximum} フィート",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} フィート",
-  "No action": "アクションなし"
+  "No action": "アクションなし",
+  "Natural": "自然順",
+  "Alphabetical": "辞書順",
+  "More sorting": "その他の並べ替え",
+  "Name order": "名前の順序",
+  "Case-sensitive names": "名前の大文字と小文字を区別",
+  "Extension": "拡張子",
+  "Unsorted": "並べ替えなし",
+  "Sort: %{field} %{direction}": "並べ替え: %{field} %{direction}",
+  "%{field} · %{order}": "%{field} · %{order}",
+  "%{field} · case-sensitive": "%{field} · 大文字と小文字を区別"
 }

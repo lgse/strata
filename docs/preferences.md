@@ -183,6 +183,27 @@ follows later default changes. Every open column, tab, and window showing the sa
 folder updates live. View mode, density, hidden files, grouping, folders first, and
 List column widths stay application-wide.
 
+The sort menu keeps Name, Size, Modified and Type at the top. **More sorting**
+opens a flyout for Extension, Created and Unsorted; **Name order** chooses Natural
+or Alphabetical, with a separate **Case-sensitive names** toggle. Closed submenu
+rows show the current value on the right. Name order and case sensitivity are
+saved with the sort, including defaults and per-folder overrides, and also apply
+to names used to break ties under other fields.
+
+Extension uses the final suffix, so `archive.tar.gz` sorts under `gz`; dotfiles
+such as `.gitignore` and extensionless files have no extension. Created uses birth
+time, with unavailable times last in either direction. Unsorted follows directory
+discovery order, retaining that order within the folder/file groups when Folders
+first is on. Returning to Unsorted reloads the directory. Its direction and
+name-comparison controls are disabled.
+
+List view keeps an icon-only sort menu beside Columns. A labelled **Sort** control
+appears when the active field has no visible matching column, or Name uses a
+non-default comparison. Unsorted and camera device order have no label or column arrow. Selecting a
+standard field clears the extra-sort summary; a hidden sort column remains active.
+The List sort menu includes Ascending and Descending, including for fields without
+a matching column header.
+
 In Icons, **Ctrl+Alt++** (or **Ctrl+Alt+=**) and **Ctrl+Alt+−**, **Ctrl+Shift+wheel**,
 and in 10xer mode **+** / **−** on the listing step the thumbnail size through 32,
 36, 40, 44, 48, 56, 64, 72, 80, 96, 112, 128, 144, 160, 192, 224, and 256 px; a size

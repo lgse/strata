@@ -53,7 +53,7 @@ impl Browser {
         {
             return;
         }
-        if sort_key == SortKey::DeviceOrder {
+        if matches!(sort_key, SortKey::DeviceOrder | SortKey::Unsorted) {
             self.set_sort_key(depth, sort_key);
             return;
         }
@@ -63,7 +63,44 @@ impl Browser {
         });
     }
 
+    fn reload_discovery_order(self: &Rc<Self>, pass: SortPass) {
+        self.sort_resync
+            .note_attempt(pass.origin, pass.depth, pass.preferences);
+        self.state
+            .borrow_mut()
+            .apply_sort_preferences(pass.depth, pass.preferences);
+        if pass.origin == SortOrigin::Chosen {
+            self.record_sort(pass.depth);
+        }
+        self.pending_sort.set(None);
+        self.pending_sort_applied.set(false);
+        self.finish_sorting(pass.depth);
+        self.refresh_column(pass.depth);
+    }
+
+    pub fn set_name_comparison(
+        self: &Rc<Self>,
+        depth: usize,
+        comparison: crate::model::NameComparison,
+    ) {
+        if self
+            .column_preferences(depth)
+            .is_some_and(|prefs| prefs.sort_key == SortKey::Unsorted)
+        {
+            return;
+        }
+        self.apply_column_preferences(depth, SortOrigin::Chosen, move |preferences| {
+            preferences.name_comparison = comparison;
+        });
+    }
+
     pub fn set_sort_direction(self: &Rc<Self>, depth: usize, sort_direction: SortDirection) {
+        if self
+            .column_preferences(depth)
+            .is_some_and(|prefs| prefs.sort_key == SortKey::Unsorted)
+        {
+            return;
+        }
         self.apply_column_preferences(depth, SortOrigin::Chosen, move |preferences| {
             preferences.sort_direction = sort_direction;
         });
@@ -101,8 +138,8 @@ impl Browser {
         if previous != preferences {
             self.notify_preferences_observers();
         }
-        if (previous.sort(), previous.folders_first)
-            != (preferences.sort(), preferences.folders_first)
+        if (previous.sort_options(), previous.folders_first)
+            != (preferences.sort_options(), preferences.folders_first)
         {
             self.resync_column_sorts();
         }
@@ -185,12 +222,30 @@ impl Browser {
                 self.finish_sorting(depth);
                 return;
             };
+            let previous = preferences;
             update(&mut preferences);
+            if preferences.sort_key == SortKey::Unsorted
+                && (previous.sort_key != SortKey::Unsorted
+                    || previous.folders_first != preferences.folders_first)
+            {
+                drop(state);
+                self.reload_discovery_order(SortPass {
+                    depth,
+                    generation,
+                    origin,
+                    preferences,
+                });
+                return;
+            }
             // Size/date sorts need the metadata streaming enumeration skipped:
             // fill the whole column first instead of sorting placeholders.
-            let targets = state.column_unknown_metadata(depth).unwrap_or_default();
-            if matches!(preferences.sort_key, SortKey::Size | SortKey::Modified)
-                && !targets.is_empty()
+            let targets = state
+                .column_unknown_sort_metadata(depth, preferences.sort_key)
+                .unwrap_or_default();
+            if matches!(
+                preferences.sort_key,
+                SortKey::Size | SortKey::Modified | SortKey::Created
+            ) && !targets.is_empty()
             {
                 drop(state);
                 let pass = SortPass {

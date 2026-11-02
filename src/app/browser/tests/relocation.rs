@@ -36,6 +36,7 @@ fn named(parent: &Location, name: &str, directory: bool) -> FileEntry {
         thumbnail_path: None,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         mode: MetadataValue::Unknown,
         recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,

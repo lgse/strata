@@ -74,6 +74,7 @@ fn drag_preview_icon_renders_single_and_multiple_entries() {
                     kind,
                     size: MetadataValue::Unknown,
                     modified_unix_seconds: MetadataValue::Unknown,
+                    created_unix_seconds: MetadataValue::Unknown,
                     recent_unix_seconds: MetadataValue::Unknown,
                     recent_uri: None,
                     is_hidden: false,

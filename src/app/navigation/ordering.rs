@@ -24,7 +24,7 @@ pub(super) fn merge_entries(
         .into_iter()
         .map(|entry| SortItem::new(entry, precompute_type))
         .collect();
-    incoming_items.sort_unstable_by(|left, right| compare_sort_items(left, right, preferences));
+    incoming_items.sort_by(|left, right| compare_sort_items(left, right, preferences));
     if existing.is_empty() {
         let incoming_entries: Vec<FileEntry> =
             incoming_items.into_iter().map(|item| item.entry).collect();
@@ -74,7 +74,11 @@ fn takes_incoming(
 ) -> bool {
     match (existing, incoming) {
         (Some(left), Some(right)) => {
-            compare_sort_items(right, left, preferences) != Ordering::Greater
+            if preferences.sort_key == SortKey::Unsorted {
+                compare_sort_items(right, left, preferences) == Ordering::Less
+            } else {
+                compare_sort_items(right, left, preferences) != Ordering::Greater
+            }
         }
         (None, Some(_)) => true,
         _ => false,
@@ -108,7 +112,7 @@ pub(crate) fn sort_entries(
         .map(|entry| SortItem::new(entry, precompute_type))
         .collect();
 
-    items.sort_unstable_by(|left, right| compare_sort_items(left, right, preferences));
+    items.sort_by(|left, right| compare_sort_items(left, right, preferences));
 
     items.into_iter().map(|item| item.entry).collect()
 }
@@ -141,11 +145,11 @@ fn compare_with_folded(
     right_folded: &FoldedName,
     right_raw: &str,
 ) -> Ordering {
-    natural_compare(
-        left_folded.as_bytes(left_raw),
-        right_folded.as_bytes(right_raw),
+    compare_names(
+        (left_folded, left_raw),
+        (right_folded, right_raw),
+        crate::model::NameComparison::default(),
     )
-    .then_with(|| left_raw.cmp(right_raw))
 }
 
 struct SortItem {
@@ -177,17 +181,40 @@ fn compare_sort_items(left: &SortItem, right: &SortItem, preferences: ViewPrefer
         }
     }
 
+    if preferences.sort_key == SortKey::Unsorted {
+        return Ordering::Equal;
+    }
+    if preferences.sort_key == SortKey::Created {
+        return compare_created(
+            &left.entry.created_unix_seconds,
+            &right.entry.created_unix_seconds,
+            preferences.sort_direction,
+        )
+        .then_with(|| {
+            compare_configured_names(
+                &left.entry.display_name,
+                &right.entry.display_name,
+                preferences.name_comparison,
+            )
+        })
+        .then_with(|| left.entry.location.compare(&right.entry.location));
+    }
+
     let ordering = match preferences.sort_key {
-        SortKey::DeviceOrder => Ordering::Equal,
+        SortKey::DeviceOrder | SortKey::Unsorted | SortKey::Created => Ordering::Equal,
         SortKey::Recency => compare_metadata(
             &left.entry.recent_unix_seconds,
             &right.entry.recent_unix_seconds,
         ),
-        SortKey::Name => compare_with_folded(
-            &left.folded_name,
+        SortKey::Name => compare_names(
+            (&left.folded_name, &left.entry.display_name),
+            (&right.folded_name, &right.entry.display_name),
+            preferences.name_comparison,
+        ),
+        SortKey::Extension => compare_extensions(
             &left.entry.display_name,
-            &right.folded_name,
             &right.entry.display_name,
+            preferences.name_comparison,
         ),
         SortKey::Type => {
             let left_type = left
@@ -212,11 +239,10 @@ fn compare_sort_items(left: &SortItem, right: &SortItem, preferences: ViewPrefer
     };
     ordering
         .then_with(|| {
-            compare_with_folded(
-                &left.folded_name,
-                &left.entry.display_name,
-                &right.folded_name,
-                &right.entry.display_name,
+            compare_names(
+                (&left.folded_name, &left.entry.display_name),
+                (&right.folded_name, &right.entry.display_name),
+                preferences.name_comparison,
             )
         })
         .then_with(|| left.entry.location.compare(&right.entry.location))
@@ -237,17 +263,40 @@ pub(super) fn compare_entries(
         }
     }
 
+    if preferences.sort_key == SortKey::Unsorted {
+        return Ordering::Equal;
+    }
+    if preferences.sort_key == SortKey::Created {
+        return compare_created(
+            &left.created_unix_seconds,
+            &right.created_unix_seconds,
+            preferences.sort_direction,
+        )
+        .then_with(|| {
+            compare_configured_names(
+                &left.display_name,
+                &right.display_name,
+                preferences.name_comparison,
+            )
+        })
+        .then_with(|| left.location.compare(&right.location));
+    }
+
     let left_folded = FoldedName::new(&left.display_name);
     let right_folded = FoldedName::new(&right.display_name);
 
     let ordering = match preferences.sort_key {
-        SortKey::DeviceOrder => Ordering::Equal,
+        SortKey::DeviceOrder | SortKey::Unsorted | SortKey::Created => Ordering::Equal,
         SortKey::Recency => compare_metadata(&left.recent_unix_seconds, &right.recent_unix_seconds),
-        SortKey::Name => compare_with_folded(
-            &left_folded,
+        SortKey::Name => compare_names(
+            (&left_folded, &left.display_name),
+            (&right_folded, &right.display_name),
+            preferences.name_comparison,
+        ),
+        SortKey::Extension => compare_extensions(
             &left.display_name,
-            &right_folded,
             &right.display_name,
+            preferences.name_comparison,
         ),
         SortKey::Type => compare_entry_types(left, right),
         SortKey::Size => compare_metadata(&left.size, &right.size),
@@ -261,11 +310,10 @@ pub(super) fn compare_entries(
     };
     ordering
         .then_with(|| {
-            compare_with_folded(
-                &left_folded,
-                &left.display_name,
-                &right_folded,
-                &right.display_name,
+            compare_names(
+                (&left_folded, &left.display_name),
+                (&right_folded, &right.display_name),
+                preferences.name_comparison,
             )
         })
         .then_with(|| left.location.compare(&right.location))
@@ -296,7 +344,7 @@ pub(crate) fn compare_display_names(left: &str, right: &str) -> Ordering {
     compare_with_folded(&left_folded, left, &right_folded, right)
 }
 
-fn natural_compare(left: &[u8], right: &[u8]) -> Ordering {
+fn natural_compare(left: &[u8], right: &[u8], case_sensitive: bool) -> Ordering {
     let (mut li, mut ri) = (0, 0);
     while li < left.len() && ri < right.len() {
         if left[li].is_ascii_digit() && right[ri].is_ascii_digit() {
@@ -313,8 +361,8 @@ fn natural_compare(left: &[u8], right: &[u8]) -> Ordering {
             li = lo;
             ri = ro;
         } else {
-            let lb = left[li].to_ascii_lowercase();
-            let rb = right[ri].to_ascii_lowercase();
+            let lb = name_byte(left[li], case_sensitive);
+            let rb = name_byte(right[ri], case_sensitive);
             if lb != rb {
                 return lb.cmp(&rb);
             }
@@ -345,5 +393,80 @@ fn compare_metadata<T: Ord>(left: &MetadataValue<T>, right: &MetadataValue<T>) -
         (MetadataValue::Unknown, MetadataValue::Unavailable) => Ordering::Less,
         (MetadataValue::Unavailable, MetadataValue::Unknown) => Ordering::Greater,
         _ => Ordering::Equal,
+    }
+}
+
+fn compare_names(
+    left: (&FoldedName, &str),
+    right: (&FoldedName, &str),
+    comparison: crate::model::NameComparison,
+) -> Ordering {
+    let (left_bytes, right_bytes) = if comparison.case_sensitive {
+        (left.1.as_bytes(), right.1.as_bytes())
+    } else {
+        (left.0.as_bytes(left.1), right.0.as_bytes(right.1))
+    };
+    let ordering = if comparison.natural {
+        natural_compare(left_bytes, right_bytes, comparison.case_sensitive)
+    } else if comparison.case_sensitive {
+        left_bytes.cmp(right_bytes)
+    } else {
+        left_bytes
+            .iter()
+            .map(u8::to_ascii_lowercase)
+            .cmp(right_bytes.iter().map(u8::to_ascii_lowercase))
+    };
+    ordering.then_with(|| left.1.cmp(right.1))
+}
+
+fn compare_configured_names(
+    left: &str,
+    right: &str,
+    comparison: crate::model::NameComparison,
+) -> Ordering {
+    compare_names(
+        (&FoldedName::new(left), left),
+        (&FoldedName::new(right), right),
+        comparison,
+    )
+}
+
+fn compare_extensions(
+    left: &str,
+    right: &str,
+    comparison: crate::model::NameComparison,
+) -> Ordering {
+    fn extension(name: &str) -> &str {
+        std::path::Path::new(name)
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("")
+    }
+    compare_configured_names(extension(left), extension(right), comparison)
+}
+
+fn compare_created(
+    left: &MetadataValue<i64>,
+    right: &MetadataValue<i64>,
+    direction: SortDirection,
+) -> Ordering {
+    let ordering = compare_metadata(left, right);
+    if direction == SortDirection::Descending
+        && matches!(
+            (left, right),
+            (MetadataValue::Known(_), MetadataValue::Known(_))
+        )
+    {
+        ordering.reverse()
+    } else {
+        ordering
+    }
+}
+
+fn name_byte(byte: u8, case_sensitive: bool) -> u8 {
+    if case_sensitive {
+        byte
+    } else {
+        byte.to_ascii_lowercase()
     }
 }

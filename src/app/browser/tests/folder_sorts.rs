@@ -44,6 +44,7 @@ fn observe_chosen_sorts(
             location,
             sort_key,
             sort_direction,
+            ..
         } = event
         {
             observer(location, *sort_key, *sort_direction);
@@ -57,7 +58,11 @@ fn save_reported_sorts(browser: &Browser, saved: &SavedSorts) {
     observe_chosen_sorts(browser, move |location, sort_key, sort_direction| {
         saved.borrow_mut().insert(
             location.clone(),
-            FolderSort::Saved(sort_key, sort_direction),
+            FolderSort::Saved(
+                sort_key,
+                sort_direction,
+                crate::model::NameComparison::default(),
+            ),
         );
     });
 }
@@ -92,7 +97,11 @@ fn remembered_folders_open_in_their_saved_sort_and_sorting_reports_only_that_fol
         .expect("the async test lock should not be poisoned");
     let saved: SavedSorts = Rc::new(RefCell::new(HashMap::from([(
         Location::local("/fixture"),
-        FolderSort::Saved(SortKey::Size, SortDirection::Descending),
+        FolderSort::Saved(
+            SortKey::Size,
+            SortDirection::Descending,
+            crate::model::NameComparison::default(),
+        ),
     )])));
     let (browser, reported) = remembering_browser(Rc::new(RestoredSortingSource), &saved);
     let defaults_published = Rc::new(Cell::new(0));
@@ -183,7 +192,11 @@ fn saved_and_default_changes_resync_open_columns_while_unremembered_columns_keep
 
     saved.borrow_mut().insert(
         Location::local("/fixture"),
-        FolderSort::Saved(SortKey::Type, SortDirection::Descending),
+        FolderSort::Saved(
+            SortKey::Type,
+            SortDirection::Descending,
+            crate::model::NameComparison::default(),
+        ),
     );
     folder.resync_column_sorts();
     pump_until_settled(&folder, || {
@@ -267,7 +280,11 @@ fn opening_a_folder_whose_sort_waits_for_metadata_saves_nothing() {
         .expect("the async test lock should not be poisoned");
     let saved: SavedSorts = Rc::new(RefCell::new(HashMap::from([(
         Location::local("/fixture"),
-        FolderSort::Saved(SortKey::Size, SortDirection::Ascending),
+        FolderSort::Saved(
+            SortKey::Size,
+            SortDirection::Ascending,
+            crate::model::NameComparison::default(),
+        ),
     )])));
     let source = Rc::new(ScriptedSource::manual(
         vec![],
@@ -319,7 +336,11 @@ fn a_resync_superseded_by_a_chosen_sort_is_retried() {
 
     saved.borrow_mut().insert(
         Location::local("/fixture"),
-        FolderSort::Saved(SortKey::Name, SortDirection::Descending),
+        FolderSort::Saved(
+            SortKey::Name,
+            SortDirection::Descending,
+            crate::model::NameComparison::default(),
+        ),
     );
     started.set(false);
     browser.resync_column_sorts();
@@ -350,7 +371,11 @@ fn a_resync_is_not_held_up_by_a_superseded_metadata_sort() {
 
     saved.borrow_mut().insert(
         Location::local("/fixture/child"),
-        FolderSort::Saved(SortKey::Name, SortDirection::Descending),
+        FolderSort::Saved(
+            SortKey::Name,
+            SortDirection::Descending,
+            crate::model::NameComparison::default(),
+        ),
     );
     browser.resync_column_sorts();
 
@@ -524,7 +549,11 @@ fn a_resync_waits_for_a_sort_still_publishing_its_rows() {
     poll_until(|| browser.publishing_sort(0));
     saved.borrow_mut().insert(
         Location::local("/fixture"),
-        FolderSort::Saved(SortKey::Name, SortDirection::Descending),
+        FolderSort::Saved(
+            SortKey::Name,
+            SortDirection::Descending,
+            crate::model::NameComparison::default(),
+        ),
     );
     browser.resync_column_sorts();
     pump_until_settled(&browser, || {
@@ -537,4 +566,24 @@ fn a_resync_waits_for_a_sort_still_publishing_its_rows() {
         (2, 2),
         "each sort finishes once, after its rows are published"
     );
+}
+
+#[test]
+fn returning_to_unsorted_reloads_discovery_order_instead_of_retaining_name_order() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let browser = Browser::new(Rc::new(RestoredSortingSource));
+    browser.navigate(Location::local("/fixture"));
+    assert_eq!(column_names(&browser, 0), ["large", "small"]);
+
+    browser.set_sort_key(0, SortKey::Unsorted);
+    pump_until_settled(&browser, || column_names(&browser, 0) == ["small", "large"]);
+    assert_eq!(
+        sorting(&browser, 0).map(|sort| sort.0),
+        Some(SortKey::Unsorted)
+    );
+
+    browser.set_sort_key(0, SortKey::Name);
+    pump_until_settled(&browser, || column_names(&browser, 0) == ["large", "small"]);
 }

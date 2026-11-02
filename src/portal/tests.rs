@@ -35,6 +35,7 @@ fn entry(path: &Path, directory: bool) -> FileEntry {
         mode: MetadataValue::Unknown,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,

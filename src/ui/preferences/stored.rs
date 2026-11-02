@@ -89,18 +89,24 @@ pub(super) fn sort_preferences(preferences: &Preferences) -> ViewPreferences {
         folders_first: preferences.folders_first,
         sort_key: sorting.0,
         sort_direction: sorting.1,
+        name_comparison: crate::model::NameComparison {
+            natural: preferences.natural_sort,
+            case_sensitive: preferences.case_sensitive_sort,
+        },
     }
 }
 
 pub(super) fn store_sort(
     preferences: &mut Preferences,
-    (sort_key, sort_direction): (SortKey, SortDirection),
+    (sort_key, sort_direction, comparison): crate::model::SortOptions,
 ) -> bool {
     let Some(stored_key) = sort_key.stored_name() else {
         return false;
     };
     preferences.sort_key = stored_key.to_owned();
     preferences.sort_direction = sort_direction.stored_name().to_owned();
+    preferences.natural_sort = comparison.natural;
+    preferences.case_sensitive_sort = comparison.case_sensitive;
     true
 }
 

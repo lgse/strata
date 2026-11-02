@@ -1530,5 +1530,15 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} фут.",
   "%{elevation} m": "%{elevation} м",
   "%{elevation} ft": "%{elevation} фут.",
-  "No action": "Нет действия"
+  "No action": "Нет действия",
+  "Natural": "Естественный",
+  "Alphabetical": "Алфавитный",
+  "More sorting": "Другие способы сортировки",
+  "Name order": "Порядок имён",
+  "Case-sensitive names": "Учитывать регистр имён",
+  "Extension": "Расширение",
+  "Unsorted": "Без сортировки",
+  "Sort: %{field} %{direction}": "Сортировка: %{field} %{direction}",
+  "%{field} · %{order}": "%{field} · %{order}",
+  "%{field} · case-sensitive": "%{field} · с учётом регистра"
 }

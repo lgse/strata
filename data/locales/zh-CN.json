@@ -1530,5 +1530,15 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} 英尺",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} 英尺",
-  "No action": "无操作"
+  "No action": "无操作",
+  "Natural": "自然排序",
+  "Alphabetical": "字典序",
+  "More sorting": "更多排序方式",
+  "Name order": "名称顺序",
+  "Case-sensitive names": "名称区分大小写",
+  "Extension": "扩展名",
+  "Unsorted": "不排序",
+  "Sort: %{field} %{direction}": "排序：%{field} %{direction}",
+  "%{field} · %{order}": "%{field} · %{order}",
+  "%{field} · case-sensitive": "%{field} · 区分大小写"
 }

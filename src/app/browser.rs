@@ -305,6 +305,7 @@ pub enum BrowserEvent {
         location: Location,
         sort_key: SortKey,
         sort_direction: SortDirection,
+        name_comparison: crate::model::NameComparison,
     },
     /// An item an operation of this browser renamed or moved, published as it
     /// lands, even when a later operation superseded that one. `merged` means

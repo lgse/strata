@@ -359,3 +359,17 @@ fn browse_activation_navigates_or_requests_mounting_of_the_resolved_share() {
         }
     }
 }
+
+#[test]
+fn streamed_creation_time_is_filled_before_created_sorting() {
+    let location = Location::uri("smb://server/folder/file");
+    let info = browse_info(gio::FileType::Regular, None, LIST_ATTRIBUTES);
+    let entry = entry_from_info(location.clone(), info.clone());
+    assert_eq!(entry.created_unix_seconds, MetadataValue::Unknown);
+    info.set_attribute_uint64(gio::FILE_ATTRIBUTE_TIME_CREATED, 123);
+    let (update, _) = update_from_info(&info, &location);
+    assert_eq!(update.created_unix_seconds, MetadataValue::Known(123));
+    info.remove_attribute(gio::FILE_ATTRIBUTE_TIME_CREATED);
+    let (update, _) = update_from_info(&info, &location);
+    assert_eq!(update.created_unix_seconds, MetadataValue::Unavailable);
+}

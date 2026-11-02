@@ -254,9 +254,21 @@ fn item_customizations_follow_relocations_and_removals() {
             // Folder sorts follow the same operations as colors, so each color
             // seeds a distinct sort that must end up wherever the color does.
             let sort_for = |color| match color {
-                Red => FolderSort::Saved(SortKey::Type, SortDirection::Ascending),
-                Blue => FolderSort::Saved(SortKey::Modified, SortDirection::Ascending),
-                _ => FolderSort::Saved(SortKey::Name, SortDirection::Descending),
+                Red => FolderSort::Saved(
+                    SortKey::Type,
+                    SortDirection::Ascending,
+                    crate::model::NameComparison::default(),
+                ),
+                Blue => FolderSort::Saved(
+                    SortKey::Modified,
+                    SortDirection::Ascending,
+                    crate::model::NameComparison::default(),
+                ),
+                _ => FolderSort::Saved(
+                    SortKey::Name,
+                    SortDirection::Descending,
+                    crate::model::NameComparison::default(),
+                ),
             };
             manager.set_remember_folder_views(true);
             for (case, seed, steps, expected, notified) in cases {
@@ -298,7 +310,9 @@ fn item_customizations_follow_relocations_and_removals() {
                     fs::create_dir_all(path(relative)).expect("customized folder");
                     manager.set_folder_color(&path(relative), color.map(FolderColorValue::Preset));
                     manager.set_custom_icon(&path(relative), *icon);
-                    if let Some(FolderSort::Saved(sort_key, sort_direction)) = color.map(sort_for) {
+                    if let Some(FolderSort::Saved(sort_key, sort_direction, _)) =
+                        color.map(sort_for)
+                    {
                         manager.set_folder_sort(&location(relative), sort_key, sort_direction);
                     }
                 }
@@ -458,7 +472,11 @@ fn a_folder_that_failed_to_open_forgets_its_settings_once_a_worker_proves_it_del
             let empty = root.path().join("empty");
             fs::create_dir_all(crowded.join("kept")).expect("fixture folder");
             fs::create_dir(&empty).expect("fixture folder");
-            let saved = FolderSort::Saved(SortKey::Type, SortDirection::Ascending);
+            let saved = FolderSort::Saved(
+                SortKey::Type,
+                SortDirection::Ascending,
+                crate::model::NameComparison::default(),
+            );
             let folders = [
                 crowded.join("gone"),
                 crowded.join("kept"),

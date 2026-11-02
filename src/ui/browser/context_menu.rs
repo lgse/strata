@@ -122,3 +122,10 @@ pub(super) fn permanently_delete_is_visible(in_trash: bool, can_delete: Option<b
 
 #[cfg(test)]
 mod tests;
+
+pub(in crate::ui) fn prepare_native_menu(popover: &gtk::PopoverMenu) {
+    use gtk::prelude::*;
+    let navigation = keyboard::NativeMenuNavigation::new(popover);
+    actions::refresh_presentation(popover, &navigation);
+    popover.connect_map(move |popover| actions::refresh_presentation(popover, &navigation));
+}

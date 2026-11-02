@@ -91,16 +91,23 @@ impl NavigationState {
         Some((position, column.entries.get(position)?.clone()))
     }
 
-    /// Directories qualify for mtime only; directory size stays unknown by design.
-    pub fn column_unknown_metadata(&self, depth: usize) -> Option<Vec<(usize, Location)>> {
+    pub fn column_unknown_sort_metadata(
+        &self,
+        depth: usize,
+        key: crate::model::SortKey,
+    ) -> Option<Vec<(usize, Location)>> {
         let column = self.columns.get(depth)?;
         let gap: Vec<(usize, Location)> = column
             .entries
             .iter()
             .enumerate()
             .filter(|(_, entry)| {
-                entry.modified_unix_seconds == MetadataValue::Unknown
-                    || (!entry.is_directory() && entry.size == MetadataValue::Unknown)
+                if key == crate::model::SortKey::Created {
+                    entry.created_unix_seconds == MetadataValue::Unknown
+                } else {
+                    entry.modified_unix_seconds == MetadataValue::Unknown
+                        || (!entry.is_directory() && entry.size == MetadataValue::Unknown)
+                }
             })
             .map(|(position, entry)| (position, entry.location.clone()))
             .collect();
@@ -177,6 +184,10 @@ fn apply_metadata_update(entry: &mut FileEntry, update: &MetadataUpdate) -> bool
         merge_known(
             &mut entry.modified_unix_seconds,
             &update.modified_unix_seconds,
+        ),
+        merge_known(
+            &mut entry.created_unix_seconds,
+            &update.created_unix_seconds,
         ),
         merge_known(&mut entry.mode, &update.mode),
         merge_known(&mut entry.image_dimensions, &update.image_dimensions),

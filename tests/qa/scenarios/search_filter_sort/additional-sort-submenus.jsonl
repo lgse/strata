@@ -1,0 +1,69 @@
+{"scenario":"additional-sort-submenus","modes":["columns","icons","list"],"prefs":{"remember_folder_views":false},"tree":{"folder":{},"a.rs":"rs","file2.md":"two","file10.md":"ten","z.csv":"csv","Z.md":"upper"}}
+{"wait":{"entries":["folder","a.rs","file2.md","file10.md","z.csv","Z.md"],"dir":"$root"},"message":"the natural default order"}
+{"click":{"header":"Choose sort field"}}
+{"wait":{"present":{"menu_item":"More sorting"}},"message":"additional sort choices"}
+{"click":{"menu_item":"More sorting"}}
+{"wait":{"present":{"role":"radio menu item","name":"Extension"}},"message":"the Extension choice in the flyout"}
+{"click":{"role":"radio menu item","name":"Extension"}}
+{"wait":{"entries":["folder","z.csv","file2.md","file10.md","Z.md","a.rs"],"dir":"$root"},"message":"extension groups with natural name order"}
+{"wait":{"present":{"header":"Sort: Extension ↑"}},"message":"List view to explain Extension sorting","modes":["list"]}
+{"click":{"header":"Sort: Extension ↑"},"modes":["list"]}
+{"wait":{"present":{"role":"radio menu item","name":"Descending"}},"message":"a direction choice for sorts without a column header","modes":["list"]}
+{"click":{"role":"radio menu item","name":"Descending"},"modes":["list"]}
+{"wait":{"entries":["folder","a.rs","file2.md","file10.md","Z.md","z.csv"],"dir":"$root"},"message":"reversing Extension sorting through the List menu","modes":["list"]}
+{"click":{"header":"Sort: Extension ↓"},"modes":["list"]}
+{"click":{"role":"radio menu item","name":"Ascending"},"modes":["list"]}
+{"wait":{"entries":["folder","z.csv","file2.md","file10.md","Z.md","a.rs"],"dir":"$root"},"message":"restoring ascending Extension sorting","modes":["list"]}
+{"click":{"header":"Choose sort field"},"modes":["columns","icons"]}
+{"click":{"header":"Sort: Extension ↑"},"modes":["list"]}
+{"wait":{"present":{"menu_item":"More sorting"}},"message":"the shared sort menu"}
+{"wait":{"description":{"target":{"menu_item":"More sorting"},"text":"Extension"}},"message":"the closed submenu to describe its active value"}
+{"click":{"menu_item":"Name order"}}
+{"wait":{"present":{"role":"radio menu item","name":"Alphabetical"}},"message":"the alphabetical name-order choice"}
+{"click":{"role":"radio menu item","name":"Alphabetical"}}
+{"wait":{"entries":["folder","z.csv","file10.md","file2.md","Z.md","a.rs"],"dir":"$root"},"message":"alphabetical tie-breaking within the extension group"}
+{"click":{"header":"Choose sort field"},"modes":["columns","icons"]}
+{"click":{"header":"Sort: Extension ↑"},"modes":["list"]}
+{"wait":{"present":{"menu_item":"More sorting"}},"message":"the shared sort menu"}
+{"wait":{"description":{"target":{"menu_item":"Name order"},"text":"Alphabetical"}},"message":"the closed name-order submenu to describe its value"}
+{"click":{"role":"check menu item","name":"Case-sensitive names"}}
+{"wait":{"entries":["folder","z.csv","Z.md","file10.md","file2.md","a.rs"],"dir":"$root"},"message":"case-sensitive names within the extension group"}
+{"wait":{"pref":{"key":"natural_sort","value":false}},"message":"alphabetical order to be saved"}
+{"wait":{"pref":{"key":"case_sensitive_sort","value":true}},"message":"case sensitivity to be saved"}
+{"wait":{"pref":{"key":"sort_key","value":"extension"}},"message":"Extension to be saved"}
+{"restart":true}
+{"wait":{"entries":["folder","z.csv","Z.md","file10.md","file2.md","a.rs"],"dir":"$root"},"message":"the saved sort and name comparison after restart"}
+{"click":{"header":"Choose sort field"},"modes":["columns","icons"]}
+{"click":{"header":"Sort: Extension ↑"},"modes":["list"]}
+{"wait":{"present":{"menu_item":"More sorting"}},"message":"the shared sort menu"}
+{"click":{"menu_item":"More sorting"}}
+{"wait":{"present":{"role":"radio menu item","name":"Unsorted"}},"message":"the Unsorted choice"}
+{"click":{"role":"radio menu item","name":"Unsorted"}}
+{"wait":{"pref":{"key":"sort_key","value":"unsorted"}},"message":"Unsorted to be saved"}
+{"wait":{"entries":{"contains":["folder","a.rs","file2.md","file10.md","z.csv","Z.md"]},"dir":"$root"},"message":"Unsorted to keep all discovered entries"}
+{"wait":{"absent":{"header":"Sort: Extension ↑"}},"message":"the List sort label to clear for Unsorted","modes":["list"]}
+{"click":{"header":"Choose sort field"}}
+{"wait":{"present":{"menu_item":"More sorting"}},"message":"sort choices to remain reachable when the label is hidden"}
+{"wait":{"state":{"target":{"role":"check menu item","name":"Case-sensitive names"},"sensitive":false}},"message":"name comparison to be disabled for Unsorted"}
+{"click":{"role":"radio menu item","name":"Size"}}
+{"wait":{"pref":{"key":"sort_key","value":"size"}},"message":"a standard sort to replace Unsorted"}
+{"wait":{"absent":{"header":"Sort: Size ↑"}},"message":"a visible Size column to explain its sort without a toolbar label","modes":["list"]}
+{"click":{"header":"Columns"},"modes":["list"]}
+{"wait":{"present":{"role":"check menu item","name":"Size"}},"message":"the column visibility choices","modes":["list"]}
+{"click":{"role":"check menu item","name":"Size"},"modes":["list"]}
+{"key":"Escape","modes":["list"]}
+{"wait":{"present":{"header":"Sort: Size ↑"}},"message":"a hidden active column to reveal the sort label immediately","modes":["list"]}
+{"click":{"header":"Columns"},"modes":["list"]}
+{"click":{"role":"check menu item","name":"Size"},"modes":["list"]}
+{"key":"Escape","modes":["list"]}
+{"wait":{"absent":{"header":"Sort: Size ↑"}},"message":"restoring the active column to clear the label","modes":["list"]}
+{"click":{"header":"Choose sort field"}}
+{"wait":{"description":{"target":{"menu_item":"More sorting"},"text":""}},"message":"the extra-sort summary to clear when Size is active"}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"Escape to dismiss the sort menu"}
+{"select":{"entry":"folder"}}
+{"key":"Return"}
+{"wait":{"directory":"folder"},"message":"entering a folder to rebuild its pane"}
+{"key":"alt+Up"}
+{"wait":{"directory":"$root"},"message":"returning from the folder without menu teardown warnings"}
+{"wait":{"entries":{"contains":["a.rs","file10.md","file2.md","z.csv","Z.md"]},"dir":"$root"},"message":"the rebuilt listing to keep its files"}

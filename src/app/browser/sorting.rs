@@ -47,7 +47,10 @@ impl Browser {
         let mut entries = staging.entries;
         entries.retain(|entry| !staging.removed.contains(&entry.location));
         let retry_metadata = staging.metadata_incomplete
-            && matches!(preferences.sort_key, SortKey::Size | SortKey::Modified);
+            && matches!(
+                preferences.sort_key,
+                SortKey::Size | SortKey::Modified | SortKey::Created
+            );
         let ordering_preferences = if retry_metadata {
             ViewPreferences {
                 sort_key: SortKey::Name,
@@ -153,12 +156,14 @@ impl Browser {
     }
 
     fn resort_changed_preferences(self: &Rc<Self>, task: SortTask, current: ViewPreferences) {
-        if matches!(current.sort_key, SortKey::Size | SortKey::Modified)
-            && self
-                .state
-                .borrow()
-                .column_unknown_metadata(task.depth)
-                .is_some()
+        if matches!(
+            current.sort_key,
+            SortKey::Size | SortKey::Modified | SortKey::Created
+        ) && self
+            .state
+            .borrow()
+            .column_unknown_sort_metadata(task.depth, current.sort_key)
+            .is_some()
         {
             self.finish_sorted_load(task);
             self.note_listing_finished(task.depth);

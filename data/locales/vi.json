@@ -1530,5 +1530,15 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} ft",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} ft",
-  "No action": "Không có hành động"
+  "No action": "Không có hành động",
+  "Natural": "Tự nhiên",
+  "Alphabetical": "Theo bảng chữ cái",
+  "More sorting": "Cách sắp xếp khác",
+  "Name order": "Thứ tự tên",
+  "Case-sensitive names": "Phân biệt chữ hoa và chữ thường",
+  "Extension": "Phần mở rộng",
+  "Unsorted": "Không sắp xếp",
+  "Sort: %{field} %{direction}": "Sắp xếp: %{field} %{direction}",
+  "%{field} · %{order}": "%{field} · %{order}",
+  "%{field} · case-sensitive": "%{field} · phân biệt chữ hoa/thường"
 }

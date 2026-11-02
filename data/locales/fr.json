@@ -1530,5 +1530,15 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} pi",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} pi",
-  "No action": "Aucune action"
+  "No action": "Aucune action",
+  "Natural": "Naturel",
+  "Alphabetical": "Alphabétique",
+  "More sorting": "Autres tris",
+  "Name order": "Ordre des noms",
+  "Case-sensitive names": "Respecter la casse des noms",
+  "Extension": "Extension",
+  "Unsorted": "Sans tri",
+  "Sort: %{field} %{direction}": "Tri : %{field} %{direction}",
+  "%{field} · %{order}": "%{field} · %{order}",
+  "%{field} · case-sensitive": "%{field} · sensible à la casse"
 }

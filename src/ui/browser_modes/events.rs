@@ -247,6 +247,9 @@ impl ModeViews {
             if let (Some(sorting), Some(preferences)) = (&pane.sorting, preferences) {
                 sorting.show(preferences.sort_key, preferences.sort_direction);
             }
+            if let Some(button) = &pane.sort_menu {
+                crate::ui::browser::sync_list_sort_menu(&self.browser, depth, button);
+            }
             if let Some(sorter) = &pane.type_group_sorter {
                 sorter.refresh(preferences);
             }

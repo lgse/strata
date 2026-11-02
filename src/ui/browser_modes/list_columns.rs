@@ -512,6 +512,11 @@ impl ModeViews {
             return;
         };
         apply_columns_layout(headings, columns, bound_items);
+        if let Some(pane) = &self.list_pane
+            && let Some(button) = &pane.sort_menu
+        {
+            crate::ui::browser::sync_list_sort_menu(&self.browser, pane.depth, button);
+        }
     }
 
     pub fn open_list_columns_popover(&self) {
