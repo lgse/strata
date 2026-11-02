@@ -114,11 +114,11 @@ pub(crate) fn install() -> Result<String, String> {
     let context = SetupContext::from_environment()?;
     let config = install_at(&context, &executable)?;
     let restart_warning = restart_udiskie(RestartMode::EnsureRunning);
-    Ok(format!(
-        "Installed Strata as the encrypted-volume unlock handler.\nConfiguration: {}{}",
-        config.display(),
-        restart_warning
-    ))
+    let summary = rust_i18n::t!(
+        "Installed Strata as the encrypted-volume unlock handler.\nConfiguration: %{path}",
+        path = config.display()
+    );
+    Ok(format!("{summary}{restart_warning}"))
 }
 
 pub(crate) fn uninstall() -> Result<String, String> {
@@ -126,9 +126,8 @@ pub(crate) fn uninstall() -> Result<String, String> {
     let context = SetupContext::from_environment()?;
     uninstall_at(&context)?;
     let restart_warning = restart_udiskie(RestartMode::ReloadIfRunning);
-    Ok(format!(
-        "Removed the Strata encrypted-volume unlock integration.{restart_warning}"
-    ))
+    let summary = crate::i18n::tr("Removed the Strata encrypted-volume unlock integration.");
+    Ok(format!("{summary}{restart_warning}"))
 }
 
 pub(crate) fn status() -> Result<UdiskieStatus, String> {
@@ -813,10 +812,10 @@ fn restart_udiskie(mode: RestartMode) -> String {
         mode,
     ) {
         Ok(None) => String::new(),
-        Ok(Some(warning)) => format!("\n{warning}"),
+        Ok(Some(warning)) => format!("\n{}", crate::i18n::tr(&warning)),
         Err(error) => {
             tracing::warn!("Could not restart udiskie: {error}");
-            format!("\n{RESTART_WARNING}")
+            format!("\n{}", crate::i18n::tr(RESTART_WARNING))
         }
     }
 }
