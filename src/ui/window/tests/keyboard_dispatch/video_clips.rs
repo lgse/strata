@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 use super::audio_tracks::{caption_reads, settle};
+use super::*;
+use crate::services::SandboxedMedia;
 
 /// GIO types an empty file as zero-size; a real MP4 signature keeps it a video.
 const MP4_BYTES: &[u8] = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom";
-use super::*;
-use crate::services::SandboxedMedia;
 
 struct MediaPreview;
 

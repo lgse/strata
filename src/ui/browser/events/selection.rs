@@ -232,8 +232,6 @@ impl ViewState {
         self.mirror_entry(depth, entry, true);
     }
 
-    /// Opens a folder's child column, or closes it for a file and, when `preview`
-    /// allows and single-click previews are on, previews the file.
     fn mirror_entry(&self, depth: usize, entry: FileEntry, preview: bool) {
         if entry.is_directory() {
             self.browser.show_child(depth, entry.location);
