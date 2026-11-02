@@ -303,7 +303,10 @@ fn a_gvfs_probe_after_preferences_created_the_default_vfs_is_rejected() {
     if std::env::var_os(CHILD).is_some() {
         restart_with_local_vfs_if_gvfs_is_unresponsive();
         let _renderer = PreferenceManager::shared().interface_renderer();
-        assert!(gio_modules_loaded());
+        assert!(
+            gio_modules_loaded(),
+            "preferences no longer create GIO's default VFS; the probe ordering constraint may be obsolete"
+        );
         assert_eq!(
             std::panic::catch_unwind(restart_with_local_vfs_if_gvfs_is_unresponsive).is_err(),
             cfg!(debug_assertions)
@@ -311,7 +314,7 @@ fn a_gvfs_probe_after_preferences_created_the_default_vfs_is_rejected() {
         return;
     }
     let sandbox = tempfile::tempdir().expect("disposable preferences");
-    let status = std::process::Command::new(std::env::current_exe().expect("test executable"))
+    let output = std::process::Command::new(std::env::current_exe().expect("test executable"))
         .args(["--exact", NAME, "--nocapture", "--include-ignored"])
         .env(CHILD, "1")
         // Keeps the probe from starting a subprocess or restarting the test.
@@ -321,7 +324,13 @@ fn a_gvfs_probe_after_preferences_created_the_default_vfs_is_rejected() {
         .env("XDG_CONFIG_HOME", sandbox.path().join("config"))
         .env("XDG_CACHE_HOME", sandbox.path().join("cache"))
         .env("XDG_DATA_HOME", sandbox.path().join("data"))
-        .status()
+        .output()
         .expect("the isolated launch starts");
-    assert!(status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // A stale NAME selects no test, and libtest still exits successfully.
+    assert!(
+        output.status.success() && stdout.contains("test result: ok. 1 passed"),
+        "the isolated launch must run exactly {NAME}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
 }
