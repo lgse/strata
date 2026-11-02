@@ -362,7 +362,7 @@ impl ViewState {
     }
 
     fn restore_location_text(&self) {
-        if let Some(location) = self.browser.active_location() {
+        if let Some(location) = self.displayed_location() {
             self.location_entry.set_text(&location.display_path());
         }
     }
