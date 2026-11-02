@@ -1010,6 +1010,7 @@
   "The file has no audio track": "檔案沒有音軌",
   "The file has no seekable video stream": "檔案沒有可定位的視訊串流",
   "The file is running and cannot be changed": "檔案正在執行，無法變更",
+  "The destination is on a different file system": "目的地位於其他檔案系統",
   "The file is too large for this file system": "檔案對此檔案系統而言過大",
   "The file is truncated or damaged": "檔案不完整或已損毀",
   "The file system is read-only": "檔案系統為唯讀",

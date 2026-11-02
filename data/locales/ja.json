@@ -1036,6 +1036,7 @@
   "The file has no audio track": "ファイルに音声トラックがありません",
   "The file has no seekable video stream": "ファイルにシーク可能な動画ストリームがありません",
   "The file is running and cannot be changed": "ファイルは実行中のため変更できません",
+  "The destination is on a different file system": "移動先は別のファイルシステムにあります",
   "The file is too large for this file system": "ファイルがこのファイルシステムには大きすぎます",
   "The file is truncated or damaged": "ファイルが途中で切れているか破損しています",
   "The file system is read-only": "ファイルシステムは読み取り専用です",

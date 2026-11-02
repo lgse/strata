@@ -1036,6 +1036,7 @@
   "The file has no audio track": "Tệp không có rãnh âm thanh",
   "The file has no seekable video stream": "Tệp không có luồng video có thể tua",
   "The file is running and cannot be changed": "Tệp đang chạy và không thể thay đổi",
+  "The destination is on a different file system": "Đích nằm trên một hệ thống tệp khác",
   "The file is too large for this file system": "Tệp quá lớn đối với hệ thống tệp này",
   "The file is truncated or damaged": "Tệp bị cắt cụt hoặc bị hỏng",
   "The file system is read-only": "Hệ thống tệp chỉ đọc",

@@ -1036,6 +1036,7 @@
   "The file has no audio track": "Il file non ha una traccia audio",
   "The file has no seekable video stream": "Il file non ha un flusso video navigabile",
   "The file is running and cannot be changed": "Il file è in esecuzione e non può essere modificato",
+  "The destination is on a different file system": "La destinazione si trova su un altro file system",
   "The file is too large for this file system": "Il file è troppo grande per questo file system",
   "The file is truncated or damaged": "Il file è troncato o danneggiato",
   "The file system is read-only": "Il file system è di sola lettura",

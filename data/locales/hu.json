@@ -1036,6 +1036,7 @@
   "The file has no audio track": "A fájlnak nincs hangsávja",
   "The file has no seekable video stream": "A fájlnak nincs tekerhető videofolyama",
   "The file is running and cannot be changed": "A fájl fut, ezért nem módosítható",
+  "The destination is on a different file system": "A cél egy másik fájlrendszeren van",
   "The file is too large for this file system": "A fájl túl nagy ehhez a fájlrendszerhez",
   "The file is truncated or damaged": "A fájl csonkolt vagy sérült",
   "The file system is read-only": "A fájlrendszer csak olvasható",

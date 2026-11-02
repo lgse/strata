@@ -1036,6 +1036,7 @@
   "The file has no audio track": "文件中没有音轨",
   "The file has no seekable video stream": "文件中没有支持跳转的视频流",
   "The file is running and cannot be changed": "文件正在运行，无法修改",
+  "The destination is on a different file system": "目标位于其他文件系统",
   "The file is too large for this file system": "文件过大，超出此文件系统的限制",
   "The file is truncated or damaged": "文件不完整或已损坏",
   "The file system is read-only": "文件系统为只读",
