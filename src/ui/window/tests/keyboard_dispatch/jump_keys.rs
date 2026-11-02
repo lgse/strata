@@ -299,7 +299,7 @@ fn home_and_end_jump_to_the_first_and_last_item_in_the_default_key_map() {
 /// A real press reaches the dispatcher first and the focused list's own GTK binding
 /// only when the dispatcher lets it through; `KeyboardFixture::press` emits just the
 /// former. Returns whether the dispatcher handled it.
-fn press_through(fixture: &KeyboardFixture, key: Key, modifiers: ModifierType) -> bool {
+fn press_then_native_binding(fixture: &KeyboardFixture, key: Key, modifiers: ModifierType) -> bool {
     if fixture.press(key, modifiers) {
         return true;
     }
@@ -375,13 +375,13 @@ fn home_and_end_set_the_anchor(
     case: &AnchorCase,
 ) {
     let mode = case.mode;
-    press_through(fixture, case.next, NONE);
+    press_then_native_binding(fixture, case.next, NONE);
     assert_eq!(fill_names(browser), ["b.txt"], "{mode:?} next item");
     assert!(fixture.press(Key::End, NONE), "{mode:?} Strata handles End");
     assert_eq!(fill_names(browser), ["c.txt"], "{mode:?} End");
     wait_until(|| focused_widget_shows(&fixture.window, "c.txt"));
     assert_eq!(
-        press_through(fixture, Key::Home, SHIFT),
+        press_then_native_binding(fixture, Key::Home, SHIFT),
         case.strata_extends,
         "{mode:?} Shift+Home routing"
     );
@@ -397,14 +397,14 @@ fn home_and_end_set_the_anchor(
     );
     assert_eq!(fill_names(browser), ["a.txt"], "{mode:?} Home");
     wait_until(|| focused_widget_shows(&fixture.window, "a.txt"));
-    press_through(fixture, case.next, SHIFT);
+    press_then_native_binding(fixture, case.next, SHIFT);
     assert_eq!(
         fill_names(browser),
         ["a.txt", "b.txt"],
         "{mode:?} Shift+next after Home extends from the first item"
     );
     assert_eq!(
-        press_through(fixture, Key::End, SHIFT),
+        press_then_native_binding(fixture, Key::End, SHIFT),
         case.strata_extends,
         "{mode:?} Shift+End routing"
     );
@@ -425,7 +425,7 @@ fn page_keys_set_the_anchor(
     assert!(fixture.press(Key::Page_Down, NONE), "{mode:?} Page Down");
     assert_eq!(fill_names(browser), ["c.txt"], "{mode:?} Page Down");
     wait_until(|| focused_widget_shows(&fixture.window, "c.txt"));
-    press_through(fixture, case.previous, SHIFT);
+    press_then_native_binding(fixture, case.previous, SHIFT);
     assert_eq!(
         fill_names(browser),
         ["b.txt", "c.txt"],
@@ -442,7 +442,7 @@ fn arrows_set_the_anchor(
     for &key in case.plain_next {
         assert!(fixture.press(Key::Home, NONE), "{mode:?}");
         wait_until(|| focused_widget_shows(&fixture.window, "a.txt"));
-        press_through(fixture, key, NONE);
+        press_then_native_binding(fixture, key, NONE);
         assert_eq!(fill_names(browser), ["b.txt"], "{mode:?} {key:?}");
         wait_until(|| focused_widget_shows(&fixture.window, "b.txt"));
         assert!(
