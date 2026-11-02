@@ -1,12 +1,35 @@
 {"scenario":"additional-sort-submenus","modes":["columns","icons","list"],"prefs":{"remember_folder_views":false},"tree":{"folder":{},"a.rs":"rs","file2.md":"two","file10.md":"ten","z.csv":"csv","Z.md":"upper"}}
 {"wait":{"entries":["folder","a.rs","file2.md","file10.md","z.csv","Z.md"],"dir":"$root"},"message":"the natural default order"}
 {"click":{"header":"Choose sort field"}}
+{"click":{"role":"radio menu item","name":"Name"}}
+{"wait":{"pref":{"key":"sort_key","value":"unsorted"}},"message":"selecting the active Name sort to turn sorting off"}
+{"click":{"header":"Choose sort field"}}
+{"wait":{"state":{"target":{"role":"radio menu item","name":"Name"},"checked":false}},"message":"Name to be unchecked after toggling it off"}
+{"click":{"role":"radio menu item","name":"Name"}}
+{"wait":{"pref":{"key":"sort_key","value":"name"}},"message":"Name to be selectable again after toggling off"}
+{"wait":{"entries":["folder","a.rs","file2.md","file10.md","z.csv","Z.md"],"dir":"$root"},"message":"selecting Name again to restore natural sorting"}
+{"click":{"header":"Choose sort field"}}
 {"wait":{"present":{"menu_item":"More sorting"}},"message":"additional sort choices"}
 {"click":{"menu_item":"More sorting"}}
 {"wait":{"present":{"role":"radio menu item","name":"Extension"}},"message":"the Extension choice in the flyout"}
 {"click":{"role":"radio menu item","name":"Extension"}}
 {"wait":{"entries":["folder","z.csv","file2.md","file10.md","Z.md","a.rs"],"dir":"$root"},"message":"extension groups with natural name order"}
 {"wait":{"present":{"header":"Sort: Extension ↑"}},"message":"List view to explain Extension sorting","modes":["list"]}
+{"click":{"header":"Choose sort field"},"modes":["columns","icons"]}
+{"click":{"header":"Sort: Extension ↑"},"modes":["list"]}
+{"click":{"menu_item":"More sorting"}}
+{"click":{"role":"radio menu item","name":"Extension"}}
+{"wait":{"pref":{"key":"sort_key","value":"unsorted"}},"message":"selecting the active flyout sort to turn sorting off"}
+{"wait":{"absent":{"header":"Sort: Extension ↑"}},"message":"the List indicator to clear when Extension is toggled off","modes":["list"]}
+{"click":{"header":"Choose sort field"}}
+{"click":{"menu_item":"More sorting"}}
+{"wait":{"state":{"target":{"role":"radio menu item","name":"Unsorted"},"checked":true}},"message":"Unsorted to show that the previous sort was turned off"}
+{"click":{"role":"radio menu item","name":"Unsorted"}}
+{"wait":{"pref":{"key":"sort_key","value":"unsorted"}},"message":"selecting Unsorted again to keep sorting off"}
+{"click":{"header":"Choose sort field"}}
+{"click":{"menu_item":"More sorting"}}
+{"click":{"role":"radio menu item","name":"Extension"}}
+{"wait":{"pref":{"key":"sort_key","value":"extension"}},"message":"Extension to be selectable again after toggling off"}
 {"click":{"header":"Sort: Extension ↑"},"modes":["list"]}
 {"wait":{"present":{"role":"radio menu item","name":"Descending"}},"message":"a direction choice for sorts without a column header","modes":["list"]}
 {"click":{"role":"radio menu item","name":"Descending"},"modes":["list"]}

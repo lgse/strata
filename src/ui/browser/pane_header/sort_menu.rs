@@ -87,7 +87,10 @@ impl SortMenu {
             if let Some(value) = value.and_then(|value| value.str())
                 && let Some((_, key)) = FIELDS.iter().find(|(_, key)| field_id(*key) == value)
             {
-                browser.set_sort_key(depth, *key);
+                let active = browser
+                    .column_preferences(depth)
+                    .is_some_and(|prefs| prefs.sort_key == *key);
+                browser.set_sort_key(depth, if active { SortKey::Unsorted } else { *key });
             }
         });
         let names = gio::SimpleAction::new_stateful(
