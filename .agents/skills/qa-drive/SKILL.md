@@ -255,6 +255,8 @@ are what `src/ui/accessibility.rs` sets, as a screen reader would hear them.
   selection takes.
 - Aim with targets, never screen coordinates. `"at"` offsets from a target's
   top-left corner (`[4,"50%"]`, `["end-6","50%"]`).
+  A target a scroller clips (a scrolled-away Columns pane or crumb) is
+  wheeled into view before the click.
 - Use `activate` when you need the action without pointer side effects; use
   `click` when the pointer path is what you changed.
 

@@ -271,7 +271,11 @@ origin (which covers popovers), looked up for up to 15 s, and the pointer aims
 only once its box comes through a painted frame unchanged: a row a listing has
 just added or replaced can report a box before its first allocation lands. A
 lookup that breaks, such as an unrealized surface, is an error, never
-`absent`.
+`absent`. When a scroller clips the aimed point (a row in a Columns pane the
+strip scrolled away, a crumb past either end of the trail, a row below a list's
+viewport), `click`, `move`, and `select` first turn the wheel over that
+scroller, with Shift for a horizontal one, until the point shows; an aim kept
+inside a `left_bound` box is not moved.
 
 | Target | Finds |
 | --- | --- |
