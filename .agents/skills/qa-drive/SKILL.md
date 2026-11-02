@@ -180,7 +180,7 @@ Input:
 | `{"wheel":TARGET,"clicks":3,"direction":"down"}` | Scroll. |
 | `{"drag":{"from":TARGET,"to":TARGET}}` | Drag and drop; `"mods":["ctrl"]`, `"release":false`. |
 | `{"key":"ctrl+period"}`, `{"key":"Down","repeat":2}` | Tap a chord. Keys are X keysym names (`Return`, `Escape`, `F2`, `Delete`, `Tab`, `period`) or one character, at US key positions; modifiers are `ctrl`, `shift`, `alt`, `altgr`. |
-| `{"type":"notes"}` | Type text, one key per character. |
+| `{"type":"notes"}` | Type text, one key per character; characters the layout lacks (`é`, `名`) work too. |
 | `{"key_down":"ctrl"}`, `{"key_up":"ctrl"}`, `{"button_down":1}`, `{"button_up":1}` | Hold and release. |
 | `{"activate":TARGET}` | The widget's default action, without the pointer. |
 | `{"resize":{"width":420,"height":300}}` | Resize the main window. |
