@@ -103,6 +103,8 @@ pub(in crate::ui) use sidebar_width::{RailPolicy, SidebarFit, sidebar_fits_witho
 pub use unlock_argument::{UnlockTarget, present_unlock};
 
 // Test modules reach these through `super::`.
+#[cfg(all(test, feature = "qa"))]
+use sidebar_rail::sync_sidebar_button;
 #[cfg(test)]
 use {
     super::{browser::PinStatus, browser_modes::BrowserMode, preferences::PreferenceManager},
@@ -111,7 +113,6 @@ use {
     gtk::prelude::*,
     sidebar_devices::sidebar_eject_button,
     sidebar_pins::{move_pinned_place, pin_gap_index, pin_locations_at},
-    sidebar_rail::sync_sidebar_button,
     sidebar_reorder::sidebar_reorder_matches,
     sidebar_rows::sidebar_button,
     std::time::{Duration, Instant},

@@ -3,13 +3,16 @@
 use std::{
     fs, io,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::Stdio,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
+
+#[cfg(any(test, feature = "rar"))]
+use std::process::Command;
 
 use crate::services::{ModelPreviewStage, model_preview::MAX_MODEL_INPUT_BYTES};
 
@@ -29,7 +32,9 @@ mod process;
 
 #[cfg(test)]
 use command::polaris_gpu_available_at;
-use command::{SandboxCommand, runtime_command, sandbox_command, sandbox_input_path};
+#[cfg(any(test, feature = "rar"))]
+use command::sandbox_input_path;
+use command::{SandboxCommand, runtime_command, sandbox_command};
 pub(crate) use command::{gpu_devices, numbered_name, polaris_gpu_available, sandbox_tool};
 pub(crate) use operation::{
     CoverFormat, DocumentFormat, MediaPreviewBackend, PDF_PASSWORD_PROTECTED, ParseOperation,
