@@ -369,7 +369,6 @@ impl ViewState {
         self: &Rc<Self>,
         anchor: &gtk::Widget,
         x: f64,
-        y: f64,
     ) {
         let Some(location) = self.displayed_location() else {
             return;
@@ -386,9 +385,10 @@ impl ViewState {
 
         let popover = gtk::Popover::builder()
             .child(&menu_box)
-            .has_arrow(true)
+            .has_arrow(false)
             .position(gtk::PositionType::Bottom)
-            .pointing_to(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1))
+            // The whole bar's height keeps the menu clear of the crumbs it lists.
+            .pointing_to(&gtk::gdk::Rectangle::new(x as i32, 0, 1, anchor.height()))
             .build();
         popover.add_css_class("breadcrumb-popover");
         popover.set_parent(anchor);

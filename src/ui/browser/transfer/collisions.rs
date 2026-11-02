@@ -16,10 +16,20 @@ pub(super) struct TransferCollision {
     pub(super) target_name: Option<ShownName>,
     /// Both colliding items are directories, so their contents can be merged.
     pub(super) mergeable: bool,
+    /// Both are folders or neither is, as a file and a folder never replace one another.
+    pub(super) replaceable: bool,
     pub(super) fixes_inside: bool,
 }
 
 impl TransferCollision {
+    fn allows(&self, conflict: TransferConflict) -> bool {
+        match conflict {
+            TransferConflict::Merge => self.mergeable,
+            TransferConflict::ReplaceExisting => self.replaceable,
+            TransferConflict::KeepBoth | TransferConflict::FailIfExists => true,
+        }
+    }
+
     fn paste_item(self, conflict: TransferConflict) -> PasteItem {
         PasteItem {
             source: self.source,
@@ -73,6 +83,13 @@ pub(super) fn conflict_explanation(
     let folder = compact_display_path(destination);
     let choice = if merge {
         merge_explanation(collision, &name, &folder)
+    } else if !collision.replaceable {
+        rust_i18n::t!(
+            "An item named “%{name}” already exists in %{folder}. A file and a folder can’t replace one another.",
+            name = name,
+            folder = folder
+        )
+        .into_owned()
     } else {
         rust_i18n::t!(
             "An item named “%{name}” already exists in %{folder}. Replacing it will overwrite its contents.",
@@ -108,7 +125,7 @@ fn transfer_conflict_text(
     merge: bool,
 ) -> String {
     let explanation = conflict_explanation(collision, &plan.destination, merge);
-    if replaces_without_trash(&plan.destination) {
+    if collision.replaceable && replaces_without_trash(&plan.destination) {
         format!(
             "{explanation}\n\n{}",
             crate::i18n::tr("Replaced items can't be moved to Trash here and will be deleted.")
@@ -140,24 +157,16 @@ fn apply_transfer_choice(
     if !apply_to_all {
         return (accepted, remaining);
     }
-    if conflict == TransferConflict::Merge {
-        // File collisions still need their own prompt.
-        let (mergeable, rest): (Vec<_>, Vec<_>) = remaining
-            .into_iter()
-            .partition(|collision| collision.mergeable);
-        accepted.extend(
-            mergeable
-                .into_iter()
-                .map(|collision| collision.paste_item(conflict)),
-        );
-        return (accepted, rest);
-    }
+    // Collisions the answer cannot apply to still need their own prompt.
+    let (covered, rest): (Vec<_>, Vec<_>) = remaining
+        .into_iter()
+        .partition(|collision| collision.allows(conflict));
     accepted.extend(
-        remaining
-            .drain(..)
+        covered
+            .into_iter()
             .map(|collision| collision.paste_item(conflict)),
     );
-    (accepted, remaining)
+    (accepted, rest)
 }
 
 impl ViewState {
@@ -182,6 +191,7 @@ impl ViewState {
         let (apply_to_all_visible, skip_visible) =
             ConflictPrompt::visibility(collisions.len(), accepted.len());
         let actions = ConflictActions {
+            replace: collision.replaceable,
             keep_both: true,
             merge: allow_merge,
             focus: plan.focus,

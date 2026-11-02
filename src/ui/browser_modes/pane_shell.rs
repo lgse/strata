@@ -80,6 +80,7 @@ pub(super) struct PaneBase {
     pub(super) source_index: SourceIndexMap,
     pub(super) stack: gtk::Stack,
     pub(super) status: gtk::Label,
+    pub(super) retry: gtk::Button,
     pub(super) administrator: gtk::Button,
     pub(super) spinner: gtk::Spinner,
     pub(super) truncated_hint: gtk::Image,
@@ -135,7 +136,12 @@ pub(super) fn pane_base(chrome: PaneChrome) -> PaneBase {
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content.set_hexpand(true);
     content.set_vexpand(true);
-    let (status_page, status, administrator) = pane_status_page();
+    let StatusPage {
+        page: status_page,
+        status,
+        retry,
+        administrator,
+    } = pane_status_page();
     // Focusable only off the content page (see `DirectorySurface`); a group role keeps its name.
     let stack = gtk::Stack::builder()
         .hexpand(true)
@@ -159,6 +165,7 @@ pub(super) fn pane_base(chrome: PaneChrome) -> PaneBase {
         source_index,
         stack,
         status,
+        retry,
         administrator,
         spinner,
         truncated_hint,
@@ -201,19 +208,38 @@ fn pane_header(chrome: &PaneChrome) -> (gtk::Box, gtk::Spinner, gtk::Image) {
     (header, spinner, truncated_hint)
 }
 
-fn pane_status_page() -> (gtk::Box, gtk::Label, gtk::Button) {
+struct StatusPage {
+    page: gtk::Box,
+    status: gtk::Label,
+    retry: gtk::Button,
+    administrator: gtk::Button,
+}
+
+fn status_action(label: &str) -> gtk::Button {
+    let button = gtk::Button::with_label(label);
+    button.add_css_class("retry-button");
+    button.set_halign(gtk::Align::Center);
+    button.set_visible(false);
+    button
+}
+
+fn pane_status_page() -> StatusPage {
     let status = gtk::Label::new(Some(&crate::i18n::tr("This directory is empty")));
     status.add_css_class("status-message");
     status.set_wrap(true);
-    let administrator = gtk::Button::with_label(&crate::i18n::tr("Open as Administrator"));
-    administrator.add_css_class("retry-button");
-    administrator.set_halign(gtk::Align::Center);
-    administrator.set_visible(false);
-    let status_page = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    status_page.set_valign(gtk::Align::Center);
-    status_page.append(&status);
-    status_page.append(&administrator);
-    (status_page, status, administrator)
+    let administrator = status_action(&crate::i18n::tr("Open as Administrator"));
+    let retry = status_action(&crate::i18n::tr("Retry"));
+    let page = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    page.set_valign(gtk::Align::Center);
+    page.append(&status);
+    page.append(&administrator);
+    page.append(&retry);
+    StatusPage {
+        page,
+        status,
+        retry,
+        administrator,
+    }
 }
 
 pub(super) fn pane_directory_name(browser: &Rc<Browser>, depth: usize) -> String {
@@ -225,6 +251,12 @@ pub(super) fn pane_directory_name(browser: &Rc<Browser>, depth: usize) -> String
 
 pub(super) fn install_pane_surface(pane: &Pane, browser: &Rc<Browser>, directory: &str) {
     let depth = pane.depth;
+    let weak = Rc::downgrade(browser);
+    pane.retry.connect_clicked(move |_| {
+        if let Some(browser) = weak.upgrade() {
+            browser.retry_column(depth);
+        }
+    });
     let weak = Rc::downgrade(browser);
     pane.administrator.connect_clicked(move |_| {
         if let Some(browser) = weak.upgrade()

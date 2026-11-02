@@ -201,6 +201,7 @@ pub(crate) fn io_error_reason(error: &std::io::Error) -> Option<&'static str> {
         ErrorKind::NotConnected => "The location is no longer connected",
         ErrorKind::StaleNetworkFileHandle => "The network file handle is no longer valid",
         ErrorKind::ExecutableFileBusy => "The file is running and cannot be changed",
+        ErrorKind::CrossesDevices => "The destination is on a different file system",
         _ => return None,
     })
 }

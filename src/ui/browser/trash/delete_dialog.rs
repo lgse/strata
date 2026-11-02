@@ -19,7 +19,7 @@ use crate::ui::modal::{ModalHost, remember_modal_focus_for_listing};
 use gtk::gdk::ModifierType as Modifiers;
 use gtk::glib;
 use gtk::prelude::*;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -95,6 +95,7 @@ struct DeleteRequest {
     entries: Rc<Vec<FileEntry>>,
     kind: DeleteDialog,
     reach: DeletionReach,
+    confirmed: Cell<bool>,
 }
 
 impl DeleteRequest {
@@ -247,6 +248,7 @@ impl ViewState {
             entries: Rc::new(entries),
             kind,
             reach,
+            confirmed: Cell::new(false),
         });
         let layout = request.layout();
         let (visible, hidden) = delete_confirmation_rows(&request.entries);
@@ -258,6 +260,8 @@ impl ViewState {
         }
 
         let modal = TrashModal::new(&layout.content, host);
+        // Connected first, so the listing's focus then follows the cursor it puts back.
+        self.return_cursor_on_cancel(&modal.layer, &request);
         remember_modal_focus_for_listing(&modal.layer, &modal.overlay);
         modal.show();
         for button in [&layout.cancel, &layout.close] {
@@ -289,10 +293,12 @@ impl ViewState {
         let reach = request.reach;
         let browser = self.browser.clone();
         let weak_ui = Rc::downgrade(self);
+        let confirmed = Rc::clone(request);
         confirm.connect_clicked(move |_| {
             let Some(entries) = pending_entries.borrow_mut().take() else {
                 return;
             };
+            confirmed.confirmed.set(true);
             let browser = browser.clone();
             let weak_ui = weak_ui.clone();
             modal.dismiss_then(move || {
@@ -302,6 +308,38 @@ impl ViewState {
                     delete_confirmed_permanently(&weak_ui, &browser, entries, reach);
                 }
             });
+        });
+    }
+
+    /// A completion that moves the cursor while the dialog is open, such as a
+    /// compression selecting its archive, gives way when the dialog is cancelled:
+    /// the cursor and selection return to the items it asked about.
+    fn return_cursor_on_cancel(self: &Rc<Self>, layer: &gtk::Box, request: &Rc<DeleteRequest>) {
+        let Some((depth, _, cursor)) = self.browser.focused_item() else {
+            return;
+        };
+        let locations = std::iter::once(&cursor)
+            .chain(request.entries.iter())
+            .map(|entry| entry.location.clone())
+            .collect::<Vec<_>>();
+        let weak = Rc::downgrade(self);
+        let request = Rc::clone(request);
+        layer.connect_parent_notify(move |layer| {
+            if layer.parent().is_some() || request.confirmed.get() {
+                return;
+            }
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let stayed = state
+                .browser
+                .focused_item()
+                .is_some_and(|(now, _, entry)| now == depth && entry.location == locations[0]);
+            if !stayed {
+                state
+                    .browser
+                    .select_shown_entries_by_location_at(depth, &locations);
+            }
         });
     }
 
@@ -335,6 +373,7 @@ fn delete_confirmed_permanently(
     reach: DeletionReach,
 ) {
     if let Some(ui) = weak_ui.upgrade() {
+        ui.leave_folder_being_deleted(&entries);
         ui.prepare_delete_dissolve(&entries);
     }
     let entries = unshare_entries(entries);

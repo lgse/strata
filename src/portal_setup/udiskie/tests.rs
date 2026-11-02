@@ -354,8 +354,13 @@ fn json_only_migrates_and_uninstall_restores_json() {
 
     assert!(json.is_file(), "uninstall should restore config.json");
     assert!(!yml.exists(), "uninstall should remove the YAML we created");
-    let restored: serde_json::Value =
-        serde_json::from_slice(&fs::read(&json).expect("restored json")).expect("parse json");
+    let restored_bytes = fs::read(&json).expect("restored json");
+    assert_eq!(
+        restored_bytes.last(),
+        Some(&b'\n'),
+        "restored JSON ends its last line"
+    );
+    let restored: serde_json::Value = serde_json::from_slice(&restored_bytes).expect("parse json");
     let mut expected = original;
     expected["keep"] = 2.into();
     assert_eq!(restored, expected, "restore must preserve unrelated edits");
@@ -443,17 +448,68 @@ fn install_rejects_insecure_executable() {
 
 #[test]
 fn uninstall_missing_source_deletes_empty_config() {
-    let fixture = fixture();
-    let context = context(fixture.path());
-    let executable = executable(fixture.path());
+    for (directory_existed, other_file) in [(false, false), (true, false), (false, true)] {
+        let fixture = fixture();
+        let context = context(fixture.path());
+        let executable = executable(fixture.path());
+        let yml = config_yml(&context);
+        let directory = yml.parent().expect("udiskie directory").to_path_buf();
+        if directory_existed {
+            fs::create_dir_all(&directory).expect("existing udiskie directory");
+        }
 
-    install_at(&context, &executable).expect("install");
-    assert!(config_yml(&context).is_file());
-    uninstall_at(&context).expect("uninstall");
-    assert!(
-        !config_yml(&context).exists(),
-        "missing-file install should delete config.yml when only managed keys remain"
-    );
+        install_at(&context, &executable).expect("install");
+        assert!(yml.is_file());
+        if other_file {
+            fs::write(directory.join("notes.txt"), "mine\n").expect("user file");
+        }
+        uninstall_at(&context).expect("uninstall");
+        assert!(
+            !yml.exists(),
+            "missing-file install should delete config.yml when only managed keys remain"
+        );
+        assert_eq!(
+            directory.exists(),
+            directory_existed || other_file,
+            "existed={directory_existed} other_file={other_file}"
+        );
+    }
+}
+
+#[test]
+fn uninstall_restores_unchanged_originals_byte_for_byte() {
+    let yaml = "# udiskie, tuned by hand\nprogram_options:\n  tray: auto # keep\n  event_hook: [notify-send, '{event}']\n\ndevice_config: [{is_ntfs: true, automount: true}]\n";
+    let json = "{\"program_options\": {\"tray\": \"auto\"},   \"keep\": [1, 2]}";
+    for (name, original, installs) in [
+        ("config.yml", yaml, 1),
+        ("config.yml", yaml, 2),
+        ("config.yml", "", 1),
+        ("config.json", json, 1),
+    ] {
+        let fixture = fixture();
+        let context = context(fixture.path());
+        let executable = executable(fixture.path());
+        let path = config_yml(&context).with_file_name(name);
+        fs::create_dir_all(path.parent().expect("udiskie directory")).expect("directory");
+        fs::write(&path, original).expect("original configuration");
+        for _ in 0..installs {
+            install_at(&context, &executable).expect("install");
+        }
+        assert_ne!(
+            fs::read(config_yml(&context)).expect("managed"),
+            original.as_bytes()
+        );
+        uninstall_at(&context).expect("uninstall");
+        assert_eq!(
+            fs::read_to_string(&path).expect("restored configuration"),
+            original,
+            "{name} after {installs} install(s)"
+        );
+        assert!(
+            !state_directory(&context).exists(),
+            "uninstall removes its backups"
+        );
+    }
 }
 
 #[test]

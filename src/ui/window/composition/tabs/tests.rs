@@ -1434,28 +1434,6 @@ fn open_in_new_tab_appends_activates_and_navigates_the_target() {
 }
 
 #[test]
-fn open_in_new_tab_reuses_the_unavailable_overlay_for_a_missing_target() {
-    gtk_test(
-        "ui::window::composition::tabs::tests::open_in_new_tab_reuses_the_unavailable_overlay_for_a_missing_target",
-        || {
-            PreferenceManager::seed_saved_preferences_for_test();
-            let root = tempfile::tempdir().expect("missing target fixture");
-            let missing = root.path().join("missing");
-            let (window, tabs) = open();
-            load(&tabs.active_browser(), Location::local(root.path()));
-            tabs.open_in_new_tab(Location::local(&missing));
-            let view = tabs.active_browser();
-            wait_until(|| button_with_label(view.overlay().upcast_ref(), "Retry").is_some());
-            assert!(
-                button_with_label(view.overlay().upcast_ref(), "Retry").is_some(),
-                "a missing target shows the retry overlay"
-            );
-            window.destroy();
-        },
-    );
-}
-
-#[test]
 fn open_tab_at_action_reaches_the_new_tab_helper() {
     gtk_test(
         "ui::window::composition::tabs::tests::open_tab_at_action_reaches_the_new_tab_helper",

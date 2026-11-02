@@ -66,6 +66,13 @@ pub(in crate::ui) const SEARCH_ENTRY_LIMIT_CHOICES: [(&str, u32); 5] = [
     ("No limit", 0),
 ];
 
+/// A blank family keeps the bundled default rather than naming no font.
+pub(super) fn normalized_font_family(family: Option<String>) -> Option<String> {
+    family
+        .map(|family| family.trim().to_owned())
+        .filter(|family| !family.is_empty())
+}
+
 /// Unlisted limits round up to the next choice; 0 and anything past the largest
 /// choice mean no limit.
 pub(super) fn normalized_search_limit(value: u32, choices: &[(&str, u32)]) -> u32 {
@@ -141,5 +148,6 @@ impl Preferences {
         self.browser_list_columns = self.browser_list_columns.filter(ListColumns::is_valid);
         self.list_column_order = sanitize_list_column_order(&self.list_column_order);
         self.list_hidden_columns = sanitize_list_hidden_columns(&self.list_hidden_columns);
+        self.interface_font = normalized_font_family(self.interface_font.take());
     }
 }

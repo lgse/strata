@@ -153,8 +153,9 @@ fn package_builds_show_package_notes_and_refuse_runtime_setup() {
                 portal_setup::install_file_manager(),
                 portal_setup::uninstall_file_manager(),
                 portal_setup::dismiss_prompt(),
-                portal_setup::udiskie::install(),
-                portal_setup::udiskie::uninstall(),
+                portal_setup::udiskie::install().map(portal_setup::udiskie::UdiskieChange::report),
+                portal_setup::udiskie::uninstall()
+                    .map(portal_setup::udiskie::UdiskieChange::report),
             ] {
                 assert_eq!(result, Err(refused.clone()));
             }

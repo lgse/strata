@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::test_support::operations::HeldOperations;
 
 /// Local browsing whose listings report that Trash is unsupported, like a
 /// tmpfs, or, when `read_only`, a folder the user cannot delete from either.
@@ -100,18 +99,6 @@ fn widget_contains_text(widget: &gtk::Widget, text: &str) -> bool {
 fn modal_text_contains(fixture: &KeyboardFixture, text: &str) -> bool {
     widget_with_class(fixture.overlay.upcast_ref(), "app-modal-layer")
         .is_some_and(|layer| widget_contains_text(&layer, text))
-}
-
-fn held_fixture(
-    held: &Rc<HeldOperations>,
-    source: Rc<dyn crate::services::FileSource>,
-) -> KeyboardFixture {
-    let provider = held.clone();
-    KeyboardFixture::with_parts(Rc::new(TextPreview), move || {
-        let view = BrowserView::new(source, crate::ui::browser::PeekBehavior::default());
-        view.set_operation_provider(provider);
-        view
-    })
 }
 
 #[derive(Clone, Copy)]

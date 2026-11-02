@@ -10,7 +10,10 @@ use std::{
 use gtk::{glib, prelude::*};
 
 use super::{UdiskieIntegrationStatus, settings_row};
-use crate::portal_setup::{FileManagerStatus, PortalStatus, udiskie::UdiskieStatus};
+use crate::portal_setup::{
+    FileManagerStatus, PortalStatus,
+    udiskie::{UdiskieChange, UdiskieStatus},
+};
 use crate::test_support::{gtk_test, gtk_test_with_env};
 use crate::ui::desktop_integration::SETUP_RUNNING;
 use crate::ui::portal_preferences::SettingsIntegrationStatus;
@@ -140,6 +143,37 @@ fn actions_follow_status_and_hide_unknown_indicator() {
                     .expect("inline error")
                     .is_visible()
             );
+        },
+    );
+}
+
+#[test]
+fn settings_keep_the_request_to_restart_udiskie_when_strata_could_not() {
+    gtk_test(
+        "ui::udiskie_preferences::tests::settings_keep_the_request_to_restart_udiskie_when_strata_could_not",
+        || {
+            crate::ui::prepare_portal_ui();
+            let row = gtk::Box::new(gtk::Orientation::Vertical, 2);
+            let summary = summary_on(&row);
+            let message = summary.message.upgrade().expect("integration message");
+            let warning = crate::i18n::tr(
+                "Saved the udiskie configuration. Restart udiskie or log out for it to take effect.",
+            );
+            for restart_needed in [true, false] {
+                summary.message("", false);
+                summary.finish_apply(Ok(Ok(UdiskieChange::for_test(restart_needed))));
+                wait_until(|| !summary.busy.get(), "the status reload after the change");
+                summary.show_result(Ok(UdiskieStatus {
+                    available: true,
+                    configured: true,
+                    has_installation: true,
+                }));
+                assert_eq!(message.is_visible(), restart_needed, "a later poll");
+                if restart_needed {
+                    assert_eq!(message.text(), warning);
+                    assert!(!message.has_css_class("error"));
+                }
+            }
         },
     );
 }

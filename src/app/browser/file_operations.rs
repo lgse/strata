@@ -23,6 +23,25 @@ impl Browser {
         entry: FileEntry,
         new_name: String,
     ) -> Option<OperationRequestId> {
+        self.start_rename(entry, new_name, false)
+    }
+
+    /// Names an item just created for naming, whose creation undo then
+    /// covers the name too, as [`Self::place_entry`] does for a path.
+    pub fn name_new_item(
+        self: &Rc<Self>,
+        entry: FileEntry,
+        new_name: String,
+    ) -> Option<OperationRequestId> {
+        self.start_rename(entry, new_name, true)
+    }
+
+    fn start_rename(
+        self: &Rc<Self>,
+        entry: FileEntry,
+        new_name: String,
+        new_item: bool,
+    ) -> Option<OperationRequestId> {
         if let Err(message) = validate_basename(&new_name) {
             self.emit(BrowserEvent::RenameFailed {
                 request_id: None,
@@ -41,7 +60,7 @@ impl Browser {
         self.rename_operation.set(Some(request_id));
         let refresh_locations = entry.location.parent().into_iter().collect();
         let emit = self.operation_callback(request_id, true, refresh_locations);
-        let pending = PendingRename::new(&entry, &new_name);
+        let pending = PendingRename::new(&entry, &new_name, new_item);
         let weak = Rc::downgrade(self);
         let publish = Rc::new(move |event: OperationEvent| {
             if matches!(&event, OperationEvent::Renamed { request_id: id } if *id == request_id)
@@ -136,7 +155,11 @@ impl Browser {
         let old_location = &pending.original.location;
         self.publish_relocation(old_location, location);
         if self.is_current_operation(request_id) {
-            push_pending_undo(UndoEntry::Rename(pending.record(location)));
+            if pending.new_item {
+                retarget_created_undo(old_location, location.clone());
+            } else {
+                push_pending_undo(UndoEntry::Rename(pending.record(location)));
+            }
             let mut renamed = pending.renamed.clone();
             renamed.location = location.clone();
             self.publish_rename(old_location, renamed);
@@ -514,10 +537,11 @@ struct PendingRename {
     original: FileEntry,
     renamed: FileEntry,
     new_location: Option<Location>,
+    new_item: bool,
 }
 
 impl PendingRename {
-    fn new(entry: &FileEntry, new_name: &str) -> Self {
+    fn new(entry: &FileEntry, new_name: &str, new_item: bool) -> Self {
         let mut renamed = entry.clone();
         renamed.native_name = std::ffi::OsString::from(new_name);
         renamed.display_name = new_name.to_owned();
@@ -529,6 +553,7 @@ impl PendingRename {
                 .location
                 .parent()
                 .and_then(|parent| parent.child(std::ffi::OsStr::new(new_name))),
+            new_item,
         }
     }
 

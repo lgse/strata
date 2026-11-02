@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::{
-    model::{Location, lexically_normalized},
+    model::{GIO_URI_BUILD_FLAGS, GIO_URI_PARSE_FLAGS, Location, lexically_normalized},
     services::{LocationValidationError, validate_uri_credentials},
 };
 
@@ -27,6 +27,9 @@ pub(super) fn location_from_input_with_home(
         return Err(LocationValidationError::UnsupportedShorthand(
             "Only ~ and ~/ paths are supported for the current user's home directory.",
         ));
+    }
+    if let Some(root) = virtual_root(input) {
+        return Ok(Location::uri(root));
     }
     if !is_uri_like(input) {
         return Ok(Location::local(lexically_normalized(Path::new(input))));
@@ -53,7 +56,52 @@ pub(super) fn location_from_input_with_home(
     }
     // Typed text must take GIO's percent-encoded form to match listed children.
     let uri = validate_uri_credentials(&format!("{normalized}{}", &input[scheme_end..]))?;
-    Ok(Location::uri(uri))
+    Ok(Location::uri(without_query_or_fragment(uri)))
+}
+
+/// GVfs folds a URI's query and fragment into the mount spec, so a backend that ignores them,
+/// as SFTP does, mounts a spec the location never matches and its listing fails as not
+/// mounted. No accepted scheme addresses files with either, so typed addresses drop both.
+fn without_query_or_fragment(uri: String) -> String {
+    let Ok(parsed) = glib::Uri::parse(&uri, GIO_URI_PARSE_FLAGS) else {
+        return uri;
+    };
+    if parsed.query().is_none() && parsed.fragment().is_none() {
+        return uri;
+    }
+    glib::Uri::build_with_user(
+        GIO_URI_BUILD_FLAGS,
+        &parsed.scheme(),
+        parsed.user().as_deref(),
+        None,
+        None,
+        parsed.host().as_deref(),
+        parsed.port(),
+        &parsed.path(),
+        None,
+        None,
+    )
+    .to_str()
+    .to_string()
+}
+
+/// GIO's spelling of the roots of schemes without a host, which it also reads from
+/// `network:` and `network://`.
+const VIRTUAL_ROOTS: [(&str, &str); 3] = [
+    ("network", "network:///"),
+    ("trash", "trash:///"),
+    ("recent", "recent:///"),
+];
+
+fn virtual_root(input: &str) -> Option<&'static str> {
+    let (scheme, rest) = input.split_once(':')?;
+    if !rest.trim_start_matches('/').is_empty() || rest.len() > 3 {
+        return None;
+    }
+    VIRTUAL_ROOTS
+        .iter()
+        .find(|(name, _)| scheme.eq_ignore_ascii_case(name))
+        .map(|(_, root)| *root)
 }
 
 /// UNC paths (`\\host\share`, bare `//host/share`) and SCP-style addresses
@@ -104,7 +152,7 @@ pub(super) fn join_relative(base: &Path, relative: &str) -> PathBuf {
 }
 
 pub(super) fn is_relative_path_input(input: &str) -> bool {
-    !input.starts_with(['/', '~']) && !is_uri_like(input)
+    !input.starts_with(['/', '~']) && !is_uri_like(input) && virtual_root(input).is_none()
 }
 
 pub(super) fn is_uri_like(input: &str) -> bool {

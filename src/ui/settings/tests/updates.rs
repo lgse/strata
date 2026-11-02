@@ -166,6 +166,112 @@ fn startup_results_initialize_and_update_existing_settings_rows() {
     );
 }
 
+#[cfg(feature = "qa")]
+fn link_names(label: &gtk::Label) -> Vec<Option<String>> {
+    std::iter::successors(label.first_accessible_child(), |link| {
+        link.next_accessible_sibling()
+    })
+    .map(|link| crate::ui::accessibility::qa::naming(&link).and_then(|naming| naming.label))
+    .collect()
+}
+
+#[cfg(feature = "qa")]
+#[test]
+fn update_status_links_are_named_after_their_text() {
+    gtk_test(
+        "ui::settings::tests::updates::update_status_links_are_named_after_their_text",
+        || {
+            let manager = PreferenceManager::shared();
+            manager.set_checks_for_updates(true);
+            manager.set_release_channel(Channel::Stable);
+            clear_cached_update_notice();
+            let row = update_check_row_with(
+                manager.clone(),
+                release_notes_card(ReleaseNotesKind::Available, "Available release", ""),
+                install_guard(),
+                UpdateMethod::InPlace,
+                FakeInstaller::default().launcher(),
+            );
+            for (result, link) in [
+                (
+                    UpdateCheck::Failed("test connection failure".into()),
+                    "View releases on GitHub",
+                ),
+                (
+                    UpdateCheck::Available {
+                        release: super::update_dialog::release(),
+                        install: offered_request(),
+                    },
+                    "v99.0.0",
+                ),
+            ] {
+                let generation = next_check_generation();
+                complete_due_update_check(
+                    &Rc::downgrade(&manager),
+                    Channel::Stable,
+                    result,
+                    UpdateMethod::InPlace,
+                    generation,
+                );
+                assert_eq!(link_names(&row.status), [Some(link.to_owned())]);
+            }
+            clear_cached_update_notice();
+        },
+    );
+}
+
+#[cfg(feature = "qa")]
+fn channel_choice(manager: &Rc<PreferenceManager>) -> (gtk::Widget, gtk::MenuButton) {
+    let (page, _) = updates_page(
+        manager.clone(),
+        Rc::new(|_| {}),
+        install_guard(),
+        UpdateMethod::InPlace,
+    );
+    let choice = super::descendants(&page)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::MenuButton>().ok())
+        .find(|button| {
+            crate::ui::accessibility::qa::naming(button)
+                .and_then(|naming| naming.label)
+                .as_deref()
+                == Some("Release channel")
+        })
+        .expect("the release channel choice");
+    (page, choice)
+}
+
+#[cfg(feature = "qa")]
+fn assert_channel_choice_sensitive(
+    (_page, choice): &(gtk::Widget, gtk::MenuButton),
+    sensitive: bool,
+    case: &str,
+) {
+    let toggle = choice.first_child().expect("the choice's toggle");
+    assert_eq!(choice.get_sensitive(), sensitive, "{case}: the choice");
+    assert_eq!(toggle.get_sensitive(), sensitive, "{case}: its toggle");
+}
+
+#[cfg(feature = "qa")]
+#[test]
+fn the_release_channel_choice_is_disabled_for_assistive_technology_without_automatic_checks() {
+    gtk_test(
+        "ui::settings::tests::updates::the_release_channel_choice_is_disabled_for_assistive_technology_without_automatic_checks",
+        || {
+            crate::ui::prepare_portal_ui();
+            let manager = PreferenceManager::shared();
+            // Turning checks on runs a check, so the page only sees them turned off.
+            manager.set_checks_for_updates(true);
+            let opened_checking = channel_choice(&manager);
+            assert_channel_choice_sensitive(&opened_checking, true, "opened with checks on");
+            manager.set_checks_for_updates(false);
+            assert_channel_choice_sensitive(&opened_checking, false, "checks turned off");
+            let opened_without = channel_choice(&manager);
+            assert_channel_choice_sensitive(&opened_without, false, "opened with checks off");
+        },
+    );
+}
+
 #[test]
 fn a_check_started_in_one_row_keeps_other_rows_offers_until_its_result() {
     gtk_test(

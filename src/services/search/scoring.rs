@@ -115,7 +115,28 @@ impl QueryScorer<'_> {
     }
 }
 
-type RankedPosition = Reverse<(i64, Reverse<usize>)>;
+/// One scored index position. Higher ranks first; equal scores fall back to the folded
+/// name and then the path, so the walk's enumeration order never decides.
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct Ranked<'a> {
+    score: i64,
+    tie: Reverse<(&'a str, &'a str, usize)>,
+}
+
+impl<'a> Ranked<'a> {
+    fn new(score: i64, item: &'a SearchItem, position: usize) -> Self {
+        Self {
+            score,
+            tie: Reverse((item.search_name(), &item.search_path, position)),
+        }
+    }
+
+    fn position(&self) -> usize {
+        self.tie.0.2
+    }
+}
+
+type RankedPosition<'a> = Reverse<Ranked<'a>>;
 
 #[cfg(test)]
 pub(super) fn score_index(
@@ -134,11 +155,11 @@ struct Ranking<'a> {
     limit: usize,
 }
 
-fn score_in_parallel(
-    index: &[SearchItem],
+fn score_in_parallel<'a>(
+    index: &'a [SearchItem],
     ranking: Ranking<'_>,
     worker_count: usize,
-) -> BinaryHeap<RankedPosition> {
+) -> BinaryHeap<RankedPosition<'a>> {
     let chunk_size = index.len().div_ceil(worker_count);
     std::thread::scope(|scope| {
         let workers = index
@@ -181,22 +202,17 @@ pub(super) fn score_index_with_limit(
     } else {
         score_in_parallel(index, ranking, worker_count)
     };
-    let mut ranked = best
+    best.into_sorted_vec()
         .into_iter()
-        .map(|Reverse((score, Reverse(position)))| (score, position))
-        .collect::<Vec<_>>();
-    ranked.sort_unstable_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
-    ranked
-        .into_iter()
-        .map(|(score, position)| (score, index[position].clone()))
+        .map(|Reverse(ranked)| (ranked.score, index[ranked.position()].clone()))
         .collect()
 }
 
-fn score_range(
-    index: &[SearchItem],
+fn score_range<'a>(
+    index: &'a [SearchItem],
     position_offset: usize,
     ranking: Ranking<'_>,
-) -> BinaryHeap<RankedPosition> {
+) -> BinaryHeap<RankedPosition<'a>> {
     let mut best = BinaryHeap::with_capacity(ranking.limit + 1);
     let mut scorer = ranking.scorer.prepare(ranking.normalized_query);
     for (position, item) in index.iter().enumerate() {
@@ -205,16 +221,16 @@ fn score_range(
         };
         retain_candidate(
             &mut best,
-            (score, Reverse(position_offset + position)),
+            Ranked::new(score, item, position_offset + position),
             ranking.limit,
         );
     }
     best
 }
 
-pub(super) fn retain_candidate(
-    best: &mut BinaryHeap<RankedPosition>,
-    candidate: (i64, Reverse<usize>),
+fn retain_candidate<'a>(
+    best: &mut BinaryHeap<RankedPosition<'a>>,
+    candidate: Ranked<'a>,
     limit: usize,
 ) {
     if best.len() < limit {
@@ -236,7 +252,9 @@ pub(super) fn insert_match_with_limit(
     item: &SearchItem,
     limit: usize,
 ) {
-    let position = matches.partition_point(|candidate| candidate.0 >= score);
+    let ranked = Ranked::new(score, item, 0);
+    let position =
+        matches.partition_point(|(kept_score, kept)| Ranked::new(*kept_score, kept, 0) > ranked);
     if position < limit {
         matches.insert(position, (score, item.clone()));
         matches.truncate(limit);

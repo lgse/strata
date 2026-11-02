@@ -108,7 +108,7 @@ the main context drains. Input is real XTEST.
 | Step | Meaning |
 | --- | --- |
 | `{"key":"ctrl+x","repeat":2}` | Taps a chord (`ctrl`, `shift`, `alt`, `altgr` + a GDK key name such as `Return`, `F2`, `period`, `Page_Down`); the key comes up 20 ms after it went down. |
-| `{"type":"nested-notes"}` | One key tap per character. |
+| `{"type":"nested-notes"}` | One key tap per character. A character the layout lacks (`é`, `名`) is typed on an empty keycode lent that keysym for the tap and then restored, as xdotool does; X11 only. |
 | `{"key_down":"ctrl"}`, `{"key_up":"Escape"}` | One modifier or key down or up, no tap, no pause. |
 | `{"click":TARGET,"button":1,"count":1,"mods":["shift"],"at":[4,"50%"]}` | Moves to the target and clicks. `button` 3 is a right-click, `count` 2 a double-click. `"release_mods_first":true` lifts the modifiers between press and release. `"left_bound":"browser"` keeps the aim right of a remembered box's left edge. |
 | `{"select":{"entry":"readme.md","dir":"$root"}}` | Clicks the entry, and again after 4 s if it is still not selected. |
@@ -271,7 +271,13 @@ origin (which covers popovers), looked up for up to 15 s, and the pointer aims
 only once its box comes through a painted frame unchanged: a row a listing has
 just added or replaced can report a box before its first allocation lands. A
 lookup that breaks, such as an unrealized surface, is an error, never
-`absent`.
+`absent`. When a scroller clips the aimed point (a row in a Columns pane the
+strip scrolled away, a crumb past either end of the trail, a row below a list's
+viewport), `click`, `move`, and `select` first turn the wheel over that
+scroller, with Shift for a horizontal one, until the point shows; an aim kept
+inside a `left_bound` box is not moved. That wheel is real input, so the app's
+scroll handlers run first: a pending new-entry editor is cancelled before the
+click lands.
 
 | Target | Finds |
 | --- | --- |

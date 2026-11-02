@@ -404,6 +404,19 @@ fn escape_when_the_transfer_starts(fixture: &KeyboardFixture) {
     });
 }
 
+/// Set once a transfer reports its end, which is when its undo entry lands; the
+/// files reach disk earlier, so their presence alone races that entry.
+fn transfer_finished(browser: &crate::app::Browser) -> Rc<Cell<bool>> {
+    let finished = Rc::new(Cell::new(false));
+    let seen = finished.clone();
+    browser.observe(move |event| {
+        if matches!(event, BrowserEvent::TransferFinished { .. }) {
+            seen.set(true);
+        }
+    });
+    finished
+}
+
 fn abandon_group_naming(fixture: &KeyboardFixture, dismissal: GroupNamingDismissal) {
     wait_until(|| fixture.view.rename_is_active());
     let field = fixture.view.active_rename_field().expect("gesture field");
@@ -449,9 +462,14 @@ fn abandoned_group_naming_case(mode: BrowserMode, dismissal: GroupNamingDismissa
     if dismissal == GroupNamingDismissal::PendingEscape {
         escape_when_the_transfer_starts(&fixture);
     }
+    let grouped = transfer_finished(&browser);
     focus_files(&fixture);
     assert!(fixture.press(Key::n, GROUP));
-    wait_until(|| all_exist(directory, &["new folder/a.txt", "new folder/b.txt"]));
+    wait_until(|| grouped.get());
+    assert!(all_exist(
+        directory,
+        &["new folder/a.txt", "new folder/b.txt"]
+    ));
     if dismissal != GroupNamingDismissal::PendingEscape {
         abandon_group_naming(&fixture, dismissal);
     }

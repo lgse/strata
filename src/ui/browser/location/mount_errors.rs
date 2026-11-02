@@ -120,8 +120,8 @@ pub(super) fn mount_failure_message(location: &Location, error: &glib::Error) ->
 }
 
 fn transport_failure_message(error: &glib::Error) -> Option<String> {
-    let failure = TransportFailure::from_code(error)
-        .or_else(|| TransportFailure::from_gvfs_errno_text(error))?;
+    let failure =
+        TransportFailure::from_code(error).or_else(|| TransportFailure::from_gvfs_text(error))?;
     Some(crate::i18n::tr(failure.guidance()))
 }
 
@@ -131,7 +131,13 @@ enum TransportFailure {
     Refused,
     TimedOut,
     Unreachable,
+    Lost,
 }
+
+/// GVfs' SFTP backend reports an SSH session that ends during login, as when the
+/// server stops before a password reply arrives, as `G_IO_ERROR_FAILED` with its
+/// own translation of this message.
+const GVFS_LOST_CONNECTION: &str = "Connection failed";
 
 /// GVfs' SMB backends fail a mount with `G_IO_ERROR_FAILED` and
 /// "Failed to mount Windows share: %s" (or "Failed to retrieve share list from
@@ -174,11 +180,21 @@ impl TransportFailure {
         })
     }
 
-    fn from_gvfs_errno_text(error: &glib::Error) -> Option<Self> {
+    fn from_gvfs_text(error: &glib::Error) -> Option<Self> {
         if !error.matches(gio::IOErrorEnum::Failed) {
             return None;
         }
-        let (_, reason) = error.message().rsplit_once([':', '：'])?;
+        let message = error.message();
+        let lost = message == GVFS_LOST_CONNECTION
+            || message == glib::dgettext(Some("gvfs"), GVFS_LOST_CONNECTION);
+        if lost {
+            return Some(Self::Lost);
+        }
+        Self::from_gvfs_errno_text(message)
+    }
+
+    fn from_gvfs_errno_text(message: &str) -> Option<Self> {
+        let (_, reason) = message.rsplit_once([':', '：'])?;
         let reason = reason.trim();
         GVFS_ERRNO_FAILURES
             .iter()
@@ -197,6 +213,9 @@ impl TransportFailure {
             Self::Refused => "The host refused the connection. Check the service and port.",
             Self::TimedOut => "The connection timed out. Check the host and firewall.",
             Self::Unreachable => "That host is unreachable. Check your network connection.",
+            Self::Lost => {
+                "The connection to the host failed. Check that the server is running, then try again."
+            }
         }
     }
 }
