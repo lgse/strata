@@ -214,7 +214,7 @@ default, and with per-folder settings off the default returns to 64 px. These
 change the size exactly as the slider does and change no size in Columns or List.
 Each change briefly shows the new size in the bottom-right corner.
 
-A pane's sort menu shows **Make this the default sort** when its sort differs from
+A pane's sort menu shows **Apply as default sort** when its sort differs from
 the default and **Reset to default sort** when the folder has its own sort; the
 thumbnail popover has the matching size actions. Making a value the default leaves
 other folders' values alone, except those now equal to it, which are dropped. With

@@ -552,7 +552,7 @@
   "MODIFIED": "更新日時",
   "MOTION": "モーション",
   "Make this the default size": "このサイズをデフォルトにする",
-  "Make this the default sort": "この並べ替えをデフォルトにする",
+  "Apply as default sort": "デフォルトの並べ替えとして適用",
   "Maximize window": "ウィンドウを最大化",
   "Maximum items": "最大項目数",
   "Measuring Trash…": "ゴミ箱を計測中…",

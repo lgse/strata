@@ -366,7 +366,7 @@ fn direction_model() -> gio::Menu {
 fn default_model() -> gio::Menu {
     let defaults = gio::Menu::new();
     for (label, action) in [
-        ("Make this the default sort", "default"),
+        ("Apply as default sort", "default"),
         ("Reset to default sort", "reset"),
     ] {
         let item = gio::MenuItem::new(
