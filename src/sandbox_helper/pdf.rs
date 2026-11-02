@@ -182,12 +182,11 @@ fn open_preview_document(input: &Path, output: &Path) -> Result<poppler::Documen
     })
 }
 
+/// The page PNG, its `page pages` metadata and its optional text layer.
+type PdfPreview = (Vec<u8>, String, Option<Vec<u8>>);
+
 /// Renders the requested page of `page:WxH`, with its `page pages` metadata and text layer.
-pub(super) fn preview(
-    input: &Path,
-    output: &Path,
-    value: &str,
-) -> Result<(Vec<u8>, String, Option<Vec<u8>>), String> {
+pub(super) fn preview(input: &Path, output: &Path, value: &str) -> Result<PdfPreview, String> {
     let (page, size) = pdf_render_request(value)?;
     let document = open_preview_document(input, output)?;
     let (png, page, pages, text_layer) = render_pdf_page(&document, page, size)?;
