@@ -606,12 +606,12 @@ impl ViewState {
         hierarchy_menu.set_button(gtk::gdk::BUTTON_SECONDARY);
         hierarchy_menu.set_propagation_phase(gtk::PropagationPhase::Capture);
         let weak_state = Rc::downgrade(self);
-        hierarchy_menu.connect_pressed(move |gesture, _, x, y| {
+        hierarchy_menu.connect_pressed(move |gesture, _, x, _| {
             gesture.set_state(gtk::EventSequenceState::Claimed);
             if let Some(state) = weak_state.upgrade()
                 && let Some(widget) = gesture.widget()
             {
-                state.show_breadcrumb_hierarchy_menu(&widget, x, y);
+                state.show_breadcrumb_hierarchy_menu(&widget, x);
             }
         });
         breadcrumb_scroller.add_controller(hierarchy_menu);
