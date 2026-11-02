@@ -246,6 +246,57 @@ fn heading_label(popover: &gtk::PopoverMenu, with_icon: bool) -> gtk::Label {
         .expect("heading label")
 }
 
+fn heading_labels(root: &gtk::Widget, name: &str) -> usize {
+    let own = root
+        .downcast_ref::<gtk::Label>()
+        .is_some_and(|label| label.has_css_class("separator") && label.label() == name);
+    usize::from(own)
+        + std::iter::successors(root.first_child(), gtk::Widget::next_sibling)
+            .map(|child| heading_labels(&child, name))
+            .sum::<usize>()
+}
+
+#[test]
+fn reopened_menu_renders_a_fresh_provider_heading_row() {
+    // GTK warns when a heading reuses a custom slot ID it still remembers.
+    crate::test_support::gtk_test_with_env(
+        "ui::file_providers::tests::menu_sections::reopened_menu_renders_a_fresh_provider_heading_row",
+        [("G_DEBUG", "fatal-warnings")],
+        || {
+            install_hub();
+            let model = gio::Menu::new();
+            let popover = gtk::PopoverMenu::from_model(Some(&model));
+            let group = gio::SimpleActionGroup::new();
+            popover.insert_action_group("provider", Some(&group));
+            for open in 1..=3 {
+                // Each rebuild clears the model the popover keeps rendering.
+                model.remove_all();
+                let mut renderer = menus::Renderer::new(
+                    (model.clone(), None),
+                    group.clone(),
+                    glib::WeakRef::new(),
+                    popover.downgrade(),
+                    (vec!["/file".into()], false),
+                    Rc::new(Cell::new(open)),
+                    open,
+                );
+                renderer.update(vec![(0, action("keep", "Keep offline", None))]);
+                assert_eq!(
+                    string_attribute(model.upcast_ref(), 0, "label"),
+                    None,
+                    "no GTK section title on open {open}"
+                );
+                assert_eq!(
+                    heading_labels(popover.upcast_ref(), "Example Cloud"),
+                    1,
+                    "one heading row on open {open}"
+                );
+            }
+            clear_hub();
+        },
+    );
+}
+
 #[test]
 fn provider_heading_row_keeps_the_name_and_action_positions() {
     crate::test_support::gtk_test(

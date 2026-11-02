@@ -392,11 +392,26 @@ fn placed(action: &mut MenuAction, root: bool, send_to_available: bool) {
     }
 }
 
+thread_local! {
+    static HEADING_SLOTS: Cell<u64> = const { Cell::new(0) };
+}
+
+/// GTK never forgets a custom slot ID, even after removing the slot and
+/// freeing its key, so each heading takes an ID no earlier slot had.
+fn heading_slot_id(provider_id: &str) -> String {
+    let serial = HEADING_SLOTS.with(|serial| {
+        serial.set(serial.get() + 1);
+        serial.get()
+    });
+    format!("provider-heading-{provider_id}-{serial}")
+}
+
 /// A rendered menu names the provider with a custom heading row styled like a
-/// section title. A GTK section title stays outside the widget tree while its
-/// section is empty, yet labels the section, so an AT-SPI client reading the
-/// section's relations realizes the detached title and GTK fails a critical
-/// once the title joins the tree (#2011). The row also has room for the icon.
+/// section title. A GTK section title stays outside the widget tree until GTK's
+/// idle separator sync, and whenever its section is empty, yet labels the
+/// section, so an AT-SPI client reading the section's relations realizes the
+/// detached title and GTK fails a critical once the title joins the tree
+/// (#2011). The row also has room for the icon.
 fn insert_section(
     model: &gio::Menu,
     index: usize,
@@ -412,7 +427,7 @@ fn insert_section(
         )
     });
     if let Some(popover) = popover {
-        let custom = format!("provider-heading-{id}");
+        let custom = heading_slot_id(&id);
         let item = gio::MenuItem::new(None, None);
         item.set_attribute_value("custom", Some(&custom.to_variant()));
         section.model.insert_item(0, &item);
