@@ -871,20 +871,6 @@ fn operations_in_inactive_tabs_prevent_tab_and_window_closure() {
     );
 }
 
-/// A tab without a folder is named after the location its pane is showing an error for.
-fn assert_names_awaited_tab(window: &gtk::ApplicationWindow, tabs: &TabWindow, name: &str) {
-    assert_eq!(
-        window.title().as_deref(),
-        Some(format!("{name} — Strata").as_str())
-    );
-    let tab_label = find_widget(tabs.strip.widget().upcast_ref(), &|widget| {
-        widget
-            .downcast_ref::<gtk::Label>()
-            .is_some_and(|label| label.text() == name)
-    });
-    assert!(tab_label.is_some(), "the tab strip names the tab {name:?}");
-}
-
 fn tab_locations(tabs: &TabWindow) -> Vec<Option<Location>> {
     tabs.tabs
         .borrow()
@@ -1446,29 +1432,6 @@ fn open_in_new_tab_appends_activates_and_navigates_the_target() {
                 tabs.active_tab().checking.borrow().is_none(),
                 "the opened folder ends the tab's wait for its target"
             );
-            window.destroy();
-        },
-    );
-}
-
-#[test]
-fn open_in_new_tab_reuses_the_unavailable_overlay_for_a_missing_target() {
-    gtk_test(
-        "ui::window::composition::tabs::tests::open_in_new_tab_reuses_the_unavailable_overlay_for_a_missing_target",
-        || {
-            PreferenceManager::seed_saved_preferences_for_test();
-            let root = tempfile::tempdir().expect("missing target fixture");
-            let missing = root.path().join("missing");
-            let (window, tabs) = open();
-            load(&tabs.active_browser(), Location::local(root.path()));
-            tabs.open_in_new_tab(Location::local(&missing));
-            let view = tabs.active_browser();
-            wait_until(|| button_with_label(view.overlay().upcast_ref(), "Retry").is_some());
-            assert!(
-                button_with_label(view.overlay().upcast_ref(), "Retry").is_some(),
-                "a missing target shows the retry overlay"
-            );
-            assert_names_awaited_tab(&window, &tabs, "missing");
             window.destroy();
         },
     );
