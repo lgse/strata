@@ -2,7 +2,7 @@
 
 use super::acceptance::{request, visible_collection_selection, wait_until};
 use super::*;
-use crate::test_support::widgets::{mapped_back_button, press_on_widget};
+use crate::test_support::widgets::BackHistoryKey;
 use crate::ui::browser_modes::BrowserMode;
 use gtk::gdk::{Key, ModifierType};
 use std::{
@@ -1218,32 +1218,14 @@ fn context_menu_keys_on_back_list_the_back_history() {
                     (Key::Menu, ModifierType::empty()),
                     (Key::F10, ModifierType::SHIFT_MASK),
                 ] {
-                    let case = format!("{mode:?} {modifiers:?}+{key:?}");
-                    let back = RefCell::new(None);
-                    wait_until(|| {
-                        back.replace(mapped_back_button(chooser.state.window.upcast_ref()));
-                        back.borrow().is_some()
-                    });
-                    let back = back
-                        .take()
-                        .unwrap_or_else(|| panic!("{case}: no Back button"));
-                    let history = widget_with_class(&back, "back-history-popover")
-                        .and_downcast::<gtk::Popover>()
-                        .unwrap_or_else(|| panic!("{case}: Back has no history menu"));
-                    assert!(back.grab_focus(), "{case}: Back took no focus");
-                    assert!(
-                        !chooser.press_with(key, modifiers),
-                        "{case}: the chooser claimed the key from Back"
-                    );
-                    press_on_widget(&back, key, modifiers);
-                    wait_until(|| history.is_visible());
-                    assert_eq!(
-                        browser.active_location().as_ref(),
-                        Some(&alpha),
-                        "{case}: the key went back"
-                    );
-                    history.popdown();
-                    wait_until(|| !history.is_visible());
+                    BackHistoryKey {
+                        window: chooser.state.window.upcast_ref(),
+                        browser: &browser,
+                        case: &format!("{mode:?} {modifiers:?}+{key:?}"),
+                        key,
+                        modifiers,
+                    }
+                    .assert_lists_history(|key, modifiers| chooser.press_with(key, modifiers));
                 }
             }
         },

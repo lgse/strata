@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::test_support::widgets::{mapped_back_button, press_on_widget};
+use crate::test_support::widgets::BackHistoryKey;
 
 /// Hyper, Meta and Caps Lock are not shortcut modifiers.
 const OPENS: [(Key, ModifierType); 8] = [
@@ -106,19 +106,6 @@ fn sidebar_context_shortcuts_open_place_trash_and_device_menus() {
     );
 }
 
-fn visible_popovers(widget: &gtk::Widget) -> Vec<gtk::Popover> {
-    let mut found: Vec<gtk::Popover> = widget
-        .downcast_ref::<gtk::Popover>()
-        .filter(|popover| popover.is_visible())
-        .into_iter()
-        .cloned()
-        .collect();
-    for child in children(widget) {
-        found.extend(visible_popovers(&child));
-    }
-    found
-}
-
 #[test]
 fn context_menu_keys_on_back_list_the_back_history() {
     crate::test_support::gtk_test(
@@ -134,37 +121,14 @@ fn context_menu_keys_on_back_list_the_back_history() {
             for mode in [BrowserMode::Icons, BrowserMode::List] {
                 fixture.view.set_view_mode(mode);
                 for (key, modifiers) in &OPENS[..2] {
-                    let case = format!("{mode:?} {modifiers:?}+{key:?}");
-                    let back = RefCell::new(None);
-                    wait_until(|| {
-                        back.replace(mapped_back_button(fixture.window.upcast_ref()));
-                        back.borrow().is_some()
-                    });
-                    let back = back
-                        .take()
-                        .unwrap_or_else(|| panic!("{case}: no Back button"));
-                    let history = widget_with_class(&back, "back-history-popover")
-                        .and_downcast::<gtk::Popover>()
-                        .unwrap_or_else(|| panic!("{case}: Back has no history menu"));
-                    assert!(back.grab_focus(), "{case}: Back took no focus");
-                    assert!(
-                        !fixture.press(*key, *modifiers),
-                        "{case}: the window claimed the key from Back"
-                    );
-                    press_on_widget(&back, *key, *modifiers);
-                    wait_until(|| history.is_visible());
-                    let others = visible_popovers(fixture.window.upcast_ref())
-                        .into_iter()
-                        .filter(|popover| popover != &history)
-                        .count();
-                    assert_eq!(others, 0, "{case}: another menu opened with the history");
-                    assert_eq!(
-                        browser.active_location().as_ref(),
-                        Some(&folder),
-                        "{case}: the key went back"
-                    );
-                    history.popdown();
-                    wait_until(|| !history.is_visible());
+                    BackHistoryKey {
+                        window: fixture.window.upcast_ref(),
+                        browser: &browser,
+                        case: &format!("{mode:?} {modifiers:?}+{key:?}"),
+                        key: *key,
+                        modifiers: *modifiers,
+                    }
+                    .assert_lists_history(|key, modifiers| fixture.press(key, modifiers));
                 }
             }
         },
