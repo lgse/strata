@@ -781,23 +781,32 @@ fn tenxer_tab_cycles_files_header_name_options_and_back_to_files() {
             fn open_with_choice(request: &mut ChooserRequest) {
                 request.choices = vec![Choice::boolean("extension", "Automatic extension", true)];
             }
-            let cases: [(&str, ConfigureRequest, usize); 3] = [
-                ("save", save, 0),
-                ("filtered save", filtered_save, 1),
-                ("open with a choice", open_with_choice, 2),
+            fn folder_with_choice(request: &mut ChooserRequest) {
+                open_with_choice(request);
+                request.kind = ChooserKind::Open {
+                    directory: true,
+                    multiple: false,
+                };
+            }
+            // Each case's stops after the header: name field, then options.
+            let cases: [(&str, ConfigureRequest, usize); 4] = [
+                ("save", save, 1),
+                ("filtered save", filtered_save, 2),
+                ("open with a choice", open_with_choice, 3),
+                ("folder with a choice", folder_with_choice, 1),
             ];
-            for (case, configure, options) in cases {
+            for (case, configure, after_header) in cases {
                 let chooser =
                     Chooser::open_configured(BrowserMode::List, &["existing.txt"], true, configure);
                 let header = widget_with_class(chooser.state.window.upcast_ref(), "browser-header")
                     .expect("header");
-                let name = chooser.state.filename.clone().expect("name field");
-                let stops: Vec<gtk::Widget> = [header, name.clone().upcast()]
-                    .into_iter()
+                let name = chooser.state.filename.clone();
+                let stops: Vec<gtk::Widget> = std::iter::once(header)
+                    .chain(name.iter().map(|name| name.clone().upcast()))
                     .chain(option_stops(&chooser.state))
                     .collect();
-                assert_eq!(stops.len(), 2 + options, "{case}");
-                let initial_name = name.text();
+                assert_eq!(stops.len(), 1 + after_header, "{case}");
+                let initial_name = name.as_ref().map(|name| name.text());
                 wait_until(|| chooser.state.view.item_view_has_focus());
                 for _ in 0..2 {
                     for (index, stop) in stops.iter().enumerate() {
@@ -821,9 +830,9 @@ fn tenxer_tab_cycles_files_header_name_options_and_back_to_files() {
                 assert!(chooser.press_with(Key::ISO_Left_Tab, ModifierType::SHIFT_MASK));
                 assert!(
                     chooser.state.view.item_view_has_focus(),
-                    "{case}: name to files"
+                    "{case}: Shift+Tab back to files"
                 );
-                assert_eq!(name.text(), initial_name, "{case}");
+                assert_eq!(name.map(|name| name.text()), initial_name, "{case}");
                 assert!(chooser.open_request(), "{case}");
             }
         },

@@ -4,7 +4,7 @@ use super::*;
 
 impl ChooserShortcuts {
     /// In 10xer mode a focused name or location field types every key but these.
-    /// Tab from the name returns to the files rather than reaching Cancel.
+    /// Tab and Shift+Tab leave the name for the options or the files, never Cancel.
     pub(super) fn tenxer_text_keeps_key(
         &self,
         context: &KeyContext<'_>,

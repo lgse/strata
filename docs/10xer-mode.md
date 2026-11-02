@@ -707,7 +707,9 @@ leave the name field; **Ctrl+A** selects the text. Every request starts with
 focus in the files. **Tab** goes from the files to the header, from the header
 to the name field, then through the request's options (file type, choices the
 application offers, and **Open files read-only**) and back to the files. With
-no options, **Tab** from the name field returns straight to the files.
+no options, **Tab** from the name field returns straight to the files. A
+request without a name field, such as a folder chooser, goes from the header
+straight to its options.
 **Shift+Tab** steps back through the options to the name field, and from the
 name field returns to the files.
 Saving over an existing file asks first with Cancel focused. Beside Cancel and

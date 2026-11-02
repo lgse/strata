@@ -37,7 +37,6 @@ impl ChooserShortcuts {
             return None;
         }
         let direction = context.tab()?;
-        let filename = context.state.filename.as_ref()?;
         if context.name_has_focus() {
             let into_options = direction == gtk::DirectionType::TabForward
                 && self.focus_options(context, direction);
@@ -49,8 +48,17 @@ impl ChooserShortcuts {
         if !context.focus_within(&self.header) {
             return None;
         }
-        focus_name(filename);
+        self.tab_from_header(context);
         STOP
+    }
+
+    /// A request without a name field goes on to its options, then the files.
+    fn tab_from_header(&self, context: &KeyContext<'_>) {
+        if let Some(filename) = context.state.filename.as_ref() {
+            focus_name(filename);
+        } else if !self.focus_options(context, gtk::DirectionType::TabForward) {
+            context.browser.focus_active();
+        }
     }
 
     /// In 10xer mode Tab walks the options, then returns to the files;
