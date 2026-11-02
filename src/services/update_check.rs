@@ -699,7 +699,6 @@ fn fetch_exact_release(tag: &str) -> ReleaseNotes {
     notes
 }
 
-/// The cached answer for `tag`, or `None` when it must be fetched.
 fn cached_release_notes(cached: CachedReleaseNotes, tag: &str, now: u64) -> Option<ReleaseNotes> {
     if cached.tag != tag {
         return None;
@@ -723,7 +722,6 @@ fn cached_release_notes(cached: CachedReleaseNotes, tag: &str, now: u64) -> Opti
     }))
 }
 
-/// The notes a fetch for `tag` produced, and what to cache; a failed request caches nothing.
 fn exact_release_outcome(
     tag: &str,
     response: Result<ReleaseResponse, ureq::Error>,

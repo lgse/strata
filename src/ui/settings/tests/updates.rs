@@ -241,8 +241,6 @@ fn channel_choice(manager: &Rc<PreferenceManager>) -> (gtk::Widget, gtk::MenuBut
     (page, choice)
 }
 
-/// GTK reports each widget's own sensitivity over AT-SPI, not its row's, and the
-/// menu button's toggle is an accessible of its own.
 #[cfg(feature = "qa")]
 fn assert_channel_choice_sensitive(
     (_page, choice): &(gtk::Widget, gtk::MenuButton),

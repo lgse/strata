@@ -263,8 +263,7 @@ impl ViewState {
 
     /// Deleting the folder whose column is active acts on its row in the
     /// parent, so the cursor goes there first: a deletion moves it on to a
-    /// neighbour, and a cancelled one leaves focus on the folder's row. A
-    /// deletion that will not start leaves the cursor where it is.
+    /// neighbour, and a cancelled one leaves focus on the folder's row.
     pub(super) fn leave_folder_being_deleted(&self, entries: &[FileEntry]) {
         let open = self
             .browser

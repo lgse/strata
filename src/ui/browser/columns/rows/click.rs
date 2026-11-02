@@ -34,8 +34,6 @@ fn anchor_at(context: &RowContext, row: u32) {
     }
 }
 
-/// What a row press does on release: activate, preview, or for a plain click on a
-/// file that does neither, end the open path at its column.
 fn release_kind(
     activate: bool,
     plain_file_press: bool,

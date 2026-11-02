@@ -103,7 +103,6 @@ use super::{
 /// Shows a directory in the hosting window's browser.
 pub(crate) type OpenFolder = Rc<dyn Fn(std::path::PathBuf)>;
 
-/// The Settings layer, and the navigation it opens on.
 #[derive(Clone)]
 pub struct SettingsLayer {
     pub widget: gtk::Box,
@@ -344,7 +343,6 @@ fn close_on_outside_click(layer: &gtk::Box, panel: &gtk::Box, close_settings: Rc
 
 type NavigationButtons = Rc<RefCell<Vec<(gtk::Button, &'static str)>>>;
 
-/// The navigation buttons and the page whose button is active.
 #[derive(Clone)]
 struct CurrentPage {
     buttons: NavigationButtons,

@@ -471,14 +471,12 @@ fn a_cancelled_confirmation_gives_back_the_cursor_a_completion_took_meanwhile() 
             let focused = || browser.focused_entry().map(|entry| entry.location);
             assert!(!browser.preferences().show_hidden, "precondition");
 
-            // A hidden item among those asked about is not shown to select.
             let asked_about = browser
                 .focused_entry()
                 .into_iter()
                 .chain([crate::test_support::operations::entry(hidden)])
                 .collect();
             view.state.show_delete_confirmation(asked_about);
-            // A compression finishing underneath selects its archive.
             assert!(browser.select_entries_by_location_at(0, std::slice::from_ref(&archive)));
             assert!(modal_key(&window, gtk::gdk::Key::Escape));
             wait_until(|| {

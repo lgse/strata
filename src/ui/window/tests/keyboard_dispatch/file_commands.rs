@@ -14,7 +14,6 @@ mod delete;
 mod send_to;
 mod trashless;
 
-/// A fixture browsing through `source` whose operations wait for the test to finish them.
 fn held_fixture(
     held: &Rc<HeldOperations>,
     source: Rc<dyn crate::services::FileSource>,

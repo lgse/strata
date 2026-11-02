@@ -375,9 +375,7 @@ fn persistent_layer_restores_focus_when_hidden_unless_disarmed() {
 #[derive(Clone, Copy, Debug)]
 enum Opener {
     Usable,
-    /// The dialog's action disables the button that opened it.
     DisabledByTheDialog,
-    /// Focus had fallen back to the modal layer itself.
     TheLayer,
 }
 

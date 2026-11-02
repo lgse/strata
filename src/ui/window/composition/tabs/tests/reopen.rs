@@ -156,7 +156,6 @@ fn open_in_new_tab_reuses_the_unavailable_overlay_for_a_missing_target() {
     );
 }
 
-/// A tab without a folder is named after the location its pane is showing an error for.
 fn assert_names_awaited_tab(window: &gtk::ApplicationWindow, tabs: &TabWindow, name: &str) {
     assert_eq!(
         window.title().as_deref(),

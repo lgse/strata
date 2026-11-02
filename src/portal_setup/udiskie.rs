@@ -110,7 +110,6 @@ enum RestartMode {
     ReloadIfRunning,
 }
 
-/// What a udiskie change did, for the terminal and Settings to report.
 #[derive(Debug)]
 pub(crate) struct UdiskieChange {
     summary: String,
@@ -118,7 +117,6 @@ pub(crate) struct UdiskieChange {
 }
 
 impl UdiskieChange {
-    /// The localized request to restart udiskie, when Strata could not.
     pub(crate) fn restart_warning(&self) -> Option<String> {
         (self.restart == RestartOutcome::ManualRestartNeeded)
             .then(|| crate::i18n::tr(RESTART_WARNING))
@@ -136,7 +134,6 @@ impl UdiskieChange {
         }
     }
 
-    /// The summary and any restart warning, one per line.
     pub(crate) fn report(self) -> String {
         match self.restart_warning() {
             Some(warning) => format!("{}\n{warning}", self.summary),

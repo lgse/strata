@@ -95,7 +95,6 @@ fn syntax_pickers_preview_cancel_and_save_to_custom_theme() {
     );
 }
 
-/// Each color field's grid cell, with its swatch and label.
 fn field_cells(fields: &gtk::FlowBox) -> Vec<(gtk::Widget, gtk::ColorDialogButton, gtk::Label)> {
     std::iter::successors(fields.first_child(), gtk::Widget::next_sibling)
         .map(|cell| {

@@ -278,7 +278,6 @@ pub(super) fn filesystem_label_for_device(device: &Path) -> Option<String> {
     filesystem_display_name(&fstype)
 }
 
-/// The filesystem type fstab declares for a device.
 pub(super) fn fstab_type_for_device(device: &Path) -> Option<String> {
     crate::util::ui_thread::assert_off();
     let (points, _) = gio_unix::MountPoint::mount_points();
@@ -288,8 +287,7 @@ pub(super) fn fstab_type_for_device(device: &Path) -> Option<String> {
         .map(|point| point.fs_type().to_string())
 }
 
-/// Human-readable name of a type fstab declares; `auto` and `none` name no
-/// filesystem.
+/// `auto` and `none` name no filesystem.
 pub(super) fn fstab_display_name(fstype: &str) -> Option<String> {
     match fstype.trim() {
         "auto" | "none" => None,

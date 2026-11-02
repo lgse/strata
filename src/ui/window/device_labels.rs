@@ -4,7 +4,6 @@ use crate::ui::preferences::PreferenceManager;
 use gtk::prelude::*;
 use std::rc::Rc;
 
-/// The name Strata shows for a device: its saved label, else the system name.
 pub(super) fn display_name(
     preferences: &PreferenceManager,
     id: Option<&str>,
@@ -32,7 +31,6 @@ pub(super) fn bind_row_label(
     });
 }
 
-/// Keeps a label showing the device's display name as its saved label changes.
 pub(super) fn bind_label_text(
     label: &gtk::Label,
     preferences: &Rc<PreferenceManager>,

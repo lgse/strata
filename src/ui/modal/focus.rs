@@ -112,7 +112,6 @@ fn takes_focus_back(opener: &gtk::Widget, under: &gtk::Widget) -> bool {
     opener != under && shown_or_revealing(opener) && opener.is_sensitive()
 }
 
-/// Focuses the first control in the closest container of `opener` inside `under`.
 fn focus_nearest_control(opener: &gtk::Widget, under: &gtk::Widget) -> bool {
     let mut container = if opener == under {
         Some(under.clone())
@@ -131,7 +130,6 @@ fn focus_nearest_control(opener: &gtk::Widget, under: &gtk::Widget) -> bool {
     false
 }
 
-/// Focuses the first control in `layer`, or the layer itself when it holds none.
 pub(in crate::ui) fn focus_modal_layer(layer: &impl IsA<gtk::Widget>) {
     let layer = layer.upcast_ref::<gtk::Widget>();
     if !focus_first_control(layer) {

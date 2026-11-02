@@ -429,10 +429,12 @@ impl TabWindow {
             .iter()
             .find(|tab| tab.id == id)
             .and_then(|tab| match location {
-                Some(_) => tab.checking.take(),
+                Some(_) => {
+                    tab.checking.take();
+                    None
+                }
                 None => tab.checking.borrow().clone(),
-            })
-            .filter(|_| location.is_none());
+            });
         let shown = location.or(awaited.as_ref());
         let label = tab_label(shown);
         self.strip.label(id, &label);

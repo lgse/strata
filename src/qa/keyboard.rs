@@ -65,7 +65,6 @@ impl Input<'_> {
         tapped
     }
 
-    /// Types one character, on a borrowed keycode when the layout lacks it.
     pub(super) async fn type_character(&self, character: char) -> Result<(), String> {
         let keysym = input::keysym(&character.to_string())?;
         if self.injector.keycode(keysym).is_err() {
@@ -92,7 +91,6 @@ impl Input<'_> {
         pressed.and(returned).and(restored)
     }
 
-    /// Waits until GTK's keymap shows, or no longer shows, `keysym` on `keycode`.
     async fn await_keymap(&self, keycode: u8, keysym: u32, lent: bool) -> Result<(), String> {
         let display = WidgetExt::display(self.window);
         let deadline = Instant::now() + protocol::DEFAULT_WAIT;

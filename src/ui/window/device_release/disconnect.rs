@@ -11,8 +11,6 @@ use crate::{app::Browser, ui::browser::show_error_dialog};
 
 use super::run::{leave_device_at, release_error_is_quiet};
 
-/// Leaves `root` in every browser, runs `unmount`, and on a failure that left the
-/// share mounted returns each browser the user has not moved since.
 pub(super) async fn leave_share_and_unmount<F, Fut>(
     root: &gio::File,
     browser: Option<&Rc<Browser>>,
@@ -31,9 +29,9 @@ where
     result
 }
 
-/// Whether GIO still lists a mount at `root`. Read right after a failed unmount, the
-/// list may not yet show a share that went away anyway; the browsers then return to
-/// a share that is gone and report it as any unavailable folder does.
+/// Read right after a failed unmount, GIO's mount list may not yet show a share that
+/// went away anyway; the browsers then return to a share that is gone and report it
+/// as any unavailable folder does.
 fn mounted_at(root: &gio::File) -> bool {
     gio::VolumeMonitor::get()
         .mounts()
@@ -41,7 +39,7 @@ fn mounted_at(root: &gio::File) -> bool {
         .any(|mount| mount.root().equal(root))
 }
 
-/// `in_flight` is the share row's own: a second Disconnect waits for the first.
+/// `in_flight` is the share row's own: a second Disconnect is ignored while the first runs.
 pub(in crate::ui::window) fn disconnect_share(
     parent: &gtk::Widget,
     browser: Option<Rc<Browser>>,

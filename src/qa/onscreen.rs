@@ -70,8 +70,6 @@ fn scrollable(adjustment: &gtk::Adjustment) -> bool {
     adjustment.upper() - adjustment.page_size() > adjustment.lower()
 }
 
-/// The innermost scroller that leaves `point` outside its viewport along an axis it can
-/// scroll.
 fn clipping(
     located: &Located,
     (x, y): (f64, f64),

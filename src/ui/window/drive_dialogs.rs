@@ -109,7 +109,6 @@ enum PropertyAction {
     Format,
 }
 
-/// The footer actions Properties offers for one target.
 struct PropertyActionSet {
     editable: bool,
     can_label: bool,
@@ -145,8 +144,8 @@ fn property_action_control(
     Some(button)
 }
 
-/// Adds the footer actions. Only Set label may take the initial focus, so
-/// Enter never releases or formats the device.
+/// Only Set label may take the initial focus, so Enter never releases or
+/// formats the device.
 fn append_property_actions(
     shell: &ModalShell,
     actions: &PropertyActionSet,
@@ -666,7 +665,6 @@ pub(super) fn show_drive_properties(
     append_property_actions(&shell, &actions, run);
 }
 
-/// Replaces Cancel and Close with a footer that stacks on narrow windows.
 fn prepare_properties_footer(shell: &ModalShell) {
     shell.layout.confirm.set_visible(false);
     shell.layout.cancel.set_visible(false);

@@ -288,7 +288,6 @@ impl WayBack {
     }
 }
 
-/// Moves every window and tab browsing inside `root`, and `browser`, off it.
 pub(super) fn leave_device_at(root: &gio::File, browser: Option<&Rc<Browser>>) -> WayBack {
     let mut browsers = sidebar_browsers();
     if let Some(browser) = browser
@@ -319,7 +318,6 @@ struct LeftBrowser {
 }
 
 impl ReleaseRun {
-    /// Moves every window and tab browsing inside the device off it.
     fn leave_device(&self) -> WayBack {
         self.target
             .away_root

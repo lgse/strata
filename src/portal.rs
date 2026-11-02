@@ -762,7 +762,6 @@ pub(crate) fn open_selection(
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct DestinationCheck {
     pub paths: Vec<PathBuf>,
-    /// The paths that already name a file, which saving replaces.
     pub existing: Vec<PathBuf>,
 }
 

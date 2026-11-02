@@ -179,7 +179,6 @@ pub(super) fn watch_sidebars(
     SidebarWatch { id, _hook: hook }
 }
 
-/// The browser of every live sidebar, in every window and tab.
 fn sidebar_browsers() -> Vec<Rc<crate::app::Browser>> {
     REBUILDERS.with(|hooks| {
         let mut browsers: Vec<Rc<crate::app::Browser>> = Vec::new();

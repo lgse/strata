@@ -215,7 +215,6 @@ struct StatusPage {
     administrator: gtk::Button,
 }
 
-/// Shown on a load error, as the Columns feedback page shows them.
 fn status_action(label: &str) -> gtk::Button {
     let button = gtk::Button::with_label(label);
     button.add_css_class("retry-button");

@@ -12,7 +12,6 @@ use super::{
 };
 use crate::ui::preferences::PreferenceManager;
 
-/// A release key named as the Devices row names the device.
 pub(in crate::ui::window) fn key_for_volume(volume: &gio::Volume) -> ReleaseKey {
     labelled(
         system_key_for_volume(volume),
@@ -40,7 +39,6 @@ pub(in crate::ui::window) fn ids_for_volume(volume: &gio::Volume) -> DeviceIds {
     system_key_for_volume(volume).ids()
 }
 
-/// A release key named as the Devices row names the device.
 pub(in crate::ui::window) fn key_for_mount(mount: &gio::Mount) -> ReleaseKey {
     labelled(
         system_key_for_mount(mount),
@@ -78,6 +76,7 @@ pub(in crate::ui::window) fn ids_for_mount(mount: &gio::Mount) -> DeviceIds {
     system_key_for_mount(mount).ids()
 }
 
+/// Names the key as the Devices row names the device.
 fn labelled(mut key: ReleaseKey, target: PropertiesTarget) -> ReleaseKey {
     key.display_name = device_labels::display_name(
         &PreferenceManager::shared(),

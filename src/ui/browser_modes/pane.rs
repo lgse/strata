@@ -104,7 +104,6 @@ pub(super) struct Pane {
     pub(super) stack: gtk::Stack,
     pub(super) loading: loading_skeleton::DelayedLoading,
     pub(super) status: gtk::Label,
-    /// Shown under `status` when the folder could not be read.
     pub(super) retry: gtk::Button,
     /// Shown under `status` when only permissions kept the user out of the folder.
     pub(super) administrator: gtk::Button,

@@ -275,7 +275,9 @@ lookup that breaks, such as an unrealized surface, is an error, never
 strip scrolled away, a crumb past either end of the trail, a row below a list's
 viewport), `click`, `move`, and `select` first turn the wheel over that
 scroller, with Shift for a horizontal one, until the point shows; an aim kept
-inside a `left_bound` box is not moved.
+inside a `left_bound` box is not moved. That wheel is real input, so the app's
+scroll handlers run first: a pending new-entry editor is cancelled before the
+click lands.
 
 | Target | Finds |
 | --- | --- |
