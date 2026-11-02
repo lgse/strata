@@ -351,7 +351,7 @@ impl ViewState {
 
         let popover = gtk::Popover::builder()
             .child(&menu_box)
-            .has_arrow(true)
+            .has_arrow(false)
             .position(gtk::PositionType::Bottom)
             .pointing_to(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1))
             .build();
