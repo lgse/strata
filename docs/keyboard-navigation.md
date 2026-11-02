@@ -187,14 +187,13 @@ so a run of files is renamed without leaving the editor; at either end of the
 listing they only commit. In Columns, where keyboard selection mirrors (with
 **Mirror columns selection** on, outside a filtered column), the child column
 follows the item the rename moves to, without opening a preview; otherwise a
-renamed folder's open column stays open under its new name.
-Switching to
-another window, or an input method switcher taking the keyboard, leaves the
-edit open. Escape keeps the original name. Finishing with an empty or invalid name also keeps the
-original. Cancelling the initial rename does **not** delete the new item: it
-remains under its allocated default name. File contents are preserved.
-While a name is being edited, **F5**, **Ctrl+K**, **Ctrl+Shift+K**, **Ctrl+Alt+T**
-and **Ctrl+\\** do nothing; finish or cancel the edit first.
+renamed folder's open column stays open under its new name. Switching to another
+window, or an input method switcher taking the keyboard, leaves the edit open.
+Escape keeps the original name. Finishing with an empty or invalid name also
+keeps the original. Cancelling the initial rename does **not** delete the new
+item: it remains under its allocated default name. File contents are preserved.
+While a name is being edited, **F5**, **Ctrl+K**, **Ctrl+Shift+K**,
+**Ctrl+Alt+T** and **Ctrl+\\** do nothing; finish or cancel the edit first.
 
 Clicking inside the field continues editing. Existing files retain extension-aware
 selection (the stem is selected); folder names containing dots are selected in full.
