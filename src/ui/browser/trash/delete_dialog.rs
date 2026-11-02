@@ -338,7 +338,7 @@ impl ViewState {
             if !stayed {
                 state
                     .browser
-                    .select_entries_by_location_at(depth, &locations);
+                    .select_shown_entries_by_location_at(depth, &locations);
             }
         });
     }

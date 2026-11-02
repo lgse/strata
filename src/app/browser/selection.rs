@@ -278,11 +278,25 @@ impl Browser {
         depth: usize,
         locations: &[Location],
     ) -> bool {
-        let mut requested = HashMap::new();
-        for (rank, location) in locations.iter().enumerate() {
-            requested.entry(location).or_insert(rank);
-        }
+        let requested = location_ranks(locations);
         self.select_entries_matching_at(depth, |entry| requested.get(&entry.location).copied())
+    }
+
+    /// [`Self::select_entries_by_location_at`] among the items shown, never
+    /// showing hidden files for a hidden one.
+    pub fn select_shown_entries_by_location_at(
+        &self,
+        depth: usize,
+        locations: &[Location],
+    ) -> bool {
+        let requested = location_ranks(locations);
+        let show_hidden = self.preferences.get().show_hidden;
+        self.select_ranked_at(depth, |entry| {
+            requested
+                .get(&entry.location)
+                .copied()
+                .filter(|_| show_hidden || !entry.is_hidden)
+        })
     }
 
     pub(super) fn select_entries_matching_at(
@@ -304,6 +318,11 @@ impl Browser {
         if has_hidden_match && !self.preferences.get().show_hidden {
             self.toggle_hidden();
         }
+        self.select_ranked_at(depth, rank)
+    }
+
+    /// Selects the entries `rank` ranks, the lowest rank taking the cursor.
+    fn select_ranked_at(&self, depth: usize, rank: impl Fn(&FileEntry) -> Option<usize>) -> bool {
         let state = self.state.borrow();
         let Some(column) = state.columns.get(depth) else {
             return false;
@@ -329,4 +348,12 @@ impl Browser {
         });
         true
     }
+}
+
+fn location_ranks(locations: &[Location]) -> HashMap<&Location, usize> {
+    let mut requested = HashMap::new();
+    for (rank, location) in locations.iter().enumerate() {
+        requested.entry(location).or_insert(rank);
+    }
+    requested
 }

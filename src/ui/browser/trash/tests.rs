@@ -458,20 +458,26 @@ fn a_cancelled_confirmation_gives_back_the_cursor_a_completion_took_meanwhile() 
         "ui::browser::trash::tests::a_cancelled_confirmation_gives_back_the_cursor_a_completion_took_meanwhile",
         || {
             let fixture = tempfile::tempdir().expect("fixture");
-            for name in ["a.txt", "b.txt", "c.zip"] {
+            for name in ["a.txt", "b.txt", "c.zip", ".hidden.txt"] {
                 fs::write(fixture.path().join(name), b"keep").expect("fixture file");
             }
-            let [asked, archive] =
-                ["b.txt", "c.zip"].map(|name| Location::local(fixture.path().join(name)));
+            let [asked, archive, hidden] = ["b.txt", "c.zip", ".hidden.txt"]
+                .map(|name| Location::local(fixture.path().join(name)));
             let view = view();
             let window = window(&view);
             let browser = view.browser();
             browser.navigate(Location::local(fixture.path()));
             wait_until(|| browser.select_entries_by_location_at(0, std::slice::from_ref(&asked)));
             let focused = || browser.focused_entry().map(|entry| entry.location);
+            assert!(!browser.preferences().show_hidden, "precondition");
 
-            view.state
-                .show_delete_confirmation(browser.focused_entry().into_iter().collect());
+            // A hidden item among those asked about is not shown to select.
+            let asked_about = browser
+                .focused_entry()
+                .into_iter()
+                .chain([crate::test_support::operations::entry(hidden)])
+                .collect();
+            view.state.show_delete_confirmation(asked_about);
             // A compression finishing underneath selects its archive.
             assert!(browser.select_entries_by_location_at(0, std::slice::from_ref(&archive)));
             assert!(modal_key(&window, gtk::gdk::Key::Escape));
@@ -487,7 +493,10 @@ fn a_cancelled_confirmation_gives_back_the_cursor_a_completion_took_meanwhile() 
                 .into_iter()
                 .map(|entry| entry.location)
                 .collect::<Vec<_>>();
-            assert_eq!((focused(), selected), (Some(asked.clone()), vec![asked]));
+            assert_eq!(
+                (focused(), selected, browser.preferences().show_hidden),
+                (Some(asked.clone()), vec![asked], false)
+            );
             window.destroy();
             browser.clear_observer();
         },
