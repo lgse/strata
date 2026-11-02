@@ -715,11 +715,25 @@ paint, sized by the poster's aspect until the probe answers. Clicking the frame
 toggles playback; there is no separate centre button. Consecutive video files
 reuse one view, like audio. Previous/next step to the previous or next file of
 the same media family, so audio steps to audio and video to video, following
-visible search results like audio does. Playback errors remain visible inside the
-view without disabling navigation. The timeline is the audio view's waveform
-slider: the same overview peaks, grown in from nothing the same way once the
-storyboard has finished with the shared decode slot, with the played range,
-playhead and hover line shared and chapter starts added as ticks.
+visible search results like audio does. In every view, a local file joins the
+sequence by its content, not its name: a file whose metadata probe found no media,
+or whose leading bytes are text, is neither counted nor stepped to. Files the
+probe has not reached yet are checked by reading their first 8 KiB off the GTK
+thread, outward from the shown file in growing chunks, as background work through
+their mount's [request lane](filesystem-compatibility.md#request-lanes): while
+other requests keep the mount busy the reads wait their turn, for up to 10 s
+across all their folders, and once it stalls they give up at once. Until a file
+answers it stays out, and the position and previous/next buttons update after each
+chunk. When the shown file changes, reading starts again outward from it, and
+files not read before the wait ran out, that could not be read, or whose mount
+stalled are asked again. Reading stops when the preview closes or replaces the
+player with another kind of preview. Answers belong to one preview and last while
+its listing shows the file. Remote (GVfs) locations and route files still go by
+their name. Playback errors remain visible inside the view without disabling
+navigation. The timeline is the audio view's waveform slider: the same overview
+peaks, grown in from nothing the same way once the storyboard has finished with
+the shared decode slot, with the played range, playhead and hover line shared and
+chapter starts added as ticks.
 
 Badges under the title summarise the file from the same bounded `media-metadata`
 `ffprobe` operation that File Properties uses: resolution class by the long

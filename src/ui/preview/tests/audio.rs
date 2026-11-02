@@ -23,6 +23,7 @@ fn audio_steps_keep_playback_and_volume_but_never_reuse_an_ended_request() {
             drawer.show(browser.entry_at(0, 0).expect("first track"), Some(0));
             ready(&provider, 0);
             let state = &drawer.state;
+            super::video::wait_for_sequence(state, MediaFamily::Audio, 3);
             let stream = || state.media.borrow().clone().expect("rendered stream");
             let show_cursor =
                 || state.show(browser.cursor_entry(0).expect("track cursor"), Some(0));

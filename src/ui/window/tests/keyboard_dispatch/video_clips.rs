@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use super::audio_tracks::settle;
+use super::audio_tracks::{caption_reads, settle};
+
+/// GIO types an empty file as zero-size; a real MP4 signature keeps it a video.
+const MP4_BYTES: &[u8] = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom";
 use super::*;
 use crate::services::SandboxedMedia;
 
@@ -55,7 +58,7 @@ fn tenxer_angle_brackets_step_through_videos_and_skip_other_media() {
             let fixture = KeyboardFixture::with_provider(Rc::new(MediaPreview));
             let root = fixture._directory.path();
             for name in ["a.wav", "b.mp4", "c.wav", "d.mp4", "e.mp4"] {
-                std::fs::write(root.join(name), []).expect("media fixture");
+                std::fs::write(root.join(name), MP4_BYTES).expect("media fixture");
             }
             let preferences = PreferenceManager::shared();
             preferences.set_tenxer_mode(true);
@@ -78,6 +81,9 @@ fn tenxer_angle_brackets_step_through_videos_and_skip_other_media() {
             settle("first clip", || {
                 preview_has_focus(&fixture) && shows_clip(&fixture, "b.mp4")
             });
+            settle("folder sequence", || {
+                caption_reads(&fixture, "1 of 3 in folder")
+            });
 
             for (key, expected) in [
                 (Key::greater, "d.mp4"),
@@ -94,9 +100,7 @@ fn tenxer_angle_brackets_step_through_videos_and_skip_other_media() {
                 assert!(preview_has_focus(&fixture), "{key:?} kept the keys");
             }
             settle("folder caption", || {
-                widget_with_class(&fixture.preview.widget(), "preview-details-eyebrow")
-                    .and_downcast::<gtk::Label>()
-                    .is_some_and(|label| label.text() == "1 of 3 in folder")
+                caption_reads(&fixture, "1 of 3 in folder")
             });
 
             fixture.press(Key::h, ModifierType::empty());
@@ -157,12 +161,7 @@ fn enter_on_a_video_preview_opens_it_where_it_stopped() {
             crate::ui::media::use_test_streams(true);
             let fixture = KeyboardFixture::with_provider(Rc::new(MediaPreview));
             let root = fixture._directory.path();
-            // GIO types an empty file as zero-size; a real MP4 signature keeps it a video.
-            std::fs::write(
-                root.join("b.mp4"),
-                b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom",
-            )
-            .expect("clip");
+            std::fs::write(root.join("b.mp4"), MP4_BYTES).expect("clip");
             let output = root.join("launch.txt");
             player_recorder("video/mp4", &output);
             let preferences = PreferenceManager::shared();
@@ -251,11 +250,7 @@ fn page_home_and_end_seek_a_focused_timeline_in_both_key_maps() {
             const SHIFT: ModifierType = ModifierType::SHIFT_MASK;
             crate::ui::media::use_test_streams(true);
             let fixture = KeyboardFixture::with_provider(Rc::new(MediaPreview));
-            std::fs::write(
-                fixture._directory.path().join("b.mp4"),
-                b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom",
-            )
-            .expect("clip");
+            std::fs::write(fixture._directory.path().join("b.mp4"), MP4_BYTES).expect("clip");
             let preferences = PreferenceManager::shared();
             preferences.set_tenxer_mode(true);
             preferences.set_group_by_type(false);

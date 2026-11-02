@@ -1857,8 +1857,10 @@ interface thread makes, and its stall watchdog names the call the interface thre
 
 These worker requests go through their mount's lane in `src/adapters/volume/mount_lanes.rs`: folder
 loads, probes, monitor creation, the release before an operation, the leftover review and its sweep
-of stale probes, imports, exports and program checks of custom actions, and the checks and
-background re-lists of [changes made elsewhere](#changes-made-elsewhere). A lane is keyed by the
+of stale probes, imports, exports and program checks of custom actions, the checks and
+background re-lists of [changes made elsewhere](#changes-made-elsewhere), and the preview's
+background reads of whether files named as audio or video hold media
+([media sequences](preview-sandbox.md#video-previews)). A lane is keyed by the
 mount's id once a `statx` answer has named it. Until then a request is keyed by its path and the
 mount the table places it on, so a dead target of a symbolic link trips only that path and what lies
 below it, never the home folder the link sits in. A GVfs location is keyed by its scheme, user,
