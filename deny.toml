@@ -2,11 +2,12 @@
 all-features = true
 
 [advisories]
-# Remove once upstream catches up (#1732).
+# Remove once docx-rs releases on zip 9 (#2035).
 ignore = [
-  { id = "RUSTSEC-2026-0367", reason = "zip 8 only via calamine and docx-rs, which never call extract" },
-  { id = "RUSTSEC-2026-0368", reason = "zip 8 only via calamine and docx-rs, which never call extract" },
-  { id = "RUSTSEC-2026-0369", reason = "zip 8 only via calamine and docx-rs, which never call extract" },
+  { id = "RUSTSEC-2026-0429", reason = "zip 8 only via docx-rs, which never calls extract" },
+  { id = "RUSTSEC-2026-0367", reason = "zip 8 only via docx-rs, which never calls extract" },
+  { id = "RUSTSEC-2026-0368", reason = "zip 8 only via docx-rs, which never calls extract" },
+  { id = "RUSTSEC-2026-0369", reason = "zip 8 only via docx-rs, which never calls extract" },
   { id = "RUSTSEC-2026-0370", reason = "zbus 5 is required by ashpd 0.13" },
   { id = "RUSTSEC-2026-0371", reason = "zbus 5 is required by ashpd 0.13" },
   { id = "RUSTSEC-2026-0372", reason = "zbus 5 is required by ashpd 0.13" },
