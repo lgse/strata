@@ -195,6 +195,27 @@ fn uri_display_names_are_percent_decoded() {
     assert_eq!(Location::uri("sftp://host/").display_name(), "host");
 }
 
+/// GVfs reports "/" as the leaf name of a mount root such as an SMB share, so these names
+/// must come from the URI without GIO's help.
+#[test]
+fn mount_roots_without_a_gio_leaf_name_are_named_by_their_decoded_uri() {
+    for (uri, name) in [
+        ("smb://host/My%20Share", "My Share"),
+        ("smb://host/My%20Share/", "My Share"),
+        ("smb://host/%C3%9Cn%C3%AFc%C3%B8d%C3%A9/", "Ünïcødé"),
+        ("smb://user@host:445/share", "share"),
+        ("dav://host/remote.php/dav%20files/", "dav files"),
+        ("sftp://host/served?tok=SECRET#frag", "served"),
+        ("smb://host/", "host"),
+        ("sftp://host/?tok=SECRET", "host"),
+        ("sftp://[::1]:2222/", "::1"),
+        ("smb://host/caf%FF", "caf\u{fffd}"),
+        ("smb://host/bad%zz", "bad%zz"),
+    ] {
+        assert_eq!(uri_display_name(uri, None), name, "{uri}");
+    }
+}
+
 #[test]
 fn remote_locations_keep_uri_parents_and_breadcrumbs() {
     let location = Location::uri("smb://server/share/folder");

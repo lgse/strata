@@ -311,7 +311,10 @@ Deleting Trash streams its own batches, independently of any incomplete measurem
 and GIO URI conversion lives in `adapters/gio_location.rs`, shared by files, operations, preview and
 browser presentation. It preserves native bytes, keeps GLib's normalized percent-encoding (so names
 that are not valid UTF-8 and encoded slashes survive), and sanitizes credentials on inbound GIO
-locations.
+locations. `Location::display_name` names headings, breadcrumbs, tab labels and the window title.
+GVfs reports "/" as the leaf name of a mount root, even an SMB share's, so such a root is named
+from its URI: the percent-decoded last path segment, or the host at a server root. Only the shown
+name is decoded; the URI used for I/O is unchanged.
 
 Local archive operations live under `adapters/local_operations/archive/`:
 
