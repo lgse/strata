@@ -48,6 +48,11 @@ Missing backends, name-resolution failures, refused connections, timeouts,
 unreachable hosts and rejected host keys each map to their own actionable
 message. Backend text that reaches a dialog has any URI user-info stripped first.
 
+`smb://` locations get the same refused, timed-out and unreachable messages,
+read from the system error text GVfs-SMB appends to its generic failure. An SMB
+host that does not resolve still shows the generic error, because GVfs reports
+only "Invalid argument" for it.
+
 Logs never carry a host, path, username, or secret at the default level. `INFO`
 records only the backend name and outcome; the location is logged at `DEBUG`,
 already redacted of user-info, query and fragment.

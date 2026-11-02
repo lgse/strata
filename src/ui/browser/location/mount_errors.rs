@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::model::Location;
-use crate::services::{backend_unavailable_message, sanitize_failure_message};
+use crate::services::{backend_unavailable_message, sanitize_failure_message, system_error_text};
 use gtk::{gio, glib};
 
 #[derive(Clone, Copy)]
@@ -120,20 +120,85 @@ pub(super) fn mount_failure_message(location: &Location, error: &glib::Error) ->
 }
 
 fn transport_failure_message(error: &glib::Error) -> Option<String> {
-    let message = if error.matches(gio::IOErrorEnum::HostNotFound) {
-        "That host couldn’t be found. Check the address and DNS settings."
-    } else if error.matches(gio::IOErrorEnum::ConnectionRefused) {
-        "The host refused the connection. Check the service and port."
-    } else if error.matches(gio::IOErrorEnum::TimedOut) {
-        "The connection timed out. Check the host and firewall."
-    } else if error.matches(gio::IOErrorEnum::HostUnreachable)
-        || error.matches(gio::IOErrorEnum::NetworkUnreachable)
-    {
-        "That host is unreachable. Check your network connection."
-    } else {
-        return None;
-    };
-    Some(crate::i18n::tr(message))
+    let failure = TransportFailure::from_code(error)
+        .or_else(|| TransportFailure::from_gvfs_errno_text(error))?;
+    Some(crate::i18n::tr(failure.guidance()))
+}
+
+#[derive(Clone, Copy)]
+enum TransportFailure {
+    HostNotFound,
+    Refused,
+    TimedOut,
+    Unreachable,
+}
+
+/// GVfs' SMB backends fail a mount with `G_IO_ERROR_FAILED` and
+/// "Failed to mount Windows share: %s" (or "Failed to retrieve share list from
+/// server: %s") filled with `g_strerror` of the libsmbclient errno, so the
+/// errno survives only as that trailing text. gvfsd shares the session locale,
+/// so this process's `strerror` matches it; glibc's English wording covers a
+/// daemon left in the C locale.
+const GVFS_ERRNO_FAILURES: [(i32, &str, TransportFailure); 4] = [
+    (
+        libc::ECONNREFUSED,
+        "Connection refused",
+        TransportFailure::Refused,
+    ),
+    (
+        libc::ETIMEDOUT,
+        "Connection timed out",
+        TransportFailure::TimedOut,
+    ),
+    (
+        libc::EHOSTUNREACH,
+        "No route to host",
+        TransportFailure::Unreachable,
+    ),
+    (
+        libc::ENETUNREACH,
+        "Network is unreachable",
+        TransportFailure::Unreachable,
+    ),
+];
+
+impl TransportFailure {
+    fn from_code(error: &glib::Error) -> Option<Self> {
+        use gio::IOErrorEnum;
+        Some(match error.kind::<IOErrorEnum>()? {
+            IOErrorEnum::HostNotFound => Self::HostNotFound,
+            IOErrorEnum::ConnectionRefused => Self::Refused,
+            IOErrorEnum::TimedOut => Self::TimedOut,
+            IOErrorEnum::HostUnreachable | IOErrorEnum::NetworkUnreachable => Self::Unreachable,
+            _ => return None,
+        })
+    }
+
+    fn from_gvfs_errno_text(error: &glib::Error) -> Option<Self> {
+        if !error.matches(gio::IOErrorEnum::Failed) {
+            return None;
+        }
+        let (_, reason) = error.message().rsplit_once([':', '：'])?;
+        let reason = reason.trim();
+        GVFS_ERRNO_FAILURES
+            .iter()
+            .find(|(errno, english, _)| {
+                reason == *english
+                    || reason == system_error_text(&std::io::Error::from_raw_os_error(*errno))
+            })
+            .map(|&(_, _, failure)| failure)
+    }
+
+    fn guidance(self) -> &'static str {
+        match self {
+            Self::HostNotFound => {
+                "That host couldn’t be found. Check the address and DNS settings."
+            }
+            Self::Refused => "The host refused the connection. Check the service and port.",
+            Self::TimedOut => "The connection timed out. Check the host and firewall.",
+            Self::Unreachable => "That host is unreachable. Check your network connection.",
+        }
+    }
 }
 
 pub(super) fn mount_error_is_cancelled(error: &glib::Error) -> bool {
