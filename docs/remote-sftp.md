@@ -57,6 +57,14 @@ Logs never carry a host, path, username, or secret at the default level. `INFO`
 records only the backend name and outcome; the location is logged at `DEBUG`,
 already redacted of user-info, query and fragment.
 
+## Disconnecting
+
+A mounted share appears under Devices as a network row, like SMB, FTP and
+WebDAV shares. Its **Disconnect** first moves every window and tab browsing
+inside the share to Home, then unmounts it. If the share stays mounted because
+the unmount failed or was cancelled, each window and tab returns to where it
+was, unless you have moved it since.
+
 ## Disposable test server
 
 `scripts/sftp-fixture.sh` runs an OpenSSH server on `127.0.0.1` whose host key,

@@ -271,8 +271,45 @@ struct ReleaseRun {
 
 /// Where each browser a release moved off the device was before.
 #[derive(Default)]
-struct WayBack {
+pub(super) struct WayBack {
     left: Vec<LeftBrowser>,
+}
+
+impl WayBack {
+    /// Returns each browser to where it was, unless the user has navigated it since.
+    pub(super) fn restore(&self) {
+        for left in &self.left {
+            if let Some(browser) = left.browser.upgrade()
+                && browser.active_location() == left.left_at
+            {
+                browser.navigate(left.previous.clone());
+            }
+        }
+    }
+}
+
+/// Moves every window and tab browsing inside `root`, and `browser`, off it.
+pub(super) fn leave_device_at(root: &gio::File, browser: Option<&Rc<Browser>>) -> WayBack {
+    let mut browsers = sidebar_browsers();
+    if let Some(browser) = browser
+        && !browsers.iter().any(|known| Rc::ptr_eq(known, browser))
+    {
+        browsers.insert(0, Rc::clone(browser));
+    }
+    let left = browsers
+        .into_iter()
+        .filter_map(|browser| {
+            let previous = browser.active_location()?;
+            navigate_home_if_within(&browser, root);
+            let left_at = browser.active_location();
+            (left_at.as_ref() != Some(&previous)).then(|| LeftBrowser {
+                browser: Rc::downgrade(&browser),
+                previous,
+                left_at,
+            })
+        })
+        .collect();
+    WayBack { left }
 }
 
 struct LeftBrowser {
@@ -284,29 +321,12 @@ struct LeftBrowser {
 impl ReleaseRun {
     /// Moves every window and tab browsing inside the device off it.
     fn leave_device(&self) -> WayBack {
-        let Some(root) = self.target.away_root.as_ref() else {
-            return WayBack::default();
-        };
-        let mut browsers = sidebar_browsers();
-        if let Some(browser) = &self.browser
-            && !browsers.iter().any(|known| Rc::ptr_eq(known, browser))
-        {
-            browsers.insert(0, Rc::clone(browser));
-        }
-        let left = browsers
-            .into_iter()
-            .filter_map(|browser| {
-                let previous = browser.active_location()?;
-                navigate_home_if_within(&browser, root);
-                let left_at = browser.active_location();
-                (left_at.as_ref() != Some(&previous)).then(|| LeftBrowser {
-                    browser: Rc::downgrade(&browser),
-                    previous,
-                    left_at,
-                })
+        self.target
+            .away_root
+            .as_ref()
+            .map_or_else(WayBack::default, |root| {
+                leave_device_at(root, self.browser.as_ref())
             })
-            .collect();
-        WayBack { left }
     }
 
     async fn flush_and_release<F, Fut>(&self, way_back: &WayBack, run_gio: F) -> ReleaseDecision
@@ -344,13 +364,7 @@ impl ReleaseRun {
         {
             return;
         }
-        for left in &way_back.left {
-            if let Some(browser) = left.browser.upgrade()
-                && browser.active_location() == left.left_at
-            {
-                browser.navigate(left.previous.clone());
-            }
-        }
+        way_back.restore();
     }
 }
 pub(super) fn blocking_join_message(error: Box<dyn std::any::Any + Send>) -> String {
