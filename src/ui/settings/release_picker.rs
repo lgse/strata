@@ -255,6 +255,18 @@ fn release_option(release: &ReleaseMetadata, installed: bool) -> gtk::Button {
     option
 }
 
+/// Disabling the picker while the commit resolves drops its focus to the layer
+/// around it. Taking it back makes the picker the dialog's opener, so closing the
+/// dialog returns focus to a named control rather than to that layer.
+fn reclaim_focus(button: &gtk::MenuButton) {
+    let focus = button
+        .root()
+        .and_then(|root| gtk::prelude::RootExt::focus(&root));
+    if focus.is_none_or(|focus| button.is_ancestor(&focus)) {
+        button.grab_focus();
+    }
+}
+
 /// Resolves the release's commit for the dialog's identity block, then asks the
 /// user to confirm the install.
 fn open_release(
@@ -277,6 +289,7 @@ fn open_release(
             return glib::ControlFlow::Break;
         };
         button.set_sensitive(true);
+        reclaim_focus(&button);
         if let Some(window) = button.root().and_downcast::<gtk::Window>() {
             let _dialog = build_update_dialog(
                 &window,

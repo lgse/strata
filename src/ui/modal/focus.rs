@@ -80,9 +80,11 @@ fn rearm_focus_ring(window: &gtk::Window, layer: &LayerFocus) {
 }
 
 /// Returns focus to the opener of a layer closed over `under`, a modal that stays
-/// open, unless something inside `under` already took focus. Without a usable opener,
-/// such as a row the dialog's action re-rendered, `under`'s first focusable control
-/// takes it. The window's restore order applies only once no modal is left.
+/// open, unless something inside `under` already took focus. An opener that can no
+/// longer take focus, such as a button the dialog's action disabled, hands it to the
+/// nearest control; without an opener, such as a row the dialog's action re-rendered,
+/// `under`'s first control takes it. The window's restore order applies only once no
+/// modal is left.
 fn restore_focus_under(window: &gtk::Window, under: &gtk::Widget, layer: &LayerFocus) {
     let live = gtk::prelude::RootExt::focus(window)
         .is_some_and(|focus| focus.is_mapped() && focus != *under);
@@ -94,13 +96,10 @@ fn restore_focus_under(window: &gtk::Window, under: &gtk::Widget, layer: &LayerF
         .borrow()
         .as_ref()
         .and_then(glib::WeakRef::upgrade)
-        .filter(|opener| {
-            (opener == under || opener.is_ancestor(under))
-                && shown_or_revealing(opener)
-                && opener.is_sensitive()
-        });
+        .filter(|opener| opener == under || opener.is_ancestor(under));
     let moved = match opener {
-        Some(opener) => opener.grab_focus(),
+        Some(opener) if takes_focus_back(&opener, under) => opener.grab_focus(),
+        Some(opener) => focus_nearest_control(&opener, under),
         None => focus_first_control(under),
     };
     if moved {
@@ -108,11 +107,43 @@ fn restore_focus_under(window: &gtk::Window, under: &gtk::Widget, layer: &LayerF
     }
 }
 
+/// A layer itself is an unnamed panel to a screen reader, so it never takes focus back.
+fn takes_focus_back(opener: &gtk::Widget, under: &gtk::Widget) -> bool {
+    opener != under && shown_or_revealing(opener) && opener.is_sensitive()
+}
+
+/// Focuses the first control in the closest container of `opener` inside `under`.
+fn focus_nearest_control(opener: &gtk::Widget, under: &gtk::Widget) -> bool {
+    let mut container = if opener == under {
+        Some(under.clone())
+    } else {
+        opener.parent()
+    };
+    while let Some(current) = container {
+        if focus_first_control(&current) {
+            return true;
+        }
+        if current == *under {
+            return false;
+        }
+        container = current.parent();
+    }
+    false
+}
+
+/// Focuses the first control in `layer`, or the layer itself when it holds none.
+pub(in crate::ui) fn focus_modal_layer(layer: &impl IsA<gtk::Widget>) {
+    let layer = layer.upcast_ref::<gtk::Widget>();
+    if !focus_first_control(layer) {
+        layer.grab_focus();
+    }
+}
+
 fn focus_first_control(root: &gtk::Widget) -> bool {
     let mut child = root.first_child();
     while let Some(widget) = child {
-        if widget.is_visible() && widget.is_sensitive() {
-            if grab_mapped_focus(&widget) {
+        if widget.is_visible() && widget.is_child_visible() && widget.is_sensitive() {
+            if !is_container(&widget) && grab_mapped_focus(&widget) {
                 return true;
             }
             if focus_first_control(&widget) {
@@ -122,6 +153,15 @@ fn focus_first_control(root: &gtk::Widget) -> bool {
         child = widget.next_sibling();
     }
     false
+}
+
+/// Boxes, scrolled windows and viewports can be focusable, but GTK gives them no
+/// accessible name, so focus on one is announced as nothing.
+fn is_container(widget: &gtk::Widget) -> bool {
+    matches!(
+        widget.accessible_role(),
+        gtk::AccessibleRole::Generic | gtk::AccessibleRole::Group
+    )
 }
 
 fn grab_mapped_focus(widget: &gtk::Widget) -> bool {

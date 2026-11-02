@@ -2,6 +2,7 @@
 {"select_with_keyboard":"todo.txt"}
 {"key":"ctrl+comma"}
 {"wait":{"present":{"role":"button","name":"Close settings"}},"message":"Ctrl+, to open Settings"}
+{"wait":{"focused_widget":"General"},"message":"Settings to open with focus on its current page's navigation entry, not its unnamed layer"}
 {"key":"Escape"}
 {"wait":{"absent":{"role":"button","name":"Close settings"}},"message":"Escape to close Settings"}
 {"wait":{"focused":"todo.txt"},"message":"focus to return to 'todo.txt' after Settings closed with Escape in Columns"}

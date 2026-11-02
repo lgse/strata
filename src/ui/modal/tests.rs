@@ -372,23 +372,80 @@ fn persistent_layer_restores_focus_when_hidden_unless_disarmed() {
     );
 }
 
+#[derive(Clone, Copy, Debug)]
+enum Opener {
+    Usable,
+    /// The dialog's action disables the button that opened it.
+    DisabledByTheDialog,
+    /// Focus had fallen back to the modal layer itself.
+    TheLayer,
+}
+
+/// A Settings-like layer: a focusable scrolled window ahead of a group holding the opener.
+struct UnderlyingModal {
+    layer: gtk::Box,
+    first: gtk::Button,
+    opener: gtk::Button,
+    neighbour: gtk::Button,
+}
+
+impl UnderlyingModal {
+    fn open(fixture: &FocusFixture) -> Self {
+        let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        layer.add_css_class("app-modal-layer");
+        layer.set_focusable(true);
+        let first = gtk::Button::with_label("First control");
+        let scroller = gtk::ScrolledWindow::builder().child(&first).build();
+        assert!(scroller.is_focusable(), "the container under test takes focus");
+        let group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        let opener = gtk::Button::with_label("Opener");
+        let neighbour = gtk::Button::with_label("Neighbour");
+        group.append(&opener);
+        group.append(&neighbour);
+        layer.append(&scroller);
+        layer.append(&group);
+        layer.set_visible(false);
+        fixture.overlay.add_overlay(&layer);
+        remember_persistent_modal_focus(layer.upcast_ref());
+        layer.set_visible(true);
+        Self {
+            layer,
+            first,
+            opener,
+            neighbour,
+        }
+    }
+
+    fn focus_before_opening(&self, opener: Opener) {
+        match opener {
+            Opener::TheLayer => assert!(self.layer.grab_focus()),
+            Opener::Usable | Opener::DisabledByTheDialog => assert!(self.opener.grab_focus()),
+        }
+    }
+
+    fn expected_focus_after_closing(&self, opener: Opener) -> &gtk::Button {
+        match opener {
+            Opener::Usable => &self.opener,
+            Opener::DisabledByTheDialog => &self.neighbour,
+            Opener::TheLayer => &self.first,
+        }
+    }
+}
+
 #[test]
-fn a_dialog_closed_over_another_modal_returns_focus_to_its_opener() {
+fn a_dialog_closed_over_another_modal_returns_focus_to_its_opener_or_a_named_control() {
     crate::test_support::gtk_test(
-        "ui::modal::tests::a_dialog_closed_over_another_modal_returns_focus_to_its_opener",
+        "ui::modal::tests::a_dialog_closed_over_another_modal_returns_focus_to_its_opener_or_a_named_control",
         || {
-            for registered in [false, true] {
+            for (registered, opener) in [
+                (false, Opener::Usable),
+                (true, Opener::Usable),
+                (false, Opener::DisabledByTheDialog),
+                (false, Opener::TheLayer),
+            ] {
                 let fixture = FocusFixture::new();
-                let settings = gtk::Box::new(gtk::Orientation::Vertical, 0);
-                settings.add_css_class("app-modal-layer");
-                settings.set_focusable(true);
-                let opener = gtk::Button::with_label("Opener");
-                settings.append(&opener);
-                settings.set_visible(false);
-                fixture.overlay.add_overlay(&settings);
-                remember_persistent_modal_focus(settings.upcast_ref());
-                settings.set_visible(true);
-                assert!(opener.grab_focus());
+                let under = UnderlyingModal::open(&fixture);
+                under.focus_before_opening(opener);
 
                 let close = gtk::Button::with_label("Close");
                 let layer = modal_layer(&close, &fixture.overlay, None, None);
@@ -397,13 +454,16 @@ fn a_dialog_closed_over_another_modal_returns_focus_to_its_opener() {
                 }
                 fixture.overlay.add_overlay(&layer);
                 assert!(close.grab_focus());
+                if matches!(opener, Opener::DisabledByTheDialog) {
+                    under.opener.set_sensitive(false);
+                }
                 fixture.window.set_focus_visible(true);
                 dismiss_modal_layer(&layer, &fixture.overlay, None);
                 fixture.release_dismissal_key();
                 wait_until(|| layer.parent().is_none());
 
-                let case = format!("registered: {registered}");
-                fixture.assert_focus(&opener, 0, &case);
+                let case = format!("registered: {registered}, opener: {opener:?}");
+                fixture.assert_focus(under.expected_focus_after_closing(opener), 0, &case);
                 assert!(fixture.window.gets_focus_visible(), "{case}: focus ring");
                 fixture.window.destroy();
             }

@@ -213,6 +213,33 @@ pub fn build_layer(
     layer
 }
 
+/// Settings opens on its current page's navigation entry, which tells a screen
+/// reader where the user is; the layer itself is an unnamed panel.
+pub fn focus_current_page(layer: &gtk::Box) {
+    let focused = active_navigation_button(layer.upcast_ref()).is_some_and(|button| {
+        button.is_sensitive() && button.is_mapped() && button.grab_focus()
+    });
+    if !focused {
+        super::modal::focus_modal_layer(layer);
+    }
+}
+
+fn active_navigation_button(root: &gtk::Widget) -> Option<gtk::Widget> {
+    if root.has_css_class("settings-nav-active") {
+        return Some(root.clone());
+    }
+    let mut child = root.first_child();
+    while let Some(widget) = child {
+        if widget.is_visible()
+            && let Some(button) = active_navigation_button(&widget)
+        {
+            return Some(button);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
 fn backdrop_layer() -> gtk::Box {
     let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
     layer.add_css_class("app-modal-layer");

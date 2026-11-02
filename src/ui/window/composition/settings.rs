@@ -144,7 +144,7 @@ impl SettingsLauncher {
         if let Some(restore_origin) = self.focus_restore.borrow().as_ref() {
             restore_origin.set(filter_had_focus);
         }
-        layer.grab_focus();
+        settings::focus_current_page(&layer);
         self.button.add_css_class("active");
         crate::ui::browser::animate_in(&layer);
     }
