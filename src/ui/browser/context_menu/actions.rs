@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
+#[cfg(test)]
+use std::collections::HashMap;
 use std::{
     cell::{Cell, RefCell},
-    collections::HashMap,
     path::PathBuf,
     rc::{Rc, Weak},
 };
@@ -12,16 +13,21 @@ use gtk::{gio, prelude::*};
 #[cfg(test)]
 mod tests;
 
+mod presentation;
+mod send_to;
+#[cfg(test)]
+use presentation::collect_presentations;
+pub(super) use presentation::refresh_presentation;
+use send_to::{SendToActions, SendToChoices};
+
 use crate::{
-    assets::{self, icons},
+    assets::icons,
     model::{FileEntry, Location, MenuPlacement},
     services::{InvocationSource, MatchedAction},
     ui::actions::{action_icon, folder_input, inputs_for_entries, native_paths, run_action},
 };
 
-use super::super::{SendToMenuHandlers, ViewState};
-
-const SEND_TO_DEVICE_NAME_MAX_CHARS: i32 = 15;
+use super::super::ViewState;
 
 pub(super) struct ActionMenuSection {
     popover: gtk::PopoverMenu,
@@ -103,13 +109,7 @@ impl ActionMenuSection {
     ) -> Rc<Self> {
         let model = gio::Menu::new();
         let root = gio::Menu::new();
-        let popover = nested_popover_menu();
-        popover.set_has_arrow(false);
-        popover.add_css_class("folder-context-popover");
-        popover.add_css_class("actions-context-popover");
-        if header.is_none() {
-            popover.add_css_class("folder-menu-body");
-        }
+        let popover = base_popover(header.is_none());
         let dispatch = super::commands::MenuDispatch;
         let navigation = super::keyboard::NativeMenuNavigation::new(&popover);
         let commands = super::commands::CommandMenus::new(
@@ -122,12 +122,7 @@ impl ActionMenuSection {
         );
         popover.insert_action_group("builtin", Some(&commands.group));
         if let Some(header) = header {
-            let item = gio::MenuItem::new(None, None);
-            item.set_attribute_value("custom", Some(&"context-header".to_variant()));
-            root.append_item(&item);
-            header.set_margin_start(8);
-            header.set_margin_end(8);
-            header.set_margin_top(8);
+            append_header_item(&root, header);
         }
         for section in &commands.before {
             root.append_section(None, section);
@@ -137,96 +132,26 @@ impl ActionMenuSection {
         let provider_group = gio::SimpleActionGroup::new();
         let provider_epoch = Rc::new(std::cell::Cell::new(0));
         let provider_start = root.n_items();
-        let provider_root = root.clone();
         // An enclosing section would add a second separator above the titled groups.
-        provider_model.connect_items_changed(move |model, position, removed, added| {
-            for _ in 0..removed {
-                provider_root.remove(provider_start + position);
-            }
-            for index in position..position + added {
-                provider_root.insert_item(
-                    provider_start + index,
-                    &gio::MenuItem::from_model(model, index),
-                );
-            }
-        });
+        mirror_menu_items(&provider_model, &root, move || provider_start);
         popover.insert_action_group("provider", Some(&provider_group));
         // Send to… holds the removable-drive section first, then mirrored
         // provider sections that arrive and withdraw while the menu is open.
         let send_to_model = gio::Menu::new();
         let send_to_provider_model = gio::Menu::new();
         let send_to_offset = Rc::new(Cell::new(0));
-        let (send_to_root, offset) = (send_to_model.clone(), send_to_offset.clone());
-        send_to_provider_model.connect_items_changed(move |model, position, removed, added| {
-            for _ in 0..removed {
-                send_to_root.remove(offset.get() + position);
-            }
-            for index in position..position + added {
-                send_to_root.insert_item(
-                    offset.get() + index,
-                    &gio::MenuItem::from_model(model, index),
-                );
-            }
+        let offset = send_to_offset.clone();
+        mirror_menu_items(&send_to_provider_model, &send_to_model, move || {
+            offset.get()
         });
-        let closed_epoch = provider_epoch.clone();
-        popover.connect_closed(move |popover| {
-            // GTK closes the popover before dispatching the chosen leaf action.
-            let epoch = closed_epoch.get();
-            let closed_epoch = closed_epoch.clone();
-            let popover = popover.downgrade();
-            gtk::glib::idle_add_local_once(move || {
-                if closed_epoch.get() == epoch && popover.upgrade().is_none_or(|p| !p.is_visible())
-                {
-                    closed_epoch.set(epoch + 1);
-                }
-            });
-        });
+        advance_epoch_after_close(&popover, &provider_epoch);
         for section in &commands.after {
             root.append_section(None, section);
         }
         let actions = gio::SimpleActionGroup::new();
         popover.insert_action_group("custom", Some(&actions));
-        popover.connect_closed(|popover| {
-            let Some(clock) = popover.frame_clock() else {
-                return;
-            };
-            let weak = popover.downgrade();
-            let handler = Rc::new(std::cell::RefCell::new(None));
-            let handler_for_signal = handler.clone();
-            let id = clock.connect_after_paint(move |clock| {
-                if let Some(id) = handler_for_signal.borrow_mut().take() {
-                    clock.disconnect(id);
-                }
-                let weak = weak.clone();
-                gtk::glib::idle_add_local_once(move || {
-                    if let Some(popover) = weak.upgrade()
-                        && !popover.is_visible()
-                    {
-                        release_popover(&popover);
-                    }
-                });
-            });
-            handler.replace(Some(id));
-            clock.request_phase(gtk::gdk::FrameClockPhase::AFTER_PAINT);
-        });
-        // GtkModelButton activates on an unpaired release, and some compositors
-        // (niri) deliver the release of the click that opened the menu to the
-        // popup. A release before any press inside the menu can only be that one.
-        let pressed_inside = Rc::new(Cell::new(false));
-        let seen_press = pressed_inside.clone();
-        let release_guard = gtk::EventControllerLegacy::new();
-        release_guard.set_propagation_phase(gtk::PropagationPhase::Capture);
-        // Also cover the nested submenu popovers, which are separate natives.
-        release_guard.set_propagation_limit(gtk::PropagationLimit::None);
-        release_guard.connect_event(move |_, event| match event.event_type() {
-            gtk::gdk::EventType::ButtonPress => {
-                seen_press.set(true);
-                gtk::glib::Propagation::Proceed
-            }
-            gtk::gdk::EventType::ButtonRelease if !seen_press.get() => gtk::glib::Propagation::Stop,
-            _ => gtk::glib::Propagation::Proceed,
-        });
-        popover.add_controller(release_guard);
+        release_after_close(&popover);
+        let pressed_inside = guard_unpaired_release(&popover);
         refresh_presentation(&popover, &navigation);
         let transfer_sections = commands.transfer_sections.clone();
         let menu = Rc::new(Self {
@@ -253,22 +178,27 @@ impl ActionMenuSection {
             selection: RefCell::new(None),
             pressed_inside,
         });
-        let weak = Rc::downgrade(&menu);
-        menu.send_to_model.connect_items_changed(move |_, _, _, _| {
+        menu.watch_send_to_destinations();
+        menu
+    }
+
+    fn watch_send_to_destinations(self: &Rc<Self>) {
+        let weak = Rc::downgrade(self);
+        self.send_to_model.connect_items_changed(move |_, _, _, _| {
             if let Some(menu) = weak.upgrade() {
                 menu.sync_send_to_row();
             }
         });
-        if menu.transfer_sections.is_some() {
-            let weak = Rc::downgrade(&menu);
-            menu.removable_watch
-                .replace(Some(crate::ui::watch_removable_destinations(move || {
-                    if let Some(menu) = weak.upgrade() {
-                        menu.schedule_removable_refresh();
-                    }
-                })));
+        if self.transfer_sections.is_none() {
+            return;
         }
-        menu
+        let weak = Rc::downgrade(self);
+        self.removable_watch
+            .replace(Some(crate::ui::watch_removable_destinations(move || {
+                if let Some(menu) = weak.upgrade() {
+                    menu.schedule_removable_refresh();
+                }
+            })));
     }
 
     fn schedule_removable_refresh(self: &Rc<Self>) {
@@ -343,90 +273,31 @@ impl ActionMenuSection {
         if let Some(test_override) = state.send_to_menu_test_override.borrow().clone() {
             self.rebuild_for_selection_with_destinations(
                 state,
-                entries,
-                parent,
-                test_override.destinations,
-                test_override.recent_destinations,
-                test_override.handlers,
+                (entries, parent),
+                SendToChoices {
+                    destinations: test_override.destinations,
+                    recent_destinations: test_override.recent_destinations,
+                    handlers: test_override.handlers,
+                },
             );
             return;
         }
-
-        let weak_state = Rc::downgrade(state);
-        let activate_root: Rc<dyn Fn(String, Vec<Location>)> = Rc::new(move |id, sources| {
-            if let Some(state) = weak_state.upgrade() {
-                state.send_to_removable_device(id, sources);
-            }
-        });
-        let weak_state = Rc::downgrade(state);
-        let choose_folder: Rc<dyn Fn(String, Vec<Location>)> = Rc::new(move |id, sources| {
-            if let Some(state) = weak_state.upgrade() {
-                state.show_send_to_folder_dialog(id, sources);
-            }
-        });
-        let weak_state = Rc::downgrade(state);
-        let activate_recent: Rc<dyn Fn(String, PathBuf, Vec<Location>)> =
-            Rc::new(move |id, relative, sources| {
-                if let Some(state) = weak_state.upgrade() {
-                    state.send_to_recent_destination(id, relative, sources);
-                }
-            });
-        let handlers = SendToMenuHandlers {
-            activate_root,
-            activate_recent,
-            choose_folder,
-        };
-        let destinations = crate::ui::removable_destinations();
-        let recent_destinations = destinations
-            .iter()
-            .map(|destination| {
-                (
-                    destination.id.clone(),
-                    crate::ui::send_to_recent_folders(destination),
-                )
-            })
-            .collect();
         self.rebuild_for_selection_with_destinations(
             state,
-            entries,
-            parent,
-            destinations,
-            recent_destinations,
-            handlers,
+            (entries, parent),
+            SendToChoices::current(state),
         );
     }
 
-    pub(super) fn rebuild_for_selection_with_destinations(
+    fn rebuild_for_selection_with_destinations(
         &self,
         state: &Rc<ViewState>,
-        entries: &[FileEntry],
-        parent: Option<PathBuf>,
-        destinations: Vec<crate::ui::RemovableDestination>,
-        recent_destinations: HashMap<String, Vec<PathBuf>>,
-        handlers: SendToMenuHandlers,
+        (entries, parent): (&[FileEntry], Option<PathBuf>),
+        choices: SendToChoices,
     ) {
         self.clear();
         let sources: Vec<_> = entries.iter().map(|entry| entry.location.clone()).collect();
-        if let Some(transfer_index) = match sources.len() {
-            0 => None,
-            1 => Some(0),
-            _ => Some(1),
-        } && self.transfer_sections.is_some()
-        {
-            let devices = gio::Menu::new();
-            append_send_to_devices(
-                &devices,
-                &self.actions,
-                &self.dispatch,
-                &destinations,
-                &recent_destinations,
-                &sources,
-                handlers,
-            );
-            self.send_to_transfer_index.set(Some(transfer_index));
-            self.set_removable_devices((devices.n_items() > 0).then_some(devices));
-            self.sync_send_to_row();
-        }
+        self.rebuild_send_to(&sources, &choices);
 
         let (Some(inputs), Some(paths), Some(parent)) =
             (inputs_for_entries(entries), native_paths(entries), parent)
@@ -439,10 +310,33 @@ impl ActionMenuSection {
         self.rebuild_custom_actions(
             state,
             &catalog.matches(&inputs),
-            paths,
-            parent,
-            InvocationSource::Selection,
+            CustomInvocation {
+                paths,
+                parent,
+                source: InvocationSource::Selection,
+            },
         );
+    }
+
+    fn rebuild_send_to(&self, sources: &[Location], choices: &SendToChoices) {
+        let transfer_index = match sources.len() {
+            0 => None,
+            1 => Some(0),
+            _ => Some(1),
+        };
+        let Some(transfer_index) = transfer_index.filter(|_| self.transfer_sections.is_some())
+        else {
+            return;
+        };
+        let devices = gio::Menu::new();
+        SendToActions {
+            actions: &self.actions,
+            dispatch: &self.dispatch,
+        }
+        .append_devices(&devices, choices, sources);
+        self.send_to_transfer_index.set(Some(transfer_index));
+        self.set_removable_devices((devices.n_items() > 0).then_some(devices));
+        self.sync_send_to_row();
     }
 
     pub(super) fn rebuild_for_folder(&self, state: &Rc<ViewState>, location: &Location) {
@@ -457,9 +351,11 @@ impl ActionMenuSection {
         self.rebuild_custom_actions(
             state,
             &catalog.matches(std::slice::from_ref(&input)),
-            vec![path.to_path_buf()],
-            path.to_path_buf(),
-            InvocationSource::Background,
+            CustomInvocation {
+                paths: vec![path.to_path_buf()],
+                parent: path.to_path_buf(),
+                source: InvocationSource::Background,
+            },
         );
     }
 
@@ -550,45 +446,11 @@ impl ActionMenuSection {
         &self,
         state: &Rc<ViewState>,
         matched: &[MatchedAction],
-        paths: Vec<PathBuf>,
-        parent: PathBuf,
-        source: InvocationSource,
+        invocation: CustomInvocation,
     ) {
         let submenu = gio::Menu::new();
         for (index, matched) in matched.iter().enumerate() {
-            let name = format!("run-{index}");
-            let action = gio::SimpleAction::new(&name, None);
-            action.set_enabled(matched.action.is_available());
-            let handle = matched.action.clone();
-            let paths = paths.clone();
-            let parent = parent.clone();
-            let state = Rc::downgrade(state);
-            let dispatch = self.dispatch.clone();
-            action.connect_activate(move |_, _| {
-                let (state, handle, paths, parent) =
-                    (state.clone(), handle.clone(), paths.clone(), parent.clone());
-                dispatch.defer(move || {
-                    if let Some(state) = state.upgrade() {
-                        run_action(&state.overlay, handle, paths, parent, source, None);
-                    }
-                });
-            });
-            self.actions.add_action(&action);
-            let item = gio::MenuItem::new(
-                Some(&matched.action.name().replace('_', "__")),
-                Some(&format!("custom.{name}")),
-            );
-            item.set_icon(&gio::ThemedIcon::new(action_icon(
-                matched.action.definition.icon.as_deref(),
-            )));
-            if let Some(hint) = matched.action.unavailable_reason().or(matched
-                .action
-                .definition
-                .description
-                .as_deref())
-            {
-                item.set_attribute_value("x-strata-description", Some(&hint.to_variant()));
-            }
+            let item = self.custom_action_item(state, (index, matched), &invocation);
             let model = if matched.placement == MenuPlacement::Top {
                 &self.model
             } else {
@@ -603,360 +465,153 @@ impl ActionMenuSection {
         }
         refresh_presentation(&self.popover, &self.navigation);
     }
-}
 
-fn append_send_to_devices(
-    devices: &gio::Menu,
-    actions: &gio::SimpleActionGroup,
-    dispatch: &super::commands::MenuDispatch,
-    destinations: &[crate::ui::RemovableDestination],
-    recent_destinations: &HashMap<String, Vec<PathBuf>>,
-    sources: &[Location],
-    handlers: SendToMenuHandlers,
-) {
-    if sources.is_empty() {
-        return;
-    }
-    for (index, destination) in destinations.iter().enumerate() {
-        let name = format!("send-to-{index}");
-        let id = destination.id.clone();
-        let selected = sources.to_vec();
-        let activate_root = handlers.activate_root.clone();
-        let root_dispatch = dispatch.clone();
+    fn custom_action_item(
+        &self,
+        state: &Rc<ViewState>,
+        (index, matched): (usize, &MatchedAction),
+        invocation: &CustomInvocation,
+    ) -> gio::MenuItem {
+        let name = format!("run-{index}");
         let action = gio::SimpleAction::new(&name, None);
+        action.set_enabled(matched.action.is_available());
+        let handle = matched.action.clone();
+        let CustomInvocation {
+            paths,
+            parent,
+            source,
+        } = invocation.clone();
+        let state = Rc::downgrade(state);
+        let dispatch = self.dispatch.clone();
         action.connect_activate(move |_, _| {
-            let id = id.clone();
-            let selected = selected.clone();
-            let activate_root = activate_root.clone();
-            root_dispatch.defer(move || activate_root(id, selected));
-        });
-        actions.add_action(&action);
-
-        let root = gio::Menu::new();
-        root.append(Some("Drive root"), Some(&format!("custom.{name}")));
-        let recent_paths = recent_destinations
-            .get(&destination.id)
-            .into_iter()
-            .flatten();
-        for (recent_index, relative) in recent_paths.enumerate() {
-            let recent_name = format!("send-to-recent-{index}-{recent_index}");
-            let id = destination.id.clone();
-            let selected = sources.to_vec();
-            let relative_path = relative.clone();
-            let activate_recent = handlers.activate_recent.clone();
-            let recent_dispatch = dispatch.clone();
-            let recent_action = gio::SimpleAction::new(&recent_name, None);
-            recent_action.connect_activate(move |_, _| {
-                let id = id.clone();
-                let relative = relative_path.clone();
-                let selected = selected.clone();
-                let activate_recent = activate_recent.clone();
-                recent_dispatch.defer(move || activate_recent(id, relative, selected));
+            let (state, handle, paths, parent) =
+                (state.clone(), handle.clone(), paths.clone(), parent.clone());
+            dispatch.defer(move || {
+                if let Some(state) = state.upgrade() {
+                    run_action(&state.overlay, handle, paths, parent, source, None);
+                }
             });
-            actions.add_action(&recent_action);
-            root.append(
-                Some(&format!(
-                    "{} (recent)",
-                    relative.to_string_lossy().replace('_', "__")
-                )),
-                Some(&format!("custom.{recent_name}")),
-            );
-        }
-        let folder_name = format!("choose-folder-{index}");
-        let id = destination.id.clone();
-        let selected = sources.to_vec();
-        let choose_folder = handlers.choose_folder.clone();
-        let folder_dispatch = dispatch.clone();
-        let folder_action = gio::SimpleAction::new(&folder_name, None);
-        folder_action.connect_activate(move |_, _| {
-            let id = id.clone();
-            let selected = selected.clone();
-            let choose_folder = choose_folder.clone();
-            folder_dispatch.defer(move || choose_folder(id, selected));
         });
-        actions.add_action(&folder_action);
-        let choose = gio::Menu::new();
-        choose.append(
-            Some(&crate::i18n::tr("Choose folder…")),
-            Some(&format!("custom.{folder_name}")),
+        self.actions.add_action(&action);
+        let item = gio::MenuItem::new(
+            Some(&matched.action.name().replace('_', "__")),
+            Some(&format!("custom.{name}")),
         );
-        let device = gio::Menu::new();
-        device.append_section(None, &root);
-        device.append_section(None, &choose);
-        let item = gio::MenuItem::new_submenu(Some(&destination.name.replace('_', "__")), &device);
-        item.set_icon(&gio::ThemedIcon::new(icons::HARD_DRIVE));
-        item.set_attribute_value("x-strata-send-to-device", Some(&true.to_variant()));
-        item.set_attribute_value("x-strata-description", Some(&destination.name.to_variant()));
-        devices.append_item(&item);
+        item.set_icon(&gio::ThemedIcon::new(action_icon(
+            matched.action.definition.icon.as_deref(),
+        )));
+        let hint = matched.action.unavailable_reason().or(matched
+            .action
+            .definition
+            .description
+            .as_deref());
+        if let Some(hint) = hint {
+            item.set_attribute_value("x-strata-description", Some(&hint.to_variant()));
+        }
+        item
     }
 }
 
-pub(super) fn refresh_presentation(
-    root: &gtk::PopoverMenu,
-    navigation: &Rc<super::keyboard::NativeMenuNavigation>,
-) {
-    let mut items = Vec::new();
-    if let Some(model) = root.menu_model() {
-        collect_presentations(&model, &mut items);
-    }
-    present_native_items(root.upcast_ref(), root, &items, navigation);
-}
-
+/// The paths a custom action runs on and where it was invoked from.
 #[derive(Clone)]
-struct ItemPresentation {
-    label: String,
-    description: String,
-    shortcut: String,
-    submenu: Option<gio::MenuModel>,
-    icon_size: i32,
-    send_to_device: bool,
-    danger: bool,
-    custom: bool,
+struct CustomInvocation {
+    paths: Vec<PathBuf>,
+    parent: PathBuf,
+    source: InvocationSource,
 }
 
-fn collect_presentations(model: &gio::MenuModel, items: &mut Vec<ItemPresentation>) {
-    for index in 0..model.n_items() {
-        let string = |name| {
-            model
-                .item_attribute_value(index, name, None)
-                .and_then(|value| value.get::<String>())
-        };
-        if let Some(label) = string("label")
-            && model.item_link(index, "section").is_none()
-        {
-            items.push(ItemPresentation {
-                label: label.replace("__", "_"),
-                description: string("x-strata-description").unwrap_or_default(),
-                shortcut: string("x-strata-shortcut").unwrap_or_default(),
-                submenu: model.item_link(index, "submenu"),
-                icon_size: model
-                    .item_attribute_value(index, "x-strata-icon-size", None)
-                    .and_then(|value| value.get::<i32>())
-                    .unwrap_or(15),
-                send_to_device: model
-                    .item_attribute_value(index, "x-strata-send-to-device", None)
-                    .and_then(|value| value.get::<bool>())
-                    .unwrap_or(false),
-                danger: model
-                    .item_attribute_value(index, "x-strata-danger", None)
-                    .and_then(|value| value.get::<bool>())
-                    .unwrap_or(false),
-                custom: string("action").is_some_and(|name| name.starts_with("custom.")),
-            });
-        }
-        for link in ["section", "submenu"] {
-            if let Some(child) = model.item_link(index, link) {
-                collect_presentations(&child, items);
-            }
-        }
+fn base_popover(body_only: bool) -> gtk::PopoverMenu {
+    let popover = nested_popover_menu();
+    popover.set_has_arrow(false);
+    popover.add_css_class("folder-context-popover");
+    popover.add_css_class("actions-context-popover");
+    if body_only {
+        popover.add_css_class("folder-menu-body");
     }
+    popover
 }
 
-// Preserve generated rows: GTK uses them to own submenu selection and grabs.
-fn submenu_owner(root: &gtk::PopoverMenu, submenu: &gtk::PopoverMenu) -> Option<gtk::Widget> {
-    fn find(
-        widget: &gtk::Widget,
-        root: &gtk::Widget,
-        submenu: &gtk::Popover,
-    ) -> Option<gtk::Widget> {
-        if widget != root && widget.is::<gtk::Popover>() {
-            return None;
-        }
-        if widget.find_property("popover").is_some()
-            && widget.property::<Option<gtk::Popover>>("popover").as_ref() == Some(submenu)
-        {
-            return Some(widget.clone());
-        }
-        let mut child = widget.first_child();
-        while let Some(widget) = child {
-            if let Some(owner) = find(&widget, root, submenu) {
-                return Some(owner);
-            }
-            child = widget.next_sibling();
-        }
-        None
-    }
-
-    let root_widget = root.upcast_ref::<gtk::Widget>();
-    let submenu = submenu.clone().upcast::<gtk::Popover>();
-    find(root_widget, root_widget, &submenu)
+fn append_header_item(root: &gio::Menu, header: &gtk::Widget) {
+    let item = gio::MenuItem::new(None, None);
+    item.set_attribute_value("custom", Some(&"context-header".to_variant()));
+    root.append_item(&item);
+    header.set_margin_start(8);
+    header.set_margin_end(8);
+    header.set_margin_top(8);
 }
 
-fn present_native_items(
-    widget: &gtk::Widget,
-    root: &gtk::PopoverMenu,
-    items: &[ItemPresentation],
-    navigation: &Rc<super::keyboard::NativeMenuNavigation>,
-) {
-    if widget.is::<gtk::Button>() {
-        return;
-    }
-    if let Some(menu) = widget.downcast_ref::<gtk::PopoverMenu>() {
-        menu.add_css_class("folder-context-popover");
-        menu.add_css_class("actions-context-popover");
-        if menu != root && !menu.has_css_class("actions-submenu") {
-            menu.add_css_class("actions-submenu");
-            if let Some(owner) = submenu_owner(root, menu) {
-                super::keyboard::install_submenu_return(menu, &owner, navigation);
-            }
-            if gtk::minor_version() < 22 {
-                // Older GTK emits focus leave before updating contains-focus.
-                let focus = gtk::EventControllerFocus::new();
-                focus.set_propagation_limit(gtk::PropagationLimit::None);
-                let weak = menu.downgrade();
-                focus.connect_contains_focus_notify(move |focus| {
-                    if !focus.contains_focus() {
-                        let weak = weak.clone();
-                        gtk::glib::idle_add_local_once(move || {
-                            if let Some(menu) = weak.upgrade()
-                                && let Some(widget) = menu.root().and_then(|root| root.focus())
-                                && !widget.is_ancestor(&menu)
-                                && !menu.is_ancestor(&widget)
-                            {
-                                menu.set_visible(false);
-                            }
-                        });
-                    }
-                });
-                menu.add_controller(focus);
-            }
+/// Mirrors `source`'s items into `target`, starting at the position `offset` reports.
+fn mirror_menu_items(source: &gio::Menu, target: &gio::Menu, offset: impl Fn() -> i32 + 'static) {
+    let target = target.clone();
+    source.connect_items_changed(move |model, position, removed, added| {
+        for _ in 0..removed {
+            target.remove(offset() + position);
         }
-    }
-    if let Some(scroll) = widget.downcast_ref::<gtk::ScrolledWindow>() {
-        if !scroll.has_css_class("context-menu-scroll") {
-            scroll.add_css_class("context-menu-scroll");
-            let is_root = scroll.ancestor(gtk::PopoverMenu::static_type()).as_ref()
-                == Some(root.upcast_ref());
-            if is_root {
-                // A floor rather than a fixed width: translated rows may need more room,
-                // and a natural width would follow long header paths instead of ellipsizing.
-                scroll.set_hscrollbar_policy(gtk::PolicyType::Never);
-                scroll.set_propagate_natural_width(false);
-                crate::ui::preferences::PreferenceManager::shared().bind_interface_scale(
-                    scroll,
-                    |scroll, scale| {
-                        scroll.set_size_request((310.0 * scale).round() as i32, -1);
-                    },
-                );
-            }
-        }
-        if scroll
-            .ancestor(gtk::PopoverMenu::static_type())
-            .and_downcast::<gtk::PopoverMenu>()
-            .and_then(|menu| menu.menu_model())
-            .is_some_and(|model| model.n_items() == 1)
-        {
-            scroll.set_vscrollbar_policy(gtk::PolicyType::Never);
-        }
-    }
-    let mut children = Vec::new();
-    let mut next = widget.first_child();
-    while let Some(child) = next {
-        next = child.next_sibling();
-        children.push(child);
-    }
-    if widget.accessible_role() == gtk::AccessibleRole::MenuItem
-        && let Some(label) = children
-            .iter()
-            .find_map(|child| child.downcast_ref::<gtk::Label>())
-        && let Some(item) = native_item_presentation(widget, label.text().as_str(), items)
-    {
-        let initialized = widget.has_css_class("strata-native-menu-item");
-        widget.add_css_class("strata-native-menu-item");
-        label.set_hexpand(true);
-        if item.send_to_device {
-            label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-            label.set_max_width_chars(SEND_TO_DEVICE_NAME_MAX_CHARS);
-        } else if item.custom {
-            label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
-            label.set_max_width_chars(24);
-        }
-        if item.danger {
-            widget.add_css_class("danger");
-        }
-        label_menu_item(widget, &item);
-        if !initialized {
-            let mapped_item = item.clone();
-            widget.connect_map(move |widget| label_menu_item(widget, &mapped_item));
-        }
-        for image in children
-            .iter()
-            .filter_map(|child| child.downcast_ref::<gtk::Image>())
-        {
-            if let Some(icon) = image.gicon().and_downcast::<gio::ThemedIcon>()
-                && let Some(name) = icon.names().first()
-            {
-                bind_menu_icon(image, name);
-            } else {
-                image.set_pixel_size(item.icon_size);
-            }
-            image.set_halign(gtk::Align::Center);
-            image.set_valign(gtk::Align::Center);
-            image.set_margin_end(8);
-            // GTK's text-menu presentation hides icons by default.
-            image.set_visible(true);
-        }
-    }
-    for child in children {
-        present_native_items(&child, root, items, navigation);
-    }
-}
-
-fn label_menu_item(widget: &gtk::Widget, item: &ItemPresentation) {
-    // GTK 4.14's unnamed labelled-by relation otherwise masks the accessible name.
-    crate::ui::accessibility::clear_labelled_by(widget);
-    crate::ui::accessibility::set_label(widget, &item.label);
-    crate::ui::accessibility::set_description(widget, Some(&item.description));
-    // GTK renders the `accel` attribute itself; the row shows Strata's label.
-    let mut child = widget.first_child();
-    while let Some(current) = child {
-        child = current.next_sibling();
-        if current.css_name() == "accelerator"
-            && let Some(accelerator) = current.downcast_ref::<gtk::Label>()
-        {
-            accelerator.set_label(&item.shortcut);
-        }
-    }
-}
-
-fn native_item_presentation(
-    widget: &gtk::Widget,
-    label: &str,
-    items: &[ItemPresentation],
-) -> Option<ItemPresentation> {
-    let popover = widget
-        .find_property("popover")
-        .and_then(|_| widget.property::<Option<gtk::Popover>>("popover"))
-        .and_then(|popover| popover.downcast::<gtk::PopoverMenu>().ok());
-
-    if let Some(popover) = popover {
-        let submenu = popover.menu_model()?;
-        return items
-            .iter()
-            .find(|item| item.submenu.as_ref() == Some(&submenu))
-            .cloned();
-    }
-
-    items.iter().find(|item| item.label == label).cloned()
-}
-
-fn bind_menu_icon(image: &gtk::Image, name: &str) {
-    let source = assets::primary_icon(name, 15);
-    if let Some(texture) = source.paintable().and_downcast::<gtk::gdk::Texture>() {
-        image.set_from_gicon(&texture);
-    }
-    source
-        .bind_property("pixel-size", image, "pixel-size")
-        .sync_create()
-        .build();
-    let target = image.downgrade();
-    source.connect_paintable_notify(move |source| {
-        if let (Some(image), Some(texture)) = (
-            target.upgrade(),
-            source.paintable().and_downcast::<gtk::gdk::Texture>(),
-        ) {
-            image.set_from_gicon(&texture);
+        for index in position..position + added {
+            target.insert_item(offset() + index, &gio::MenuItem::from_model(model, index));
         }
     });
-    image.connect_destroy(move |_| source.clear());
+}
+
+fn advance_epoch_after_close(popover: &gtk::PopoverMenu, epoch: &Rc<Cell<u64>>) {
+    let closed_epoch = epoch.clone();
+    popover.connect_closed(move |popover| {
+        // GTK closes the popover before dispatching the chosen leaf action.
+        let epoch = closed_epoch.get();
+        let closed_epoch = closed_epoch.clone();
+        let popover = popover.downgrade();
+        gtk::glib::idle_add_local_once(move || {
+            if closed_epoch.get() == epoch && popover.upgrade().is_none_or(|p| !p.is_visible()) {
+                closed_epoch.set(epoch + 1);
+            }
+        });
+    });
+}
+
+fn release_after_close(popover: &gtk::PopoverMenu) {
+    popover.connect_closed(|popover| {
+        let Some(clock) = popover.frame_clock() else {
+            return;
+        };
+        let weak = popover.downgrade();
+        let handler = Rc::new(std::cell::RefCell::new(None));
+        let handler_for_signal = handler.clone();
+        let id = clock.connect_after_paint(move |clock| {
+            if let Some(id) = handler_for_signal.borrow_mut().take() {
+                clock.disconnect(id);
+            }
+            let weak = weak.clone();
+            gtk::glib::idle_add_local_once(move || {
+                if let Some(popover) = weak.upgrade()
+                    && !popover.is_visible()
+                {
+                    release_popover(&popover);
+                }
+            });
+        });
+        handler.replace(Some(id));
+        clock.request_phase(gtk::gdk::FrameClockPhase::AFTER_PAINT);
+    });
+}
+
+// GtkModelButton activates on an unpaired release, and some compositors
+// (niri) deliver the release of the click that opened the menu to the
+// popup. A release before any press inside the menu can only be that one.
+fn guard_unpaired_release(popover: &gtk::PopoverMenu) -> Rc<Cell<bool>> {
+    let pressed_inside = Rc::new(Cell::new(false));
+    let seen_press = pressed_inside.clone();
+    let release_guard = gtk::EventControllerLegacy::new();
+    release_guard.set_propagation_phase(gtk::PropagationPhase::Capture);
+    // Also cover the nested submenu popovers, which are separate natives.
+    release_guard.set_propagation_limit(gtk::PropagationLimit::None);
+    release_guard.connect_event(move |_, event| match event.event_type() {
+        gtk::gdk::EventType::ButtonPress => {
+            seen_press.set(true);
+            gtk::glib::Propagation::Proceed
+        }
+        gtk::gdk::EventType::ButtonRelease if !seen_press.get() => gtk::glib::Propagation::Stop,
+        _ => gtk::glib::Propagation::Proceed,
+    });
+    popover.add_controller(release_guard);
+    pressed_inside
 }

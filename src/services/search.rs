@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    cmp::Reverse,
-    collections::{BinaryHeap, HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex, OnceLock, RwLock, Weak,
+        Arc, Mutex, MutexGuard, OnceLock, RwLock, Weak,
         atomic::{AtomicBool, AtomicUsize, Ordering},
-        mpsc::{self, Receiver, RecvTimeoutError, Sender},
+        mpsc::{Receiver, Sender},
     },
     time::{Duration, Instant},
 };
@@ -17,7 +16,7 @@ use unicode_normalization::UnicodeNormalization;
 
 use super::{
     file_activity, is_hidden_name, native_hidden_names, native_kind,
-    path_match::{self, Frecency, PathMatcher, PathQuery, TextScore},
+    path_match::{self, Frecency, PathMatcher, TextScore},
 };
 
 pub(crate) const RESULT_LIMIT: usize = 100;
@@ -310,10 +309,7 @@ struct SharedIndex {
 
 struct RefreshState {
     running: bool,
-    roots: Vec<PathBuf>,
-    hidden: bool,
-    recursive: bool,
-    exclusions: SearchExclusions,
+    target: RefreshTarget,
     budget: TraversalBudget,
     /// A rescan arrived while a walk ran: walk once more after it publishes.
     rerun: bool,
@@ -337,10 +333,7 @@ impl SharedIndex {
             refresh_requested: AtomicUsize::new(0),
             refresh: Mutex::new(RefreshState {
                 running: false,
-                roots: Vec::new(),
-                hidden: false,
-                recursive: false,
-                exclusions: SearchExclusions::default(),
+                target: RefreshTarget::default(),
                 budget: TraversalBudget::standard(),
                 rerun: false,
                 throttled: false,
@@ -435,111 +428,63 @@ impl SharedIndex {
 mod directory;
 pub(crate) mod exclusions;
 mod pattern;
+mod refresh;
+mod scoring;
+mod session;
+#[cfg(test)]
+mod test_support;
+mod walk;
 
 pub(crate) use exclusions::SearchExclusions;
 pub(crate) use pattern::{filter_name_matches, filter_query_allows_typos};
+#[cfg(test)]
+use refresh::RefreshMode;
+use refresh::{RefreshTarget, start_indexer};
+pub(crate) use refresh::{
+    RenameScope, rebase_search_indexes, refresh_search_indexes_for_directory,
+    refresh_search_indexes_for_rename,
+};
+pub(crate) use scoring::RefusedFolders;
+use scoring::{SearchScorer, filter_score_normalized, fuzzy_score_normalized};
+#[cfg(test)]
+use scoring::{fuzzy_subsequence_score, insert_match, score_index};
+use session::start_search_session;
+#[cfg(test)]
+use test_support::{
+    index_scoped, index_tree, index_trees, index_trees_with_budget,
+    index_trees_with_budget_and_exclusions, index_trees_with_scheduler_budget,
+    index_trees_with_scheduler_budget_and_exclusions, request_index_refresh,
+};
+#[cfg(test)]
+use walk::{PathAdmission, admit_path};
+use walk::{append_index_items, build_root_overrides};
 
-type NameScorer = fn(&SearchItem, &str) -> Option<i64>;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct RefusedFolders {
-    pub(crate) trees: Vec<PathBuf>,
-    pub(crate) folder: Option<PathBuf>,
+/// Indexes are shared by sessions that walk the same roots the same way.
+#[derive(Clone, PartialEq)]
+struct IndexKey {
+    target: RefreshTarget,
+    limits: SearchLimits,
 }
 
-impl RefusedFolders {
-    pub(crate) fn refuses(&self, path: &Path) -> bool {
-        self.folder.as_deref() == Some(path) || self.trees.iter().any(|tree| path.starts_with(tree))
-    }
-}
-
-#[derive(Clone)]
-enum SearchScorer {
-    Name(NameScorer),
-    Paths {
-        frecency: Arc<Frecency>,
-        /// `Some` restricts hits to directories and applies transfer exclusions.
-        folders: Option<Arc<RefusedFolders>>,
-    },
-}
-
-impl SearchScorer {
-    fn prepare<'a>(&'a self, normalized_query: &'a str) -> QueryScorer<'a> {
-        match self {
-            Self::Name(scorer) => QueryScorer::Name(*scorer, normalized_query),
-            Self::Paths {
-                frecency,
-                folders: Some(refused),
-            } if normalized_query.trim().is_empty() => QueryScorer::Folders(frecency, refused),
-            Self::Paths { frecency, folders } => QueryScorer::Paths {
-                matcher: PathMatcher::new(&PathQuery::parse(normalized_query)),
-                query: normalized_query,
-                frecency,
-                folders: folders.as_deref(),
-            },
-        }
-    }
-
-    fn lists_without_query(&self) -> bool {
-        matches!(
-            self,
-            Self::Paths {
-                folders: Some(_),
-                ..
-            }
-        )
-    }
-}
-
-enum QueryScorer<'a> {
-    Name(NameScorer, &'a str),
-    Paths {
-        matcher: PathMatcher,
-        query: &'a str,
-        frecency: &'a Frecency,
-        folders: Option<&'a RefusedFolders>,
-    },
-    Folders(&'a Frecency, &'a RefusedFolders),
-}
-
-impl QueryScorer<'_> {
-    fn score(&mut self, item: &SearchItem) -> Option<i64> {
-        match self {
-            Self::Name(scorer, query) => scorer(item, query),
-            Self::Folders(frecency, refused) => (item.is_directory && !refused.refuses(&item.path))
-                .then(|| {
-                    frecency.bias(&item.path, true) * (i64::from(u8::MAX) + 1)
-                        - i64::from(item.depth)
-                }),
-            Self::Paths {
-                matcher,
-                query,
-                frecency,
-                folders,
-            } => {
-                if let Some(refused) = folders
-                    && (!item.is_directory || refused.refuses(&item.path))
-                {
-                    return None;
-                }
-                let text = item.path_score(matcher)?;
-                let exact = if folders.is_some() {
-                    path_match::exact_bonus(&item.search_path, item.search_name_start, query)
-                } else {
-                    0
-                };
-                Some(path_match::rank(text, frecency.bias(&item.path, item.is_directory)) + exact)
-            }
-        }
-    }
-}
-
-type IndexRegistry = Vec<(
-    (Vec<PathBuf>, bool, bool, SearchExclusions, SearchLimits),
-    Weak<SharedIndex>,
-)>;
+type IndexRegistry = Vec<(IndexKey, Weak<SharedIndex>)>;
 static SHARED_INDEXES: OnceLock<Mutex<IndexRegistry>> = OnceLock::new();
 static REFRESH_TRAVERSAL: Mutex<()> = Mutex::new(());
+
+fn lock_registry(registry: &Mutex<IndexRegistry>) -> MutexGuard<'_, IndexRegistry> {
+    let mut registry = registry
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    registry.retain(|(_, index)| index.strong_count() > 0);
+    registry
+}
+
+fn unique_roots(roots: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut seen = HashSet::new();
+    roots
+        .into_iter()
+        .filter(|root| seen.insert(root.clone()))
+        .collect()
+}
 
 pub struct SearchHandle {
     cancelled: Arc<AtomicBool>,
@@ -577,25 +522,14 @@ impl Drop for SearchHandle {
     }
 }
 
-#[cfg(test)]
-pub fn index_tree(root: PathBuf, show_hidden: bool) -> (SearchHandle, Receiver<SearchEvent>) {
-    index_trees(vec![root], show_hidden)
-}
-
 pub fn index_filter(
     root: PathBuf,
     show_hidden: bool,
     include_subfolders: bool,
     limits: SearchLimits,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
-    index_scoped(
-        vec![root],
-        show_hidden,
-        include_subfolders,
-        SearchScorer::Name(filter_score_normalized),
-        Vec::new(),
-        limits,
-    )
+    let target = RefreshTarget::new(vec![root], show_hidden, include_subfolders, &[]);
+    open_index(target, limits, SearchScorer::Name(filter_score_normalized))
 }
 
 pub fn index_paths(
@@ -605,17 +539,12 @@ pub fn index_paths(
     frecency: Frecency,
     limits: SearchLimits,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
-    index_scoped(
-        vec![root],
-        show_hidden,
-        recursive,
-        SearchScorer::Paths {
-            frecency: Arc::new(frecency),
-            folders: None,
-        },
-        Vec::new(),
-        limits,
-    )
+    let scorer = SearchScorer::Paths {
+        frecency: Arc::new(frecency),
+        folders: None,
+    };
+    let target = RefreshTarget::new(vec![root], show_hidden, recursive, &[]);
+    open_index(target, limits, scorer)
 }
 
 pub fn index_folder_paths(
@@ -625,25 +554,15 @@ pub fn index_folder_paths(
     refused: RefusedFolders,
     limits: SearchLimits,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
-    index_scoped(
-        vec![root],
-        show_hidden,
-        true,
-        SearchScorer::Paths {
-            frecency: Arc::new(frecency),
-            folders: Some(Arc::new(refused)),
-        },
-        Vec::new(),
+    let scorer = SearchScorer::Paths {
+        frecency: Arc::new(frecency),
+        folders: Some(Arc::new(refused)),
+    };
+    open_index(
+        RefreshTarget::new(vec![root], show_hidden, true, &[]),
         limits,
+        scorer,
     )
-}
-
-#[cfg(test)]
-pub fn index_trees(
-    roots: Vec<PathBuf>,
-    show_hidden: bool,
-) -> (SearchHandle, Receiver<SearchEvent>) {
-    index_trees_with_exclusions(roots, show_hidden, Vec::new(), SearchLimits::default())
 }
 
 /// Concurrent sessions share a snapshot until the last handle is dropped.
@@ -654,1208 +573,39 @@ pub fn index_trees_with_exclusions(
     exclusions: Vec<String>,
     limits: SearchLimits,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
-    index_scoped(
-        roots,
-        show_hidden,
-        true,
-        SearchScorer::Name(fuzzy_score_normalized),
-        exclusions,
-        limits,
-    )
+    let target = RefreshTarget::new(roots, show_hidden, true, &exclusions);
+    open_index(target, limits, SearchScorer::Name(fuzzy_score_normalized))
 }
 
-fn index_scoped(
-    roots: Vec<PathBuf>,
-    show_hidden: bool,
-    recursive: bool,
-    scorer: SearchScorer,
-    exclusions: Vec<String>,
-    limits: SearchLimits,
-) -> (SearchHandle, Receiver<SearchEvent>) {
-    let mut seen = HashSet::new();
-    let roots: Vec<_> = roots
-        .into_iter()
-        .filter(|root| seen.insert(root.clone()))
-        .collect();
-    let search_exclusions = SearchExclusions::from_strings(&exclusions);
-    let key = (
-        roots.clone(),
-        show_hidden,
-        recursive,
-        search_exclusions.clone(),
-        limits,
-    );
+/// A live index for `key`, joining a running one when another session shares it.
+fn shared_index(key: IndexKey) -> Arc<SharedIndex> {
     let registry = SHARED_INDEXES.get_or_init(|| Mutex::new(Vec::new()));
-    let mut registry = registry
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    registry.retain(|(_, index)| index.strong_count() > 0);
+    let mut registry = lock_registry(registry);
     let shared = registry
         .iter()
         .filter(|(candidate, _)| candidate == &key)
         .filter_map(|(_, index)| index.upgrade())
         .find(|index| index.try_acquire());
-    let index = if let Some(index) = shared {
-        index
-    } else {
-        let index = Arc::new(SharedIndex::new());
-        registry.push((key, Arc::downgrade(&index)));
-        start_indexer(
-            index.clone(),
-            roots,
-            show_hidden,
-            TraversalBudget::with_limits(limits),
-            recursive,
-            search_exclusions,
-        );
-        index
-    };
-    drop(registry);
-    start_search_session(index, scorer)
-}
-
-pub(crate) fn refresh_search_indexes_for_rename(from: &Path, to: &Path) {
-    rebase_search_indexes(from, to, RenameScope::Related);
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RenameScope {
-    /// Every index with a root at, above or below either path.
-    Related,
-    /// Only indexes with a root at or below `from`, which move to `to`. Callers rescan
-    /// the folder that held the entry themselves, so a plain file rename coalesces.
-    Moved,
-}
-
-pub(crate) fn rebase_search_indexes(from: &Path, to: &Path, scope: RenameScope) {
-    let Some(registry) = SHARED_INDEXES.get() else {
-        return;
-    };
-    let mut registry = registry
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    registry.retain(|(_, index)| index.strong_count() > 0);
-    for ((roots, hidden, recursive, exclusions, _), index) in registry.iter_mut() {
-        let affected = roots.iter().any(|root| match scope {
-            RenameScope::Related => {
-                from.starts_with(root)
-                    || to.starts_with(root)
-                    || root.starts_with(from)
-                    || root.starts_with(to)
-            }
-            RenameScope::Moved => root.starts_with(from),
-        });
-        if !affected {
-            continue;
-        }
-        for root in roots.iter_mut() {
-            if let Ok(suffix) = root.strip_prefix(from) {
-                *root = to.join(suffix);
-            }
-        }
-        let mut seen = HashSet::new();
-        roots.retain(|root| seen.insert(root.clone()));
-        if let Some(index) = index.upgrade() {
-            index
-                .walk_overrides
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .retain(|root, _| roots.contains(root));
-            request_index_refresh(
-                index,
-                roots.clone(),
-                *hidden,
-                *recursive,
-                exclusions.clone(),
-                RefreshMode::Restart,
-            );
-        }
+    if let Some(index) = shared {
+        return index;
     }
-}
-
-/// Rescans, coalescing, every live index whose walk lists the entries of `directory`.
-pub(crate) fn refresh_search_indexes_for_directory(directory: &Path) {
-    let Some(registry) = SHARED_INDEXES.get() else {
-        return;
-    };
-    let mut registry = registry
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    registry.retain(|(_, index)| index.strong_count() > 0);
-    for ((roots, hidden, recursive, exclusions, _), index) in registry.iter() {
-        let Some(index) = index.upgrade() else {
-            continue;
-        };
-        if roots.iter().any(|root| {
-            walk_lists_directory(&index, root, directory, *recursive, *hidden, exclusions)
-        }) {
-            request_index_refresh(
-                index,
-                roots.clone(),
-                *hidden,
-                *recursive,
-                exclusions.clone(),
-                RefreshMode::Coalesce,
-            );
-        }
-    }
-}
-
-/// Whether an index walk of `root` lists the entries of `directory`. A flat walk lists
-/// only `root`; a recursive one skips what `build_index` prunes: excluded and generated
-/// folders, hidden ones unless `hidden`, and folders at `MAX_INDEX_DEPTH` or deeper.
-fn walk_lists_directory(
-    index: &SharedIndex,
-    root: &Path,
-    directory: &Path,
-    recursive: bool,
-    hidden: bool,
-    exclusions: &SearchExclusions,
-) -> bool {
-    if !recursive {
-        return directory == root;
-    }
-    let Ok(relative) = directory.strip_prefix(root) else {
-        return false;
-    };
-    if relative.components().count() >= MAX_INDEX_DEPTH {
-        return false;
-    }
-    let name = directory.file_name().unwrap_or_default().to_string_lossy();
-    if exclusions.is_excluded(directory, &name, true) {
-        return false;
-    }
-    let overrides = index.walk_overrides(root);
-    let no_hidden_names = HashSet::new();
-    let mut path = root.to_path_buf();
-    relative.components().all(|component| {
-        path.push(component);
-        (hidden || !is_hidden_name(component.as_os_str(), &no_hidden_names))
-            && !overrides.matched(&path, true).is_ignore()
-    })
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum RefreshMode {
-    /// The roots may have changed: cancel a running walk and start over at once.
-    Restart,
-    /// The same roots changed on disk: let a running walk publish, then walk once more,
-    /// at most once per `MIN_REFRESH_INTERVAL`.
-    Coalesce,
-}
-
-fn request_index_refresh(
-    index: Arc<SharedIndex>,
-    roots: Vec<PathBuf>,
-    hidden: bool,
-    recursive: bool,
-    exclusions: SearchExclusions,
-    mode: RefreshMode,
-) {
-    let mut refresh = index
-        .refresh
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if mode == RefreshMode::Coalesce && refresh.running {
-        refresh.rerun = true;
-        return;
-    }
-    index.refresh_requested.fetch_add(1, Ordering::AcqRel);
-    refresh.roots = roots;
-    refresh.hidden = hidden;
-    refresh.recursive = recursive;
-    refresh.exclusions = exclusions;
-    refresh.throttled = mode == RefreshMode::Coalesce;
-    if refresh.running {
-        return;
-    }
-    refresh.running = true;
-    refresh.rerun = false;
-    drop(refresh);
-    for attempt in 0..2 {
-        let worker_index = index.clone();
-        match std::thread::Builder::new()
-            .name("strata-search-refresh".into())
-            .spawn(move || refresh_index(&worker_index))
-        {
-            Ok(_) => return,
-            Err(error) => tracing::error!(%error, attempt, "search refresh worker failed to start"),
-        }
-    }
-    let mut refresh = index
-        .refresh
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    refresh.running = false;
-    let mut state = index
-        .state
-        .write()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    state.coverage.unreadable = true;
-    drop(state);
-    index.broadcast_change();
-}
-
-fn refresh_index(index: &Arc<SharedIndex>) {
-    loop {
-        if !wait_out_refresh_interval(index) {
-            return;
-        }
-        // Bound replacement memory/traversal across overlapping scopes, not just per index.
-        let traversal = REFRESH_TRAVERSAL
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let (generation, roots, hidden, recursive, exclusions, budget) = {
-            let mut refresh = index
-                .refresh
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            if index.is_retired() {
-                refresh.running = false;
-                return;
-            }
-            refresh.last_walk = Some(Instant::now());
-            // This walk already lists every change requested so far.
-            refresh.rerun = false;
-            (
-                index.refresh_requested.load(Ordering::Acquire),
-                refresh.roots.clone(),
-                refresh.hidden,
-                refresh.recursive,
-                refresh.exclusions.clone(),
-                refresh.budget,
-            )
-        };
-        index.cancel_initial_indexer.store(true, Ordering::Release);
-        let replacement = SharedIndex {
-            refresh_owner: Some((Arc::downgrade(index), generation)),
-            ..SharedIndex::new()
-        };
-        if recursive {
-            build_index(&replacement, roots, hidden, budget, exclusions);
-        } else {
-            directory::build_index(
-                &replacement,
-                roots,
-                hidden,
-                budget.max_entries,
-                budget.time_budget,
-                &exclusions,
-            );
-        }
-        let mut refresh = index
-            .refresh
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if index.is_retired() {
-            refresh.running = false;
-            return;
-        }
-        if index.refresh_requested.load(Ordering::Acquire) == generation {
-            let fresh = replacement
-                .state
-                .into_inner()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            let mut state = index
-                .state
-                .write()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            let revision = state.revision.wrapping_add(1);
-            *state = fresh;
-            state.revision = revision;
-            drop(state);
-            index.broadcast_change();
-            if refresh.rerun {
-                refresh.throttled = true;
-                continue;
-            }
-            refresh.running = false;
-            return;
-        }
-        drop(refresh);
-        drop(traversal);
-    }
-}
-
-/// Sleeps until `MIN_REFRESH_INTERVAL` after the previous walk started, unless a
-/// `RefreshMode::Restart` ends the wait. False once the index retired.
-fn wait_out_refresh_interval(index: &SharedIndex) -> bool {
-    const SLICE: Duration = Duration::from_millis(20);
-    loop {
-        let wait = {
-            let mut refresh = index
-                .refresh
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            if index.is_retired() {
-                refresh.running = false;
-                return false;
-            }
-            refresh
-                .last_walk
-                .filter(|_| refresh.throttled)
-                .map_or(Duration::ZERO, |started| {
-                    MIN_REFRESH_INTERVAL.saturating_sub(started.elapsed())
-                })
-        };
-        if wait.is_zero() {
-            return true;
-        }
-        std::thread::sleep(wait.min(SLICE));
-    }
-}
-
-#[cfg(test)]
-fn index_trees_with_budget(
-    roots: Vec<PathBuf>,
-    show_hidden: bool,
-    max_entries: usize,
-    max_depth: usize,
-    time_budget: Duration,
-) -> (SearchHandle, Receiver<SearchEvent>) {
-    index_trees_with_scheduler_budget(
-        roots,
-        show_hidden,
-        max_entries,
-        max_depth,
-        time_budget,
-        INITIAL_DIRECTORY_BATCH,
-        MAX_PENDING_DIRECTORIES,
-    )
-}
-
-#[cfg(test)]
-fn index_trees_with_scheduler_budget(
-    roots: Vec<PathBuf>,
-    show_hidden: bool,
-    max_entries: usize,
-    max_depth: usize,
-    time_budget: Duration,
-    initial_directory_batch: usize,
-    max_pending_directories: usize,
-) -> (SearchHandle, Receiver<SearchEvent>) {
-    index_trees_with_scheduler_budget_and_exclusions(
-        roots,
-        show_hidden,
-        TraversalBudget {
-            max_entries,
-            max_depth,
-            time_budget,
-            initial_directory_batch,
-            max_pending_directories,
-        },
-        SearchExclusions::default(),
-    )
-}
-
-#[cfg(test)]
-fn index_trees_with_scheduler_budget_and_exclusions(
-    roots: Vec<PathBuf>,
-    show_hidden: bool,
-    budget: TraversalBudget,
-    exclusions: SearchExclusions,
-) -> (SearchHandle, Receiver<SearchEvent>) {
     let index = Arc::new(SharedIndex::new());
-    build_index(&index, roots, show_hidden, budget, exclusions);
-    start_search_session(index, SearchScorer::Name(fuzzy_score_normalized))
+    registry.push((key.clone(), Arc::downgrade(&index)));
+    start_indexer(
+        index.clone(),
+        key.target,
+        TraversalBudget::with_limits(key.limits),
+    );
+    index
 }
 
-#[cfg(test)]
-pub(crate) fn index_trees_with_budget_and_exclusions(
-    roots: Vec<PathBuf>,
-    show_hidden: bool,
-    max_entries: usize,
-    max_depth: usize,
-    time_budget: Duration,
-    exclusions: Vec<String>,
-) -> (SearchHandle, Receiver<SearchEvent>) {
-    index_trees_with_scheduler_budget_and_exclusions(
-        roots,
-        show_hidden,
-        TraversalBudget {
-            max_entries,
-            max_depth,
-            time_budget,
-            initial_directory_batch: INITIAL_DIRECTORY_BATCH,
-            max_pending_directories: MAX_PENDING_DIRECTORIES,
-        },
-        SearchExclusions::from_strings(&exclusions),
-    )
-}
-
-fn start_search_session(
-    index: Arc<SharedIndex>,
+fn open_index(
+    target: RefreshTarget,
+    limits: SearchLimits,
     scorer: SearchScorer,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
-    let (command_sender, command_receiver) = mpsc::channel();
-    let (event_sender, event_receiver) = mpsc::channel();
-    let cancelled = Arc::new(AtomicBool::new(false));
-    let subscriber_id = index.subscribe(command_sender.clone());
-    let worker_cancelled = cancelled.clone();
-    let worker_index = index.clone();
-    let worker = std::thread::Builder::new()
-        .name("strata-search-query".into())
-        .spawn(move || {
-            run_search_session(
-                &worker_index,
-                &worker_cancelled,
-                &command_receiver,
-                &event_sender,
-                &scorer,
-            );
-        });
-    if let Err(error) = worker {
-        tracing::error!(%error, "search query worker failed to start");
-    }
-    let _initial = command_sender.send(SearchCommand::IndexChanged);
-    (
-        SearchHandle {
-            cancelled,
-            commands: command_sender,
-            index,
-            subscriber_id,
-        },
-        event_receiver,
-    )
-}
-
-fn run_search_session(
-    index: &SharedIndex,
-    cancelled: &AtomicBool,
-    commands: &Receiver<SearchCommand>,
-    events: &Sender<SearchEvent>,
-    scorer: &SearchScorer,
-) {
-    let mut progress = WalkProgress::default();
-    let mut indexed_items = 0;
-    let mut revision = 0;
-    while !cancelled.load(Ordering::Acquire) {
-        let first = match commands.recv_timeout(Duration::from_millis(50)) {
-            Ok(command) => command,
-            Err(RecvTimeoutError::Timeout) => continue,
-            Err(RecvTimeoutError::Disconnected) => return,
-        };
-        let mut next_query = None;
-        let mut index_changed = false;
-        for command in std::iter::once(first).chain(commands.try_iter()) {
-            match command {
-                SearchCommand::Query(query, limit) => next_query = Some((query, limit)),
-                SearchCommand::IndexChanged => index_changed = true,
-            }
-        }
-        let query_changed = next_query.is_some();
-        let state = index
-            .state
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if let Some((query, limit)) = next_query {
-            progress.normalized_query = fold_for_search(&query);
-            progress.query = query;
-            progress.limit = limit;
-        }
-        let lists = !progress.normalized_query.is_empty() || scorer.lists_without_query();
-        if query_changed
-            || revision != state.revision
-            || (index_changed && progress.limit > RESULT_LIMIT)
-        {
-            progress.matches = if !lists {
-                Vec::new()
-            } else {
-                score_index_with_limit(
-                    &state.items,
-                    &progress.normalized_query,
-                    scorer,
-                    progress.limit,
-                )
-            };
-        } else if index_changed && lists {
-            let mut scorer = scorer.prepare(&progress.normalized_query);
-            for item in &state.items[indexed_items..] {
-                if let Some(score) = scorer.score(item) {
-                    insert_match_with_limit(&mut progress.matches, score, item, progress.limit);
-                }
-            }
-        }
-        revision = state.revision;
-        indexed_items = state.items.len();
-        // Completion must describe the same snapshot that was scored.
-        let indexing = state.indexing;
-        let coverage = state.coverage;
-        drop(state);
-        if query_changed || (index_changed && (lists || !indexing)) {
-            publish(events, &progress, indexing, coverage);
-        }
-    }
-}
-
-fn start_indexer(
-    index: Arc<SharedIndex>,
-    roots: Vec<PathBuf>,
-    show_hidden: bool,
-    budget: TraversalBudget,
-    recursive: bool,
-    exclusions: SearchExclusions,
-) {
-    index
-        .refresh
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .budget = budget;
-    let worker_index = index.clone();
-    let worker = std::thread::Builder::new()
-        .name("strata-search-index".into())
-        .spawn(move || {
-            if recursive {
-                build_index(&worker_index, roots, show_hidden, budget, exclusions);
-            } else {
-                directory::build_index(
-                    &worker_index,
-                    roots,
-                    show_hidden,
-                    budget.max_entries,
-                    budget.time_budget,
-                    &exclusions,
-                );
-            }
-        });
-    if let Err(error) = worker {
-        tracing::error!(%error, "search index worker failed to start");
-        append_index_items(
-            &index,
-            &mut Vec::new(),
-            false,
-            SearchCoverage {
-                unreadable: true,
-                ..Default::default()
-            },
-        );
-        index.broadcast_change();
-    }
-}
-
-struct DirectoryTask {
-    path: PathBuf,
-    root: PathBuf,
-    depth: usize,
-    probe_only: bool,
-    skipped_entries: usize,
-    batch_size: usize,
-    virtual_work: usize,
-}
-
-struct ScheduledDirectory {
-    task: DirectoryTask,
-    sequence: u64,
-}
-
-impl PartialEq for ScheduledDirectory {
-    fn eq(&self, other: &Self) -> bool {
-        self.task.virtual_work == other.task.virtual_work
-            && self.task.depth == other.task.depth
-            && self.sequence == other.sequence
-    }
-}
-
-impl Eq for ScheduledDirectory {}
-
-impl PartialOrd for ScheduledDirectory {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for ScheduledDirectory {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other
-            .task
-            .virtual_work
-            .cmp(&self.task.virtual_work)
-            .then_with(|| other.task.depth.cmp(&self.task.depth))
-            .then_with(|| other.sequence.cmp(&self.sequence))
-    }
-}
-
-fn build_root_overrides(root: &Path) -> ignore::overrides::Override {
-    let mut overrides = ignore::overrides::OverrideBuilder::new(root);
-    for generated_tree in GENERATED_TREE_GLOBS {
-        overrides
-            .add(generated_tree)
-            .expect("valid generated-tree prune glob");
-    }
-    overrides.build().expect("valid generated-tree prune globs")
-}
-
-fn directory_walker(
-    task: &DirectoryTask,
-    overrides: &ignore::overrides::Override,
-    boundaries: Arc<HashSet<PathBuf>>,
-    show_hidden: bool,
-) -> ignore::Walk {
-    let mut builder = ignore::WalkBuilder::new(&task.path);
-    builder
-        .follow_links(false)
-        .standard_filters(true)
-        // `standard_filters` resets hidden-file filtering.
-        .hidden(!show_hidden)
-        .require_git(false)
-        .overrides(overrides.clone())
-        .max_depth(Some(1))
-        // Nested mounts are walked separately, never through both roots.
-        .filter_entry(move |entry| {
-            entry.depth() == 0
-                || !(boundaries.contains(entry.path()) || is_kernel_filesystem(entry.path()))
-        });
-    builder.build()
-}
-
-// Avoid filling a root search with kernel interfaces; explicit roots bypass this filter.
-fn is_kernel_filesystem(path: &Path) -> bool {
-    ["/proc", "/sys", "/dev"]
-        .iter()
-        .any(|mount| path == Path::new(mount))
-}
-
-#[derive(Debug, Eq, PartialEq)]
-enum PathAdmission {
-    Unique,
-    Duplicate,
-    EntryLimit,
-}
-
-fn admit_path(
-    indexed_paths: &mut HashSet<PathBuf>,
-    path: &Path,
-    max_entries: usize,
-) -> PathAdmission {
-    if indexed_paths.contains(path) {
-        PathAdmission::Duplicate
-    } else if indexed_paths.len() >= max_entries {
-        PathAdmission::EntryLimit
-    } else {
-        indexed_paths.insert(path.to_path_buf());
-        PathAdmission::Unique
-    }
-}
-
-fn build_index(
-    index: &SharedIndex,
-    roots: Vec<PathBuf>,
-    show_hidden: bool,
-    budget: TraversalBudget,
-    exclusions: SearchExclusions,
-) {
-    let TraversalBudget {
-        max_entries,
-        max_depth,
-        time_budget,
-        initial_directory_batch,
-        max_pending_directories,
-    } = budget;
-    let mut indexed_entries = 0;
-    let mut indexed_paths = HashSet::new();
-    let mut pending_items = Vec::with_capacity(256);
-    let mut coverage = SearchCoverage::default();
-    let mut last_publish = Instant::now();
-    let walk_start = Instant::now();
-    let mut seen = HashSet::new();
-    let roots: Vec<_> = roots
-        .into_iter()
-        .filter(|root| seen.insert(root.clone()))
-        .collect();
-    let boundaries = Arc::new(seen);
-    let root_overrides: HashMap<PathBuf, ignore::overrides::Override> = roots
-        .iter()
-        .map(|root| (root.clone(), build_root_overrides(root)))
-        .collect();
-    let mut real_roots: HashMap<PathBuf, PathBuf> = HashMap::new();
-    let initial_directory_batch = initial_directory_batch.max(1);
-    let max_pending_directories = max_pending_directories.max(1);
-    let directory_batch_limit = (max_entries / 100).clamp(1, 64);
-    let mut pending_branches = VecDeque::new();
-    let mut pending_directory_count = 0_usize;
-    let mut next_sequence = 0_u64;
-    for root in roots {
-        let name = root.file_name().unwrap_or_default().to_string_lossy();
-        if exclusions.is_excluded(&root, &name, true) {
-            continue;
-        }
-        if pending_directory_count >= max_pending_directories {
-            coverage.directory_limit = true;
-            continue;
-        }
-        let mut branch = BinaryHeap::new();
-        branch.push(ScheduledDirectory {
-            task: DirectoryTask {
-                path: root.clone(),
-                root,
-                depth: 0,
-                probe_only: max_depth == 0,
-                skipped_entries: 0,
-                batch_size: initial_directory_batch,
-                virtual_work: 0,
-            },
-            sequence: next_sequence,
-        });
-        next_sequence = next_sequence.wrapping_add(1);
-        pending_branches.push_back(branch);
-        pending_directory_count += 1;
-    }
-
-    'walk: while let Some(mut branch) = pending_branches.pop_front() {
-        let Some(scheduled) = branch.pop() else {
-            continue;
-        };
-        pending_directory_count = pending_directory_count.saturating_sub(1);
-        let mut directory = scheduled.task;
-        let mut new_branches = Vec::new();
-        if index.indexing_cancelled() {
-            return;
-        }
-        if !real_roots.contains_key(&directory.root) {
-            let real = directory
-                .root
-                .canonicalize()
-                .unwrap_or_else(|_| directory.root.clone());
-            real_roots.insert(directory.root.clone(), real);
-        }
-        let real_root = &real_roots[&directory.root];
-        let real = match directory.path.strip_prefix(&directory.root) {
-            Ok(relative) if !relative.as_os_str().is_empty() => real_root.join(relative),
-            _ => real_root.clone(),
-        };
-        let Ok(hold) = file_activity::hold([&directory.path, &real], || {}) else {
-            coverage.unreadable = true;
-            if !branch.is_empty() {
-                pending_branches.push_back(branch);
-            }
-            continue;
-        };
-        let overrides = root_overrides.get(&directory.root).expect("root overrides");
-        let mut walker =
-            directory_walker(&directory, overrides, boundaries.clone(), show_hidden).peekable();
-        let entry_depth = directory.depth.saturating_add(1);
-        let mut seen_entries = 0;
-        let mut processed_entries = 0;
-        let mut slice_work = 0_usize;
-        let mut discovered_children = Vec::new();
-        let exhausted = loop {
-            if index.indexing_cancelled() {
-                return;
-            }
-            if hold.stopped() {
-                coverage.unreadable = true;
-                break true;
-            }
-            if walk_start.elapsed() >= time_budget {
-                coverage.time_limit = true;
-                break 'walk;
-            }
-            if processed_entries >= directory.batch_size.max(directory_batch_limit) {
-                // An empty continuation would outrank children and waste their next turn.
-                break walker.peek().is_none();
-            }
-            let Some(result) = walker.next() else {
-                break true;
-            };
-            let entry = match result {
-                Ok(entry) => entry,
-                Err(_) => {
-                    coverage.unreadable = true;
-                    continue;
-                }
-            };
-            if entry.depth() == 0 {
-                if entry.error().is_some() {
-                    coverage.unreadable = true;
-                }
-                continue;
-            }
-            if seen_entries < directory.skipped_entries {
-                seen_entries += 1;
-                continue;
-            }
-            seen_entries += 1;
-            processed_entries += 1;
-            if entry.error().is_some() {
-                coverage.unreadable = true;
-            }
-            let file_type = entry.file_type();
-            let is_directory = file_type.is_some_and(|kind| kind.is_dir());
-            let name = entry.file_name().to_string_lossy();
-            if exclusions.is_excluded(entry.path(), &name, is_directory) {
-                continue;
-            }
-            // Structural entries are cheap within a branch so nested documents progress
-            // before dense runs of regular files consume the shared entry budget.
-            slice_work = slice_work.saturating_add(if is_directory { 1 } else { 8 });
-            if directory.probe_only {
-                coverage.depth_limit = true;
-                continue;
-            }
-            let mode = if is_directory {
-                MetadataValue::Unknown
-            } else {
-                use std::os::unix::fs::MetadataExt;
-                // Executability follows the target, not the walker's symlink mode.
-                let metadata = if file_type.is_some_and(|kind| kind.is_symlink()) {
-                    std::fs::metadata(entry.path()).ok()
-                } else {
-                    entry.metadata().ok()
-                };
-                metadata
-                    .map(|metadata| MetadataValue::Known(metadata.mode()))
-                    .unwrap_or(MetadataValue::Unknown)
-            };
-            let path = entry.into_path();
-            let kind = file_type.map_or(EntryKind::Other, |kind| native_kind(kind, &path));
-            match admit_path(&mut indexed_paths, &path, max_entries) {
-                PathAdmission::Duplicate => continue,
-                PathAdmission::EntryLimit => {
-                    coverage.entry_limit = true;
-                    break 'walk;
-                }
-                PathAdmission::Unique => {}
-            }
-            pending_items.push(SearchItem::with_metadata(
-                path.clone(),
-                &directory.root,
-                is_directory,
-                kind,
-                mode,
-            ));
-            indexed_entries += 1;
-            if is_directory {
-                // Keep one queue slot available for this slice's continuation. A child that
-                // cannot be admitted is omitted, while already queued work still completes.
-                if pending_directory_count < max_pending_directories.saturating_sub(1) {
-                    pending_directory_count += 1;
-                    discovered_children.push(path);
-                } else {
-                    coverage.directory_limit = true;
-                }
-            }
-            if pending_items.len() >= 256 {
-                append_index_items(index, &mut pending_items, true, coverage);
-            }
-            if last_publish.elapsed() >= PUBLISH_INTERVAL {
-                append_index_items(index, &mut pending_items, true, coverage);
-                index.broadcast_change();
-                last_publish = Instant::now();
-            }
-        };
-        drop(walker);
-        drop(hold);
-        // Within a branch, depth puts the continuation ahead of this slice's
-        // children, but earlier slices' children retain their lower work keys.
-        let resume_work = directory.virtual_work.saturating_add(slice_work);
-        for path in discovered_children {
-            let child = ScheduledDirectory {
-                task: DirectoryTask {
-                    path,
-                    root: directory.root.clone(),
-                    depth: entry_depth,
-                    probe_only: entry_depth >= max_depth,
-                    skipped_entries: 0,
-                    batch_size: initial_directory_batch,
-                    virtual_work: resume_work,
-                },
-                sequence: next_sequence,
-            };
-            next_sequence = next_sequence.wrapping_add(1);
-            if directory.depth == 0 {
-                let mut child_branch = BinaryHeap::new();
-                child_branch.push(child);
-                new_branches.push(child_branch);
-            } else {
-                branch.push(child);
-            }
-        }
-        if !exhausted {
-            directory.skipped_entries = directory.skipped_entries.saturating_add(processed_entries);
-            directory.batch_size = directory.batch_size.saturating_mul(2);
-            directory.virtual_work = resume_work;
-            branch.push(ScheduledDirectory {
-                task: directory,
-                sequence: next_sequence,
-            });
-            next_sequence = next_sequence.wrapping_add(1);
-            pending_directory_count += 1;
-        }
-        if !branch.is_empty() {
-            pending_branches.push_back(branch);
-        }
-        pending_branches.extend(new_branches);
-    }
-    append_index_items(index, &mut pending_items, false, coverage);
-    if coverage.is_partial() {
-        tracing::warn!(
-            entries = indexed_entries,
-            elapsed_ms = walk_start.elapsed().as_millis() as u64,
-            ?coverage,
-            "search index partial"
-        );
-    } else {
-        tracing::info!(
-            entries = indexed_entries,
-            elapsed_ms = walk_start.elapsed().as_millis() as u64,
-            "search index built"
-        );
-    }
-    index.broadcast_change();
-}
-
-fn append_index_items(
-    index: &SharedIndex,
-    items: &mut Vec<SearchItem>,
-    indexing: bool,
-    coverage: SearchCoverage,
-) {
-    let mut state = index
-        .state
-        .write()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if index.cancel_initial_indexer.load(Ordering::Acquire) {
-        items.clear();
-        return;
-    }
-    state.items.append(items);
-    state.indexing = indexing;
-    state.coverage = coverage;
-}
-
-type RankedPosition = Reverse<(i64, Reverse<usize>)>;
-
-#[cfg(test)]
-fn score_index(index: &[SearchItem], query: &str, scorer: SearchScorer) -> Vec<(i64, SearchItem)> {
-    score_index_with_limit(index, query, &scorer, RESULT_LIMIT)
-}
-
-fn score_index_with_limit(
-    index: &[SearchItem],
-    normalized_query: &str,
-    scorer: &SearchScorer,
-    limit: usize,
-) -> Vec<(i64, SearchItem)> {
-    let worker_count = std::thread::available_parallelism()
-        .map_or(1, usize::from)
-        .min(4);
-    let best = if index.len() < 50_000 || worker_count == 1 {
-        score_range(index, normalized_query, 0, scorer, limit)
-    } else {
-        let chunk_size = index.len().div_ceil(worker_count);
-        std::thread::scope(|scope| {
-            let workers = index
-                .chunks(chunk_size)
-                .enumerate()
-                .map(|(chunk, items)| {
-                    scope.spawn(move || {
-                        score_range(items, normalized_query, chunk * chunk_size, scorer, limit)
-                    })
-                })
-                .collect::<Vec<_>>();
-            let mut best = BinaryHeap::with_capacity(limit + 1);
-            for worker in workers {
-                let candidates = match worker.join() {
-                    Ok(candidates) => candidates,
-                    Err(payload) => std::panic::resume_unwind(payload),
-                };
-                for Reverse(candidate) in candidates {
-                    retain_candidate(&mut best, candidate, limit);
-                }
-            }
-            best
-        })
-    };
-    let mut ranked = best
-        .into_iter()
-        .map(|Reverse((score, Reverse(position)))| (score, position))
-        .collect::<Vec<_>>();
-    ranked.sort_unstable_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
-    ranked
-        .into_iter()
-        .map(|(score, position)| (score, index[position].clone()))
-        .collect()
-}
-
-fn score_range(
-    index: &[SearchItem],
-    normalized_query: &str,
-    position_offset: usize,
-    scorer: &SearchScorer,
-    limit: usize,
-) -> BinaryHeap<RankedPosition> {
-    let mut best = BinaryHeap::with_capacity(limit + 1);
-    let mut scorer = scorer.prepare(normalized_query);
-    for (position, item) in index.iter().enumerate() {
-        let Some(score) = scorer.score(item) else {
-            continue;
-        };
-        retain_candidate(
-            &mut best,
-            (score, Reverse(position_offset + position)),
-            limit,
-        );
-    }
-    best
-}
-
-fn retain_candidate(
-    best: &mut BinaryHeap<RankedPosition>,
-    candidate: (i64, Reverse<usize>),
-    limit: usize,
-) {
-    if best.len() < limit {
-        best.push(Reverse(candidate));
-    } else if best.peek().is_some_and(|Reverse(worst)| candidate > *worst) {
-        best.pop();
-        best.push(Reverse(candidate));
-    }
-}
-
-#[cfg(test)]
-fn insert_match(matches: &mut Vec<(i64, SearchItem)>, score: i64, item: &SearchItem) {
-    insert_match_with_limit(matches, score, item, RESULT_LIMIT);
-}
-
-fn insert_match_with_limit(
-    matches: &mut Vec<(i64, SearchItem)>,
-    score: i64,
-    item: &SearchItem,
-    limit: usize,
-) {
-    let position = matches.partition_point(|candidate| candidate.0 >= score);
-    if position < limit {
-        matches.insert(position, (score, item.clone()));
-        matches.truncate(limit);
-    }
-}
-
-fn publish(
-    sender: &Sender<SearchEvent>,
-    progress: &WalkProgress,
-    indexing: bool,
-    coverage: SearchCoverage,
-) {
-    let _sent = sender.send(SearchEvent::Results {
-        query: progress.query.clone(),
-        items: progress
-            .matches
-            .iter()
-            .map(|(_, item)| item)
-            .filter(|item| search_path_present(&item.path))
-            .cloned()
-            .collect(),
-        indexing,
-        coverage,
-        has_more: progress.limit > 0
-            && progress.matches.len() == progress.limit
-            && progress.limit < MAX_INDEX_ENTRIES,
-        candidates: progress.matches.len(),
-    });
-}
-
-fn search_path_present(path: &Path) -> bool {
-    // Preserve dangling symlinks and uncertain paths; only confirmed absence removes a hit.
-    path.symlink_metadata().map_or_else(
-        |error| error.kind() != std::io::ErrorKind::NotFound,
-        |_| true,
-    )
-}
-
-fn filter_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {
-    if !filter_name_matches(item.search_name(), query) {
-        return None;
-    }
-    if !query.contains('*') && item.search_name().contains(query) {
-        return fuzzy_score_normalized(item, query);
-    }
-    Some(i64::from(item.is_directory) * 20 - i64::from(item.depth) * 32)
-}
-
-fn fuzzy_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {
-    if query.trim().is_empty() {
-        return None;
-    }
-    let search_name = item.search_name();
-    let (tier, mut score) = if let Some(position) = search_name.find(query) {
-        (5, 10_000 - position as i64 * 12 - search_name.len() as i64)
-    } else if let Some(position) = item.search_path.find(query) {
-        (
-            4,
-            7_000 - position as i64 * 4 - item.search_path.len() as i64,
-        )
-    } else if query.contains(char::is_whitespace) {
-        if pattern::text_matches_words(search_name, query.split_whitespace()) {
-            (3, 5_000 - search_name.len() as i64)
-        } else if pattern::text_matches_words(&item.search_path, query.split_whitespace()) {
-            (2, 3_000 - item.search_path.len() as i64)
-        } else {
-            (1, fuzzy_subsequence_score(&item.search_path, query)?)
-        }
-    } else {
-        (1, fuzzy_subsequence_score(&item.search_path, query)?)
-    };
-    if search_name == query {
-        score += 20_000;
-    }
-    if item.is_directory {
-        score += 20;
-    }
-    score -= i64::from(item.depth) * 32;
-    // Keep penalties and fuzzy bonuses inside their match tier.
-    Some((tier << 32) + score.clamp(i64::from(i32::MIN), i64::from(i32::MAX)))
-}
-
-fn fuzzy_subsequence_score(haystack: &str, needle: &str) -> Option<i64> {
-    if needle.is_ascii() {
-        return fuzzy_ascii_subsequence_score(haystack.as_bytes(), needle.as_bytes());
-    }
-    let mut chars = haystack.char_indices();
-    let mut previous_end = None;
-    let mut score = 1_000i64;
-    for wanted in needle.chars() {
-        let (position, _) = chars.find(|(_, candidate)| *candidate == wanted)?;
-        score -= position as i64;
-        if previous_end == Some(position) {
-            score += 80;
-        }
-        if position == 0
-            || haystack[..position]
-                .chars()
-                .next_back()
-                .is_some_and(|character| matches!(character, '/' | '-' | '_' | ' ' | '.'))
-        {
-            score += 45;
-        }
-        previous_end = Some(position + wanted.len_utf8());
-    }
-    Some(score)
-}
-
-fn fuzzy_ascii_subsequence_score(haystack: &[u8], needle: &[u8]) -> Option<i64> {
-    let mut offset = 0;
-    let mut previous = None;
-    let mut score = 1_000i64;
-    for wanted in needle {
-        let relative = haystack[offset..]
-            .iter()
-            .position(|candidate| candidate == wanted)?;
-        let position = offset + relative;
-        score -= position as i64;
-        if previous.is_some_and(|previous| previous + 1 == position) {
-            score += 80;
-        }
-        if position == 0
-            || haystack
-                .get(position - 1)
-                .is_some_and(|character| matches!(character, b'/' | b'-' | b'_' | b' ' | b'.'))
-        {
-            score += 45;
-        }
-        previous = Some(position);
-        offset = position + 1;
-    }
-    Some(score)
+    let index = shared_index(IndexKey { target, limits });
+    start_search_session(index, scorer)
 }
 
 #[cfg(test)]
