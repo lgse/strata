@@ -12,8 +12,9 @@
 {"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
 {"settle":{"pane":"archive"}}
 {"click":{"entry":"readme.md","dir":"$root"},"mods":["ctrl"]}
+{"wait":{"selected":["archive","readme.md"],"dir":"$root"},"message":"Ctrl+click to add 'readme.md' to the root selection"}
 {"click":{"entry":"todo.txt","dir":"$root"},"mods":["ctrl"]}
-{"wait":{"selected":["archive","readme.md","todo.txt"],"dir":"$root"},"message":"Ctrl+clicks to extend the root selection while the archive column stays open"}
+{"wait":{"all":[{"selected":["archive","readme.md","todo.txt"],"dir":"$root"},{"panes":["$root","archive"]}]},"message":"Ctrl+clicks to extend the root selection while the archive column stays open"}
 {"note":"panes","as":"panes"}
 {"click":{"pane":"archive"},"at":["50%",-60]}
 {"wait":{"all_selected":[]},"message":"empty column to clear all selections"}
