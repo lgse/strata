@@ -246,6 +246,40 @@ fn heading_label(popover: &gtk::PopoverMenu, with_icon: bool) -> gtk::Label {
         .expect("heading label")
 }
 
+/// A provider menu model drawn by a popover that holds the provider actions.
+struct RenderedMenu {
+    model: gio::Menu,
+    popover: gtk::PopoverMenu,
+    group: gio::SimpleActionGroup,
+}
+
+impl RenderedMenu {
+    fn new() -> Self {
+        let model = gio::Menu::new();
+        let popover = gtk::PopoverMenu::from_model(Some(&model));
+        let group = gio::SimpleActionGroup::new();
+        popover.insert_action_group("provider", Some(&group));
+        Self {
+            model,
+            popover,
+            group,
+        }
+    }
+
+    /// A renderer for `/file` in its own live `epoch`.
+    fn renderer(&self, epoch: u64) -> menus::Renderer {
+        menus::Renderer::new(
+            (self.model.clone(), None),
+            self.group.clone(),
+            glib::WeakRef::new(),
+            self.popover.downgrade(),
+            (vec!["/file".into()], false),
+            Rc::new(Cell::new(epoch)),
+            epoch,
+        )
+    }
+}
+
 fn heading_labels(root: &gtk::Widget, name: &str) -> usize {
     let own = root
         .downcast_ref::<gtk::Label>()
@@ -294,30 +328,19 @@ fn reopened_menu_renders_a_fresh_provider_heading_row() {
         || {
             record_heading_slot_faults();
             install_hub();
-            let model = gio::Menu::new();
-            let popover = gtk::PopoverMenu::from_model(Some(&model));
-            let group = gio::SimpleActionGroup::new();
-            popover.insert_action_group("provider", Some(&group));
+            let menu = RenderedMenu::new();
             for open in 1..=3 {
                 // Each rebuild clears the model the popover keeps rendering.
-                model.remove_all();
-                let mut renderer = menus::Renderer::new(
-                    (model.clone(), None),
-                    group.clone(),
-                    glib::WeakRef::new(),
-                    popover.downgrade(),
-                    (vec!["/file".into()], false),
-                    Rc::new(Cell::new(open)),
-                    open,
-                );
+                menu.model.remove_all();
+                let mut renderer = menu.renderer(open);
                 renderer.update(vec![(0, action("keep", "Keep offline", None))]);
                 assert_eq!(
-                    string_attribute(model.upcast_ref(), 0, "label"),
+                    string_attribute(menu.model.upcast_ref(), 0, "label"),
                     None,
                     "no GTK section title on open {open}"
                 );
                 assert_eq!(
-                    heading_labels(popover.upcast_ref(), "Example Cloud"),
+                    heading_labels(menu.popover.upcast_ref(), "Example Cloud"),
                     1,
                     "one heading row on open {open}"
                 );
@@ -342,40 +365,32 @@ fn provider_heading_row_keeps_the_name_and_action_positions() {
                 with_hub(|hub| {
                     hub.providers[0].heading_icon = with_icon.then(|| black_pixel().upcast());
                 });
-                let model = gio::Menu::new();
-                let popover = gtk::PopoverMenu::from_model(Some(&model));
-                let group = gio::SimpleActionGroup::new();
-                popover.insert_action_group("provider", Some(&group));
-                let mut renderer = menus::Renderer::new(
-                    (model.clone(), None),
-                    group.clone(),
-                    glib::WeakRef::new(),
-                    popover.downgrade(),
-                    (vec!["/file".into()], false),
-                    Rc::new(Cell::new(1)),
-                    1,
-                );
+                let menu = RenderedMenu::new();
+                let mut renderer = menu.renderer(1);
                 renderer.update(vec![
                     (0, action("keep", "Keep offline", None)),
                     (0, action("share", "Share", None)),
                 ]);
-                let section = model.item_link(0, "section").expect("provider section");
+                let section = menu
+                    .model
+                    .item_link(0, "section")
+                    .expect("provider section");
                 assert_eq!(labels(&section), ["Keep offline", "Share"]);
                 renderer.update(vec![
                     (0, action("share", "Share", None)),
                     (0, action("link", "Copy link", None)),
                 ]);
                 assert_eq!(labels(&section), ["Share", "Copy link"]);
-                assert!(group.lookup_action("action-0-keep").is_none());
+                assert!(menu.group.lookup_action("action-0-keep").is_none());
 
                 // GTK can hold a section title outside the widget tree (#2011).
                 assert_eq!(
-                    string_attribute(model.upcast_ref(), 0, "label"),
+                    string_attribute(menu.model.upcast_ref(), 0, "label"),
                     None,
                     "no GTK section title (icon: {with_icon})"
                 );
                 assert_eq!(
-                    heading_label(&popover, with_icon).label(),
+                    heading_label(&menu.popover, with_icon).label(),
                     "Example Cloud",
                     "heading (icon: {with_icon})"
                 );
