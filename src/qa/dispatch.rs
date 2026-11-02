@@ -13,7 +13,7 @@ use super::{
     note::{Shape, note},
     observe::{evaluate, number_json, preferences, scroll_target, visible_rows, visible_top},
     pointer::{AfterPress, Aimed, DragEnds},
-    protocol::{self, Accessor, Chord, Command, Failure, Predicate, Query, Target},
+    protocol::{self, Accessor, Command, Failure, Predicate, Query, Target},
     reveal::set_scrollbar,
     samples::grab,
     settle, state,
@@ -64,11 +64,7 @@ impl Controller {
             }
             Command::Type(text) => {
                 for character in text.chars() {
-                    let chord = Chord {
-                        modifiers: Vec::new(),
-                        key: character.to_string(),
-                    };
-                    if let Err(error) = input.press(&chord).await {
+                    if let Err(error) = input.type_character(character).await {
                         return Outcome::error(error);
                     }
                 }

@@ -8,7 +8,7 @@ use std::{
 use gtk::{glib, prelude::*};
 
 use super::{
-    LOCATE_TIMEOUT, POLL_INTERVAL,
+    LOCATE_TIMEOUT, POLL_INTERVAL, REVEAL_SCROLL_ATTEMPTS,
     input::{Event, Injector},
     pointer::Aimed,
     protocol::{At, FieldRef, Target},
@@ -218,24 +218,41 @@ impl Input<'_> {
         Ok((coordinate(x)?, coordinate(y)?))
     }
 
+    /// A point a scroller clips is wheeled into view first, so the pointer lands on the
+    /// target. A `left_bound` aim is never scrolled: it deliberately aims at the visible
+    /// part of a clipped target.
     pub(super) async fn aim(&self, aim: &Aimed<'_>) -> Result<(i16, i16), String> {
-        let located = self.find(aim.target, aim.at, Aim::Point).await?;
-        let (x, y) = match aim.left_bound {
-            None => located.point,
-            Some(name) => {
-                let bound = self.boxes.borrow().get(name).copied().ok_or_else(|| {
-                    format!("left_bound needs a box kept as {name:?} by remember or settle")
-                })?;
-                let left = located.rect.x.max(bound.x);
-                Rect {
-                    x: left,
-                    width: located.rect.x + located.rect.width - left,
-                    ..located.rect
-                }
-                .point(aim.at)
+        let mut scrolls = 0;
+        loop {
+            let located = self.find(aim.target, aim.at, Aim::Point).await?;
+            let (x, y) = self.aimed_point(aim, &located)?;
+            let may_scroll = aim.left_bound.is_none() && scrolls < REVEAL_SCROLL_ATTEMPTS;
+            if may_scroll && self.scroll_onto_screen(&located, (x, y)).await? {
+                scrolls += 1;
+                continue;
             }
+            return Ok((coordinate(x)?, coordinate(y)?));
+        }
+    }
+
+    fn aimed_point(
+        &self,
+        aim: &Aimed<'_>,
+        located: &targets::Located,
+    ) -> Result<(f64, f64), String> {
+        let Some(name) = aim.left_bound else {
+            return Ok(located.point);
         };
-        Ok((coordinate(x)?, coordinate(y)?))
+        let bound = self.boxes.borrow().get(name).copied().ok_or_else(|| {
+            format!("left_bound needs a box kept as {name:?} by remember or settle")
+        })?;
+        let left = located.rect.x.max(bound.x);
+        Ok(Rect {
+            x: left,
+            width: located.rect.x + located.rect.width - left,
+            ..located.rect
+        }
+        .point(aim.at))
     }
 
     pub(super) fn focused_widget(&self) -> Option<gtk::Widget> {

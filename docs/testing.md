@@ -620,9 +620,11 @@ of the address that cannot connect. `exec` runs a shell command in the
 fixture with the session's HOME, XDG directories, display, runtime directory,
 and bus. `restart` closes the application's stdin, signals its group if it
 has not quit within ten seconds (the runner's `EXIT_TIMEOUT` and
-`TERMINATE_GRACE`), rewrites the given
-preferences in its saved `settings.toml`, and launches it again on the same
-fixture and HOME. Every exchange is appended to
+`TERMINATE_GRACE`), merges the given
+preferences into its saved `settings.toml` (each key replaced whole, tables
+included), and launches it again on the same fixture and HOME. A value
+`settings.toml` cannot hold is refused before the application quits, and a
+saved file that no longer parses is left unchanged and relaunched. Every exchange is appended to
 `target/qa-drive/transcript.jsonl` in the artifacts' transcript format, and the
 input log, build log, screenshots, and (after `stop`) application log land in
 `target/qa-drive/`, which `start` empties. There is one session per checkout,

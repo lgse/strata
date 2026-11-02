@@ -1,0 +1,55 @@
+{"scenario":"scrolled-away-crumbs-and-columns-stay-reachable","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"tree":{"alpha":{"notes.txt":"notes\n","bravo":{"charlie":{"delta":{"echo":{"foxtrot":{"golf":{"hotel":{"india.txt":"india\n"}}}}}}}}},"cost":{"columns":3.4},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Shift+wheel reaches scrolled-away Columns rows and crumbs, non-ASCII rename lands on disk; rename-commits-on-enter owns ASCII Enter"}}
+{"wait":{"focused":"alpha"},"message":"the keyboard cursor on alpha"}
+{"key":"Right"}
+{"wait":{"focused":"bravo"},"message":"Right to open alpha and focus bravo"}
+{"key":"Right"}
+{"wait":{"focused":"charlie"},"message":"Right to open bravo and focus charlie"}
+{"key":"Right"}
+{"wait":{"focused":"delta"},"message":"Right to open charlie and focus delta"}
+{"key":"Right"}
+{"wait":{"focused":"echo"},"message":"Right to open delta and focus echo"}
+{"key":"Right"}
+{"wait":{"focused":"foxtrot"},"message":"Right to open echo and focus foxtrot"}
+{"key":"Right"}
+{"wait":{"focused":"golf"},"message":"Right to open foxtrot and focus golf"}
+{"key":"Right"}
+{"wait":{"focused":"hotel"},"message":"Right to open golf and focus hotel"}
+{"key":"Right"}
+{"wait":{"focused":"india.txt"},"message":"Right to open hotel and focus india.txt"}
+{"wait":{"entries":["india.txt"],"dir":"hotel"},"message":"the deepest column to list india.txt"}
+{"settle":{"pane":"hotel"}}
+{"wait":{"all":[{"present":{"entry":"notes.txt","dir":"alpha"}},{"not":{"inside":{"target":{"entry":"notes.txt","dir":"alpha"},"of":{"ancestor":"scroll pane","of":{"pane":"alpha"}},"axis":"x"}}}]},"message":"the alpha column to be scrolled out of view"}
+{"select":{"entry":"notes.txt","dir":"alpha"}}
+{"wait":{"directory":"alpha"},"message":"the click in the scrolled-away alpha column to select notes.txt"}
+{"key":"F2"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus"}
+{"remember":{"field":true},"as":"rename"}
+{"key":"ctrl+a"}
+{"type":"Café-Straße 名前.txt"}
+{"wait":{"field":{"of":"rename","text":"Café-Straße 名前.txt"}},"message":"the non-ASCII name to be typed in full"}
+{"key":"Return"}
+{"fs":{"path":"alpha/Café-Straße 名前.txt","text":"notes\n"},"message":"the non-ASCII rename on disk"}
+{"fs":{"path":"alpha/notes.txt","exists":false},"timeout_ms":0}
+{"resize":{"width":640}}
+{"key":"Home"}
+{"wait":{"focused":"bravo"},"message":"Home to put the keyboard cursor on bravo"}
+{"key":"Right"}
+{"wait":{"focused":"charlie"},"message":"Right to open bravo and focus charlie"}
+{"key":"Right"}
+{"wait":{"focused":"delta"},"message":"Right to open charlie and focus delta"}
+{"key":"Right"}
+{"wait":{"focused":"echo"},"message":"Right to open delta and focus echo"}
+{"key":"Right"}
+{"wait":{"focused":"foxtrot"},"message":"Right to open echo and focus foxtrot"}
+{"key":"Right"}
+{"wait":{"focused":"golf"},"message":"Right to open foxtrot and focus golf"}
+{"key":"Right"}
+{"wait":{"focused":"hotel"},"message":"Right to open golf and focus hotel"}
+{"key":"Right"}
+{"wait":{"focused":"india.txt"},"message":"Right to open hotel and focus india.txt"}
+{"wait":{"entries":["india.txt"],"dir":"hotel"},"message":"the deepest column to list india.txt again"}
+{"settle":{"pane":"hotel"}}
+{"wheel":{"ancestor":"scroll pane","of":{"role":"button","name":"$root"}},"clicks":12,"direction":"down","mods":["shift"]}
+{"wait":{"all":[{"present":{"role":"button","name":"$root"}},{"not":{"inside":{"target":{"role":"button","name":"$root"},"of":{"ancestor":"scroll pane","of":{"role":"button","name":"$root"}},"axis":"x"}}}]},"message":"the breadcrumb trail to scroll the fixture root's crumb out of view"}
+{"click":{"role":"button","name":"$root"}}
+{"wait":{"directory":"$root"},"message":"the scrolled-away breadcrumb to open the fixture root"}
