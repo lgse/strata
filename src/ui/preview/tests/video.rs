@@ -444,63 +444,60 @@ fn reads_stop_waiting_for_a_mount_that_stays_busy() {
     crate::test_support::gtk_test(
         "ui::preview::tests::video::reads_stop_waiting_for_a_mount_that_stays_busy",
         || {
-            let (directory, view) = listing_of(&[
-                ("a.mp4", MEDIA_BYTES),
-                ("b.mp4", MEDIA_BYTES),
-                ("c.mp4", MEDIA_BYTES),
-            ]);
-            let browser = view.browser();
-            let provider = Rc::new(Provider::default());
-            let drawer = PreviewDrawer::new(provider.clone(), false);
-            drawer.state.keyboard_view.replace(Some(view.downgrade()));
-            drawer.observe_browser(&browser);
-            crate::ui::preferences::PreferenceManager::shared().set_preview_autoplay(false);
-            let state = &drawer.state;
-            state
-                .media_checks
-                .borrow_mut()
-                .wait_for_busy_mounts(std::time::Duration::from_millis(200));
-            // A request on the folder, parked behind a link elsewhere: its lane keeps the
-            // folder busy while the folder itself never stalls.
+            const LIMIT: std::time::Duration = std::time::Duration::from_secs(1);
+            let root = tempfile::tempdir().expect("media root");
+            let clips = ["one", "two"].map(|folder| {
+                let folder = root.path().join(folder);
+                std::fs::create_dir(&folder).expect("media folder");
+                let clip = folder.join("clip.mp4");
+                std::fs::write(&clip, MEDIA_BYTES).expect("clip");
+                entry(&clip.to_string_lossy())
+            });
+            // A request on both folders, parked behind a link elsewhere: its lane keeps
+            // them busy while neither ever stalls.
             let elsewhere = tempfile::tempdir().expect("link target folder");
             let (entered, inside) = std::sync::mpsc::channel();
             let (release, released) = std::sync::mpsc::channel::<()>();
-            let folder = directory.path().to_path_buf();
+            let parent = root.path().to_path_buf();
             let target = elsewhere.path().join("clip");
             let hung = std::thread::spawn(move || {
                 let busy = crate::adapters::mount_lanes::admit(
-                    &folder,
+                    &parent,
                     crate::adapters::mount_lanes::Class::Interactive,
                 )
-                .expect("a request on the folder's mount");
+                .expect("a request on the folders' mount");
                 busy.progress().reach(&target, None, || {
                     entered.send(()).expect("entered");
                     released.recv().map_err(std::io::Error::other)
                 });
             });
             inside.recv().expect("the request to hang");
-            browser.select(0, 0);
-            drawer.show(browser.entry_at(0, 0).expect("shown clip"), Some(0));
-            ready(&provider, 0, "video/mp4");
-            wait_until("the reads to stop waiting", || {
-                state.media_checks.borrow().abandoned() > 0
-            });
+
+            let mut checks = media_content::MediaChecks::default();
+            checks.wait_for_busy_mounts(LIMIT);
+            let mut unread = media_content::Unread::new(0);
+            for (index, clip) in clips.iter().enumerate() {
+                unread.push(index, clip);
+            }
+            let started = std::time::Instant::now();
+            checks.read(&clips[0].location, unread, || true);
+            wait_until("both folders to stop waiting", || checks.abandoned() == 2);
+            let waited = started.elapsed();
+            assert!(
+                waited < LIMIT * 8 / 5,
+                "one wait covers every folder on the busy mount ({waited:?})"
+            );
+
             release.send(()).expect("release");
             hung.join().expect("the hung request ends");
             pump(std::time::Duration::from_millis(300));
-            let video = state
-                .video
-                .borrow()
-                .as_ref()
-                .expect("video view")
-                .view
-                .clone();
-            assert_eq!(
-                video.caption(),
-                "1 of 1 in folder",
-                "given-up files wait for the shown file to change"
-            );
-            drawer.close();
+            for clip in &clips {
+                assert_eq!(
+                    checks.answer(clip, MediaFamily::Video),
+                    None,
+                    "given-up files wait for the shown file to change"
+                );
+            }
         },
     );
 }

@@ -178,11 +178,11 @@ impl MediaChecks {
         glib::MainContext::default().spawn_local(async move {
             let mut queue = VecDeque::from(files);
             let mut size = FIRST_CHUNK;
-            let mut given_up = HashSet::new();
+            let mut waits = Waits::default();
             while !queue.is_empty() && !cancellable.is_cancelled() {
                 let chunk: Vec<_> = queue.drain(..size.min(queue.len())).collect();
                 size = (size * 2).min(MAX_CHUNK);
-                let learned = read_chunk(chunk, &cancellable, &limits, &mut given_up).await;
+                let learned = read_chunk(chunk, &cancellable, &limits, &mut waits).await;
                 if learned.is_empty() {
                     continue;
                 }
@@ -255,13 +255,22 @@ impl Unread {
     }
 }
 
-/// Reads one chunk folder by folder; files whose read gets no answer are left out, and
-/// a folder that got none is not asked again by the same reads.
+/// What one run of reads has learned about busy mounts.
+#[derive(Default)]
+struct Waits {
+    /// Folders that got no answer, not asked again by the same reads.
+    given_up: HashSet<PathBuf>,
+    /// When reads last started being skipped for a busy mount; one wait covers every
+    /// folder, since a request that learned its mount keeps all of them busy.
+    busy_since: Option<Instant>,
+}
+
+/// Reads one chunk folder by folder; files whose read gets no answer are left out.
 async fn read_chunk(
     chunk: Vec<(PathBuf, Fingerprint)>,
     cancellable: &gio::Cancellable,
     limits: &Limits,
-    given_up: &mut HashSet<PathBuf>,
+    waits: &mut Waits,
 ) -> Vec<(PathBuf, Fingerprint, bool)> {
     let mut folders: Vec<(PathBuf, Vec<(PathBuf, Fingerprint)>)> = Vec::new();
     for (path, fingerprint) in chunk {
@@ -273,15 +282,15 @@ async fn read_chunk(
     }
     let mut answers = Vec::new();
     for (folder, files) in folders {
-        if given_up.contains(&folder) {
+        if waits.given_up.contains(&folder) {
             continue;
         }
         let paths: Vec<PathBuf> = files.iter().map(|(path, _)| path.clone()).collect();
-        let Some(read) = read_folder(&folder, paths, cancellable, limits).await else {
+        let Some(read) = read_folder(&folder, paths, cancellable, limits, waits).await else {
             if !cancellable.is_cancelled() {
                 #[cfg(test)]
                 limits.abandoned.set(limits.abandoned.get() + 1);
-                given_up.insert(folder);
+                waits.given_up.insert(folder);
             }
             continue;
         };
@@ -296,16 +305,16 @@ async fn read_chunk(
 }
 
 /// Background work through the folder's mount lane: it waits its turn while the mount
-/// is busy with other requests, for at most `limits.busy`, and gives up at once when
-/// the mount has stalled. Each read follows symbolic links through `reach`, so a dead
+/// is busy with other requests, for at most `limits.busy` across all its folders, and
+/// gives up at once when the mount has stalled. Each read follows symbolic links through `reach`, so a dead
 /// link target trips only itself.
 async fn read_folder(
     folder: &Path,
     paths: Vec<PathBuf>,
     cancellable: &gio::Cancellable,
     limits: &Limits,
+    waits: &mut Waits,
 ) -> Option<Vec<Option<bool>>> {
-    let mut busy_since = None;
     loop {
         if cancellable.is_cancelled() {
             return None;
@@ -328,11 +337,14 @@ async fn read_folder(
                 .collect::<Vec<_>>()
         });
         match job.await {
-            Ok(read) => return Some(read),
+            Ok(read) => {
+                waits.busy_since = None;
+                return Some(read);
+            }
             Err(Unanswered::Skipped)
                 if mount_lanes::responsiveness(folder) == Responsiveness::Answering =>
             {
-                let since = *busy_since.get_or_insert_with(Instant::now);
+                let since = *waits.busy_since.get_or_insert_with(Instant::now);
                 if since.elapsed() >= limits.busy {
                     return None;
                 }
