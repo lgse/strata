@@ -77,6 +77,19 @@ impl ViewState {
         let Some(depth) = self.browser.active_depth() else {
             return;
         };
+        // Filter results replace the rows and keep their own cursor: the browser's
+        // cursor indexes the directory the results hide.
+        let results = self
+            .columns
+            .borrow()
+            .get(depth)
+            .filter(|column| column.recursive_search_active.get())
+            .map(|column| {
+                crate::ui::browser::listing_filter::Target::Column(Box::new(column.clone()))
+            });
+        if results.is_some_and(|results| self.focus_results_on_cursor(&results)) {
+            return;
+        }
         let columns = self.columns.borrow();
         let Some(column) = columns.get(depth) else {
             return;

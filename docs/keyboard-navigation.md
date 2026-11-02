@@ -235,6 +235,12 @@ about a second, and one that another computer adds to a network folder at its ne
 check, at first every 3 s in a focused window and less often otherwise
 ([Cadence](filesystem-compatibility.md#cadence) says when checks slow down or stop).
 A deleted one leaves the results as soon as the listing drops it.
+A result you rename, in place with **F2** (committed with Enter or **Tab**) or from the
+[10xer](10xer-mode.md) **r** prompt, stays focused and selected under its new name,
+wherever it now sorts, so the next file action, such as **Delete**, acts on it. A
+refused rename leaves focus on the result. A rename to a path in another folder leaves
+its place in the results, and, as in the listing, no remaining result takes its
+selection.
 With [Include subfolders](preferences.md#filter-scope) on, changes in folders below
 those reach the results on **F5**, the rescan after a burst of external changes, or
 when the filter is cleared and opened again.

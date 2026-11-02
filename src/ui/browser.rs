@@ -262,6 +262,7 @@ pub(super) struct ViewState {
     rename_generation: Cell<u64>,
     rename_reveal_generation: Cell<u64>,
     keyboard_refocus: Cell<Option<file_commands::KeyboardRefocus>>,
+    typed_rename: RefCell<Option<file_commands::TypedRenameFollow>>,
     pending_click_rename: RefCell<Option<glib::SourceId>>,
     click_rename_generation: Cell<u64>,
     pending_new_entry: RefCell<Option<Rc<PendingEntryRename>>>,
