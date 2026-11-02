@@ -3,6 +3,7 @@
 //! Selection and cursor events, and the child column that mirrors the focused folder.
 
 use crate::app::SelectionUpdate;
+use crate::model::FileEntry;
 use crate::ui::browser::ViewState;
 use crate::ui::browser::columns::{
     ColumnView, restore_column_cursor, scroll_column_to, select_all_in_column,
@@ -210,11 +211,7 @@ impl ViewState {
         if self.child_mirror_blocked_at(depth, true) {
             return;
         }
-        if entry.is_directory() {
-            self.browser.show_child(depth, entry.location);
-        } else {
-            self.browser.close_column(depth + 1);
-        }
+        self.mirror_entry(depth, entry, false);
     }
 
     pub(in crate::ui::browser) fn apply_child_mirror(
@@ -232,12 +229,19 @@ impl ViewState {
         if (focused_depth, focused_position) != (depth, position) {
             return;
         }
+        self.mirror_entry(depth, entry, true);
+    }
+
+    /// Opens a folder's child column, or closes it for a file and, when `preview`
+    /// allows and single-click previews are on, previews the file.
+    fn mirror_entry(&self, depth: usize, entry: FileEntry, preview: bool) {
         if entry.is_directory() {
             self.browser.show_child(depth, entry.location);
             return;
         }
         self.browser.close_column(depth + 1);
-        if self.single_click_previews.get()
+        if preview
+            && self.single_click_previews.get()
             && let Some(entry) = preview_target(Some(entry))
         {
             self.browser.request_automatic_preview(entry);

@@ -1,4 +1,4 @@
-{"scenario":"tab-renames-past-open-folder","modes":["columns"],"layout":"us","tree":{"delta":{"in-delta.txt":"delta\n"},"epsilon":{"in-epsilon.txt":"epsilon\n"},"notes":{},"alpha.txt":"alpha\n","beta.txt":"beta\n"},"variants":[{"id":"mirrored"},{"id":"unmirrored","prefs":{"columns_mirror_selection":false}}]}
+{"scenario":"tab-renames-past-open-folder","modes":["columns"],"layout":"us","tree":{"delta":{"in-delta.txt":"delta\n"},"epsilon":{"in-epsilon.txt":"epsilon\n"},"notes":{},"alpha.txt":"alpha\n","beta.txt":"beta\n"},"variants":[{"id":"mirrored"},{"id":"unmirrored","prefs":{"columns_mirror_selection":false}}],"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Columns Tab/Shift+Tab past a renamed folder whose child column is open, mirrored and unmirrored; only GUI check that the next editor survives the column relocation and the child column follows"}}
 {"select_with_keyboard":"delta","variants":["mirrored"]}
 {"select":{"entry":"delta"},"variants":["unmirrored"]}
 {"wait":{"panes":["$root","delta"]},"message":"the child column of the selected folder 'delta' to open"}
