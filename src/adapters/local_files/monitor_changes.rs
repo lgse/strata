@@ -17,11 +17,44 @@ pub(super) type PendingMonitorKey = Option<Location>;
 
 pub(super) struct ConnectedMonitor {
     handler: Option<glib::SignalHandlerId>,
-    cancelled: Rc<Cell<bool>>,
+    batches: MonitorBatches,
+    monitor: monitors::BareMonitor,
+}
+
+/// What a watch's batches share: the changes queued, the timer that flushes them, and the
+/// look at the folder's path that follows each flush.
+#[derive(Clone)]
+pub(super) struct MonitorBatches {
     pending: Rc<RefCell<HashMap<PendingMonitorKey, PendingMonitorChange>>>,
     timeout: Rc<RefCell<Option<glib::SourceId>>>,
+    notify: Rc<dyn Fn(DirectoryChange)>,
+    cancelled: Rc<Cell<bool>>,
     departure_checks: Rc<RefCell<DepartureChecks>>,
-    monitor: monitors::BareMonitor,
+}
+
+impl MonitorBatches {
+    fn new(
+        watched: Location,
+        began_on: Option<ItemIdentity>,
+        notify: Rc<dyn Fn(DirectoryChange)>,
+    ) -> Self {
+        let cancelled = Rc::new(Cell::new(false));
+        let departure_checks = Rc::new(RefCell::new(DepartureChecks {
+            watched,
+            began_on,
+            notify: notify.clone(),
+            cancelled: cancelled.clone(),
+            running: None,
+            again: false,
+        }));
+        Self {
+            pending: Rc::default(),
+            timeout: Rc::default(),
+            notify,
+            cancelled,
+            departure_checks,
+        }
+    }
 }
 
 pub(super) fn connect_monitor(
@@ -30,31 +63,14 @@ pub(super) fn connect_monitor(
     notify: Rc<dyn Fn(DirectoryChange)>,
 ) -> ConnectedMonitor {
     let WatchRequest {
-        location,
+        location: watched,
         include_hidden,
         began_on,
     } = request;
-    let cancelled = Rc::new(Cell::new(false));
-    let pending = Rc::new(RefCell::new(HashMap::<
-        PendingMonitorKey,
-        PendingMonitorChange,
-    >::new()));
-    let timeout = Rc::new(RefCell::new(None::<glib::SourceId>));
+    let batches = MonitorBatches::new(watched.clone(), began_on, notify);
     let numbered = Rc::new(RefCell::new(NumberedNames::default()));
-    let departure_checks = Rc::new(RefCell::new(DepartureChecks {
-        watched: location.clone(),
-        began_on,
-        notify: notify.clone(),
-        cancelled: cancelled.clone(),
-        running: None,
-        again: false,
-    }));
-    let departure_checks_for_change = departure_checks.clone();
     let awaited = RefCell::new(AwaitedHints::default());
-    let pending_for_change = pending.clone();
-    let timeout_for_change = timeout.clone();
-    let cancelled_for_change = cancelled.clone();
-    let watched = location.clone();
+    let shared = batches.clone();
     let handler = monitor
         .monitor()
         .connect_changed(move |_, file, other_file, event| {
@@ -78,8 +94,8 @@ pub(super) fn connect_monitor(
                     read_numbered_names(
                         numbered.clone(),
                         folder,
-                        notify.clone(),
-                        cancelled_for_change.clone(),
+                        shared.notify.clone(),
+                        shared.cancelled.clone(),
                     );
                     return;
                 }
@@ -87,50 +103,54 @@ pub(super) fn connect_monitor(
             if !awaited.borrow_mut().needs_query(&change, event) {
                 return;
             }
-            if pending_for_change.borrow().contains_key(&None) {
+            if shared.pending.borrow().contains_key(&None) {
                 return;
             }
             if matches!(change, PendingMonitorChange::Rescan) {
                 tracing::debug!(?event, "directory monitor requested reconciliation");
             }
-            let key = match &change {
-                PendingMonitorChange::Upsert(location) | PendingMonitorChange::Remove(location) => {
-                    Some(location.clone())
-                }
-                PendingMonitorChange::Move { to, .. } => Some(to.clone()),
-                PendingMonitorChange::Rescan => None,
-            };
-            if !queue_monitor_change(&mut pending_for_change.borrow_mut(), key, change) {
-                return;
-            }
-
-            if timeout_for_change.borrow().is_none() {
-                let pending = pending_for_change.clone();
-                let timeout = timeout_for_change.clone();
-                let notify = notify.clone();
-                let cancelled = cancelled_for_change.clone();
-                let watched = watched.clone();
-                let departure_checks = departure_checks_for_change.clone();
-                let source = glib::timeout_add_local_once(Duration::from_millis(100), move || {
-                    timeout.take();
-                    let reported = reports_departure(&pending.borrow(), &watched);
-                    flush_monitor_changes(&pending, &notify, &cancelled);
-                    if !reported {
-                        report_if_departed(&departure_checks);
-                    }
-                });
-                timeout_for_change.replace(Some(source));
+            let key = pending_key(&change);
+            if queue_monitor_change(&mut shared.pending.borrow_mut(), key, change) {
+                schedule_flush(&shared);
             }
         });
 
     ConnectedMonitor {
         handler: Some(handler),
-        cancelled,
-        pending,
-        timeout,
-        departure_checks,
+        batches,
         monitor,
     }
+}
+
+fn pending_key(change: &PendingMonitorChange) -> PendingMonitorKey {
+    match change {
+        PendingMonitorChange::Upsert(location) | PendingMonitorChange::Remove(location) => {
+            Some(location.clone())
+        }
+        PendingMonitorChange::Move { to, .. } => Some(to.clone()),
+        PendingMonitorChange::Rescan => None,
+    }
+}
+
+/// Flushes a batch 100 ms after its first change, then looks for the folder's departure
+/// unless the batch reported it.
+fn schedule_flush(batches: &MonitorBatches) {
+    if batches.timeout.borrow().is_some() {
+        return;
+    }
+    let batch = batches.clone();
+    let source = glib::timeout_add_local_once(Duration::from_millis(100), move || {
+        batch.timeout.take();
+        let reported = reports_departure(
+            &batch.pending.borrow(),
+            &batch.departure_checks.borrow().watched,
+        );
+        flush_monitor_changes(&batch.pending, &batch.notify, &batch.cancelled);
+        if !reported {
+            report_if_departed(&batch.departure_checks);
+        }
+    });
+    batches.timeout.replace(Some(source));
 }
 
 pub(super) fn monitor_location_is_hidden(location: &Location) -> bool {
@@ -608,12 +628,13 @@ pub(super) fn query_monitored_entry(
 
 impl Drop for ConnectedMonitor {
     fn drop(&mut self) {
-        self.cancelled.set(true);
-        if let Some(source) = self.timeout.take() {
+        let batches = &self.batches;
+        batches.cancelled.set(true);
+        if let Some(source) = batches.timeout.take() {
             source.remove();
         }
-        self.pending.borrow_mut().clear();
-        if let Some(task) = self.departure_checks.borrow_mut().running.take() {
+        batches.pending.borrow_mut().clear();
+        if let Some(task) = batches.departure_checks.borrow_mut().running.take() {
             task.abort();
         }
         if let Some(handler) = self.handler.take() {
