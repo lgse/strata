@@ -419,7 +419,7 @@ fn gather_drive_facts_with(
         .or_else(|| {
             device
                 .and_then(fstab)
-                .and_then(|fstype| drive_ops::filesystem_display_name(&fstype))
+                .and_then(|fstype| drive_ops::fstab_display_name(&fstype))
         });
     let mount_point = mount_root.as_ref().and_then(|root| root.path());
     DriveFacts {

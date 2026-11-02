@@ -717,12 +717,18 @@ fn unmounted_volumes_name_the_filesystem_their_fstab_entry_declares() {
         match device.to_str() {
             Some("/nonexistent/strata-fixture-vfat") => Some("vfat".to_owned()),
             Some("/nonexistent/strata-fixture-fuse") => Some("fuse.sshfs".to_owned()),
+            Some("/nonexistent/strata-fixture-auto") => Some("auto".to_owned()),
+            Some("/nonexistent/strata-fixture-none") => Some("none".to_owned()),
+            Some("/nonexistent/strata-fixture-blank") => Some(String::new()),
             _ => None,
         }
     }
     for (device, expected) in [
         ("/nonexistent/strata-fixture-vfat", Some("FAT32")),
         ("/nonexistent/strata-fixture-fuse", Some("fuse.sshfs")),
+        ("/nonexistent/strata-fixture-auto", None),
+        ("/nonexistent/strata-fixture-none", None),
+        ("/nonexistent/strata-fixture-blank", None),
         ("/nonexistent/strata-fixture-undeclared", None),
     ] {
         let request = DriveFactsRequest {
