@@ -277,7 +277,9 @@ fn append_fields(fields: &gio::Menu, location: Option<&crate::model::Location>) 
     for (label, key) in FIELDS {
         let shown = match key {
             SortKey::Unsorted => false,
-            SortKey::DeviceOrder => location.is_some_and(|location| location.is_camera_photo_root()),
+            SortKey::DeviceOrder => {
+                location.is_some_and(|location| location.is_camera_photo_root())
+            }
             SortKey::Recency => location.is_some_and(|location| location.is_recent_root()),
             _ => true,
         };
@@ -523,9 +525,7 @@ fn remove_native_click_controllers(widget: &gtk::Widget) {
 
 fn hide_native_indicators(children: &[gtk::Widget]) {
     for child in children {
-        if child.type_().name() == "GtkBuiltinIcon"
-            || self_contained_indicator(child)
-        {
+        if child.type_().name() == "GtkBuiltinIcon" || self_contained_indicator(child) {
             child.set_visible(false);
         }
     }
@@ -552,9 +552,8 @@ thread_local! {
 }
 
 pub(in crate::ui) fn sync_open_sort_menus(browser: &Browser, depth: usize) {
-    let open: Vec<Rc<SortMenu>> = OPEN_MENUS.with_borrow(|menus| {
-        menus.iter().filter_map(Weak::upgrade).collect()
-    });
+    let open: Vec<Rc<SortMenu>> =
+        OPEN_MENUS.with_borrow(|menus| menus.iter().filter_map(Weak::upgrade).collect());
     for menu in open {
         if menu.depth == depth
             && menu
