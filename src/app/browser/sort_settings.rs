@@ -10,9 +10,14 @@ use super::{Browser, BrowserEvent, PublicationPlan, PublishTerminal, SortOrigin}
 impl Browser {
     pub fn requested_column_preferences(&self, depth: usize) -> Option<ViewPreferences> {
         let mut preferences = self.column_preferences(depth)?;
-        if let Some(requested) = self.requested_sort.get()
+        // Only a sort still waiting to apply differs from the column; an applied one stays
+        // pending after its column shows another folder.
+        let location = self.location_at(depth);
+        if let Some((requested, requested_location)) = self.requested_sort.borrow().as_ref()
             && requested.depth == depth
             && self.pending_sort.get() == Some((requested.generation, depth))
+            && !self.pending_sort_applied.get()
+            && location.as_ref() == Some(requested_location)
         {
             preferences.set_sort_options(requested.preferences.sort_options());
         }
@@ -197,12 +202,15 @@ impl Browser {
         };
         update(&mut requested);
         let generation = self.begin_sort(depth);
-        self.requested_sort.set(Some(SortPass {
-            depth,
-            generation,
-            origin,
-            preferences: requested,
-        }));
+        self.requested_sort.replace(Some((
+            SortPass {
+                depth,
+                generation,
+                origin,
+                preferences: requested,
+            },
+            location.clone(),
+        )));
         let weak = Rc::downgrade(self);
         gio::glib::timeout_add_local_once(Duration::from_millis(16), move || {
             if let Some(browser) = weak.upgrade() {

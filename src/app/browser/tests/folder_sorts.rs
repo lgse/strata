@@ -587,3 +587,37 @@ fn returning_to_unsorted_reloads_discovery_order_instead_of_retaining_name_order
     browser.set_sort_key(0, SortKey::Name);
     pump_until_settled(&browser, || column_names(&browser, 0) == ["large", "small"]);
 }
+
+#[test]
+fn a_finished_sort_does_not_carry_into_the_next_folder_at_its_depth() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let source = Rc::new(ScriptedSource::scripted(vec!["alpha", "beta"], vec![]));
+    let (browser, _) = remembering_browser(source, &Rc::default());
+    browser.navigate(Location::local("/fixture"));
+    browser.descend(0, Location::local("/fixture/first"));
+    browser.set_sort(1, SortKey::Name, SortDirection::Descending);
+    pump_until_settled(&browser, || {
+        sorting(&browser, 1) == Some((SortKey::Name, SortDirection::Descending))
+    });
+
+    browser.descend(0, Location::local("/fixture/second"));
+    pump_until_settled(&browser, || {
+        browser.location_at(1) == Some(Location::local("/fixture/second"))
+    });
+    let comparison = crate::model::NameComparison {
+        natural: false,
+        case_sensitive: true,
+    };
+    browser.set_name_comparison(1, comparison);
+    pump_until_settled(&browser, || {
+        browser
+            .column_preferences(1)
+            .is_some_and(|preferences| preferences.name_comparison == comparison)
+    });
+    assert_eq!(
+        sorting(&browser, 1),
+        Some((SortKey::Name, SortDirection::Ascending))
+    );
+}

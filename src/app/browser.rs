@@ -584,7 +584,7 @@ pub struct Browser {
     redo_claim: RefCell<Option<(u64, UndoEntry)>>,
     next_request: Cell<u64>,
     pending_sort: Cell<Option<(u64, usize)>>,
-    requested_sort: Cell<Option<metadata_fills::SortPass>>,
+    requested_sort: RefCell<Option<(metadata_fills::SortPass, Location)>>,
     /// A debounced sort stays pending after it reorders its column, until a newer
     /// sort or a cancel replaces it; this tells that apart from one not yet applied.
     pending_sort_applied: Cell<bool>,
@@ -668,7 +668,7 @@ impl Browser {
             redo_claim: RefCell::new(None),
             next_request: Cell::new(1),
             pending_sort: Cell::new(None),
-            requested_sort: Cell::new(None),
+            requested_sort: RefCell::new(None),
             pending_sort_applied: Cell::new(false),
             sort_generation: Cell::new(0),
             preferences: Cell::new(preferences),
