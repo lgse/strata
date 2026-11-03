@@ -1192,6 +1192,9 @@ and looks for an existing item, a broken link included, under that name. Where t
 another, the prompt says so first ("“a:b” will be saved as “a_b” in this location."), so copying
 `a:b` onto a stick that holds `a_b` offers Replace or Keep Both instead of failing with "already
 exists". Replace, Merge and Keep Both act on that name, and Keep Both is offered for moves too.
+A file and a folder never replace one another, so where an item meets one of the other kind the
+prompt offers Keep Both instead of Replace and says why, and Apply to All with Replace leaves such
+an item its own prompt, as Merge does for a file.
 Where a folder from another filesystem would be merged into a destination whose rules change
 characters, the prompt also says that items whose names change overwrite items with the new names.
 Where the destination is slow to answer, the transfer shows "Preparing items…" with Cancel and no

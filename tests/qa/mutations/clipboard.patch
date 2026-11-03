@@ -1,8 +1,8 @@
-diff --git a/src/ui/browser.rs b/src/ui/browser.rs
-index ceaf0342..a3798a56 100644
---- a/src/ui/browser.rs
-+++ b/src/ui/browser.rs
-@@ -1590,6 +1590,9 @@ impl BrowserView {
+diff --git a/src/ui/browser/view_edit.rs b/src/ui/browser/view_edit.rs
+index e4e51347..fa6b13bd 100644
+--- a/src/ui/browser/view_edit.rs
++++ b/src/ui/browser/view_edit.rs
+@@ -123,6 +123,9 @@ impl BrowserView {
      }
  
      pub fn paste(&self) {

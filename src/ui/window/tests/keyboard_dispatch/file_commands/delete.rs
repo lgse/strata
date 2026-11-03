@@ -157,6 +157,48 @@ fn columns_shift_delete_targets_the_open_folder_when_the_child_selects_nothing()
 }
 
 #[test]
+fn closing_a_cancelled_folder_deletion_focuses_the_folder_row() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_commands::delete::closing_a_cancelled_folder_deletion_focuses_the_folder_row",
+        || {
+            let held = Rc::new(HeldOperations::default());
+            let fixture = held_fixture(&held, Rc::new(crate::adapters::LocalFileSource));
+            let folder = seed_folder(&fixture, "folder");
+            std::fs::write(folder.join("inner.txt"), b"kept").expect("folder contents");
+            let browser = fixture.view.browser();
+            activate_folder(&fixture, "folder");
+
+            assert!(fixture.press(Key::Delete, ModifierType::SHIFT_MASK));
+            wait_until(|| modal_visible(&fixture.overlay));
+            wait_confirm_sensitive(&fixture);
+            assert!(click_class(&fixture.overlay, "action-dialog-confirm"));
+            wait_until(|| !held.delete_requests.borrow().is_empty());
+            let (id, ..) = held.delete_requests.borrow_mut().remove(0);
+            let parent = Location::local(fixture._directory.path());
+            held.emit(
+                id,
+                crate::services::OperationEvent::Cancelled {
+                    request_id: id,
+                    result: crate::services::CancelledOperation {
+                        not_attempted: vec![Location::local(&folder)],
+                        affected_locations: std::collections::HashSet::from([parent]),
+                        ..Default::default()
+                    },
+                },
+            );
+            wait_until(|| modal_visible(&fixture.overlay));
+            close_modal(&fixture);
+
+            wait_until(|| focused_widget_shows(&fixture.window, "folder"));
+            assert_eq!(
+                (focused_depth(&browser), focused_name(&browser)),
+                (Some(0), "folder".to_owned())
+            );
+        },
+    );
+}
+
+#[test]
 fn tenxer_delete_targets_the_open_folder_when_the_child_selects_nothing() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::file_commands::delete::tenxer_delete_targets_the_open_folder_when_the_child_selects_nothing",

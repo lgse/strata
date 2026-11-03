@@ -64,7 +64,10 @@ fn managed_channel_label(managed: &ManagedInstall) -> Option<String> {
     )
 }
 
-fn channel_option(manager: Rc<PreferenceManager>, managed: Option<&ManagedInstall>) -> gtk::Box {
+fn channel_option(
+    manager: Rc<PreferenceManager>,
+    managed: Option<&ManagedInstall>,
+) -> (gtk::Box, gtk::MenuButton) {
     let control = bindings::choice_menu(
         &manager,
         RELEASE_CHANNEL_TITLE,
@@ -76,7 +79,6 @@ fn channel_option(manager: Rc<PreferenceManager>, managed: Option<&ManagedInstal
         PreferenceManager::release_channel,
         PreferenceManager::set_release_channel,
     );
-    control.set_sensitive(managed.is_none());
     let description = managed
         .map(managed_channel_description)
         .unwrap_or_else(|| channel_description(manager.release_channel()).to_owned());
@@ -100,7 +102,7 @@ fn channel_option(manager: Rc<PreferenceManager>, managed: Option<&ManagedInstal
             },
         );
     }
-    row
+    (row, control)
 }
 
 fn channel_description(channel: Channel) -> &'static str {
@@ -164,13 +166,23 @@ pub(super) fn append_channel_option(
     manager: Rc<PreferenceManager>,
     managed: Option<&ManagedInstall>,
     update_method: UpdateMethod,
-) -> gtk::Box {
-    let channel_row = channel_option(manager.clone(), managed);
-    channel_row.set_sensitive(manager.checks_for_updates());
+) {
+    let (channel_row, control) = channel_option(manager.clone(), managed);
+    let choosable = managed.is_none();
+    let weak_control = control.downgrade();
+    manager.bind_preference(
+        &channel_row,
+        PreferenceManager::checks_for_updates,
+        move |row, checks| {
+            row.set_sensitive(checks);
+            if let Some(control) = weak_control.upgrade() {
+                bindings::set_choice_sensitive(&control, checks && choosable);
+            }
+        },
+    );
     search::set_available(
         &channel_row,
         managed.is_some() || !update_method.is_package_managed(),
     );
     preferences.append(&channel_row);
-    channel_row
 }

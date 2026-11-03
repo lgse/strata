@@ -387,7 +387,10 @@ fn completing_a_cut_paste_consumes_the_clipboard_file_list() {
             let cut = Location::local("/fixture/cut.txt");
             set_shared_cut(std::slice::from_ref(&cut));
             let clipboard = gtk::gdk::Display::default().expect("display").clipboard();
-            assert!(set_location_files_clipboard(std::slice::from_ref(&cut)));
+            assert!(set_location_files_clipboard(
+                std::slice::from_ref(&cut),
+                true
+            ));
 
             view.state.complete_cut_transfer(std::slice::from_ref(&cut));
 
@@ -413,7 +416,10 @@ fn completing_a_cut_keeps_a_newer_file_list() {
             );
             let cut = Location::local("/fixture/cut.txt");
             set_shared_cut(std::slice::from_ref(&cut));
-            assert!(set_location_files_clipboard(std::slice::from_ref(&cut)));
+            assert!(set_location_files_clipboard(
+                std::slice::from_ref(&cut),
+                true
+            ));
             let clipboard = gtk::gdk::Display::default().expect("display").clipboard();
             let newer = gtk::gdk::ContentProvider::for_value(
                 &gtk::gdk::FileList::from_array(&[gio::File::for_path("/fixture/new.txt")])
@@ -443,7 +449,10 @@ fn completing_a_cut_keeps_text_copied_afterward() {
             let cut = Location::local("/fixture/cut.txt");
             set_shared_cut(std::slice::from_ref(&cut));
             let clipboard = gtk::gdk::Display::default().expect("display").clipboard();
-            assert!(set_location_files_clipboard(std::slice::from_ref(&cut)));
+            assert!(set_location_files_clipboard(
+                std::slice::from_ref(&cut),
+                true
+            ));
             clipboard.set_text("copied-name.txt");
 
             view.state.complete_cut_transfer(std::slice::from_ref(&cut));

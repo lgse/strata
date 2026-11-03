@@ -6,7 +6,7 @@ use std::{cell::Cell, rc::Rc};
 
 use gtk::prelude::*;
 
-use crate::{adapters::location_for_file, model::Location, ui::browser::show_error_dialog};
+use crate::{adapters::location_for_file, model::Location};
 
 use super::{
     SidebarState,
@@ -123,8 +123,8 @@ impl SidebarState {
         location: Location,
         mount: gio::Mount,
     ) -> Option<device_release::DeviceIds> {
-        if is_smb_location(&location) {
-            self.append_smb_mount(name, location, mount);
+        if is_network_share(&location) {
+            self.append_network_share(name, location, mount);
             return None;
         }
         let row = sidebar_button(crate::assets::icons::HARD_DRIVE, name);
@@ -179,11 +179,14 @@ impl SidebarState {
         if let Some(id) = PropertiesTarget::Volume(volume.clone()).label_id() {
             device_labels::bind_row_label(&row, &self.preference_manager, &id, &name);
         }
-        crate::ui::accessibility::set_description(&row, Some(&name));
         let mounted_location = volume
             .get_mount()
             .as_ref()
             .and_then(|mount| location_for_file(&mount.root()));
+        crate::ui::accessibility::set_description(
+            &row,
+            volume_description(&volume, mounted_location.as_ref()).as_deref(),
+        );
         if self.hides_volume(&volume, mounted_location.as_ref()) {
             return None;
         }
@@ -226,13 +229,14 @@ impl SidebarState {
 
     fn connect_volume_click(&self, row: &gtk::Button, volume: &gio::Volume) {
         let weak_browser = Rc::downgrade(&self.browser);
-        let sidebar = self.widget.clone();
-        let selected_row = row.clone();
+        let sidebar = self.widget.downgrade();
         let clicked_volume = volume.clone();
-        let mount_view = self.view.clone();
-        row.connect_clicked(move |_| {
+        let mount_view = self.view.downgrade();
+        row.connect_clicked(move |row| {
             let volume = clicked_volume.clone();
-            select_sidebar_row(&sidebar, &selected_row);
+            if let Some(sidebar) = sidebar.upgrade() {
+                select_sidebar_row(&sidebar, row);
+            }
             let Some(browser) = weak_browser.upgrade() else {
                 return;
             };
@@ -240,8 +244,9 @@ impl SidebarState {
                 navigate_to_gio_file(&browser, &mount.root());
                 return;
             }
-
-            mount_view.mount_volume(volume);
+            if let Some(view) = mount_view.upgrade() {
+                view.mount_volume(volume);
+            }
         });
     }
 
@@ -301,13 +306,16 @@ impl SidebarState {
         if self.append_if_releasing(&row, &ids) {
             return Some(ids);
         }
-        let sidebar = self.widget.clone();
-        let selected_row = row.clone();
+        let sidebar = self.widget.downgrade();
         let clicked_drive = drive.clone();
-        let mount_view = self.view.clone();
-        row.connect_clicked(move |_| {
-            select_sidebar_row(&sidebar, &selected_row);
-            mount_view.start_password_drive(clicked_drive.clone(), true);
+        let mount_view = self.view.downgrade();
+        row.connect_clicked(move |row| {
+            if let Some(sidebar) = sidebar.upgrade() {
+                select_sidebar_row(&sidebar, row);
+            }
+            if let Some(view) = mount_view.upgrade() {
+                view.start_password_drive(clicked_drive.clone(), true);
+            }
         });
         let entries = self.password_drive_menu_entries(drive);
         self.append_device_chrome(&row, entries);
@@ -339,7 +347,7 @@ impl SidebarState {
         }
     }
 
-    pub(super) fn append_smb_mount(
+    pub(super) fn append_network_share(
         self: &Rc<Self>,
         name: &str,
         location: Location,
@@ -369,9 +377,16 @@ impl SidebarState {
 
         let disconnect_popover = popover.downgrade();
         let parent = self.view.widget();
+        let browser = Rc::downgrade(&self.browser);
+        let in_flight = Rc::new(Cell::new(false));
         disconnect.connect_clicked(move |_| {
             popdown(&disconnect_popover);
-            disconnect_mount(&parent, mount.clone());
+            device_release::disconnect_share(
+                &parent,
+                browser.upgrade(),
+                mount.clone(),
+                Rc::clone(&in_flight),
+            );
         });
         open_on_secondary_click(&row, &popover);
     }
@@ -429,23 +444,12 @@ impl SidebarState {
     }
 }
 
-fn disconnect_mount(parent: &gtk::Widget, mount: gio::Mount) {
-    let window = parent.root().and_downcast::<gtk::Window>();
-    let operation = gtk::MountOperation::new(window.as_ref());
-    let error_parent = parent.clone();
-    glib::MainContext::default().spawn_local(async move {
-        if let Err(error) = mount
-            .unmount_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
-            .await
-            && !error.matches(gio::IOErrorEnum::Cancelled)
-        {
-            show_error_dialog(
-                &error_parent,
-                &crate::i18n::tr("Unable to disconnect"),
-                &error.to_string(),
-            );
-        }
-    });
+/// Like a mount row, a volume row is described by its path: where it is mounted,
+/// else its device.
+fn volume_description(volume: &gio::Volume, mounted: Option<&Location>) -> Option<String> {
+    mounted
+        .map(Location::display_path)
+        .or_else(|| gio_volume_unix_device(volume).map(String::from))
 }
 
 pub(super) fn sidebar_device_shell(row: &gtk::Button) -> Option<gtk::Box> {
@@ -454,10 +458,16 @@ pub(super) fn sidebar_device_shell(row: &gtk::Button) -> Option<gtk::Box> {
         .filter(|parent| parent.has_css_class("sidebar-device"))
 }
 
-pub(super) fn is_smb_location(location: &Location) -> bool {
+/// GVfs network backends: their mounts are shares to disconnect, not drives to eject.
+const NETWORK_SHARE_SCHEMES: &[&str] = &["smb", "sftp", "ftp", "ftps", "dav", "davs", "afp", "nfs"];
+
+pub(super) fn is_network_share(location: &Location) -> bool {
     location.uri_value().is_some_and(|uri| {
-        uri.get(..4)
-            .is_some_and(|scheme| scheme.eq_ignore_ascii_case("smb:"))
+        gtk::glib::Uri::parse_scheme(uri).is_some_and(|scheme| {
+            NETWORK_SHARE_SCHEMES
+                .iter()
+                .any(|known| scheme.eq_ignore_ascii_case(known))
+        })
     })
 }
 

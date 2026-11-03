@@ -176,12 +176,11 @@ pub(super) fn animate_sidebar(
     }
 
     let started = Instant::now();
-    let paned = paned.clone();
     let sidebar = sidebar.clone();
     let generation = generation.clone();
     let animating = animating.clone();
     let state = Rc::downgrade(state);
-    let _tick = paned.clone().add_tick_callback(move |_, _| {
+    let _tick = paned.add_tick_callback(move |paned, _| {
         if generation.get() != animation_id {
             return glib::ControlFlow::Break;
         }
@@ -189,7 +188,7 @@ pub(super) fn animate_sidebar(
             return glib::ControlFlow::Break;
         };
 
-        let target = sidebar_animation_target(&paned, &sidebar, &state, expanded);
+        let target = sidebar_animation_target(paned, &sidebar, &state, expanded);
         let progress =
             (started.elapsed().as_secs_f64() / SIDEBAR_TRANSITION.as_secs_f64()).clamp(0.0, 1.0);
         let eased = emphasized_deceleration(progress);

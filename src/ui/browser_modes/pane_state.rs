@@ -104,6 +104,7 @@ pub(super) fn show_count(pane: &Pane) {
         pane.status.remove_css_class("error");
         pane.status
             .set_label(&crate::i18n::tr("This directory is empty"));
+        pane.retry.set_visible(false);
         pane.administrator.set_visible(false);
         pane.loading.show(STATUS_PAGE);
     } else {
@@ -156,15 +157,19 @@ fn show_snapshot_progress(pane: &Pane, snapshot: &BrowserColumnSnapshot, restart
     }
     pane.spinner.stop();
     if let Some(message) = snapshot.error.as_deref() {
-        pane.status.set_label(&rust_i18n::t!(
-            "Unable to read this directory\n%{message}",
-            message = message
-        ));
-        pane.status.add_css_class("error");
-        pane.administrator
-            .set_visible(snapshot.administrator.is_some());
-        pane.loading.show(STATUS_PAGE);
+        show_load_error(pane, message, snapshot.administrator.is_some());
     }
+}
+
+pub(super) fn show_load_error(pane: &Pane, message: &str, offers_administrator: bool) {
+    pane.status.set_label(&rust_i18n::t!(
+        "Unable to read this directory\n%{message}",
+        message = message
+    ));
+    pane.status.add_css_class("error");
+    pane.retry.set_visible(true);
+    pane.administrator.set_visible(offers_administrator);
+    pane.loading.show(STATUS_PAGE);
 }
 
 pub(super) fn clear_box(container: &gtk::Box) {

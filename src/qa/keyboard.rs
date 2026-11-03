@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use gtk::glib;
+use gtk::{glib, glib::translate::IntoGlib, prelude::*};
 use serde_json::json;
 
 use super::{
@@ -63,6 +63,52 @@ impl Input<'_> {
         let tapped = self.tap_key(keycode, needs_shift).await;
         self.release(&held).await;
         tapped
+    }
+
+    pub(super) async fn type_character(&self, character: char) -> Result<(), String> {
+        let keysym = input::keysym(&character.to_string())?;
+        if self.injector.keycode(keysym).is_err() {
+            return self.press_borrowed(keysym).await;
+        }
+        self.press(&Chord {
+            modifiers: Vec::new(),
+            key: character.to_string(),
+        })
+        .await
+    }
+
+    /// Types a keysym the layout lacks on a borrowed keycode, which is returned only after
+    /// GTK has read the press, so the key is never translated with the restored row.
+    async fn press_borrowed(&self, keysym: u32) -> Result<(), String> {
+        let borrowed = self.injector.borrow_keycode(keysym)?;
+        let pressed = async {
+            self.await_keymap(borrowed.keycode, keysym, true).await?;
+            self.tap_key(borrowed.keycode, false).await
+        }
+        .await;
+        let returned = self.injector.return_keycode(&borrowed);
+        let restored = self.await_keymap(borrowed.keycode, keysym, false).await;
+        pressed.and(returned).and(restored)
+    }
+
+    async fn await_keymap(&self, keycode: u8, keysym: u32, lent: bool) -> Result<(), String> {
+        let display = WidgetExt::display(self.window);
+        let deadline = Instant::now() + protocol::DEFAULT_WAIT;
+        loop {
+            let shown = display
+                .map_keycode(u32::from(keycode))
+                .is_some_and(|keys| keys.iter().any(|(_, key)| key.into_glib() == keysym));
+            if shown == lent {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                let change = if lent { "the lent" } else { "the returned" };
+                return Err(format!(
+                    "GTK never read {change} keycode {keycode} for keysym {keysym:#06x}"
+                ));
+            }
+            glib::timeout_future(POLL_INTERVAL).await;
+        }
     }
 
     /// The server times the release `EVENT_GAP` after the press: waiting for a frame could hold

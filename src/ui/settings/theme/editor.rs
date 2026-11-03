@@ -158,7 +158,11 @@ fn theme_color_fields(
     let mut pickers = Vec::new();
     for (label_text, field) in ColorField::ALL {
         let (row, picker) = color_field_row(label_text, field, manager, values, preview);
-        fields.insert(&row, -1);
+        // A grid cell is named from its content, which repeats the field's name
+        // once for the swatch and once for its label.
+        let cell = gtk::FlowBoxChild::builder().child(&row).build();
+        crate::ui::accessibility::set_label(&cell, &crate::i18n::tr(label_text));
+        fields.insert(&cell, -1);
         pickers.push((field, picker));
     }
     (fields, pickers)

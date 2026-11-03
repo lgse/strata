@@ -1,8 +1,8 @@
-diff --git a/src/ui/browser.rs b/src/ui/browser.rs
-index ceaf0342..bc72f2f9 100644
---- a/src/ui/browser.rs
-+++ b/src/ui/browser.rs
-@@ -1071,6 +1071,9 @@ impl BrowserView {
+diff --git a/src/ui/browser/view_modes.rs b/src/ui/browser/view_modes.rs
+index 22824527..ed6f7422 100644
+--- a/src/ui/browser/view_modes.rs
++++ b/src/ui/browser/view_modes.rs
+@@ -29,6 +29,9 @@ impl BrowserView {
      }
  
      pub fn set_view_mode(&self, mode: BrowserMode) {

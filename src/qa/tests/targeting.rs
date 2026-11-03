@@ -3,6 +3,7 @@
 use serde_json::json;
 
 use super::super::{
+    onscreen::{travel, wheel_clicks},
     pointer::step_towards,
     protocol::{At, Axis, Command, EntryPart, EntryTarget, Offset, Target, parse_command},
     targets::Rect,
@@ -223,6 +224,33 @@ fn drag_steps_floor_towards_the_target_as_python_does() {
     assert_eq!(path, [77, 55, 32, 10]);
     let path: Vec<i16> = (1..=3).map(|step| step_towards(10, 20, step, 3)).collect();
     assert_eq!(path, [13, 16, 20]);
+}
+
+#[test]
+fn a_clipped_point_scrolls_just_far_enough_to_show_its_target() {
+    // (span start, span length, point, expected travel) in a viewport at 100..400.
+    for (start, length, point, expected) in [
+        (150.0, 40.0, 170.0, None),
+        (-1400.0, 290.0, -1255.0, Some(-1500.0)),
+        (520.0, 60.0, 550.0, Some(180.0)),
+        (399.0, 30.0, 400.0, Some(29.0)),
+        (-900.0, 800.0, -500.0, Some(-750.0)),
+        (450.0, 500.0, 700.0, Some(450.0)),
+    ] {
+        assert_eq!(
+            travel((start, length), point, (100.0, 300.0)),
+            expected,
+            "span {start}+{length}, point {point}"
+        );
+    }
+}
+
+#[test]
+fn wheel_clicks_cover_the_travel_in_gtk_steps() {
+    // A 1000-pixel page scrolls 100 pixels a click.
+    for (distance, clicks) in [(1.0, 1), (99.0, 1), (150.0, 2), (-450.0, 5), (5000.0, 12)] {
+        assert_eq!(wheel_clicks(distance, 1000.0), clicks, "{distance} pixels");
+    }
 }
 
 #[test]

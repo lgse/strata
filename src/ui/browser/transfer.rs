@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::adapters::{gio_file_for_location, transfer_targets};
+use crate::adapters::{TransferTargetCollision, gio_file_for_location, transfer_targets};
 use crate::model::{FileEntry, Location};
 use crate::services::{PasteItem, ShownName, TransferConflict};
 use crate::ui::blur::BlurBin;
@@ -172,8 +172,8 @@ struct PreparedTransfer {
     collisions: Vec<TransferCollision>,
 }
 
-/// One source's target as `(name, mergeable collision, fixes inside)`.
-type TargetFacts = (Option<ShownName>, Option<bool>, bool);
+/// One source's target as `(name, collision, fixes inside)`.
+type TargetFacts = (Option<ShownName>, Option<TransferTargetCollision>, bool);
 
 /// Splits prepared targets into items that go straight through and those that collide.
 fn sort_transfer_targets(
@@ -184,10 +184,11 @@ fn sort_transfer_targets(
     let mut collisions = Vec::new();
     for (source, (target_name, collision, fixes_inside)) in sources.into_iter().zip(targets) {
         match collision {
-            Some(mergeable) => collisions.push(TransferCollision {
+            Some(collision) => collisions.push(TransferCollision {
                 source,
                 target_name,
-                mergeable,
+                mergeable: collision.mergeable,
+                replaceable: collision.replaceable,
                 fixes_inside,
             }),
             None => accepted.push(PasteItem {
@@ -220,13 +221,9 @@ async fn prepare_transfer(
                 error.message().to_owned(),
             )
         })?;
-    let facts = targets.into_iter().map(|target| {
-        (
-            target.name,
-            target.collision.map(|collision| collision.mergeable),
-            target.fixes_inside,
-        )
-    });
+    let facts = targets
+        .into_iter()
+        .map(|target| (target.name, target.collision, target.fixes_inside));
     let (accepted, collisions) = sort_transfer_targets(sources, facts);
     Ok(PreparedTransfer {
         destination,

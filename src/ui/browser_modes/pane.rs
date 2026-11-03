@@ -105,6 +105,7 @@ pub(super) struct Pane {
     pub(super) stack: gtk::Stack,
     pub(super) loading: loading_skeleton::DelayedLoading,
     pub(super) status: gtk::Label,
+    pub(super) retry: gtk::Button,
     /// Shown under `status` when only permissions kept the user out of the folder.
     pub(super) administrator: gtk::Button,
     pub(super) spinner: gtk::Spinner,
@@ -208,6 +209,7 @@ impl Pane {
             loading: loading_skeleton::DelayedLoading::new(&base.stack),
             stack: base.stack,
             status: base.status,
+            retry: base.retry,
             administrator: base.administrator,
             spinner: base.spinner,
             truncated_hint: base.truncated_hint,

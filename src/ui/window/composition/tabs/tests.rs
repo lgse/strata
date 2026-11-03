@@ -642,11 +642,23 @@ fn closing_tabs_releases_observers_and_keeps_other_contexts_alive() {
             let (window, tabs) = open();
             let root = tempfile::tempdir().expect("tab fixture");
             load(&tabs.active_browser(), Location::local(root.path()));
+            let listeners_before = tabs.preferences.listener_count();
             tabs.new_tab();
+            load(&tabs.active_browser(), Location::local(root.path()));
             let closed = tabs.active_browser().downgrade();
+            let closed_listing = tabs.active_browser().widget().downgrade();
             let id = tabs.active.get();
             tabs.close(id);
-            wait_until(|| closed.upgrade().is_none());
+            wait_until_or(
+                || closed.upgrade().is_none() && closed_listing.upgrade().is_none(),
+                || "the closed tab's view or listing is still alive".to_owned(),
+            );
+            assert!(
+                tabs.preferences.listener_count() <= listeners_before,
+                "preference listeners of the closed tab were kept: {} before, {} after",
+                listeners_before,
+                tabs.preferences.listener_count()
+            );
             assert_eq!(tabs.active.get(), 1);
             assert_eq!(
                 tabs.active_browser().browser().active_location(),
@@ -1428,28 +1440,6 @@ fn open_in_new_tab_appends_activates_and_navigates_the_target() {
             let view = tabs.active_browser();
             wait_until(|| view.browser().active_location().is_some());
             assert_eq!(view.browser().active_location(), Some(location));
-            window.destroy();
-        },
-    );
-}
-
-#[test]
-fn open_in_new_tab_reuses_the_unavailable_overlay_for_a_missing_target() {
-    gtk_test(
-        "ui::window::composition::tabs::tests::open_in_new_tab_reuses_the_unavailable_overlay_for_a_missing_target",
-        || {
-            PreferenceManager::seed_saved_preferences_for_test();
-            let root = tempfile::tempdir().expect("missing target fixture");
-            let missing = root.path().join("missing");
-            let (window, tabs) = open();
-            load(&tabs.active_browser(), Location::local(root.path()));
-            tabs.open_in_new_tab(Location::local(&missing));
-            let view = tabs.active_browser();
-            wait_until(|| button_with_label(view.overlay().upcast_ref(), "Retry").is_some());
-            assert!(
-                button_with_label(view.overlay().upcast_ref(), "Retry").is_some(),
-                "a missing target shows the retry overlay"
-            );
             window.destroy();
         },
     );

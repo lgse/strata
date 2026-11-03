@@ -5,7 +5,10 @@
 use super::super::super::transfer_targets::{Collision, TransferTarget, transfer_targets};
 use super::*;
 
-const MEETS: Option<Collision> = Some(Collision { mergeable: false });
+const MEETS: Option<Collision> = Some(Collision {
+    mergeable: false,
+    replaceable: true,
+});
 
 fn targets_in(
     folder: &Path,

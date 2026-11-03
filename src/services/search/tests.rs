@@ -163,7 +163,8 @@ fn completed_index_returns_only_the_best_bounded_matches() {
     let root = unique_fixture_root("bounded-best-matches");
     fs::create_dir_all(&root).expect("create fixture");
     fs::write(root.join("needle"), b"best match").expect("write exact match");
-    for position in 0..120 {
+    // Created last-first, so walk order disagrees with name order on any file system.
+    for position in (0..120).rev() {
         fs::write(root.join(format!("needle-{position:03}")), b"candidate")
             .expect("write candidate");
     }
@@ -182,8 +183,34 @@ fn completed_index_returns_only_the_best_bounded_matches() {
     let Some(SearchEvent::Results { items, .. }) = event else {
         panic!("the worker should publish bounded results");
     };
-    assert_eq!(items.len(), 100);
-    assert_eq!(items.first().map(|item| item.name.as_str()), Some("needle"));
+    let expected = std::iter::once("needle".to_owned())
+        .chain((0..99).map(|position| format!("needle-{position:03}")))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        items
+            .iter()
+            .map(|item| item.name.clone())
+            .collect::<Vec<_>>(),
+        expected,
+        "equal scores keep and list the first names, not the first walked"
+    );
+}
+
+#[test]
+fn appended_equal_scores_insert_in_name_order_within_the_limit() {
+    let root = Path::new("/fixture");
+    let mut matches = Vec::new();
+    for name in ["gamma", "alpha", "delta", "beta"] {
+        let item = SearchItem::new(root.join(name), root, false);
+        super::scoring::insert_match_with_limit(&mut matches, 7, &item, 3);
+    }
+    assert_eq!(
+        matches
+            .iter()
+            .map(|(_, item)| item.name.as_str())
+            .collect::<Vec<_>>(),
+        ["alpha", "beta", "delta"]
+    );
 }
 
 #[test]

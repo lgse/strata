@@ -186,6 +186,44 @@ fn save_files_accepts_selected_folder_without_navigating_into_it() {
 }
 
 #[test]
+fn save_files_asks_to_replace_only_the_names_that_exist() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::save::save_files_asks_to_replace_only_the_names_that_exist",
+        || {
+            crate::ui::prepare_portal_ui();
+            PreferenceManager::shared().set_browser_mode(BrowserMode::List);
+            let root = tempfile::tempdir().expect("fixture");
+            std::fs::write(root.path().join("notes.txt"), "kept").expect("existing file");
+            let mut save_request = request(root.path().to_path_buf());
+            save_request.kind = ChooserKind::SaveFiles {
+                names: vec!["notes.txt".into(), "new-file.txt".into()],
+            };
+            let (state, _result) = open_chooser(save_request);
+            let labels = || {
+                descendants(state.window.upcast_ref())
+                    .into_iter()
+                    .filter(|widget| widget.has_css_class("action-dialog"))
+                    .flat_map(|dialog| descendants(&dialog))
+                    .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+                    .filter(|label| label.is_mapped())
+                    .map(|label| label.text().to_string())
+                    .collect::<Vec<_>>()
+            };
+            state.accept_button.emit_clicked();
+            wait_until(|| labels().iter().any(|text| text == "Replace existing file?"));
+
+            let labels = labels();
+            assert!(labels.iter().any(|text| text == "notes.txt"), "{labels:?}");
+            assert!(
+                !labels.iter().any(|text| text.contains("new-file.txt")),
+                "{labels:?}"
+            );
+            state.cancel();
+        },
+    );
+}
+
+#[test]
 fn save_file_in_icons_mode_accepts_selected_folder_without_navigating_into_it() {
     crate::test_support::gtk_test(
         "ui::chooser::tests::acceptance::save::save_file_in_icons_mode_accepts_selected_folder_without_navigating_into_it",

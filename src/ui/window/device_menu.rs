@@ -10,7 +10,7 @@ use crate::{adapters::location_for_file, ui::browser::BrowserView};
 
 use super::{
     device_actions::{DeviceRowActions, media_release_label},
-    drive_dialogs::{self, PropertiesTarget},
+    drive_dialogs::{self, PropertiesRelease, PropertiesTarget},
     drive_ops, sidebar,
     sidebar_context_menu::sidebar_context_option,
     sidebar_popover::{context_popover, open_on_secondary_click, popdown},
@@ -98,7 +98,12 @@ pub(super) fn attach_device_menu(
             },
         );
     }
-    menu.append_dialogs_for(entries.properties, entries.on_release);
+    let release = entries
+        .actions
+        .release
+        .zip(entries.on_release)
+        .map(|(action, run)| PropertiesRelease { action, run });
+    menu.append_dialogs_for(entries.properties, release);
     open_on_secondary_click(row, &menu.popover);
 }
 
@@ -162,17 +167,24 @@ impl DeviceMenu {
         let option = sidebar_context_option(icon, label, danger);
         self.menu.append(&option);
         let popover = self.popover.downgrade();
-        let view = self.view.clone();
-        let parent = self.row.clone().upcast::<gtk::Widget>();
+        let view = self.view.downgrade();
+        // The option sits in a popover under the row, so a strong row or view
+        // here would keep both alive after the sidebar is rebuilt or the tab closes.
+        let parent = self.row.downgrade();
         option.connect_clicked(move |_| {
-            drive_dialogs::open_from_sidebar(&view, popover.upgrade().as_ref(), || show(&parent));
+            let (Some(view), Some(parent)) = (view.upgrade(), parent.upgrade()) else {
+                return;
+            };
+            drive_dialogs::open_from_sidebar(&view, popover.upgrade().as_ref(), || {
+                show(parent.upcast_ref())
+            });
         });
     }
 
     fn append_dialogs_for(
         &self,
         properties: Option<PropertiesTarget>,
-        on_release: Option<Rc<dyn Fn()>>,
+        release: Option<PropertiesRelease>,
     ) {
         let Some(properties) = properties else {
             return;
@@ -193,7 +205,7 @@ impl DeviceMenu {
             "Properties",
             false,
             move |parent| {
-                drive_dialogs::show_drive_properties(parent, &properties, on_release.clone());
+                drive_dialogs::show_drive_properties(parent, &properties, release.clone());
             },
         );
     }

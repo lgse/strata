@@ -16,7 +16,10 @@
 {"select":{"entry":"nested","dir":"documents"}}
 {"wait":{"directory":"nested"},"message":"the browser to be working in 'nested'"}
 {"settle":{"pane":"nested"}}
-{"select":{"entry":"readme.md","dir":"$root"},"variants":["root-item","root-background","root-header"]}
+{"key":"Left","variants":["root-item","root-background","root-header"]}
+{"wait":{"focused_pane":"documents"},"message":"Left to move the cursor back to the documents column","variants":["root-item","root-background","root-header"]}
+{"key":"Left","variants":["root-item","root-background","root-header"]}
+{"wait":{"focused_pane":"$root"},"message":"Left to move the cursor to the root column, keeping the open path","variants":["root-item","root-background","root-header"]}
 {"select":{"entry":"child.txt","dir":"nested"},"variants":["nested-item","nested-background","nested-header"]}
 {"click":{"entry":"notes.txt","dir":"documents"},"button":3,"variants":["root-item","nested-item"]}
 {"wait":{"menu_items":{}},"message":"the context menu for 'notes.txt'","variants":["root-item","nested-item"]}

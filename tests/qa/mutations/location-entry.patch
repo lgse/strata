@@ -1,14 +1,18 @@
-diff --git a/src/ui/browser.rs b/src/ui/browser.rs
-index 7ef8d861..8963c61e 100644
---- a/src/ui/browser.rs
-+++ b/src/ui/browser.rs
-@@ -769,6 +769,9 @@ impl BrowserView {
+diff --git a/src/ui/browser/view_setup.rs b/src/ui/browser/view_setup.rs
+index 6ff7ea62..d4e76a16 100644
+--- a/src/ui/browser/view_setup.rs
++++ b/src/ui/browser/view_setup.rs
+@@ -582,7 +582,12 @@ impl ViewState {
  
-         let weak_state = Rc::downgrade(&state);
-         state.location_entry.connect_activate(move |_| {
+     fn wire_location_controls(self: &Rc<Self>, bar: &LocationBar) {
+         let submit = on_state(self, |state| state.submit_location());
+-        self.location_entry.connect_activate(move |_| submit());
++        self.location_entry.connect_activate(move |_| {
 +            if true {
 +                return;
 +            }
-             if let Some(state) = weak_state.upgrade() {
-                 state.submit_location();
-             }
++            submit();
++        });
+         let submit = on_state(self, |state| state.submit_location());
+         bar.confirm_location.connect_clicked(move |_| submit());
+         let cancel = on_state(self, |state| state.cancel_location_edit());

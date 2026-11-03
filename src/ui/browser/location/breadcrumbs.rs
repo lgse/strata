@@ -8,6 +8,7 @@ use crate::ui::browser::{
     DropHandler, ViewState, attach_drop_target, commit_dropped_value, file_drop_action,
 };
 use crate::ui::browser_modes::BrowserMode;
+use crate::ui::collection_interaction::{MiddleClickAction, middle_click_action};
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::Cell;
@@ -142,6 +143,37 @@ fn ancestor_crumb_button(crumb: &Location, label: &str) -> gtk::Button {
     button
 }
 
+/// A middle click opens the crumb in a new tab, or a new window with Ctrl or Shift.
+fn install_crumb_middle_click(button: &gtk::Button, crumb: Location) {
+    let click = gtk::GestureClick::new();
+    click.set_button(gtk::gdk::BUTTON_MIDDLE);
+    click.connect_released(move |gesture, count, _, _| {
+        if count != 1 {
+            return;
+        }
+        let Some(widget) = gesture.widget() else {
+            return;
+        };
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+        let modifiers = gesture.current_event_state();
+        let action = match middle_click_action(
+            true,
+            modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK),
+            modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK),
+        ) {
+            MiddleClickAction::OpenWindow => "win.open-window-at",
+            MiddleClickAction::OpenTab | MiddleClickAction::RevealParent => "win.open-tab-at",
+        };
+        let uri = crate::adapters::gio_file_for_location(&crumb)
+            .uri()
+            .to_variant();
+        if let Err(error) = widget.activate_action(action, Some(&uri)) {
+            tracing::warn!(%error, action, "open-in-new location action unavailable");
+        }
+    });
+    button.add_controller(click);
+}
+
 /// Hovering a drag over the crumb springs into it; dropping transfers into it.
 fn attach_crumb_drop_target(button: &gtk::Button, crumb: Location, weak: &Weak<ViewState>) {
     let spring_navigate: Rc<dyn Fn(Location)> = {
@@ -262,6 +294,9 @@ impl ViewState {
                 state.browser.navigate_to_ancestor(clicked_crumb.clone());
             }
         });
+        if !self.browser.is_chooser_mode() {
+            install_crumb_middle_click(&button, crumb.clone());
+        }
         attach_crumb_drop_target(&button, crumb, &weak);
         self.breadcrumbs.append(&button);
     }
@@ -334,7 +369,6 @@ impl ViewState {
         self: &Rc<Self>,
         anchor: &gtk::Widget,
         x: f64,
-        y: f64,
     ) {
         let Some(location) = self.displayed_location() else {
             return;
@@ -351,9 +385,10 @@ impl ViewState {
 
         let popover = gtk::Popover::builder()
             .child(&menu_box)
-            .has_arrow(true)
+            .has_arrow(false)
             .position(gtk::PositionType::Bottom)
-            .pointing_to(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1))
+            // The whole bar's height keeps the menu clear of the crumbs it lists.
+            .pointing_to(&gtk::gdk::Rectangle::new(x as i32, 0, 1, anchor.height()))
             .build();
         popover.add_css_class("breadcrumb-popover");
         popover.set_parent(anchor);

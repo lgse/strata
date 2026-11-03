@@ -660,12 +660,6 @@ impl Pane {
             section.syncing.set(false);
         }
         self.spinner.stop();
-        self.status.set_label(&rust_i18n::t!(
-            "Unable to read this directory\n%{message}",
-            message = message
-        ));
-        self.status.add_css_class("error");
-        self.administrator.set_visible(offers_administrator);
-        self.loading.show(STATUS_PAGE);
+        super::pane_state::show_load_error(self, message, offers_administrator);
     }
 }

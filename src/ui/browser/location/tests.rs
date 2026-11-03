@@ -217,6 +217,13 @@ fn sftp_failure_guidance_and_host_key_rejection_do_not_reopen_credentials() {
             .expect("trust rejection is reportable")
             .contains("fingerprint")
     );
+    let lost = glib::Error::new(gio::IOErrorEnum::Failed, "Connection failed");
+    assert!(!mount_error_is_authentication_failure(&location, &lost));
+    assert!(
+        mount_failure_message(&location, &lost)
+            .expect("a dropped session is reportable")
+            .contains("server is running")
+    );
     let wrong_password = glib::Error::new(
         gio::IOErrorEnum::Failed,
         "Permission denied (publickey,password)",
@@ -1337,7 +1344,7 @@ fn leaving_columns_names_the_active_folder_instead_of_its_mirrored_child() {
 /// Opens the breadcrumb hierarchy menu and reads the label of the item marked current.
 fn current_hierarchy_item(view: &BrowserView) -> Option<String> {
     let anchor = view.widget();
-    view.state.show_breadcrumb_hierarchy_menu(&anchor, 0.0, 0.0);
+    view.state.show_breadcrumb_hierarchy_menu(&anchor, 0.0);
     let popover = descendants(&anchor)
         .into_iter()
         .filter(|widget| widget.has_css_class("breadcrumb-popover"))
