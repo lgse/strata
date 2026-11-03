@@ -577,21 +577,16 @@ fn icons_left_wraps_row_starts_and_leaves_only_the_first_tile() {
             for scoped in [true, false] {
                 preferences.set_arrow_navigation_scoped(scoped);
                 focus_files(&fixture);
-                // Down moves by a whole row only once the grid has laid out its columns.
-                wait_until_or(
-                    || {
-                        fixture.press(Key::Home, NONE);
-                        fixture.press(Key::Down, NONE);
-                        focused_index(&browser) > 1
-                    },
-                    || {
-                        format!(
-                            "Down from the first tile reached {}",
-                            focused_index(&browser)
-                        )
-                    },
-                );
+                // Before layout Down steps one tile; the column count then depends on the
+                // GTK version's tile width, so any later row start serves.
+                wait_until(|| {
+                    fixture.press(Key::Home, NONE);
+                    gtk::prelude::GtkWindowExt::focus(&fixture.window)
+                        .is_some_and(|tile| tile.width() > 0)
+                });
+                fixture.press(Key::Down, NONE);
                 let row_start = focused_index(&browser);
+                assert!(row_start > 0, "Down left the first tile focused");
                 fixture.press(Key::Left, NONE);
                 assert_eq!(
                     (focused_index(&browser), sidebar_has_focus(&fixture)),
