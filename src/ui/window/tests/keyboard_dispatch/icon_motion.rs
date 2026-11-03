@@ -574,17 +574,24 @@ fn icons_left_wraps_row_starts_and_leaves_only_the_first_tile() {
             fixture.view.set_view_mode(BrowserMode::Icons);
             wait_loaded(&browser, 0);
             focus_files(&fixture);
-            pump(100);
             for scoped in [true, false] {
                 preferences.set_arrow_navigation_scoped(scoped);
                 focus_files(&fixture);
-                fixture.press(Key::Home, NONE);
-                fixture.press(Key::Down, NONE);
-                let row_start = focused_index(&browser);
-                assert!(
-                    row_start > 1,
-                    "Down from the first tile reached {row_start}"
+                // Down moves by a whole row only once the grid has laid out its columns.
+                wait_until_or(
+                    || {
+                        fixture.press(Key::Home, NONE);
+                        fixture.press(Key::Down, NONE);
+                        focused_index(&browser) > 1
+                    },
+                    || {
+                        format!(
+                            "Down from the first tile reached {}",
+                            focused_index(&browser)
+                        )
+                    },
                 );
+                let row_start = focused_index(&browser);
                 fixture.press(Key::Left, NONE);
                 assert_eq!(
                     (focused_index(&browser), sidebar_has_focus(&fixture)),
