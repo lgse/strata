@@ -1282,8 +1282,8 @@ window.dialog.colorchooser button.text-button.suggested-action:active {
 
 .action-dialog-confirm:focus-visible,
 window.dialog.colorchooser button.text-button.suggested-action:focus-visible {
-  outline: 2px solid @strata_accent;
-  outline-offset: 1px;
+  box-shadow: 0 0 0 3px alpha(@strata_accent, 0.28);
+  outline: none;
 }
 
 .action-dialog-confirm.danger {
@@ -1302,7 +1302,7 @@ window.dialog.colorchooser button.text-button.suggested-action:focus-visible {
 }
 
 .action-dialog-confirm.danger:focus-visible {
-  outline-color: @strata_danger;
+  box-shadow: 0 0 0 3px alpha(@strata_danger, 0.28);
 }
 
 .action-dialog-cancel:disabled,
