@@ -316,7 +316,8 @@ fn context_hints_follow_the_active_map() {
             ] {
                 assert_eq!(after(label), Some(hint), "{hints:?}");
             }
-            let other_ctrl_hint = |hint: &String| hint.starts_with("Ctrl+") && hint != "Ctrl+Shift+N";
+            let other_ctrl_hint =
+                |hint: &String| hint.starts_with("Ctrl+") && hint != "Ctrl+Shift+N";
             assert!(!hints.iter().any(other_ctrl_hint), "{hints:?}");
             assert!(
                 hints.iter().any(|hint| hint == "i"),

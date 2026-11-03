@@ -10,8 +10,8 @@ use super::{
     ResolvedContextTrigger, actions, bind_column_context_owner, context_entries,
     context_filter_or_search_active, context_search_active, current_context_position,
     focus_context_entry, install_secondary_release_retarget, move_to_trash_is_visible,
-    permanently_delete_is_visible, preview_context_entry, rename_context_entry,
-    schedule_new_entry, selected_items_summary,
+    permanently_delete_is_visible, preview_context_entry, rename_context_entry, schedule_new_entry,
+    selected_items_summary,
 };
 use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
