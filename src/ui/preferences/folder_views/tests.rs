@@ -46,7 +46,10 @@ fn saved_views_round_trip_through_the_state_file() {
             sort: Some((
                 SortKey::Size,
                 SortDirection::Ascending,
-                crate::model::NameComparison::default(),
+                crate::model::NameComparison {
+                    natural: false,
+                    case_sensitive: true,
+                },
             )),
             icons_size: Some(208),
         },
