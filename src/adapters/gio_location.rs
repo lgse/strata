@@ -40,5 +40,21 @@ pub(crate) fn reveal_target_for_file(file: &gio::File) -> Option<(Location, Loca
     ))
 }
 
+pub(crate) const CONTENT_TYPE_ATTRIBUTES: &str =
+    "standard::content-type,standard::fast-content-type";
+
+/// GVfs SMB sets only `standard::fast-content-type` when the name leaves the type
+/// uncertain (`.md`, `.py`, `.json`), so fall back to it like `g_file_query_default_handler`.
+/// Reading the attributes generically avoids the critical `FileInfo::content_type` logs
+/// when the attribute is missing.
+pub(crate) fn content_type_of(info: &gio::FileInfo) -> Option<glib::GString> {
+    [
+        gio::FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
+        gio::FILE_ATTRIBUTE_STANDARD_FAST_CONTENT_TYPE,
+    ]
+    .into_iter()
+    .find_map(|attribute| info.attribute_string(attribute))
+}
+
 #[cfg(test)]
 mod tests;

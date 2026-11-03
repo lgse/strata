@@ -69,6 +69,7 @@ impl Fixture {
             kind: EntryKind::File,
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Unknown,
+            created_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
             recent_unix_seconds: MetadataValue::Unknown,
             is_hidden: name.starts_with('.'),

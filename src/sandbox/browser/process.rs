@@ -62,9 +62,14 @@ pub(super) fn namespaces() -> io::Result<()> {
 }
 
 pub(super) fn wait(pid: Pid) -> io::Result<bool> {
+    Ok(exit_code(pid)? == Some(0))
+}
+
+/// `None` when the child was killed by a signal.
+pub(super) fn exit_code(pid: Pid) -> io::Result<Option<i32>> {
     loop {
         match waitpid(Some(pid), WaitOptions::empty()) {
-            Ok(Some((_, status))) => return Ok(status.exit_status() == Some(0)),
+            Ok(Some((_, status))) => return Ok(status.exit_status()),
             Ok(None) => continue,
             Err(rustix::io::Errno::INTR) => continue,
             Err(error) => return Err(error.into()),
@@ -80,6 +85,15 @@ pub(super) fn exit(result: Result<(), String>) -> ! {
             1
         }
     };
-    // Do not run inherited atexit handlers or flush the supervisor's buffers.
-    rustix::runtime::exit_group(status)
+    exit_with_status(status)
+}
+
+#[expect(
+    unsafe_code,
+    reason = "forked children must exit without running the supervisor's atexit handlers or flushing its buffers"
+)]
+pub(super) fn exit_with_status(status: i32) -> ! {
+    // SAFETY: `_exit` only terminates the calling process; it is async-signal-safe
+    // and touches no Rust state.
+    unsafe { libc::_exit(status) }
 }

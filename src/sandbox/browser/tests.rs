@@ -745,3 +745,39 @@ fn preview_operations_render_inside_the_decoder() {
         &response.png
     ));
 }
+
+#[test]
+fn only_denied_namespaces_make_supervisors_report_a_restriction() {
+    for (result, restricted) in [
+        (Ok(()), false),
+        (Err(io::Error::from_raw_os_error(libc::EPERM)), true),
+        (Err(io::Error::from_raw_os_error(libc::EACCES)), true),
+        (Err(io::Error::from_raw_os_error(libc::EAGAIN)), false),
+        (Err(io::Error::from_raw_os_error(libc::ENOSPC)), false),
+        (Err(io::Error::from_raw_os_error(libc::ENOMEM)), false),
+        (Err(io::Error::other("multithreaded")), false),
+    ] {
+        let status = worker::probe_status(&result);
+        assert_eq!(status == worker::PROBE_RESTRICTED, restricted, "{result:?}");
+        assert_eq!(status == 0, result.is_ok(), "{result:?}");
+    }
+}
+
+#[test]
+fn only_an_explicit_restriction_byte_disables_persistent_workers() {
+    for (bytes, expected) in [
+        (&[wire::READY][..], Ok(Readiness::Ready)),
+        (
+            &[wire::NAMESPACES_RESTRICTED][..],
+            Ok(Readiness::NamespacesRestricted),
+        ),
+        (&[][..], Err(io::ErrorKind::UnexpectedEof)),
+        (&[7][..], Err(io::ErrorKind::InvalidData)),
+    ] {
+        assert_eq!(
+            read_readiness(&mut &*bytes).map_err(|error| error.kind()),
+            expected,
+            "{bytes:?}"
+        );
+    }
+}

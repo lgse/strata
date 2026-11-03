@@ -369,6 +369,20 @@ pub(super) fn menu_action(label: &str) -> gtk::Button {
     action
 }
 
+/// A menu action whose label sits above a dimmed detail line, such as a path.
+pub(super) fn menu_action_with_detail(label: &str, detail: &str) -> gtk::Button {
+    let column = gtk::Box::new(gtk::Orientation::Vertical, 1);
+    column.append(&menu_option_label(label));
+    let detail_label = menu_option_label(detail);
+    detail_label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+    detail_label.add_css_class("menu-option-detail");
+    column.append(&detail_label);
+    let action = super::accessibility::menu_item_button();
+    action.set_child(Some(&column));
+    action.add_css_class(MENU_OPTION_CLASS);
+    action
+}
+
 fn checkable_menu_option(
     label: &str,
     selected: bool,

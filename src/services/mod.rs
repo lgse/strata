@@ -6,6 +6,7 @@ pub(crate) mod diagnostics;
 mod document;
 pub(crate) mod document_media;
 pub(crate) mod docx;
+mod dropped_content;
 pub(crate) mod file_activity;
 pub(crate) mod file_providers;
 mod file_source;
@@ -44,16 +45,20 @@ pub(crate) use document::{
     DocumentSpanStyle, DocumentTableCellLayout, DocumentUnit, DocumentUnitKind, document_kind,
     has_web_scheme, layout_document, parse_document, parse_markdown,
 };
+pub(crate) use dropped_content::{
+    DroppedFile, MAX_DROPPED_FILE_BYTES, WebLink, has_link_extension, save_dropped_files,
+    save_new_file,
+};
 pub use file_source::{
     DirectoryChange, DirectoryEvent, DirectoryRequest, DirectoryStamp, FileSource, LoadHandle,
     LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, MountToken,
-    RequestId, Responsiveness, StampAnswer, UriCredentials, Watching, backend_unavailable_message,
-    sanitize_uri_credentials, validate_uri_credentials,
+    RequestId, Responsiveness, StampAnswer, UriCredentials, WatchRequest, Watching,
+    backend_unavailable_message, sanitize_uri_credentials, validate_uri_credentials,
 };
 pub(crate) use file_source::{
     INVALID_NAME_REASON, UNEXPECTED_SYSTEM_ERROR, describes_refused_credentials, error_detail,
     gio_backend_error_message, gio_error_detail, gio_error_message, io_error_detail,
-    io_error_message, sanitize_failure_message,
+    io_error_message, sanitize_failure_message, system_error_text,
 };
 pub use install_source::{InstallSource, ManagedInstall};
 pub(crate) use install_source::{ensure_self_managed, installed_executable};
@@ -75,10 +80,10 @@ pub use operations::{
     ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
     DeleteRequest, ExtractRequest, Holder, KeptCause, KeptItem, LeftoverInside, MoveRecord,
     NameMode, OperationEvent, OperationProvider, OperationRequestId, PasswordFailure, PasteItem,
-    PasteRequest, PlacedSnapshot, RecoverRequest, RenameCause, RenameRecord, RenameRequest,
-    RenamedItem, ReplacedOriginal, RestoreRequest, RestoreSource, RestoreTrashItem,
+    PasteRequest, PlaceEntryRequest, PlacedSnapshot, RecoverRequest, RenameCause, RenameRecord,
+    RenameRequest, RenamedItem, ReplacedOriginal, RestoreRequest, RestoreSource, RestoreTrashItem,
     ReviewedLeftover, ShownName, SkippedItem, SpecialKind, TransferConflict, TransferReport,
-    UndoCopyRequest, UndoMergeRequest, UndoMoveItem, UndoMoveRequest, UndoRenameRequest,
+    TypedPath, UndoCopyRequest, UndoMergeRequest, UndoMoveItem, UndoMoveRequest, UndoRenameRequest,
     validate_basename,
 };
 pub(crate) use path_match::{PathMatcher, PathQuery};
@@ -91,8 +96,8 @@ pub(crate) use preview::{
     INCORRECT_ARCHIVE_PASSWORD, archive_preview_format, bytes_support_named_family, content_family,
     guess_content_type, has_plain_text_extension, is_extensionless_dotfile, is_image_path,
     is_media_path, is_model, is_non_executable_extensionless_dotfile, looks_like_text,
-    model_format, normalize_preview_text, read_head_sample, reconcile_with_sample,
-    split_archive_name, supports_remote_video,
+    model_format, normalize_preview_text, read_head_sample, read_supports_named_family,
+    reconcile_with_sample, refine_reported_content_type, split_archive_name, supports_remote_video,
 };
 pub(crate) use transfer_action::{
     CrossVolumeDropStrategy, DropActionInput, DropCommit, DropOverride, TransferKind,

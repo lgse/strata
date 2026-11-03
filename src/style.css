@@ -1212,6 +1212,7 @@ window.dialog.colorchooser .dialog-action-box {
 }
 
 .action-dialog-cancel,
+.retry-button,
 .settings-action-button,
 .settings-action-library-button > button,
 window.dialog.colorchooser button.text-button:not(.suggested-action) {
@@ -1226,6 +1227,7 @@ window.dialog.colorchooser button.text-button:not(.suggested-action) {
 }
 
 .action-dialog-cancel:hover,
+.retry-button:hover,
 .settings-action-button:hover,
 .settings-action-library-button > button:hover,
 window.dialog.colorchooser button.text-button:not(.suggested-action):hover {
@@ -1234,6 +1236,7 @@ window.dialog.colorchooser button.text-button:not(.suggested-action):hover {
 }
 
 .action-dialog-cancel:active,
+.retry-button:active,
 .settings-action-button:active,
 .settings-action-library-button > button:active,
 .settings-action-library-button > button:checked,
@@ -1245,6 +1248,7 @@ window.dialog.colorchooser button.text-button:not(.suggested-action):active {
 }
 
 .action-dialog-cancel:focus-visible,
+.retry-button:focus-visible,
 .settings-action-button:focus-visible,
 .settings-action-library-button > button:focus-visible,
 window.dialog.colorchooser button.text-button:not(.suggested-action):focus-visible {
@@ -1278,8 +1282,8 @@ window.dialog.colorchooser button.text-button.suggested-action:active {
 
 .action-dialog-confirm:focus-visible,
 window.dialog.colorchooser button.text-button.suggested-action:focus-visible {
-  outline: 2px solid @strata_accent;
-  outline-offset: 1px;
+  box-shadow: 0 0 0 3px alpha(@strata_accent, 0.28);
+  outline: none;
 }
 
 .action-dialog-confirm.danger {
@@ -1298,10 +1302,11 @@ window.dialog.colorchooser button.text-button.suggested-action:focus-visible {
 }
 
 .action-dialog-confirm.danger:focus-visible {
-  outline-color: @strata_danger;
+  box-shadow: 0 0 0 3px alpha(@strata_danger, 0.28);
 }
 
 .action-dialog-cancel:disabled,
+.retry-button:disabled,
 .settings-action-button:disabled,
 .settings-action-library-button > button:disabled,
 .action-dialog-confirm:disabled,
@@ -2584,6 +2589,68 @@ scrollbar.horizontal > range > trough > slider {
   padding-top: 1px;
   padding-right: 10px;
   padding-bottom: 2px;
+}
+
+/* Section headers draw their own inline rule; the divider only shows in the rail. */
+.sidebar-section-separator {
+  background: transparent;
+}
+
+.sidebar-rail .sidebar-section-separator {
+  background: alpha(@strata_border, 0.24);
+}
+
+.sidebar-heading-toggle {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  box-shadow: none;
+  min-height: 24px;
+  padding: 0;
+}
+
+.sidebar-heading-rule {
+  background: alpha(@strata_border, 0.24);
+  background-image: none;
+  border: none;
+  margin: 0 8px;
+  min-height: 1px;
+}
+
+.sidebar-heading-toggle:hover {
+  background: alpha(@strata_text, 0.06);
+}
+
+.sidebar-heading-toggle:active {
+  background: @strata_highlight;
+}
+
+.sidebar-heading-toggle:focus-visible {
+  outline: 1px solid @strata_accent;
+  outline-offset: -1px;
+}
+
+.sidebar-heading-toggle image {
+  -gtk-icon-filter: opacity(0.65);
+}
+
+/* Sized from the theme like .sidebar-device-action. The margin is the device row's 2px
+   right padding plus 1px, which optically centres the chevron over the eject buttons. */
+.sidebar-heading-chevron {
+  margin-right: 3px;
+}
+
+/* Left padding comes from the theme so the title starts where the row icons do. */
+.sidebar-heading-toggle .sidebar-heading {
+  padding-top: 0;
+  padding-right: 0;
+  padding-bottom: 0;
+}
+
+.sidebar-heading-count {
+  color: @strata_dim_text;
+  font-size: 0.78em;
+  font-weight: 700;
 }
 
 paned > separator {
@@ -4827,7 +4894,8 @@ colorchooser box.osd.popover spinbutton > button {
   padding-bottom: 8px;
 }
 
-.actions-context-popover.folder-menu-body > contents {
+.actions-context-popover.folder-menu-body > contents,
+.actions-context-popover.sort-menu-popover > contents {
   padding-top: 8px;
 }
 
@@ -6144,6 +6212,20 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 .list-navigation-button:focus-visible {
   outline: 2px solid @strata_accent;
   outline-offset: -2px;
+}
+
+.history-menu {
+  min-width: 220px;
+}
+
+.history-menu .column-menu-option {
+  padding-bottom: 5px;
+  padding-top: 5px;
+}
+
+.menu-option-detail {
+  color: @strata_dim_text;
+  font-size: 0.86em;
 }
 
 .list-row.drop-destination,
@@ -7571,4 +7653,8 @@ popover.settings-action-library > contents {
 .search-dialog.modal-constrained,
 .settings-dialog.modal-constrained {
   min-width: 0;
+}
+
+menubutton.sort-menu-button > button {
+  color: @strata_text;
 }

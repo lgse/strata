@@ -23,6 +23,7 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 
 use crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT;
+use benchmark::Benchmark;
 use fs_quirks::{FsQuirks, Preset, Quirks};
 
 fn serial() -> Result<crate::test_support::MainContextGuard<'static>, String> {
@@ -32,6 +33,7 @@ fn serial() -> Result<crate::test_support::MainContextGuard<'static>, String> {
 }
 
 mod aliases;
+mod benchmark;
 mod closes;
 mod conflicts;
 mod copy;
@@ -46,6 +48,7 @@ mod moves;
 mod naming;
 mod paste_results;
 mod paths;
+mod place_entry;
 mod placement;
 mod progress;
 mod release;
@@ -409,7 +412,6 @@ fn a_later_change_time(path: &Path, than: &Path, seconds: u64) -> io::Result<boo
 /// as Samba does once the SMB client's deferred close of a file it wrote
 /// reaches it: only the change time moves.
 fn land_deferred_closes(root: &Path) -> io::Result<()> {
-    use std::os::unix::fs::MetadataExt;
     for entry in fs::read_dir(root)? {
         let path = entry?.path();
         let before = fs::symlink_metadata(&path)?;
@@ -420,29 +422,35 @@ fn land_deferred_closes(root: &Path) -> io::Result<()> {
         if !before.is_file() {
             continue;
         }
-        let time = |tv_sec, tv_nsec| rustix::fs::Timespec { tv_sec, tv_nsec };
-        let times = rustix::fs::Timestamps {
-            last_access: time(before.atime(), before.atime_nsec()),
-            last_modification: time(before.mtime(), before.mtime_nsec()),
-        };
-        // A kernel without fine-grained times stamps within its tick.
-        let deadline = Instant::now() + CHANGE_TIME_WAIT;
-        loop {
-            rustix::fs::utimensat(rustix::fs::CWD, &path, &times, rustix::fs::AtFlags::empty())?;
-            let after = fs::symlink_metadata(&path)?;
-            if (after.ctime(), after.ctime_nsec()) != (before.ctime(), before.ctime_nsec()) {
-                break;
-            }
-            if Instant::now() >= deadline {
-                return Err(io::Error::other(format!(
-                    "the change time of {} did not move within {CHANGE_TIME_WAIT:?}; this mount \
-                     may report the modification time as the change time",
-                    path.display()
-                )));
-            }
-        }
+        move_change_time(&path, &before)?;
     }
     Ok(())
+}
+
+/// Restamps `path` with its own times until the change time moves.
+fn move_change_time(path: &Path, before: &fs::Metadata) -> io::Result<()> {
+    use std::os::unix::fs::MetadataExt;
+    let time = |tv_sec, tv_nsec| rustix::fs::Timespec { tv_sec, tv_nsec };
+    let times = rustix::fs::Timestamps {
+        last_access: time(before.atime(), before.atime_nsec()),
+        last_modification: time(before.mtime(), before.mtime_nsec()),
+    };
+    // A kernel without fine-grained times stamps within its tick.
+    let deadline = Instant::now() + CHANGE_TIME_WAIT;
+    loop {
+        rustix::fs::utimensat(rustix::fs::CWD, path, &times, rustix::fs::AtFlags::empty())?;
+        let after = fs::symlink_metadata(path)?;
+        if (after.ctime(), after.ctime_nsec()) != (before.ctime(), before.ctime_nsec()) {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(io::Error::other(format!(
+                "the change time of {} did not move within {CHANGE_TIME_WAIT:?}; this mount \
+                 may report the modification time as the change time",
+                path.display()
+            )));
+        }
+    }
 }
 
 const CHANGE_TIME_WAIT: Duration = Duration::from_secs(2);
@@ -548,15 +556,36 @@ fn workers_only(workers: Option<usize>) -> super::copy_engine::Options {
     }
 }
 
+fn transfer_settled(event: &OperationEvent) -> bool {
+    matches!(
+        event,
+        OperationEvent::Pasted { .. }
+            | OperationEvent::TransferFailed { .. }
+            | OperationEvent::Cancelled { .. }
+    )
+}
+
+fn rename_settled(event: &OperationEvent) -> bool {
+    matches!(
+        event,
+        OperationEvent::Renamed { .. }
+            | OperationEvent::Failed { .. }
+            | OperationEvent::Cancelled { .. }
+    )
+}
+
+fn restore_settled(event: &OperationEvent) -> bool {
+    matches!(
+        event,
+        OperationEvent::Restored { .. }
+            | OperationEvent::RestoreCompletedWithErrors { .. }
+            | OperationEvent::Failed { .. }
+            | OperationEvent::Cancelled { .. }
+    )
+}
+
 fn terminal_transfer(events: &[OperationEvent]) -> Option<&OperationEvent> {
-    events.iter().rev().find(|event| {
-        matches!(
-            event,
-            OperationEvent::Pasted { .. }
-                | OperationEvent::TransferFailed { .. }
-                | OperationEvent::Cancelled { .. }
-        )
-    })
+    events.iter().rev().find(|event| transfer_settled(event))
 }
 
 fn item_moves(events: &[OperationEvent]) -> Vec<(Location, Location)> {
@@ -639,6 +668,7 @@ fn file_entry(path: &std::path::Path) -> FileEntry {
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
@@ -682,14 +712,7 @@ fn wait_for_operation(
 }
 
 fn drive_until_rename_settles(events: &Rc<RefCell<Vec<OperationEvent>>>) {
-    wait_for_operation(events, |event| {
-        matches!(
-            event,
-            OperationEvent::Renamed { .. }
-                | OperationEvent::Failed { .. }
-                | OperationEvent::Cancelled { .. }
-        )
-    });
+    wait_for_operation(events, rename_settled);
 }
 
 fn settle(start: impl FnOnce(Rc<dyn Fn(OperationEvent)>) -> LoadHandle) -> Vec<OperationEvent> {
@@ -720,56 +743,52 @@ fn rename(path: &Path, new_name: &str) -> Vec<OperationEvent> {
 struct CancelFromMain(Arc<(std::sync::Mutex<Option<bool>>, std::sync::Condvar)>);
 
 impl CancelFromMain {
+    fn state(&self) -> std::sync::MutexGuard<'_, Option<bool>> {
+        self.0.0.lock().expect("cancel state")
+    }
+
+    fn wait_until(
+        &self,
+        mut state: std::sync::MutexGuard<'_, Option<bool>>,
+        done: impl Fn(Option<bool>) -> bool,
+    ) {
+        while !done(*state) {
+            state = self.0.1.wait(state).expect("cancel state");
+        }
+    }
+
     fn racer(&self) -> fs_quirks::Racer {
         let this = self.clone();
         Box::new(move || {
-            let (state, changed) = &*this.0;
-            let mut state = state.lock().expect("cancel state");
+            let mut state = this.state();
             if state.is_none() {
                 *state = Some(false);
-                while *state == Some(false) {
-                    state = changed.wait(state).expect("cancel state");
-                }
+                this.wait_until(state, |state| state != Some(false));
             }
         })
     }
 
     fn waiter(&self) -> fs_quirks::Racer {
         let this = self.clone();
-        Box::new(move || {
-            let (state, changed) = &*this.0;
-            let mut state = state.lock().expect("cancel state");
-            while *state != Some(true) {
-                state = changed.wait(state).expect("cancel state");
-            }
-        })
+        Box::new(move || this.wait_until(this.state(), |state| state == Some(true)))
     }
 
     fn serve(&self, cancel: impl FnOnce()) {
-        let (state, changed) = &*self.0;
-        let mut state = state.lock().expect("cancel state");
+        let mut state = self.state();
         if *state == Some(false) {
             cancel();
             *state = Some(true);
-            changed.notify_all();
+            self.0.1.notify_all();
         }
     }
 
     fn served(&self) -> bool {
-        *self.0.0.lock().expect("cancel state") == Some(true)
+        *self.state() == Some(true)
     }
 }
 
 fn wait_for_restore(events: &Rc<RefCell<Vec<OperationEvent>>>) {
-    wait_for_operation(events, |event| {
-        matches!(
-            event,
-            OperationEvent::Restored { .. }
-                | OperationEvent::RestoreCompletedWithErrors { .. }
-                | OperationEvent::Failed { .. }
-                | OperationEvent::Cancelled { .. }
-        )
-    });
+    wait_for_operation(events, restore_settled);
 }
 
 fn volume_trash_entry(
@@ -792,14 +811,7 @@ fn volume_trash_entry(
 }
 
 fn drive_until_transfer_settles(events: &Rc<RefCell<Vec<OperationEvent>>>) {
-    wait_for_operation(events, |event| {
-        matches!(
-            event,
-            OperationEvent::Pasted { .. }
-                | OperationEvent::TransferFailed { .. }
-                | OperationEvent::Cancelled { .. }
-        )
-    });
+    wait_for_operation(events, transfer_settled);
 }
 
 fn run_paste_collecting_created(
@@ -839,189 +851,36 @@ fn run_paste(request: PasteRequest) -> Vec<OperationEvent> {
     events.take()
 }
 
-fn sequential_delete_local(
-    parent: OwnedFd,
-    name: OsString,
-) -> Pin<Box<dyn Future<Output = Result<(), String>>>> {
-    Box::pin(async move {
-        let step_parent = parent.try_clone().map_err(|error| error.to_string())?;
-        let step_name = name.clone();
-        let step = super::run_local_delete_step(move || {
-            super::open_local_delete_target(&step_parent, &step_name, None, false)
-        })
-        .await
-        .map_err(|error| error.to_string())?;
-        let super::LocalDeleteStep::Directory { handle, children } = step else {
-            return Ok(());
-        };
-        for child in children {
-            let checked_parent = parent.try_clone().map_err(|error| error.to_string())?;
-            let checked_handle = handle.try_clone().map_err(|error| error.to_string())?;
-            let checked_name = name.clone();
-            super::run_local_delete_step(move || {
-                super::ensure_local_delete_target_unchanged(
-                    &checked_parent,
-                    &checked_name,
-                    &checked_handle,
-                )
-            })
-            .await
-            .map_err(|error| error.to_string())?;
-            sequential_delete_local(
-                handle.try_clone().map_err(|error| error.to_string())?,
-                child,
-            )
-            .await?;
-        }
-        super::run_local_delete_step(move || {
-            super::ensure_local_delete_target_unchanged(&parent, &name, &handle)?;
-            rustix::fs::unlinkat(&parent, &name, rustix::fs::AtFlags::REMOVEDIR)
-                .map_err(|error| error.to_string())
-        })
-        .await
-        .map_err(|error| error.to_string())
-    })
-}
-
-fn sync_delete_benchmark_filesystem(root: &Path) -> Result<(), Box<dyn Error>> {
-    let handle = rustix::fs::open(
-        root,
-        rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
-        rustix::fs::Mode::empty(),
-    )?;
-    rustix::fs::syncfs(handle)?;
-    Ok(())
-}
-
-fn create_delete_benchmark_tree(root: &Path, count: usize) -> io::Result<()> {
-    const DIRECTORIES: usize = 256;
-    fs::create_dir(root)?;
-    for directory in 0..DIRECTORIES.min(count.max(1)) {
-        fs::create_dir(root.join(format!("dir-{directory}")))?;
-    }
-    for index in 0..count {
-        fs::File::create(
-            root.join(format!("dir-{}", index % DIRECTORIES))
-                .join(format!("item-{index}")),
-        )?;
-    }
-    Ok(())
-}
-
 #[test]
 #[ignore = "manual performance benchmark; run scripts/benchmark-delete.sh"]
 fn benchmark_delete_large_directory() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    let unique = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)?
-        .as_nanos();
-    let count = std::env::var("STRATA_DELETE_BENCH_FILES")
-        .ok()
-        .and_then(|value| value.parse::<usize>().ok())
-        .unwrap_or(100_000);
-    let benchmark_root = std::env::var_os("STRATA_DELETE_BENCH_ROOT")
-        .map(PathBuf::from)
-        .unwrap_or(std::env::current_dir()?.join("target/delete-benchmark"));
-    fs::create_dir_all(&benchmark_root)?;
-    let serial_root = benchmark_root.join(format!("serial-{unique}"));
-    let available_workers = thread::available_parallelism()
-        .map(usize::from)
-        .unwrap_or(1)
-        .max(1);
-    let mut worker_counts = vec![1, 2, 4, available_workers];
-    worker_counts.sort_unstable();
-    worker_counts.dedup();
-    worker_counts.retain(|workers| *workers <= available_workers);
-    let worker_roots = worker_counts
-        .iter()
-        .map(|workers| {
-            (
-                *workers,
-                benchmark_root.join(format!("workers-{workers}-{unique}")),
-            )
-        })
-        .collect::<Vec<_>>();
-    create_delete_benchmark_tree(&serial_root, count)?;
-    for (_, root) in &worker_roots {
-        create_delete_benchmark_tree(root, count)?;
-    }
-    sync_delete_benchmark_filesystem(&benchmark_root)?;
-    let context = glib::MainContext::default();
+    let benchmark = Benchmark::from_env(100_000)?;
+    let serial_root = benchmark.tree("serial")?;
+    let worker_roots = benchmark::worker_counts()
+        .into_iter()
+        .map(|workers| Ok((workers, benchmark.tree(&format!("workers-{workers}"))?)))
+        .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
+    benchmark.sync()?;
 
-    let serial_parent = super::open_local_parent_directory(
-        serial_root.parent().ok_or("benchmark root has no parent")?,
-    )?;
-    let serial_name = serial_root
-        .file_name()
-        .ok_or("benchmark root has no name")?
-        .to_owned();
-    let serial_started = Instant::now();
-    context
-        .block_on(sequential_delete_local(serial_parent, serial_name))
-        .map_err(io::Error::other)?;
-    let serial_elapsed = serial_started.elapsed();
-    sync_delete_benchmark_filesystem(&benchmark_root)?;
+    let serial_elapsed = benchmark::delete_sequentially(&serial_root)?;
+    benchmark.sync()?;
 
     let mut measurements = Vec::new();
     let mut detected_workers = None;
     for (workers, root) in &worker_roots {
-        let parent = super::open_local_parent_directory(
-            root.parent().ok_or("benchmark root has no parent")?,
-        )?;
-        let name = root
-            .file_name()
-            .ok_or("benchmark root has no name")?
-            .to_owned();
-        let target_root = super::PinnedEntry {
-            parent: Arc::new(parent),
-            name,
-            identity: None,
-        };
-        detected_workers = Some(super::local_delete_worker_count(std::slice::from_ref(
-            &target_root,
-        )));
-        let parallel_started = Instant::now();
-        super::parallel_delete_local_blocking_with_workers(
-            vec![target_root],
-            Arc::new(AtomicBool::new(false)),
-            *workers,
-            &Default::default(),
-        )
-        .map_err(io::Error::other)?;
-        let parallel_elapsed = parallel_started.elapsed();
-        measurements.push((*workers, parallel_elapsed));
-        sync_delete_benchmark_filesystem(&benchmark_root)?;
+        let (detected, elapsed) = benchmark::delete_with_workers(root, Some(*workers))?;
+        detected_workers = Some(detected);
+        measurements.push((*workers, elapsed));
+        benchmark.sync()?;
     }
     let production_workers = detected_workers.unwrap_or(1);
-    let (_, production_elapsed) = measurements
-        .iter()
-        .find(|measurement| measurement.0 == production_workers)
-        .copied()
-        .ok_or("missing production worker measurement")?;
-    let single_elapsed = measurements
-        .iter()
-        .find(|measurement| measurement.0 == 1)
-        .map(|measurement| measurement.1)
-        .ok_or("missing single-worker measurement")?;
-
-    println!("files: {count}; production workers: {production_workers}");
-    println!(
-        "legacy sequential: {:.3}s ({:.0} files/s)",
-        serial_elapsed.as_secs_f64(),
-        count as f64 / serial_elapsed.as_secs_f64().max(f64::EPSILON)
-    );
-    for (workers, elapsed) in &measurements {
-        println!(
-            "workers={workers}: elapsed={:.3}s ({:.0} files/s)",
-            elapsed.as_secs_f64(),
-            count as f64 / elapsed.as_secs_f64().max(f64::EPSILON)
-        );
-    }
-    println!(
-        "production parallel speedup: {:.2}x; end-to-end speedup: {:.2}x",
-        single_elapsed.as_secs_f64() / production_elapsed.as_secs_f64().max(f64::EPSILON),
-        serial_elapsed.as_secs_f64() / production_elapsed.as_secs_f64().max(f64::EPSILON)
-    );
+    benchmark::report(
+        &benchmark,
+        serial_elapsed,
+        production_workers,
+        &measurements,
+    )?;
     assert!(!serial_root.exists());
     assert!(worker_roots.iter().all(|(_, root)| !root.exists()));
     Ok(())
@@ -1031,47 +890,17 @@ fn benchmark_delete_large_directory() -> Result<(), Box<dyn Error>> {
 #[ignore = "manual scale benchmark; run STRATA_DELETE_BENCH_SCALE=1 scripts/benchmark-delete.sh"]
 fn benchmark_parallel_delete_scale() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    let unique = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)?
-        .as_nanos();
-    let count = std::env::var("STRATA_DELETE_BENCH_FILES")
-        .ok()
-        .and_then(|value| value.parse::<usize>().ok())
-        .unwrap_or(1_000_000);
-    let benchmark_root = std::env::var_os("STRATA_DELETE_BENCH_ROOT")
-        .map(PathBuf::from)
-        .unwrap_or(std::env::current_dir()?.join("target/delete-benchmark"));
-    fs::create_dir_all(&benchmark_root)?;
-    let root = benchmark_root.join(format!("scale-{unique}"));
-    create_delete_benchmark_tree(&root, count)?;
-    sync_delete_benchmark_filesystem(&benchmark_root)?;
+    let benchmark = Benchmark::from_env(1_000_000)?;
+    let root = benchmark.tree("scale")?;
+    benchmark.sync()?;
 
-    let parent =
-        super::open_local_parent_directory(root.parent().ok_or("benchmark root has no parent")?)?;
-    let name = root
-        .file_name()
-        .ok_or("benchmark root has no name")?
-        .to_owned();
-    let target_root = super::PinnedEntry {
-        parent: Arc::new(parent),
-        name,
-        identity: None,
-    };
-    let workers = super::local_delete_worker_count(std::slice::from_ref(&target_root));
-    let cleanup_started = Instant::now();
-    super::parallel_delete_local_blocking_with_workers(
-        vec![target_root],
-        Arc::new(AtomicBool::new(false)),
-        workers,
-        &Default::default(),
-    )
-    .map_err(io::Error::other)?;
-    let cleanup_elapsed = cleanup_started.elapsed();
+    let (workers, cleanup_elapsed) = benchmark::delete_with_workers(&root, None)?;
 
     println!(
-        "files={count} workers={workers} elapsed={:.3}s ({:.0} files/s)",
+        "files={} workers={workers} elapsed={:.3}s ({:.0} files/s)",
+        benchmark.count,
         cleanup_elapsed.as_secs_f64(),
-        count as f64 / cleanup_elapsed.as_secs_f64().max(f64::EPSILON)
+        benchmark.files_per_second(cleanup_elapsed)
     );
     assert!(!root.exists());
     Ok(())

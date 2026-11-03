@@ -27,15 +27,19 @@ fn saved_labels_apply_before_settings_live_across_windows_and_row_rebuilds() {
             );
             bind_row_label(&first, &preferences, id, "Kingston system name");
             bind_row_label(&second, &preferences, id, "Kingston system name");
+            let subtitle = gtk::Label::new(None);
+            bind_label_text(&subtitle, &preferences, id, "Kingston system name");
             let windows = [
                 gtk::Window::builder().child(&first).build(),
                 gtk::Window::builder().child(&second).build(),
+                gtk::Window::builder().child(&subtitle).build(),
             ];
             for window in &windows {
                 window.present();
             }
             assert_eq!(row_label(&first).text(), "Research drive");
             assert_eq!(row_label(&second).text(), "Research drive");
+            assert_eq!(subtitle.text(), "Research drive");
             let other =
                 super::super::sidebar_button(crate::assets::icons::HARD_DRIVE, "Other device");
             bind_row_label(
@@ -47,6 +51,7 @@ fn saved_labels_apply_before_settings_live_across_windows_and_row_rebuilds() {
             preferences.set_device_label(id, "Backup / photos 📁");
             assert_eq!(row_label(&first).text(), "Backup / photos 📁");
             assert_eq!(row_label(&second).text(), "Backup / photos 📁");
+            assert_eq!(subtitle.text(), "Backup / photos 📁");
             assert_eq!(row_label(&other).text(), "Other device");
             let rebuilt = super::super::sidebar_button(
                 crate::assets::icons::HARD_DRIVE,
@@ -58,6 +63,7 @@ fn saved_labels_apply_before_settings_live_across_windows_and_row_rebuilds() {
             preferences.set_device_label(id, "");
             assert_eq!(row_label(&rebuilt).text(), "Updated system name");
             assert_eq!(row_label(&second).text(), "Kingston system name");
+            assert_eq!(subtitle.text(), "Kingston system name");
             assert_eq!(row_label(&other).text(), "Other device");
             for window in windows {
                 window.close();

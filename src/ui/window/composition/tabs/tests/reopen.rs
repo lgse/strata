@@ -122,6 +122,7 @@ fn reopening_a_deleted_directory_keeps_a_retryable_tab() {
             let view = tabs.active_browser();
             wait_until(|| button_with_label(view.overlay().upcast_ref(), "Retry").is_some());
             assert_eq!(tabs.tabs.borrow().len(), 2);
+            assert_names_awaited_tab(&window, &tabs, "destination");
             std::fs::create_dir(root.path().join("destination")).expect("restore directory");
             button_with_label(view.overlay().upcast_ref(), "Retry")
                 .expect("retry unavailable directory")
@@ -130,4 +131,40 @@ fn reopening_a_deleted_directory_keeps_a_retryable_tab() {
             window.destroy();
         },
     );
+}
+
+#[test]
+fn open_in_new_tab_reuses_the_unavailable_overlay_for_a_missing_target() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::reopen::open_in_new_tab_reuses_the_unavailable_overlay_for_a_missing_target",
+        || {
+            PreferenceManager::seed_saved_preferences_for_test();
+            let root = tempfile::tempdir().expect("missing target fixture");
+            let missing = root.path().join("missing");
+            let (window, tabs) = open();
+            load(&tabs.active_browser(), Location::local(root.path()));
+            tabs.open_in_new_tab(Location::local(&missing));
+            let view = tabs.active_browser();
+            wait_until(|| button_with_label(view.overlay().upcast_ref(), "Retry").is_some());
+            assert!(
+                button_with_label(view.overlay().upcast_ref(), "Retry").is_some(),
+                "a missing target shows the retry overlay"
+            );
+            assert_names_awaited_tab(&window, &tabs, "missing");
+            window.destroy();
+        },
+    );
+}
+
+fn assert_names_awaited_tab(window: &gtk::ApplicationWindow, tabs: &TabWindow, name: &str) {
+    assert_eq!(
+        window.title().as_deref(),
+        Some(format!("{name} — Strata").as_str())
+    );
+    let tab_label = find_widget(tabs.strip.widget().upcast_ref(), &|widget| {
+        widget
+            .downcast_ref::<gtk::Label>()
+            .is_some_and(|label| label.text() == name)
+    });
+    assert!(tab_label.is_some(), "the tab strip names the tab {name:?}");
 }

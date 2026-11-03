@@ -1,0 +1,21 @@
+{"scenario":"foreign-content-reaches-every-drop-target","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"session_bus":true,"variants":[{"id":"background"},{"id":"sidebar"},{"id":"tab"},{"id":"breadcrumb"}]}
+{"key":"ctrl+t","variants":["tab"]}
+{"select":{"entry":"archive"},"variants":["tab","breadcrumb"]}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'","variants":["tab","breadcrumb"]}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"the new tab to show 'archive'","variants":["tab"]}
+{"key":"ctrl+shift+1","variants":["tab"]}
+{"wait":{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}},"message":"the first tab to be active again","variants":["tab"]}
+{"fs":{"path":"$environment/offer.txt","write":"Selected words"}}
+{"fs":{"path":"$home/Desktop","mkdir":true},"variants":["sidebar"]}
+{"foreign":{"offers":[{"mime":"text/plain;charset=utf-8","path":"$environment/offer.txt"}]},"as":"foreign","message":"the foreign text source"}
+{"drag":{"from":{"kept":"foreign"},"to":{"pane":null},"to_at":["50%",-20]},"variants":["background"]}
+{"drag":{"from":{"kept":"foreign"},"to":{"sidebar":"Desktop"}},"variants":["sidebar"]}
+{"drag":{"from":{"kept":"foreign"},"to":{"role":"page tab","name":"archive"}},"variants":["tab"]}
+{"drag":{"from":{"kept":"foreign"},"to":{"role":"button","name":"$root"},"to_at":["90%","50%"]},"variants":["breadcrumb"]}
+{"foreign_label":"Foreign drag finished","message":"the drop protocol to finish"}
+{"fs":{"path":"dropped text.txt","text":"Selected words"},"message":"the text saved in the pane's folder","variants":["background","breadcrumb"]}
+{"fs":{"path":"$home/Desktop/dropped text.txt","text":"Selected words"},"message":"the text saved in the sidebar folder","variants":["sidebar"]}
+{"fs":{"path":"archive/dropped text.txt","text":"Selected words"},"message":"the text saved in the tab's folder","variants":["tab"]}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"the tab taking the drop to become active","variants":["tab"]}
+{"fs":{"path":"archive","names":[]},"timeout_ms":0,"message":"only the drop target to receive the text","variants":["background","sidebar","breadcrumb"]}
+{"foreign_stop":true}

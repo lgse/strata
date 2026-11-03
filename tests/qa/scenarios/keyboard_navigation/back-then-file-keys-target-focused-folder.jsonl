@@ -1,0 +1,32 @@
+{"scenario":"back-then-file-keys-target-focused-folder","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"tree":{"alpha":{"a0":{},"sub":{"inner":{"x.txt":"x\n"}}},"beta":{}}}
+{"select":{"entry":"alpha","dir":"$root"}}
+{"wait":{"entry":"sub","dir":"alpha"},"message":"the 'alpha' column to list 'sub'"}
+{"select":{"entry":"sub","dir":"alpha"}}
+{"wait":{"entry":"inner","dir":"sub"},"message":"the 'sub' column to list 'inner'"}
+{"select":{"entry":"inner","dir":"sub"}}
+{"wait":{"entry":"x.txt","dir":"inner"},"message":"the 'inner' column to list 'x.txt'"}
+{"select":{"entry":"x.txt","dir":"inner"}}
+{"wait":{"selected":["x.txt"],"dir":"inner"},"message":"the selection to become ['x.txt']"}
+{"click":{"sidebar":"Home"}}
+{"wait":{"panes":{"excludes":["$root","alpha"]}},"message":"the Home place to replace the columns"}
+{"key":"alt+Left"}
+{"wait":{"panes":["$root","alpha","sub","inner"]},"message":"Alt+Left to restore every column"}
+{"wait":{"focused":"x.txt"},"message":"keyboard focus to reach 'x.txt' in the restored deepest column"}
+{"key":"Left"}
+{"wait":{"focused":"inner"},"message":"Left to move the cursor onto 'inner', the folder the 'sub' column has open"}
+{"key":"Left"}
+{"wait":{"focused":"sub"},"message":"Left to move the cursor onto 'sub', the folder the 'alpha' column has open"}
+{"wait":{"selected":["sub"],"dir":"alpha"},"message":"the 'alpha' column to select 'sub'"}
+{"wait":{"panes":["$root","alpha","sub","inner"]},"message":"Left to keep every column open"}
+{"key":"F2"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus"}
+{"remember":{"field":true},"as":"rename"}
+{"wait":{"field":{"of":"rename","text":"sub"}},"message":"F2 to rename the focused 'sub', not the root column's 'alpha'"}
+{"key":"Escape"}
+{"wait":{"absent":{"role":"text","name":"Rename"}},"message":"Escape to close the name editor"}
+{"wait":{"focused":"sub"},"message":"keyboard focus to return to 'sub'"}
+{"key":"Delete"}
+{"fs":{"path":"alpha/sub","exists":false},"message":"Delete to trash the focused 'sub'"}
+{"fs":{"path":"alpha/a0","is":"dir"},"timeout_ms":0,"message":"the sibling 'a0' must stay"}
+{"fs":{"path":"beta","is":"dir"},"timeout_ms":0,"message":"the root column's other folder must stay"}
+{"wait":{"entry_gone":"sub"},"message":"the entry 'sub' to disappear"}

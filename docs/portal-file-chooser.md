@@ -2,7 +2,7 @@
 
 Strata can serve the XDG Desktop Portal FileChooser interface for portal-aware applications. Native file pickers and applications that do not use the portal are unchanged.
 
-The chooser is deliberately limited to local files and folders. It uses the main app's sidebar, Columns/Icons/List views, List type grouping, filters, metadata, previews, and themed controls. Recent appears when enabled in sidebar preferences and supported by the desktop's recent-files backend; only local targets are listed. Overwrite confirmation uses the same in-window modal as the app.
+The chooser is deliberately limited to local files and folders. It uses the main app's sidebar, Columns/Icons/List views, List type grouping, filters, metadata, previews, and themed controls. Recent appears when enabled in sidebar preferences and supported by the desktop's recent-files backend; only local targets are listed. Overwrite confirmation uses the same in-window modal as the app and names only the files that already exist.
 
 The picker and browser share the sidebar's compact rows, insertion gaps, drag
 feedback, and place/pin reordering. Local folders dragged into a Pinned gap are

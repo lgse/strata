@@ -14,7 +14,7 @@ from image_inputs import REPOSITORY, image_key
 
 
 class QualityRunnerTests(unittest.TestCase):
-    def run_runner(self, phase="all", key=None, engine_name="podman", extra_env=None):
+    def run_runner(self, phase="all", key=None, engine_name="podman", extra_env=None, options=()):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             log = root / "engine.jsonl"
@@ -31,7 +31,7 @@ class QualityRunnerTests(unittest.TestCase):
                 "'Env': ['RUSTUP_HOME=/opt/rustup']}}]))\n"
             )
             engine.chmod(0o755)
-            result = subprocess.run([str(REPOSITORY / "scripts/quality.sh"), phase],
+            result = subprocess.run([str(REPOSITORY / "scripts/quality.sh"), phase, *options],
                                     env={**os.environ, "STRATA_CONTAINER_ENGINE": str(engine),
                                          "STRATA_QUALITY_IMAGE": "fixture", "DISPLAY": ":0",
                                          "WAYLAND_DISPLAY": "wayland-0", "DBUS_SESSION_BUS_ADDRESS": "unix:path=/desktop",
@@ -49,6 +49,7 @@ class QualityRunnerTests(unittest.TestCase):
                 self.assertIn("sha256:" + "a" * 64, args)
                 self.assertEqual(args[-1], phase)
                 self.assertIn("--userns=keep-id", args)
+                self.assertIn("--pids-limit=-1", args)
                 self.assertIn("CARGO_TARGET_DIR=/workspace/target/quality-container/build", args)
                 self.assertNotIn("/workspace/target/qa-container/build", " ".join(args))
                 for call in calls:
@@ -76,6 +77,7 @@ class QualityRunnerTests(unittest.TestCase):
         self.assertIn(f"shard: {list(range(SHARDS))}", shard)
         self.assertIn("fail-fast: false", shard)
         self.assertIn("STRATA_QUALITY_TASK: shard", shard)
+        self.assertIn("run: ./scripts/quality.sh test --jobs 3", shard)
         self.assertNotIn("cargo test", shard)
         gate = workflow.split("\n  quality:\n", 1)[1].split("\n  release-scripts:", 1)[0]
         self.assertIn("name: Format, lint, and test", gate)
@@ -105,6 +107,26 @@ class QualityRunnerTests(unittest.TestCase):
         result, calls = self.run_runner(key="wrong")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(len(calls), 1)
+
+    def test_test_options_reach_the_container_and_bad_ones_never_start_it(self):
+        for phase, options in (("test", ("--jobs", "3")), ("all", ("--refresh-timings", "--jobs", "12"))):
+            with self.subTest(phase=phase, options=options):
+                result, calls = self.run_runner(phase, options=options)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                forwarded = [arg.replace("--jobs", "--lanes") for arg in options]
+                self.assertEqual(calls[-1]["args"][-1 - len(options):], [phase, *forwarded])
+        result, calls = self.run_runner("test", options=("--jobs", "3"), extra_env={
+            "STRATA_QUALITY_TASK": "shard", "STRATA_QUALITY_SHARD": "0"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls[-1]["args"][-3:], ["test", "--lanes", "3"])
+        for phase, options, task in (("test", ("--jobs",), "test"), ("test", ("--jobs", "0"), "test"),
+                                     ("test", ("--jobs", "two"), "test"), ("fmt", ("--jobs", "2"), "test"),
+                                     ("clippy", ("--refresh-timings",), "test"), ("test", ("--filter", "ui::"), "test"),
+                                     ("test", ("--refresh-timings",), "shard"), ("test", ("--jobs", "3"), "build")):
+            with self.subTest(phase=phase, options=options, task=task):
+                result, calls = self.run_runner(phase, options=options, extra_env={"STRATA_QUALITY_TASK": task})
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(calls, [])
 
     def test_invalid_phase_is_rejected_before_engine_access(self):
         result, calls = self.run_runner("skip-tests")
@@ -154,8 +176,8 @@ class QualityRunnerTests(unittest.TestCase):
                         self.assertEqual(result.returncode, 0, result.stderr)
                         self.assertTrue(log.read_text().startswith(expected))
 
-    def test_real_inner_shell_propagates_failures_and_requires_private_gtk(self):
-        _, calls = self.run_runner()
+    def test_real_inner_shell_propagates_failures_and_forwards_test_options(self):
+        _, calls = self.run_runner(options=("--jobs", "5"))
         args = calls[-1]["args"]
         command = args[args.index("bash"):]
         with tempfile.TemporaryDirectory() as directory:
@@ -165,6 +187,7 @@ class QualityRunnerTests(unittest.TestCase):
                 "cargo": 'echo "$*" >> "$CALL_LOG"\ncase "$1" in "$FAIL_PHASE") exit 42;; esac\n',
                 "xvfb-run": 'echo "xvfb $*" >> "$CALL_LOG"\nwhile [ "$#" -gt 0 ]; do\ncase "$1" in -a) shift;; -s) shift 2;; *) break;; esac\ndone\nexec "$@"\n',
                 "dbus-run-session": 'echo "private-dbus $*" >> "$CALL_LOG"\nshift\nexec "$@"\n',
+                "python3": 'echo "python3 $*" >> "$CALL_LOG"\ncase "$FAIL_PHASE" in test) exit 42;; esac\n',
             }.items():
                 tool = root / name
                 tool.write_text("#!/bin/sh\n" + content)
@@ -179,12 +202,12 @@ class QualityRunnerTests(unittest.TestCase):
                 if failure == "fmt":
                     self.assertNotIn("clippy", text)
                 if failure in ("fmt", "clippy"):
-                    self.assertNotIn("xvfb", text)
+                    self.assertNotIn("python3", text)
                 else:
-                    self.assertIn("xvfb -a -s -screen 0 1280x1024x24 -nolisten tcp -noreset "
-                                  "dbus-run-session -- env -u WAYLAND_DISPLAY GDK_BACKEND=x11", text)
-                    self.assertIn("GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1", text)
-                    self.assertIn("test --locked --all-targets --all-features", text)
+                    # Local shards start their own private displays; see test_quality_ci.
+                    self.assertIn("python3 scripts/quality_ci.py local --lanes 5", text)
+                    self.assertNotIn("xvfb", text)
+                    self.assertNotIn("test --locked", text)
 
 
 if __name__ == "__main__":

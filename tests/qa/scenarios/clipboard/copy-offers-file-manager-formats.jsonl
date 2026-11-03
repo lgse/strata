@@ -1,0 +1,9 @@
+{"scenario":"copy-offers-file-manager-formats","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":5,"score":41,"note":"Copy and cut publish the GNOME, KDE and uri-list clipboard formats other file managers paste from (#2028, #2034); read from a second display connection, so a missing format or wrong operation names the MIME type"}}
+{"select":{"entry":"todo.txt"}}
+{"key":"ctrl+c"}
+{"clipboard":"copy\nfile://$fixture_quoted/todo.txt","mime":"x-special/gnome-copied-files","message":"copying must offer the GNOME file-manager format"}
+{"clipboard":"0","mime":"application/x-kde-cutselection","message":"copying must clear the KDE cut flag"}
+{"clipboard":"file://$fixture_quoted/todo.txt\r\n","mime":"text/uri-list","message":"copying must offer a uri list"}
+{"key":"ctrl+x"}
+{"clipboard":"cut\nfile://$fixture_quoted/todo.txt","mime":"x-special/gnome-copied-files","message":"cutting must mark the GNOME format as a cut"}
+{"clipboard":"1","mime":"application/x-kde-cutselection","message":"cutting must set the KDE cut flag"}

@@ -93,6 +93,7 @@ fn trashed_entry(root: &Path, name: &str, original: &Path) -> (FileEntry, PathBu
             kind: crate::model::EntryKind::File,
             size: crate::model::MetadataValue::Unknown,
             modified_unix_seconds: crate::model::MetadataValue::Unknown,
+            created_unix_seconds: crate::model::MetadataValue::Unknown,
             recent_unix_seconds: crate::model::MetadataValue::Unknown,
             is_hidden: false,
             mode: crate::model::MetadataValue::Unknown,
@@ -448,6 +449,55 @@ fn unsupported_trash_fallback_explains_and_focuses_cancel() {
             }
             window.destroy();
             view.browser().clear_observer();
+        },
+    );
+}
+
+#[test]
+fn a_cancelled_confirmation_gives_back_the_cursor_a_completion_took_meanwhile() {
+    crate::test_support::gtk_test(
+        "ui::browser::trash::tests::a_cancelled_confirmation_gives_back_the_cursor_a_completion_took_meanwhile",
+        || {
+            let fixture = tempfile::tempdir().expect("fixture");
+            for name in ["a.txt", "b.txt", "c.zip", ".hidden.txt"] {
+                fs::write(fixture.path().join(name), b"keep").expect("fixture file");
+            }
+            let [asked, archive, hidden] = ["b.txt", "c.zip", ".hidden.txt"]
+                .map(|name| Location::local(fixture.path().join(name)));
+            let view = view();
+            let window = window(&view);
+            let browser = view.browser();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| browser.select_entries_by_location_at(0, std::slice::from_ref(&asked)));
+            let focused = || browser.focused_entry().map(|entry| entry.location);
+            assert!(!browser.preferences().show_hidden, "precondition");
+
+            let asked_about = browser
+                .focused_entry()
+                .into_iter()
+                .chain([crate::test_support::operations::entry(hidden)])
+                .collect();
+            view.state.show_delete_confirmation(asked_about);
+            assert!(browser.select_entries_by_location_at(0, std::slice::from_ref(&archive)));
+            assert!(modal_key(&window, gtk::gdk::Key::Escape));
+            wait_until(|| {
+                find_widget(window.upcast_ref(), &|widget: &gtk::Widget| {
+                    widget.has_css_class("app-modal-layer")
+                })
+                .is_none()
+            });
+
+            let selected = browser
+                .selected_entries()
+                .into_iter()
+                .map(|entry| entry.location)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                (focused(), selected, browser.preferences().show_hidden),
+                (Some(asked.clone()), vec![asked], false)
+            );
+            window.destroy();
+            browser.clear_observer();
         },
     );
 }

@@ -9,6 +9,7 @@ mod input;
 mod keyboard;
 mod note;
 mod observe;
+mod onscreen;
 mod pixels;
 mod pointer;
 mod protocol;

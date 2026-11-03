@@ -473,7 +473,7 @@ fn crypto_hints_are_read_off_the_ui_thread_and_rebuild_the_sidebar_when_they_arr
             }
             let rebuilt = Rc::new(Cell::new(0));
             let counted = rebuilt.clone();
-            let _sidebar = super::super::device_release::watch_sidebars(move || {
+            let _sidebar = super::super::device_release::watch_sidebars(None, move || {
                 counted.set(counted.get() + 1);
             });
             assert_eq!(

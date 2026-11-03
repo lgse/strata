@@ -126,6 +126,7 @@ control that might be midway through synchronization.
 | Sidebar default-place visibility | Existing sidebars bind to the shared Home, Trash, Network, Recent, and standard-folder visibility (Desktop, Documents, Downloads, Music, Pictures, and Videos) and rebuild. Enabled by default; hiding removes that place from the sidebar without changing pins or devices. Recent is also omitted when GTK recent-file tracking or the runtime Recent VFS backend is unavailable, and from local-only sidebars. Toggle the location chips under General → Sidebar; existing default-place Unpin context actions remain available where supported. Re-enable a hidden place’s chip to restore it. |
 | Sidebar expanded | Browser windows bind their header toggle at construction: a saved collapsed state starts closed without animation. The header toggle, `Ctrl+B`, or `Ctrl+N` in 10xer mode steps the sidebar from full to compact to hidden and back to full; each step persists and updates all open browser windows live. Expanded by default; not exposed in Settings. The portal chooser keeps its own unsaved sidebar state. |
 | Sidebar compact | The second step of the header toggle shows the icon rail and persists it; existing sidebars bind to it and change live, and a saved compact state starts as the rail at any window width. When the full sidebar does not fit beside the content (one column, or the preview and its minimum when a preview is present), a sidebar that is not compact by choice rails automatically; stepping from hidden to full shows the full sidebar anyway, and that stays until the window or the preview next runs out of room. Space that returns releases only an automatic rail. Off by default; not exposed in Settings. The portal chooser keeps its own unsaved compact state. |
+| Sidebar collapsed sections | Existing sidebars bind to the shared PINNED and DEVICES collapsed state (`sidebar_pinned_collapsed`, `sidebar_devices_collapsed`, both expanded by default) and fold or unfold in place without rebuilding. A collapsed section hides its rows except the selected pinned place, which stays under its header; the header shows the hidden count while collapsed. `g 1..9` chords and pin keycaps keep their numbers while a section is collapsed, and the icon rail, which has no headers, shows every section. Toggle with the section header. Not exposed in Settings. |
 | Modified date format | Modified-time labels read the saved format at every render; already-open labels re-render live. Properties uses full absolute local timestamps for Relative, while preserving ISO 8601 and Long. |
 | Folder colors/custom icons | Icon resolution reads the manager; existing customization refreshes notify rendered icons, including local sidebar folders, customization previews, and Properties. Sidebar folder icons retain their customization in collapsed mode and across row rebuilds. Local sidebar folders expose the shared Customize action. Entries are keyed by absolute local path, and file operations performed in Strata update them item by item as each item lands, saving once the burst of changes settles. Renames, moves, and their undo/redo carry the item's entries and those of everything under it to the real destination (including a Keep both name), even when a later operation superseded the one that moved them, or a failure or cancel stopped it partway. A move to a remote location drops them. Replace, for a move or a copy, takes the replaced item's entries at and under the destination with it to Trash; a moved item then brings its own. Merge keeps the destination folder's own entry; destination files it moves to Trash take their entries with them, as Replace does, and a merged move carries the merged folder's descendants over same-named destination entries. Trash removes the entries from `settings.toml` and keeps them in memory for the session, at most 10,000 entries (the oldest go first). Put back or undo re-applies them only to the same item, recognised by its mount's [identity rule](filesystem-compatibility.md#identity), at exactly the path it was trashed from; another item that left that path stays plain. Permanent delete removes them. Copies, including duplicates, start uncustomized, and a new item at a path whose item Strata moved or removed starts plain; entries left behind by changes outside Strata, or by an uncustomized item replacing another where Trash is unsupported, still apply to whatever appears at that path. Changes made outside Strata (shell commands, other applications, batch-rename actions, or an open folder renamed underneath a window) are not followed, nor are items that land after the operation's window closed, entries for missing paths are not pruned at startup, so unmounted volumes keep theirs, and a FAT-family destination that renames a moved folder's descendants leaves their entries at names that cannot exist there. |
 | Device display labels | `device_labels` stores Strata-only labels by filesystem UUID, with mount URI fallback when a UUID is unavailable. Sidebar device rows and Properties bind at construction, update across open windows, and reapply on row rebuilds. Set label… edits the label; blank restores the system-provided name. Filesystem labels, mount/boot configuration, and other applications remain unchanged. Label editors retain their local draft while their Save action follows the latest shared value. Send-to menus and destructive Format confirmations retain system-provided drive names. No Settings page is required. |
@@ -158,7 +159,9 @@ catalog filters, dialogs, and preview playback position remain window-local.
 Pinned places, portal integration and other externally managed state have their
 own stores and are not fields in the application preferences schema. Udiskie
 encrypted-volume integration is stored in `$XDG_CONFIG_HOME/udiskie/config.yml`
-plus `$XDG_DATA_HOME/strata/udiskie-install/state.toml`.
+plus `$XDG_DATA_HOME/strata/udiskie-install/state.toml`; that folder also keeps
+the user's original `config.yml.bak` or `config.json.bak` until uninstall
+restores it.
 Synchronization between independently running application processes, or manual
 external edits to `settings.toml` while Strata runs, is not supported by this
 in-process binding mechanism. External edits are read on the next launch.
@@ -182,6 +185,27 @@ follows later default changes. Every open column, tab, and window showing the sa
 folder updates live. View mode, density, hidden files, grouping, folders first, and
 List column widths stay application-wide.
 
+The sort menu lists Name, Size, Modified, Type, Extension and Created. Its **Name
+order** section chooses Natural or Alphabetical, with a separate **Case-sensitive
+names** toggle. Name order and case sensitivity are saved with the sort, including
+defaults and per-folder overrides, and also apply to names used to break ties under
+other fields. Selecting the checked sort field again switches to Unsorted, which
+has no row of its own. The menu stays open while options change; press Escape or
+click outside it to dismiss it.
+
+Extension uses the final suffix, so `archive.tar.gz` sorts under `gz`; dotfiles
+such as `.gitignore` and extensionless files have no extension. Created uses birth
+time, with unavailable times last in either direction. Unsorted follows directory
+discovery order, retaining that order within the folder/file groups when Folders
+first is on. Returning to Unsorted reloads the directory. Its direction and
+name-comparison controls are disabled.
+
+List view keeps an icon-only sort menu before Refresh. A labelled **Sort** control
+appears when the active field has no visible matching column, or Name uses a
+non-default comparison. Unsorted and camera device order have no label or column
+arrow; a hidden sort column remains active. The List sort menu includes Ascending
+and Descending, including for fields without a matching column header.
+
 In Icons, **Ctrl+Alt++** (or **Ctrl+Alt+=**) and **Ctrl+Alt+−**, **Ctrl+Shift+wheel**,
 and in 10xer mode **+** / **−** on the listing step the thumbnail size through 32,
 36, 40, 44, 48, 56, 64, 72, 80, 96, 112, 128, 144, 160, 192, 224, and 256 px; a size
@@ -191,7 +215,7 @@ default, and with per-folder settings off the default returns to 64 px. These
 change the size exactly as the slider does and change no size in Columns or List.
 Each change briefly shows the new size in the bottom-right corner.
 
-A pane's sort menu shows **Make this the default sort** when its sort differs from
+A pane's sort menu shows **Make default** when its sort differs from
 the default and **Reset to default sort** when the folder has its own sort; the
 thumbnail popover has the matching size actions. Making a value the default leaves
 other folders' values alone, except those now equal to it, which are dropped. With
@@ -381,7 +405,8 @@ movement are unchanged; use **Reduce motion** to disable nonessential animations
 In **Settings → General → File transfers**, enable **Open folder after dropping
 files** to show the destination after a successful drop: a child column in
 Columns, or navigation in Icons and List. It is off by default and saved as
-`open_folder_after_drop = false`. Changes apply to subsequent drops across
+`open_folder_after_drop = false`. It also selects the files saved from
+[dropped content](content-drops.md). Changes apply to subsequent drops across
 windows without restarting. Navigating away during a transfer is respected.
 Paste and **Move/Copy to…** continue to reveal their destination independently.
 

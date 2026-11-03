@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::adapters::gio_file_for_location;
+use crate::adapters::{CONTENT_TYPE_ATTRIBUTES, content_type_of, gio_file_for_location};
 use crate::app::Browser;
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::paths::is_trash_location;
@@ -58,6 +58,14 @@ pub(in crate::ui) fn open_location_at(
     let location = location.clone();
     let browser = Rc::downgrade(browser);
     glib::MainContext::default().spawn_local(async move {
+        if let Some(link) = read_web_link(&file).await {
+            let result =
+                gio::AppInfo::launch_default_for_uri_future(link.address(), Some(&context)).await;
+            if let Some(parent) = parent.upgrade() {
+                report_open_result(&location, &parent, result);
+            }
+            return;
+        }
         match resolve_default_application(&file).await {
             Ok(DefaultApplication {
                 content_type,
@@ -98,6 +106,31 @@ pub(in crate::ui) fn open_location_at(
     });
 }
 
+/// Web links saved from drops open their address; any other desktop entry,
+/// including an application launcher, keeps the usual opening path.
+async fn read_web_link(file: &gio::File) -> Option<crate::services::WebLink> {
+    const MAX_LINK_BYTES: i64 = 64 * 1024;
+    if !file
+        .basename()
+        .is_some_and(|name| crate::services::has_link_extension(&name))
+    {
+        return None;
+    }
+    let info = file
+        .query_info_future(
+            "standard::type,standard::size",
+            gio::FileQueryInfoFlags::NONE,
+            glib::Priority::DEFAULT,
+        )
+        .await
+        .ok()?;
+    if info.file_type() != gio::FileType::Regular || info.size() > MAX_LINK_BYTES {
+        return None;
+    }
+    let (contents, _) = file.load_contents_future().await.ok()?;
+    crate::services::WebLink::from_desktop_entry(std::str::from_utf8(&contents).ok()?)
+}
+
 struct DefaultApplication {
     content_type: String,
     app: Option<gio::AppInfo>,
@@ -107,7 +140,7 @@ struct DefaultApplication {
 async fn resolve_default_application(file: &gio::File) -> Result<DefaultApplication, glib::Error> {
     let info = file
         .query_info_future(
-            "standard::type,standard::content-type,unix::mode",
+            &format!("standard::type,{CONTENT_TYPE_ATTRIBUTES},unix::mode"),
             gio::FileQueryInfoFlags::NONE,
             glib::Priority::DEFAULT,
         )
@@ -118,8 +151,7 @@ async fn resolve_default_application(file: &gio::File) -> Result<DefaultApplicat
             &crate::i18n::tr("Broken symbolic links cannot be opened with an application"),
         ));
     }
-    let content_type = info
-        .content_type()
+    let content_type = content_type_of(&info)
         .map(|value| value.to_string())
         .ok_or_else(|| {
             glib::Error::new(

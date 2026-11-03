@@ -11,6 +11,11 @@ semantics come from the GVfs backend. This document covers them only where it sa
 [names](#names) they get by their address, the links they refuse, and how a native item moved to
 one is deleted.
 
+A failed `smb://` connection gets the same refused, timed-out and unreachable messages as
+[SFTP](remote-sftp.md#failures), read from the system error text GVfs-SMB appends to its generic
+failure. An SMB host that does not resolve still shows the generic error, because GVfs reports
+only "Invalid argument" for it.
+
 ## Guarantees
 
 - **Never replace a concurrent arrival.** An item that appears at a destination while Strata is
@@ -1187,6 +1192,9 @@ and looks for an existing item, a broken link included, under that name. Where t
 another, the prompt says so first ("“a:b” will be saved as “a_b” in this location."), so copying
 `a:b` onto a stick that holds `a_b` offers Replace or Keep Both instead of failing with "already
 exists". Replace, Merge and Keep Both act on that name, and Keep Both is offered for moves too.
+A file and a folder never replace one another, so where an item meets one of the other kind the
+prompt offers Keep Both instead of Replace and says why, and Apply to All with Replace leaves such
+an item its own prompt, as Merge does for a file.
 Where a folder from another filesystem would be merged into a destination whose rules change
 characters, the prompt also says that items whose names change overwrite items with the new names.
 Where the destination is slow to answer, the transfer shows "Preparing items…" with Cancel and no
@@ -1413,7 +1421,10 @@ removed once its originals have gone back. One budget covers a whole Delete, a p
 after its items are placed (its sources and the originals it set aside), or a copy's cleanups, so a
 thousand held folders cost one wait. Each put back of set-aside originals has a budget of its own,
 so cancelling a merge or Replace whose original another program holds open can take that whole
-budget once more. A folder that empties goes at once and costs no wait.
+budget once more. A folder that empties goes at once and costs no wait. A folder still refused
+for its leftovers does not stop the rest of a Delete or cleanup: everything else is removed, the
+folder and the folders above it stay, and the error names it. Any other error stops the removal at
+once.
 
 ### Naming what holds it
 
@@ -1807,7 +1818,10 @@ worker:
   it has entered its working folder.
 - Once it has resolved its command-line paths, Strata makes `/` its working folder, so libraries
   that look files up relative to the working folder never wait on the folder Strata was started
-  from. A program that Open With starts without a working folder of its own starts in `/` too.
+  from. A program that Open or Open With starts begins in the folder of the first opened file
+  unless its desktop entry sets `Path`: Strata enters that folder only while GIO spawns the
+  program and returns to `/` as soon as it has started, so the folder stays busy only for the
+  program. Files without a local path, and a folder Strata cannot enter, leave the program in `/`.
 - Strata's own settings and state files are saved by one background writer and read again there
   after another program changes them; see [Saved preferences](preferences.md).
 - An enumerator or stream the interface lets go of is closed in the background
@@ -1822,9 +1836,13 @@ The exceptions are:
 - The reads at start, before the first window shows: Strata's settings and state files, GTK's
   bookmarks file, the install marker beside Strata's executable and the check for a Flatpak
   sandbox. The bundled font Strata writes at start is read by fontconfig whenever it lays out
-  text.
+  text. Before any of them, and before anything asks GIO for its default VFS, which waits about
+  25 s on a `gvfsd` that does not answer, Strata checks in a subprocess that GVfs answers within
+  2 s; if it does not, Strata restarts with GIO's local file and volume backends. Loading the
+  settings already asks GIO for its default VFS, so a debug build stops at that check if anything
+  before it has loaded GIO's modules.
 - GLib's volume monitor, which works only on the main thread. Strata takes it once, in the primary
-  instance's start-up, right after checking that GVfs answers and before the first window shows.
+  instance's start-up, after checking that GVfs answers and before the first window shows.
   Strata skips that check while the marker it wrote after the last passing check still matches the
   running `gvfsd` processes. The marker does not list GVfs's volume monitors
   (`gvfs-udisks2-volume-monitor` and the like), which this first use asks, so neither a `gvfsd`
@@ -1850,14 +1868,17 @@ interface thread makes, and its stall watchdog names the call the interface thre
 ### Request lanes
 
 These worker requests go through their mount's lane in `src/adapters/volume/mount_lanes.rs`: folder
-loads, probes, monitor creation, the release before an operation, the leftover review and its sweep
-of stale probes, imports, exports and program checks of custom actions, and the checks and
-background re-lists of [changes made elsewhere](#changes-made-elsewhere). A lane is keyed by the
-mount's id once a `statx` answer has named it. Until then a request is keyed by its path and the
-mount the table places it on, so a dead target of a symbolic link trips only that path and what lies
-below it, never the home folder the link sits in. A GVfs location is keyed by its scheme, user,
-server and port. GVfs never times out its own requests, so there the 2 s count from when each
-request, a folder load included, started.
+loads, probes, monitor creation, the look a monitor takes at its folder's path after a batch of
+changes, the search for a departed folder by its identity, the release before an operation, the
+leftover review and its sweep of stale probes, imports, exports and program checks of custom
+actions, the checks and background re-lists of [changes made elsewhere](#changes-made-elsewhere),
+and the preview's background reads of whether files named as audio or video hold media ([media
+sequences](preview-sandbox.md#video-previews)). A lane is keyed by the mount's id once a `statx`
+answer has named it. Until then a request is keyed by its path and the mount the table places it on,
+so a dead target of a symbolic link trips only that path and what lies below it, never the home
+folder the link sits in. A GVfs location is keyed by its scheme, user, server and port. GVfs never
+times out its own requests, so there the 2 s count from when each request, a folder load included,
+started.
 
 - **Progress.** A request makes progress when it gets an answer: success, "not found", "not a
   folder", a stale handle or a permission refusal. `EIO`, `ETIMEDOUT`, `EHOSTDOWN`, `ENOTCONN`, a
@@ -1951,6 +1972,19 @@ mount that stopped answering, monitors on every folder deliver nothing, and late
 cancels wait, until that server answers. The window stays usable, and folders that are
 [checked](#changes-made-elsewhere) still are, but other folders stop updating by themselves
 meanwhile.
+
+Inotify watches a folder, not its path: when another program renames or moves one of the folder's
+ancestors, the monitor sees nothing and goes on to report later changes under the old path. So after
+each batch of changes the folder is looked up at its path again, as background work on the lane,
+skipped while the lane is busy or stalled. One look runs at a time; batches that arrive meanwhile
+ask for one more when it ends. When the path holds no folder, or a folder that the mount's [identity
+rule](#identity) proves to be another than the one the folder's load found, the monitor reports its
+folder's removal, and the browser checks where the folder went, as [Browser directory-event
+routing](architecture.md#browser-directory-event-routing) describes. Searching for it lists the
+nearest ancestor that still exists, as an interactive request on the lane, and never looks at a path
+that the mount table, read from the ancestor's real path, places on another mount: a mount point
+cannot be renamed, and looking into another mount can wait on a server that stopped answering or
+trigger an automount. So a folder on another mount than the renamed ancestor's counts as departed.
 
 A column counts as unmonitored until its monitor is live. Once it is, the folder's change stamp is
 read again, and a change since the load re-lists the folder once. Before Linux 6.13, a change in

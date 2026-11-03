@@ -114,11 +114,6 @@ impl Browser {
     }
 
     fn complete_publication(self: &Rc<Self>, depth: usize, plan: PublicationPlan) {
-        tracing::debug!(
-            depth,
-            entries = plan.total,
-            "directory publication finished"
-        );
         if let Some(focused) = plan.focused {
             self.emit(BrowserEvent::SelectionSetChanged {
                 depth,
@@ -141,6 +136,11 @@ impl Browser {
             }
             PublishTerminal::SortingFinished => self.finish_sorting(depth),
         }
+        tracing::debug!(
+            depth,
+            entries = plan.total,
+            "directory publication finished"
+        );
     }
 
     /// Converge with the authoritative model before mutations that assume all

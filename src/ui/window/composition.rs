@@ -183,6 +183,14 @@ impl WindowContent {
         window.connect_unrealize(move |_| self.dispose());
     }
 
+    /// Frees a closed tab. The tab's widgets and the closures that capture
+    /// them form reference cycles that nothing else breaks, so every widget is
+    /// disposed as `gtk_window_destroy` disposes a window.
+    pub(super) fn destroy(&self) {
+        self.dispose();
+        dispose_widget_tree(self.overlay.upcast_ref());
+    }
+
     fn dispose(&self) {
         for controller in self.key_controllers.take() {
             if let Some(widget) = controller.widget() {
@@ -264,4 +272,39 @@ fn install_browser_actions(
             toggle_preferences.set_arrow_navigation_scoped(next);
         },
     );
+}
+
+/// Disposes `root`, which must no longer have a parent, and whatever of its tree
+/// survives that. Dispose drops a widget's signal handlers and controllers, so
+/// a cycle through closures capturing the widget is broken while references
+/// to it remain. Widgets nothing else holds are freed by their parent's
+/// dispose, as on window destruction; a widget its parent keeps, such as a
+/// range's slider, is left to that parent.
+#[expect(
+    unsafe_code,
+    reason = "glib-rs marks g_object_run_dispose unsafe because later use of the object is undefined"
+)]
+fn dispose_widget_tree(root: &gtk::Widget) {
+    let mut tree = vec![root.downgrade()];
+    let mut index = 0;
+    while let Some(widget) = tree.get(index).and_then(glib::WeakRef::upgrade) {
+        let mut child = widget.first_child();
+        while let Some(current) = child {
+            child = current.next_sibling();
+            tree.push(current.downgrade());
+        }
+        index += 1;
+    }
+    for widget in tree.iter().filter_map(glib::WeakRef::upgrade) {
+        if widget.parent().is_some() {
+            continue;
+        }
+        let controllers = widget.observe_controllers();
+        while let Some(controller) = controllers.item(0).and_downcast::<gtk::EventController>() {
+            widget.remove_controller(&controller);
+        }
+        // SAFETY: the tab is closed and nothing presents these widgets again;
+        // they stay valid objects until their last reference is dropped.
+        unsafe { widget.run_dispose() };
+    }
 }

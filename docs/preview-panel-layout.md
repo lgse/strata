@@ -234,6 +234,7 @@ instead.
 | Deleting the focused entry mirrors what takes its place, for any input | `tests/qa/scenarios/entry_management/trashing-open-folder-opens-next.jsonl` |
 | Reveals leave a viewport-filling column alone and fully reveal a clipped one that fits | `src/ui/browser/columns/tests.rs::reveal_column_does_not_move_an_already_visible_active_column`, `reveal_shows_a_fitting_column_whole_and_leaves_a_filling_one_alone` |
 | Pointer preview closes deeper columns first | `src/app/browser/tests/navigation.rs::previewing_a_file_in_a_parent_column_closes_deeper_columns_before_requesting` |
+| A plain click on a file closes deeper columns whether or not it previews | `tests/qa/scenarios/click_modes/file-click-closes-deeper-column.jsonl` |
 | Automatic width, minimum, and session manual minimum | `tests/qa/scenarios/quick_preview/column-preview-fills-free-space.jsonl` |
 | A column boundary resizes the left column from either side, even when it is clipped | Manual check: the GUI scenario was removed in #1601 after keyboard-navigation timing flakes |
 | The column–preview boundary resizes the side it is grabbed from | `tests/qa/scenarios/quick_preview/preview-boundary-resizes-grabbed-side.jsonl` |

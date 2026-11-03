@@ -35,6 +35,7 @@ fn entry(path: &Path, directory: bool) -> FileEntry {
         mode: MetadataValue::Unknown,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
@@ -201,7 +202,7 @@ fn save_files_preserve_order_and_report_collisions_once() {
         checked.paths,
         vec![folder.path().join("first"), folder.path().join("second")]
     );
-    assert!(checked.existing_files);
+    assert_eq!(checked.existing, vec![folder.path().join("second")]);
 }
 
 #[test]

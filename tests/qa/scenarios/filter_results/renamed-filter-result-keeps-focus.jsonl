@@ -1,0 +1,74 @@
+{"scenario":"renamed-filter-result-keeps-focus","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"tree":{"a.csv":"a\n","b.csv":"b\n","c.json":"c\n","d.txt":"d\n"},"variants":[{"id":"inline"},{"id":"tab"},{"id":"tenxer","prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false}},{"id":"moved","tree":{"top":{"a.csv":"a\n","b.csv":"b\n","c.json":"c\n","d.txt":"d\n"}},"modes":["icons","list"]}]}
+{"wait":{"entries":["a.csv","b.csv","c.json","d.txt"],"dir":"$root"},"message":"the four fixture files listed","variants":["inline","tab","tenxer"]}
+{"key":"ctrl+f","variants":["inline","tab"]}
+{"wait":{"focused":true},"message":"the cursor to reach the listing","variants":["tenxer"]}
+{"key":"f","variants":["tenxer"]}
+{"wait":{"field":{}},"message":"an editable field to take focus","variants":["inline","tab","tenxer"]}
+{"type":".","variants":["inline","tab","tenxer"]}
+{"key":"Return","variants":["tenxer"]}
+{"wait":{"matches":{"set":["a.csv","b.csv","c.json","d.txt"]}},"message":"every file to match '.'","variants":["inline","tab","tenxer"]}
+{"wait":{"present":{"result":"c.json"}},"message":"the 'c.json' result","variants":["inline","tab","tenxer"]}
+{"click":{"result":"c.json"},"variants":["inline","tab","tenxer"]}
+{"wait":{"all":[{"state":{"target":{"result":"c.json"},"focused":true,"selected":true}},{"state":{"target":{"result":"a.csv"},"selected":false}},{"state":{"target":{"result":"b.csv"},"selected":false}},{"state":{"target":{"result":"d.txt"},"selected":false}}]},"message":"a click to focus and select only the result 'c.json'","variants":["inline","tab","tenxer"]}
+{"key":"F2","variants":["inline"]}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus on 'c.json'","variants":["inline"]}
+{"remember":{"field":true},"as":"taken","variants":["inline"]}
+{"key":"ctrl+a","variants":["inline"]}
+{"type":"b.csv","variants":["inline"]}
+{"wait":{"field":{"of":"taken","text":"b.csv"}},"message":"the taken name 'b.csv' to replace the whole name","variants":["inline"]}
+{"key":"Return","variants":["inline"]}
+{"wait":{"dialog":"Unable to rename item"},"message":"renaming onto 'b.csv' to be refused","variants":["inline"]}
+{"fs":{"path":"c.json","text":"c\n"},"timeout_ms":0,"message":"the refused rename must keep 'c.json'","variants":["inline"]}
+{"fs":{"path":"b.csv","text":"b\n"},"timeout_ms":0,"message":"the refused rename must keep 'b.csv'","variants":["inline"]}
+{"key":"Escape","variants":["inline"]}
+{"wait":{"dialog":null},"message":"the rename error to close","variants":["inline"]}
+{"wait":{"state":{"target":{"result":"c.json"},"focused":true,"selected":true}},"message":"focus to return to the result 'c.json' after the refused rename","variants":["inline"]}
+{"expect":{"not":{"subtree_text":{"target":{"result":"a.csv"},"contains":"c.json"}}},"message":"the refused rename to leave the 'a.csv' result's name alone","variants":["inline"]}
+{"expect":{"not":{"subtree_text":{"target":{"result":"b.csv"},"contains":"c.json"}}},"message":"the refused rename to leave the 'b.csv' result's name alone","variants":["inline"]}
+{"expect":{"not":{"subtree_text":{"target":{"result":"d.txt"},"contains":"c.json"}}},"message":"the refused rename to leave the 'd.txt' result's name alone","variants":["inline"]}
+{"key":"F2","variants":["inline","tab"]}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus on 'c.json'","variants":["inline","tab"]}
+{"key":"r","variants":["tenxer"]}
+{"wait":{"field":{"text":"c.json","focused":true}},"message":"r to open the rename prompt on 'c.json'","variants":["tenxer"]}
+{"remember":{"field":true},"as":"rename","variants":["inline","tab","tenxer"]}
+{"key":"ctrl+a","variants":["inline","tab","tenxer"]}
+{"type":"0.md","variants":["inline","tab","tenxer"]}
+{"wait":{"field":{"of":"rename","text":"0.md"}},"message":"the new name to replace the whole name","variants":["inline","tab","tenxer"]}
+{"key":"Return","variants":["inline","tenxer"]}
+{"key":"Tab","variants":["tab"]}
+{"fs":{"path":"0.md","text":"c\n"},"message":"Return to rename 'c.json' to '0.md'","variants":["inline","tab","tenxer"]}
+{"wait":{"matches":{"set":["0.md","a.csv","b.csv","d.txt"]}},"message":"the results to list '0.md' in place of 'c.json'","variants":["inline","tab","tenxer"]}
+{"wait":{"state":{"target":{"result":"0.md"},"focused":true,"selected":true}},"message":"the renamed result '0.md' to stay focused and selected","variants":["inline","tab","tenxer"]}
+{"expect":{"not":{"subtree_text":{"target":{"result":"a.csv"},"contains":"0.md"}}},"message":"the 'a.csv' result to show its own name","variants":["inline","tab","tenxer"]}
+{"expect":{"not":{"subtree_text":{"target":{"result":"b.csv"},"contains":"0.md"}}},"message":"the 'b.csv' result to show its own name","variants":["inline","tab","tenxer"]}
+{"expect":{"not":{"subtree_text":{"target":{"result":"d.txt"},"contains":"0.md"}}},"message":"the 'd.txt' result to show its own name","variants":["inline","tab","tenxer"]}
+{"key":"Delete","variants":["inline","tab","tenxer"]}
+{"wait":{"dialog":"Move 1 item to Trash?"},"message":"Delete to ask to trash one item","variants":["tenxer"]}
+{"wait":{"mentions":{"target":{"dialog":true},"role":"label","equals":"0.md"}},"message":"the confirmation to name the renamed '0.md'","variants":["tenxer"]}
+{"wait":{"state":{"target":{"dialog_button":"Move to Trash"},"focused":true}},"message":"Move to Trash focused","variants":["tenxer"]}
+{"key":"Return","variants":["tenxer"]}
+{"fs":{"path":"0.md","exists":false},"message":"Delete to trash the renamed '0.md'","variants":["inline","tab","tenxer"]}
+{"fs":{"path":"a.csv","text":"a\n"},"timeout_ms":0,"variants":["inline","tab","tenxer"]}
+{"fs":{"path":"b.csv","text":"b\n"},"timeout_ms":0,"variants":["inline","tab","tenxer"]}
+{"fs":{"path":"d.txt","text":"d\n"},"timeout_ms":0,"variants":["inline","tab","tenxer"]}
+{"select":{"entry":"top"},"variants":["moved"]}
+{"key":"Return","variants":["moved"]}
+{"wait":{"entries":["a.csv","b.csv","c.json","d.txt"],"dir":"top"},"message":"the four files in 'top' listed","variants":["moved"]}
+{"key":"ctrl+f","variants":["moved"]}
+{"wait":{"field":{}},"message":"an editable field to take focus","variants":["moved"]}
+{"type":".","variants":["moved"]}
+{"wait":{"matches":{"set":["a.csv","b.csv","c.json","d.txt"]}},"message":"every file in 'top' to match '.'","variants":["moved"]}
+{"click":{"result":"c.json"},"variants":["moved"]}
+{"wait":{"all":[{"state":{"target":{"result":"c.json"},"focused":true,"selected":true}},{"state":{"target":{"result":"a.csv"},"selected":false}},{"state":{"target":{"result":"b.csv"},"selected":false}},{"state":{"target":{"result":"d.txt"},"selected":false}}]},"message":"a click to focus and select only the result 'c.json'","variants":["moved"]}
+{"key":"F2","variants":["moved"]}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus on 'c.json'","variants":["moved"]}
+{"remember":{"field":true},"as":"move","variants":["moved"]}
+{"key":"ctrl+a","variants":["moved"]}
+{"type":"../c.json","variants":["moved"]}
+{"wait":{"field":{"of":"move","text":"../c.json"}},"message":"a path out of 'top' to replace the whole name","variants":["moved"]}
+{"key":"Return","variants":["moved"]}
+{"fs":{"path":"c.json","text":"c\n"},"message":"Return to move 'c.json' out of 'top'","variants":["moved"]}
+{"wait":{"matches":{"set":["a.csv","b.csv","d.txt"]}},"message":"the moved 'c.json' to leave the results","variants":["moved"]}
+{"wait":{"all":[{"state":{"target":{"result":"a.csv"},"selected":false}},{"state":{"target":{"result":"b.csv"},"selected":false}},{"state":{"target":{"result":"d.txt"},"selected":false}}]},"message":"no remaining result to take the moved item's selection","variants":["moved"]}
+{"key":"Delete","variants":["moved"]}
+{"during":{"all":[{"file":{"path":"$fixture/top/a.csv","exists":true}},{"file":{"path":"$fixture/top/b.csv","exists":true}},{"file":{"path":"$fixture/top/d.txt","exists":true}}]},"ms":1000,"every_ms":50,"message":"Delete after the move must not trash a remaining result","variants":["moved"]}

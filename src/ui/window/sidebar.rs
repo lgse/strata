@@ -153,7 +153,7 @@ pub(in crate::ui) fn build_sidebar(
     state.sync_active_place();
     let release_watch = {
         let weak = Rc::downgrade(&state);
-        super::device_release::watch_sidebars(move || {
+        super::device_release::watch_sidebars(Some(&state.browser), move || {
             if let Some(state) = weak.upgrade() {
                 state.rebuild();
             }
@@ -167,7 +167,7 @@ pub(in crate::ui) fn build_sidebar(
         update_label: shell.update_label,
         update_version: shell.update_version,
         handlers: RefCell::new(handlers),
-        mount_handler: RefCell::new(Some(mount_handler)),
+        mount_handler: RefCell::new(mount_handler),
         recent_setting_handler: RefCell::new(recent_setting_handler),
         release_watch,
         bookmark_watch: RefCell::new(Some(bookmark_watch)),
@@ -330,6 +330,8 @@ impl SidebarState {
             keycaps: RefCell::new(Vec::new()),
             keycaps_shown: Cell::new(false),
             visible_pins: RefCell::new(Vec::new()),
+            pinned_section: RefCell::new(None),
+            devices_section: RefCell::new(None),
             empty_pinned_section: RefCell::new(Vec::new()),
             file_drag_over: Cell::new(false),
             drop_feedback,
@@ -361,6 +363,21 @@ impl SidebarState {
                 {
                     state.places_visibility.replace(visibility);
                     state.rebuild();
+                }
+            },
+        );
+        let weak = Rc::downgrade(self);
+        self.preference_manager.bind_preference(
+            &self.widget,
+            |manager| {
+                (
+                    manager.sidebar_pinned_collapsed(),
+                    manager.sidebar_devices_collapsed(),
+                )
+            },
+            move |_, _| {
+                if let Some(state) = weak.upgrade() {
+                    state.sync_section_states();
                 }
             },
         );
@@ -431,7 +448,13 @@ pub(super) enum PlaceNavigation {
 
 fn connect_device_changes(
     state: &Rc<SidebarState>,
-) -> (Vec<glib::SignalHandlerId>, glib::SignalHandlerId) {
+) -> (Vec<glib::SignalHandlerId>, Option<glib::SignalHandlerId>) {
+    // Tests share the host's mount table, which other processes change at any
+    // moment (each container start does); a rebuild then replaces the rows a
+    // test holds. Tests build device rows directly instead.
+    if cfg!(test) {
+        return (Vec::new(), None);
+    }
     let monitor = &state.volume_monitor;
     let handlers = vec![
         monitor.connect_mount_added(rebuild_on_change(state)),
@@ -450,7 +473,7 @@ fn connect_device_changes(
             state.queue_rebuild();
         }
     });
-    (handlers, mount_handler)
+    (handlers, Some(mount_handler))
 }
 
 fn rebuild_on_change<T: 'static>(

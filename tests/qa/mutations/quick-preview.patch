@@ -1,12 +1,12 @@
 diff --git a/src/ui/window/keyboard/commands.rs b/src/ui/window/keyboard/commands.rs
-index 158f3d8d..5c96dff0 100644
+index a4dae185..b4cf74fc 100644
 --- a/src/ui/window/keyboard/commands.rs
 +++ b/src/ui/window/keyboard/commands.rs
-@@ -85,7 +85,7 @@ impl Dispatcher {
+@@ -86,7 +86,7 @@ impl Dispatcher {
      }
  
      pub(super) fn filter_and_location_commands(&self, event: &KeyEvent) -> KeyResult {
--        if event.press.is(SPACE)
+-        if event.press.is(PREVIEW.in_map(Map::Default))
 +        if event.press.is(crate::ui::keys::Binding::plain(gtk::gdk::Key::F35))
              && let Some(entry) = self.view.search_result_for_space()
          {

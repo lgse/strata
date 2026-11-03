@@ -47,6 +47,7 @@ impl FileSource for MenuSource {
                     },
                     size: MetadataValue::Known(5),
                     modified_unix_seconds: MetadataValue::Known(0),
+                    created_unix_seconds: MetadataValue::Unknown,
                     mode: MetadataValue::Known(
                         if matches!(name, "run-me" | "folder" | "photos.zip") {
                             0o755

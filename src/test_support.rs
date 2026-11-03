@@ -5,6 +5,7 @@
 pub(crate) mod operations;
 pub(crate) mod parked;
 mod tests;
+pub(crate) mod widgets;
 
 use std::{
     io::Write,
@@ -225,6 +226,35 @@ pub(crate) fn create_empty_file(path: &std::path::Path) -> std::io::Result<()> {
     )
     .map(drop)
     .map_err(std::io::Error::from)
+}
+
+pub(crate) fn present_window(window: &gtk::Window) {
+    use gtk::prelude::*;
+    use std::{cell::Cell, rc::Rc};
+
+    window.present();
+    let clock = window.frame_clock().expect("presented window frame clock");
+    let painted = Rc::new(Cell::new(false));
+    let ready = painted.clone();
+    let handler = clock.connect_after_paint(move |_| ready.set(true));
+    clock.request_phase(gtk::gdk::FrameClockPhase::PAINT);
+    let expired = Rc::new(Cell::new(false));
+    let timed_out = expired.clone();
+    let timeout = glib::timeout_add_local_once(Duration::from_secs(10), move || {
+        timed_out.set(true);
+    });
+    let context = glib::MainContext::default();
+    while !painted.get() && !expired.get() {
+        context.iteration(true);
+    }
+    clock.disconnect(handler);
+    if !expired.get() {
+        timeout.remove();
+    }
+    assert!(
+        painted.get(),
+        "presented window did not paint its first frame"
+    );
 }
 
 /// GTK initialization is thread-affine; each UI test gets a process and disposable preferences.
