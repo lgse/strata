@@ -27,6 +27,11 @@ impl ViewState {
         if self.dispatch(event) {
             self.finish_handling(event);
         }
+        if let BrowserEvent::SortingFinished { depth } | BrowserEvent::ColumnReloaded { depth } =
+            event
+        {
+            crate::ui::browser::pane_header::sync_open_sort_menus(&self.browser, *depth);
+        }
     }
 
     /// Routes one event to its handler; false when the event needs no shared follow-up.

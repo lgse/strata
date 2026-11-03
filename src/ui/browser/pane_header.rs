@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 mod sort_menu;
-pub(in crate::ui) use sort_menu::{column_sort_menu, list_sort_menu, sync_list_sort_menu};
+pub(in crate::ui) use sort_menu::{
+    column_sort_menu, list_sort_menu, sync_list_sort_menu, sync_open_sort_menus,
+};
 
 use crate::app::Browser;
 use crate::model::{SortDirection, SortKey};

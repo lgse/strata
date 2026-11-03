@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-use std::rc::Rc;
+use std::cell::RefCell;
+use std::rc::{Rc, Weak};
 
 use gtk::{gio, glib, prelude::*};
 
@@ -629,50 +630,68 @@ pub(in crate::ui) fn list_sort_menu(browser: &Rc<Browser>, depth: usize) -> gtk:
     sort_menu_button(browser, depth, true)
 }
 
-fn observe_open_sort_menu(browser: &Rc<Browser>, menu: &Rc<SortMenu>, depth: usize) {
-    let observed = Rc::downgrade(menu);
-    let weak_browser = Rc::downgrade(browser);
-    browser.observe(move |event| {
-        if matches!(
-            event,
-            crate::app::BrowserEvent::SortingFinished { .. }
-                | crate::app::BrowserEvent::ColumnReloaded { .. }
-        ) && let (Some(menu), Some(browser)) = (observed.upgrade(), weak_browser.upgrade())
+thread_local! {
+    static OPEN_MENUS: RefCell<Vec<Weak<SortMenu>>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Refreshes the open sort menus of `browser`'s pane at `depth` once its sort settles.
+pub(in crate::ui) fn sync_open_sort_menus(browser: &Browser, depth: usize) {
+    let open: Vec<Rc<SortMenu>> = OPEN_MENUS.with_borrow(|menus| {
+        menus.iter().filter_map(Weak::upgrade).collect()
+    });
+    for menu in open {
+        if menu.depth == depth
             && menu
-                .popover
+                .browser
                 .upgrade()
-                .is_some_and(|popover| popover.is_visible())
+                .is_some_and(|owner| std::ptr::eq(owner.as_ref(), browser))
         {
-            menu.sync(&browser, depth);
+            menu.sync(browser, depth);
+        }
+    }
+}
+
+fn track_open_menu(popover: &gtk::PopoverMenu, menu: &Rc<SortMenu>) {
+    let weak_browser = menu.browser.clone();
+    let opened = menu.clone();
+    popover.connect_map(move |_| {
+        OPEN_MENUS.with_borrow_mut(|menus| {
+            menus.retain(|open| open.strong_count() > 0 && !open.ptr_eq(&Rc::downgrade(&opened)));
+            menus.push(Rc::downgrade(&opened));
+        });
+        if let Some(browser) = weak_browser.upgrade() {
+            opened.sync(&browser, opened.depth);
         }
     });
-    if let Some(popover) = menu.popover.upgrade() {
-        let observed = Rc::downgrade(menu);
-        let weak_browser = Rc::downgrade(browser);
-        PreferenceManager::shared().bind_preference(
-            &popover,
-            |manager| {
-                (
-                    manager.default_sort_options(),
-                    manager.folder_sorts_revision(),
-                )
-            },
-            move |popover, _| {
-                if popover.is_visible()
-                    && let (Some(menu), Some(browser)) =
-                        (observed.upgrade(), weak_browser.upgrade())
-                {
-                    menu.sync(&browser, depth);
-                }
-            },
-        );
-    }
+    let closed = Rc::downgrade(menu);
+    popover.connect_unmap(move |_| {
+        OPEN_MENUS.with_borrow_mut(|menus| {
+            menus.retain(|open| open.strong_count() > 0 && !open.ptr_eq(&closed));
+        });
+    });
+    let observed = Rc::downgrade(menu);
+    PreferenceManager::shared().bind_preference(
+        popover,
+        |manager| {
+            (
+                manager.default_sort_options(),
+                manager.folder_sorts_revision(),
+            )
+        },
+        move |popover, _| {
+            if popover.is_visible()
+                && let Some(menu) = observed.upgrade()
+                && let Some(browser) = menu.browser.upgrade()
+            {
+                menu.sync(&browser, menu.depth);
+            }
+        },
+    );
 }
 
 fn sort_menu_button(browser: &Rc<Browser>, depth: usize, list: bool) -> gtk::MenuButton {
     let (popover, menu) = SortMenu::build(browser, depth, list);
     let menu = Rc::new(menu);
-    observe_open_sort_menu(browser, &menu, depth);
     let button = gtk::MenuButton::builder().popover(&popover).build();
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::SETTINGS_2,
@@ -681,13 +700,8 @@ fn sort_menu_button(browser: &Rc<Browser>, depth: usize, list: bool) -> gtk::Men
     crate::ui::controls::pane_header_action(&button);
     button.add_css_class("sort-menu-button");
     crate::ui::tenxer_mode::hide_while_enabled(&button);
-    let weak = Rc::downgrade(browser);
     menu.sync(browser, depth);
-    popover.connect_map(move |_| {
-        if let Some(browser) = weak.upgrade() {
-            menu.sync(&browser, depth);
-        }
-    });
+    track_open_menu(&popover, &menu);
     button
 }
 

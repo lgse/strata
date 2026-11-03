@@ -690,6 +690,11 @@ impl Browser {
         self.observers.borrow_mut().push(Rc::new(observer));
     }
 
+    #[cfg(test)]
+    pub fn observer_count(&self) -> usize {
+        self.observers.borrow().len()
+    }
+
     pub fn set_chooser_mode(&self, chooser: bool) {
         self.chooser_mode.set(chooser);
     }

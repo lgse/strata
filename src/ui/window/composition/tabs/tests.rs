@@ -675,6 +675,35 @@ fn closing_tabs_releases_observers_and_keeps_other_contexts_alive() {
 }
 
 #[test]
+fn rebuilding_panes_adds_no_browser_observers() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::rebuilding_panes_adds_no_browser_observers",
+        || {
+            let (window, tabs) = open();
+            let root = tempfile::tempdir().expect("tab fixture");
+            let child = root.path().join("child");
+            std::fs::create_dir(&child).expect("child folder");
+            let view = tabs.active_browser();
+            load(&view, Location::local(root.path()));
+            let before = view.browser().observer_count();
+            for mode in [
+                crate::ui::browser_modes::BrowserMode::Columns,
+                crate::ui::browser_modes::BrowserMode::Icons,
+                crate::ui::browser_modes::BrowserMode::List,
+            ] {
+                tabs.preferences.set_browser_mode(mode);
+                for _ in 0..3 {
+                    load(&view, Location::local(&child));
+                    load(&view, Location::local(root.path()));
+                }
+            }
+            assert_eq!(view.browser().observer_count(), before);
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn hidden_tabs_and_new_tabs_apply_live_browsing_preferences() {
     gtk_test(
         "ui::window::composition::tabs::tests::hidden_tabs_and_new_tabs_apply_live_browsing_preferences",
