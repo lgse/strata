@@ -22,6 +22,36 @@ fn append_all(container: &gtk::Box, widgets: &[&gtk::Widget]) {
     }
 }
 
+/// Plain creation rows; the new item is a sibling of the clicked entry.
+pub(super) struct CreationOptions {
+    pub(super) container: gtk::Box,
+    pub(super) new_folder: gtk::Button,
+    pub(super) new_file: gtk::Button,
+}
+
+impl CreationOptions {
+    fn build() -> Self {
+        let options = Self {
+            container: gtk::Box::new(gtk::Orientation::Vertical, 0),
+            new_folder: item_context_option(
+                icons::FOLDER_PLUS,
+                "New Folder",
+                ContextHint::NewFolder,
+            ),
+            new_file: item_context_option(icons::FILE_PLUS, "New File", ContextHint::None),
+        };
+        append_all(
+            &options.container,
+            &[
+                options.new_folder.upcast_ref(),
+                options.new_file.upcast_ref(),
+                separator().upcast_ref(),
+            ],
+        );
+        options
+    }
+}
+
 /// "Open in…" with its New Tab and New Window entries.
 pub(super) struct OpenInRow {
     pub(super) row: gtk::Box,
@@ -398,6 +428,7 @@ pub(super) struct ItemMenuOptions {
     pub(super) content: gtk::Box,
     pub(super) remaining: gtk::Box,
     pub(super) header: ItemHeader,
+    pub(super) creation: CreationOptions,
     pub(super) single_open: SingleOpenOptions,
     pub(super) single: SingleEditOptions,
     pub(super) multiple_open: MultipleOpenOptions,
@@ -418,6 +449,7 @@ impl ItemMenuOptions {
             content: item_menu_box(),
             remaining: item_menu_box(),
             header: ItemHeader::build(),
+            creation: CreationOptions::build(),
             single_open: SingleOpenOptions::build(in_trash, in_recent),
             single: SingleEditOptions::build(in_trash),
             multiple_open: MultipleOpenOptions::build(in_trash, in_recent),
@@ -437,6 +469,7 @@ impl ItemMenuOptions {
                 .sync_create()
                 .build();
         }
+        options.content.append(&options.creation.container);
         options.content.append(&options.single_open.container);
         options.remaining.append(&options.single.container);
         options.content.append(&options.multiple_open.container);

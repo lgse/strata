@@ -20,7 +20,7 @@ pub(in crate::ui::browser) use focus::{
     bind_column_context_owner, context_search_active, focus_context_column, focus_context_entry,
     preview_context_entry, rename_context_entry,
 };
-use focus::{context_filter_or_search_active, current_context_position};
+use focus::{context_filter_or_search_active, current_context_position, schedule_new_entry};
 pub(in crate::ui) use folder_menu::install_folder_context_menu;
 pub(in crate::ui) use item_menu::{install_item_context_menu, install_resolved_item_context_menu};
 pub(in crate::ui::browser) use options::context_menu_danger_option;
