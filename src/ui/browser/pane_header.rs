@@ -100,6 +100,8 @@ fn install_menu_keys(popover: &gtk::Popover) {
 
 /// Roughly eight two-line entries; longer histories scroll.
 const HISTORY_MENU_MAX_HEIGHT: i32 = 400;
+/// Entries listed in the history menu; older ones stay reachable with Back.
+const HISTORY_MENU_MAX_ENTRIES: usize = 50;
 
 /// Marks the popover [`attach_back_history`] parents to the Back button.
 const BACK_HISTORY_POPOVER: &str = "back-history-popover";
@@ -126,8 +128,7 @@ pub(in crate::ui) fn attach_back_history(browser: &Rc<Browser>, back: &gtk::Butt
         "Right-click, hold, or press %{keys} to list the back history",
         keys::Keys::One(CONTEXT_MENU.shown()),
     );
-    let locations = browser.back_locations();
-    if locations.is_empty() {
+    if !browser.can_go_back() {
         return;
     }
     let content = crate::ui::accessibility::menu_box();
@@ -145,32 +146,6 @@ pub(in crate::ui) fn attach_back_history(browser: &Rc<Browser>, back: &gtk::Butt
     popover.add_css_class("column-popover");
     popover.add_css_class(BACK_HISTORY_POPOVER);
     crate::ui::scrolling::popover::dismiss_on_outside_scroll(&popover);
-    let popover_weak = popover.downgrade();
-    let home = glib::home_dir();
-    for (index, location) in locations.iter().enumerate() {
-        let path = location
-            .native_path()
-            .map(crate::ui::settings::abbreviate_home)
-            .unwrap_or_else(|| location.display_path());
-        let name = if location.native_path() == Some(home.as_path()) {
-            "~".to_owned()
-        } else {
-            location.display_name()
-        };
-        let option = menu_action_with_detail(&name, &path);
-        crate::ui::accessibility::describe_menu_item(&option, &name, &path);
-        let weak_browser = Rc::downgrade(browser);
-        let popover_weak = popover_weak.clone();
-        option.connect_clicked(move |_| {
-            if let Some(popover) = popover_weak.upgrade() {
-                popover.popdown();
-            }
-            if let Some(browser) = weak_browser.upgrade() {
-                browser.back_to(index + 1);
-            }
-        });
-        content.append(&option);
-    }
     let viewport = gtk::Viewport::builder()
         .child(&content)
         .scroll_to_focus(true)
@@ -190,12 +165,20 @@ pub(in crate::ui) fn attach_back_history(browser: &Rc<Browser>, back: &gtk::Butt
     let attached = popover.clone();
     back.connect_destroy(move |_| attached.unparent());
 
+    // The rows are built when the menu opens: the pane is rebuilt on every
+    // navigation, and a long history is listed only when asked for.
     let popup = {
         let popover = popover.downgrade();
+        let content = content.downgrade();
+        let browser = Rc::downgrade(browser);
         move || {
-            if let Some(popover) = popover.upgrade() {
-                popover.popup();
-            }
+            let (Some(popover), Some(content), Some(browser)) =
+                (popover.upgrade(), content.upgrade(), browser.upgrade())
+            else {
+                return;
+            };
+            fill_back_history(&content, &browser, &popover);
+            popover.popup();
         }
     };
     let secondary = gtk::GestureClick::builder()
@@ -225,6 +208,42 @@ pub(in crate::ui) fn attach_back_history(browser: &Rc<Browser>, back: &gtk::Butt
         }
     });
     back.add_controller(key);
+}
+
+fn fill_back_history(content: &gtk::Box, browser: &Rc<Browser>, popover: &gtk::Popover) {
+    while let Some(row) = content.last_child().filter(|row| !row.is::<gtk::Label>()) {
+        content.remove(&row);
+    }
+    let home = glib::home_dir();
+    for (index, location) in browser
+        .back_locations()
+        .iter()
+        .take(HISTORY_MENU_MAX_ENTRIES)
+        .enumerate()
+    {
+        let path = location
+            .native_path()
+            .map(crate::ui::settings::abbreviate_home)
+            .unwrap_or_else(|| location.display_path());
+        let name = if location.native_path() == Some(home.as_path()) {
+            "~".to_owned()
+        } else {
+            location.display_name()
+        };
+        let option = menu_action_with_detail(&name, &path);
+        crate::ui::accessibility::describe_menu_item(&option, &name, &path);
+        let weak_browser = Rc::downgrade(browser);
+        let popover = popover.downgrade();
+        option.connect_clicked(move |_| {
+            if let Some(popover) = popover.upgrade() {
+                popover.popdown();
+            }
+            if let Some(browser) = weak_browser.upgrade() {
+                browser.back_to(index + 1);
+            }
+        });
+        content.append(&option);
+    }
 }
 
 pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gtk::MenuButton {
