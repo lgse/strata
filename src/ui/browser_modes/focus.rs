@@ -128,7 +128,8 @@ impl ModeViews {
         self.single_pane().is_some_and(focus_pane_surface)
     }
 
-    /// Use rendered rows: filtering, grouping, and resizing change the icons geometry.
+    /// In Icons only a section's first item is the edge, so Left at any other row
+    /// start wraps to the previous row.
     pub fn at_left_edge(&self) -> bool {
         if self.mode != BrowserMode::Icons {
             return true;
@@ -139,18 +140,8 @@ impl ModeViews {
         self.icons_panes
             .iter()
             .flat_map(Pane::item_sections)
-            .find_map(|section| {
-                let (_, bounds) = focused_section_item(&section, &focused)?;
-                let mut has_left_neighbor = false;
-                (section.visit)(&mut |_, widget| {
-                    if let Some(other) = widget.compute_bounds(&section.view) {
-                        has_left_neighbor |=
-                            other.x() < bounds.x() - 1.0 && (other.y() - bounds.y()).abs() < 1.0;
-                    }
-                });
-                Some(!has_left_neighbor)
-            })
-            .unwrap_or(true)
+            .find_map(|section| focused_section_item(&section, &focused))
+            .is_none_or(|(position, _)| position == 0)
     }
 
     /// Whether the listing of `depth` holds focus, rather than its filter session.
@@ -228,13 +219,7 @@ impl ModeViews {
         if self.mode == BrowserMode::List {
             return true;
         }
-        let bounds = rendered_item_bounds(&section, &focused);
-        let Some((_, current)) = bounds.iter().find(|(has_focus, _)| *has_focus) else {
-            return false;
-        };
-        !bounds
-            .iter()
-            .any(|(_, bounds)| bounds.x() < current.x() - 1.0)
+        focused_section_item(&section, &focused).is_some_and(|(position, _)| position == 0)
     }
 
     /// Filter results count as outside: they belong to the filter session, which a
@@ -436,31 +421,6 @@ pub(super) fn reload_focus_fell_back(pane: &Pane) -> bool {
     focused.root().is_none()
         || focused == *pane.stack.upcast_ref::<gtk::Widget>()
         || pane.stack.is_ancestor(&focused)
-}
-
-/// Each mapped item's bounds in its view, flagged when it owns the focus.
-fn rendered_item_bounds(
-    section: &PaneSection,
-    focused: &gtk::Widget,
-) -> Vec<(bool, gtk::graphene::Rect)> {
-    section
-        .bound_items
-        .borrow()
-        .iter()
-        .filter_map(|bound| {
-            if bound.item.upgrade()?.position() == gtk::INVALID_LIST_POSITION {
-                return None;
-            }
-            let widget = bound
-                .widget
-                .upgrade()
-                .filter(|widget| widget.is_mapped() && widget.width() > 0)?;
-            Some((
-                shares_focus(&widget, focused),
-                widget.compute_bounds(&section.view)?,
-            ))
-        })
-        .collect()
 }
 
 pub(super) fn focused_section_item(

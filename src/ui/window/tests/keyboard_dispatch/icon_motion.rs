@@ -548,3 +548,57 @@ fn tenxer_icons_move_spatially_open_explicitly_and_peek() {
         },
     );
 }
+
+#[test]
+fn icons_left_wraps_row_starts_and_leaves_only_the_first_tile() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::icon_motion::icons_left_wraps_row_starts_and_leaves_only_the_first_tile",
+        || {
+            let fixture = KeyboardFixture::new();
+            let preferences = PreferenceManager::shared();
+            preferences.set_tenxer_mode(false);
+            let browser = fixture.view.browser();
+            for index in 0..12 {
+                std::fs::write(
+                    fixture
+                        ._directory
+                        .path()
+                        .join(format!("tile-{index:02}.txt")),
+                    b"t",
+                )
+                .expect("tile");
+            }
+            fixture.view.refresh();
+            wait_loaded(&browser, 0);
+            preferences.set_icons_thumbnail_size(48);
+            fixture.view.set_view_mode(BrowserMode::Icons);
+            wait_loaded(&browser, 0);
+            focus_files(&fixture);
+            pump(100);
+            for scoped in [true, false] {
+                preferences.set_arrow_navigation_scoped(scoped);
+                focus_files(&fixture);
+                fixture.press(Key::Home, NONE);
+                fixture.press(Key::Down, NONE);
+                let row_start = focused_index(&browser);
+                assert!(
+                    row_start > 1,
+                    "Down from the first tile reached {row_start}"
+                );
+                fixture.press(Key::Left, NONE);
+                assert_eq!(
+                    (focused_index(&browser), sidebar_has_focus(&fixture)),
+                    (row_start - 1, false),
+                    "scoped {scoped}: Left at a row start (index, sidebar focused)"
+                );
+                fixture.press(Key::Home, NONE);
+                fixture.press(Key::Left, NONE);
+                assert_eq!(
+                    sidebar_has_focus(&fixture),
+                    !scoped,
+                    "scoped {scoped}: Left at the first tile enters the sidebar"
+                );
+            }
+        },
+    );
+}
