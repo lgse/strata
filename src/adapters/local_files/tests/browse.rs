@@ -372,4 +372,12 @@ fn streamed_creation_time_is_filled_before_created_sorting() {
     info.remove_attribute(gio::FILE_ATTRIBUTE_TIME_CREATED);
     let (update, _) = update_from_info(&info, &location);
     assert_eq!(update.created_unix_seconds, MetadataValue::Unavailable);
+
+    let full = browse_info(gio::FileType::Regular, None, FULL_ATTRIBUTES);
+    full.set_attribute_uint64(gio::FILE_ATTRIBUTE_TIME_MODIFIED, 123);
+    assert_eq!(
+        entry_from_info(location, full).created_unix_seconds,
+        MetadataValue::Unavailable,
+        "a full listing without a birth time must not request a fill"
+    );
 }

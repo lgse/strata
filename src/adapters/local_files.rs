@@ -272,10 +272,14 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
         kind,
         size,
         modified_unix_seconds,
-        created_unix_seconds: info
-            .creation_date_time()
-            .map(|time| MetadataValue::Known(time.to_unix()))
-            .unwrap_or(MetadataValue::Unknown),
+        created_unix_seconds: match info.creation_date_time() {
+            Some(created) => MetadataValue::Known(created.to_unix()),
+            // Listings that read times request both, so only birth time is unsupported.
+            None if info.has_attribute(gio::FILE_ATTRIBUTE_TIME_MODIFIED) => {
+                MetadataValue::Unavailable
+            }
+            None => MetadataValue::Unknown,
+        },
         recent_unix_seconds: MetadataValue::Unknown,
         mode: info_mode(&info),
         image_dimensions: MetadataValue::Unknown,
