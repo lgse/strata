@@ -312,10 +312,16 @@ fn context_hints_follow_the_active_map() {
                 ("Move to Trash", "d"),
                 ("Permanently delete", "D"),
                 ("Copy path", "Copy name"),
+                ("New Folder", "Ctrl+Shift+N"),
             ] {
                 assert_eq!(after(label), Some(hint), "{hints:?}");
             }
-            assert_eq!(after("New Folder"), Some("Ctrl+Shift+N"), "{hints:?}");
+            assert!(
+                hints
+                    .iter()
+                    .all(|hint| !hint.starts_with("Ctrl+") || hint == "Ctrl+Shift+N"),
+                "{hints:?}"
+            );
             assert!(
                 hints.iter().any(|hint| hint == "i"),
                 "the menu shows Strata's label, not GTK's rendering of the accelerator: {hints:?}"
