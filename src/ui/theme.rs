@@ -26,6 +26,7 @@ mod library;
 mod listeners;
 mod omarchy;
 mod omarchy_state;
+mod portal_text_scale;
 mod roundness;
 mod source_style;
 mod watch;
@@ -296,6 +297,7 @@ impl ThemeManager {
         self.apply_density();
         self.apply_selected();
         self.monitor_text_scaling();
+        portal_text_scale::follow_if_portals_disabled();
         self.monitor_omarchy(omarchy_directories, omarchy_theme);
         self.monitor_custom_themes(themes_directory().is_dir());
         self.monitor_linked_themes(linked_theme_targets(&themes_directory()));
