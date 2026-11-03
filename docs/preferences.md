@@ -185,14 +185,13 @@ follows later default changes. Every open column, tab, and window showing the sa
 folder updates live. View mode, density, hidden files, grouping, folders first, and
 List column widths stay application-wide.
 
-The sort menu keeps Name, Size, Modified and Type at the top. **More sorting**
-opens a flyout for Extension, Created and Unsorted; **Name order** chooses Natural
-or Alphabetical, with a separate **Case-sensitive names** toggle. Closed submenu
-rows show the current value on the right. Name order and case sensitivity are
-saved with the sort, including defaults and per-folder overrides, and also apply
-to names used to break ties under other fields. Selecting the active sort field
-again in the menu switches to Unsorted. The menu stays open while options change;
-press Escape or click outside it to dismiss it.
+The sort menu lists Name, Size, Modified, Type, Extension and Created. Its **Name
+order** section chooses Natural or Alphabetical, with a separate **Case-sensitive
+names** toggle. Name order and case sensitivity are saved with the sort, including
+defaults and per-folder overrides, and also apply to names used to break ties under
+other fields. Selecting the checked sort field again switches to Unsorted, which
+has no row of its own. The menu stays open while options change; press Escape or
+click outside it to dismiss it.
 
 Extension uses the final suffix, so `archive.tar.gz` sorts under `gz`; dotfiles
 such as `.gitignore` and extensionless files have no extension. Created uses birth
@@ -203,10 +202,9 @@ name-comparison controls are disabled.
 
 List view keeps an icon-only sort menu before Refresh. A labelled **Sort** control
 appears when the active field has no visible matching column, or Name uses a
-non-default comparison. Unsorted and camera device order have no label or column arrow. Selecting a
-standard field clears the extra-sort summary; a hidden sort column remains active.
-The List sort menu includes Ascending and Descending, including for fields without
-a matching column header.
+non-default comparison. Unsorted and camera device order have no label or column
+arrow; a hidden sort column remains active. The List sort menu includes Ascending
+and Descending, including for fields without a matching column header.
 
 In Icons, **Ctrl+Alt++** (or **Ctrl+Alt+=**) and **Ctrl+Alt+−**, **Ctrl+Shift+wheel**,
 and in 10xer mode **+** / **−** on the listing step the thumbnail size through 32,
@@ -217,7 +215,7 @@ default, and with per-folder settings off the default returns to 64 px. These
 change the size exactly as the slider does and change no size in Columns or List.
 Each change briefly shows the new size in the bottom-right corner.
 
-A pane's sort menu shows **Apply as default sort** when its sort differs from
+A pane's sort menu shows **Make default** when its sort differs from
 the default and **Reset to default sort** when the folder has its own sort; the
 thumbnail popover has the matching size actions. Making a value the default leaves
 other folders' values alone, except those now equal to it, which are dropped. With

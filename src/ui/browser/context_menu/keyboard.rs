@@ -220,12 +220,10 @@ pub(super) fn install_submenu_return(
         }
         submenu.stop_signal_emission_by_name("move-focus");
         // Hide without cascading, then let GTK clear its open-submenu state.
-        // Regular menus clear GTK's open branch; persistent sort menus route arrows themselves.
+        // Focusing the owner alone leaves arrows routed to the hidden branch.
         submenu.set_visible(false);
         if let Some(owner) = weak_owner.upgrade() {
-            if let Some(parent) = owner.ancestor(gtk::PopoverMenu::static_type())
-                && !parent.has_css_class("persistent-sort-menu")
-            {
+            if let Some(parent) = owner.ancestor(gtk::PopoverMenu::static_type()) {
                 parent.child_focus(gtk::DirectionType::Left);
             }
             owner.grab_focus();
@@ -233,32 +231,15 @@ pub(super) fn install_submenu_return(
     });
 }
 
-fn focused_sort_menu(root: &gtk::Popover) -> gtk::Popover {
-    if root.has_css_class("persistent-sort-menu")
-        && let Some(active) = root
-            .root()
-            .and_then(|window| window.focus())
-            .and_then(|focus| focus.ancestor(gtk::Popover::static_type()))
-            .and_downcast::<gtk::Popover>()
-    {
-        return active;
-    }
-    root.clone()
-}
-
 pub(super) fn install(popover: &gtk::Popover) {
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-    if popover.has_css_class("persistent-sort-menu") {
-        keys.set_propagation_limit(gtk::PropagationLimit::None);
-    }
     let weak = popover.downgrade();
     keys::on_press(&keys, move |_, press| {
         const SHIFT: Modifiers = Modifiers::SHIFT_MASK;
-        let Some(root) = weak.upgrade() else {
+        let Some(popover) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
-        let popover = focused_sort_menu(&root);
         if press
             .modifiers()
             .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)

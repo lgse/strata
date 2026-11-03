@@ -45,19 +45,16 @@ struct SortMenu {
     group: gio::SimpleActionGroup,
     browser: std::rc::Weak<Browser>,
     depth: usize,
-    extra: gio::Menu,
-    names: gio::Menu,
     model: gio::Menu,
 }
 
 impl SortMenu {
     fn build(browser: &Rc<Browser>, depth: usize, list: bool) -> (gtk::PopoverMenu, Self) {
-        let (root, extra, names) = menu_model(browser, depth, list);
+        let root = menu_model(browser, depth, list);
         let popover = gtk::PopoverMenu::from_model_full(&root, gtk::PopoverMenuFlags::NESTED);
         popover.set_has_arrow(false);
         popover.set_halign(gtk::Align::End);
         popover.add_css_class("column-popover");
-        popover.add_css_class("persistent-sort-menu");
         let group = gio::SimpleActionGroup::new();
         popover.insert_action_group("sorting", Some(&group));
         crate::ui::scrolling::popover::dismiss_on_outside_scroll(popover.upcast_ref());
@@ -67,8 +64,6 @@ impl SortMenu {
             popover: popover.downgrade(),
             group,
             model: root,
-            extra,
-            names,
             browser: Rc::downgrade(browser),
             depth,
         };
@@ -240,28 +235,6 @@ impl SortMenu {
             .expect("installed sort action")
     }
 
-    fn submenu_summary(&self, model: &gio::MenuModel, prefs: ViewPreferences) -> Option<String> {
-        if *model == self.extra.clone().upcast::<gio::MenuModel>() {
-            let active = matches!(
-                prefs.sort_key,
-                SortKey::Extension | SortKey::Created | SortKey::Unsorted
-            );
-            Some(if active {
-                field_label(prefs.sort_key)
-            } else {
-                String::new()
-            })
-        } else if *model == self.names.clone().upcast::<gio::MenuModel>() {
-            Some(crate::i18n::tr(if prefs.name_comparison.natural {
-                "Natural"
-            } else {
-                "Alphabetical"
-            }))
-        } else {
-            None
-        }
-    }
-
     fn present(&self, widget: &gtk::Widget, prefs: ViewPreferences) {
         let children = children(widget);
         if let Some(popover) = widget.downcast_ref::<gtk::PopoverMenu>() {
@@ -273,85 +246,61 @@ impl SortMenu {
             keep_sort_menu_open(widget, &self.group, self.model.upcast_ref());
         }
         present_check(widget, &children, prefs);
-        if widget.find_property("popover").is_some()
-            && let Some(menu) = widget
-                .property::<Option<gtk::Popover>>("popover")
-                .and_downcast::<gtk::PopoverMenu>()
-            && let Some(model) = menu.menu_model()
-            && let Some(summary) = self.submenu_summary(&model, prefs)
-        {
-            set_summary(widget, &children, &summary);
-        }
         for child in children {
             self.present(&child, prefs);
         }
     }
 }
 
-fn menu_model(browser: &Browser, depth: usize, list: bool) -> (gio::Menu, gio::Menu, gio::Menu) {
+fn menu_model(browser: &Browser, depth: usize, list: bool) -> gio::Menu {
     let root = gio::Menu::new();
-    let standard = gio::Menu::new();
-    let extra = gio::Menu::new();
-    let names = gio::Menu::new();
-    let location = browser.location_at(depth);
-    append_fields(&standard, &extra, location.as_ref());
-    root.append_section(Some(&crate::i18n::tr("SORT BY")), &standard);
-    root.append_section(None, &options_model(&extra, &names));
+    let fields = gio::Menu::new();
+    append_fields(&fields, browser.location_at(depth).as_ref());
+    root.append_section(Some(&crate::i18n::tr("SORT BY")), &fields);
     if list {
         root.append_section(None, &direction_model());
     }
+    root.append_section(Some(&crate::i18n::tr("NAME ORDER")), &names_model());
     let folders = gio::Menu::new();
     folders.append(
         Some(&crate::i18n::tr("Folders first")),
         Some("sorting.folders"),
     );
     root.append_section(None, &folders);
-    let defaults = default_model();
-    root.append_section(None, &defaults);
-    (root, extra, names)
+    root.append_section(None, &default_model());
+    root
 }
 
-fn append_fields(
-    standard: &gio::Menu,
-    extra: &gio::Menu,
-    location: Option<&crate::model::Location>,
-) {
+/// Unsorted has no row: unchecking the active field turns sorting off.
+fn append_fields(fields: &gio::Menu, location: Option<&crate::model::Location>) {
     for (label, key) in FIELDS {
-        if key == SortKey::DeviceOrder
-            && !location.is_some_and(|location| location.is_camera_photo_root())
-        {
-            continue;
-        }
-        if key == SortKey::Recency && !location.is_some_and(|location| location.is_recent_root()) {
+        let shown = match key {
+            SortKey::Unsorted => false,
+            SortKey::DeviceOrder => location.is_some_and(|location| location.is_camera_photo_root()),
+            SortKey::Recency => location.is_some_and(|location| location.is_recent_root()),
+            _ => true,
+        };
+        if !shown {
             continue;
         }
         let item = gio::MenuItem::new(Some(&crate::i18n::tr(label)), None);
         item.set_action_and_target_value(Some("sorting.field"), Some(&field_id(key).to_variant()));
-        if matches!(
-            key,
-            SortKey::Extension | SortKey::Created | SortKey::Unsorted
-        ) {
-            extra.append_item(&item);
-        } else {
-            standard.append_item(&item);
-        }
+        fields.append_item(&item);
     }
 }
 
-fn options_model(extra: &gio::Menu, names: &gio::Menu) -> gio::Menu {
+fn names_model() -> gio::Menu {
+    let names = gio::Menu::new();
     for (label, value) in [("Natural", true), ("Alphabetical", false)] {
         let item = gio::MenuItem::new(Some(&crate::i18n::tr(label)), None);
         item.set_action_and_target_value(Some("sorting.names"), Some(&value.to_variant()));
         names.append_item(&item);
     }
-    let options = gio::Menu::new();
-    options.append_submenu(Some(&crate::i18n::tr("More sorting")), extra);
-    options.append_submenu(Some(&crate::i18n::tr("Name order")), names);
-    options.append(
+    names.append(
         Some(&crate::i18n::tr("Case-sensitive names")),
         Some("sorting.sensitive"),
     );
-    options
+    names
 }
 
 fn direction_model() -> gio::Menu {
@@ -367,7 +316,7 @@ fn direction_model() -> gio::Menu {
 fn default_model() -> gio::Menu {
     let defaults = gio::Menu::new();
     for (label, action) in [
-        ("Apply as default sort", "default"),
+        ("Make default", "default"),
         ("Reset to default sort", "reset"),
     ] {
         let item = gio::MenuItem::new(
@@ -388,36 +337,6 @@ fn children(widget: &gtk::Widget) -> Vec<gtk::Widget> {
         children.push(child);
     }
     children
-}
-
-fn set_summary(widget: &gtk::Widget, children: &[gtk::Widget], text: &str) {
-    let label = children
-        .iter()
-        .find(|child| child.has_css_class("sort-submenu-value"))
-        .and_then(|child| child.downcast_ref::<gtk::Label>())
-        .cloned()
-        .unwrap_or_else(|| {
-            let label = gtk::Label::new(None);
-            label.add_css_class("sort-submenu-value");
-            label.add_css_class("dim-label");
-            label.set_margin_start(18);
-            label.set_halign(gtk::Align::End);
-            let arrow = children.iter().find(|child| child.css_name() == "arrow");
-            label.insert_before(widget, arrow);
-            unparent_on_destroy(widget, label.upcast_ref());
-            label
-        });
-    if let Some(title) = children
-        .iter()
-        .filter_map(|child| child.downcast_ref::<gtk::Label>())
-        .find(|child| !child.has_css_class("sort-submenu-value"))
-    {
-        crate::ui::accessibility::clear_labelled_by(widget);
-        crate::ui::accessibility::set_label(widget, &title.text());
-    }
-    label.set_text(text);
-    label.set_visible(!text.is_empty());
-    crate::ui::accessibility::set_description(widget, (!text.is_empty()).then_some(text));
 }
 
 fn checked_choice(text: &str, prefs: ViewPreferences) -> Option<(bool, gtk::AccessibleRole)> {
@@ -476,8 +395,7 @@ fn present_check(widget: &gtk::Widget, children: &[gtk::Widget], prefs: ViewPref
     }
     let Some(label) = children
         .iter()
-        .filter_map(|child| child.downcast_ref::<gtk::Label>())
-        .find(|label| !label.has_css_class("sort-submenu-value"))
+        .find_map(|child| child.downcast_ref::<gtk::Label>())
     else {
         return;
     };
@@ -537,12 +455,10 @@ fn sort_action(model: &gio::MenuModel, label: &str) -> Option<(String, Option<gl
         {
             return Some((action, model.item_attribute_value(index, "target", None)));
         }
-        for link in ["section", "submenu"] {
-            if let Some(child) = model.item_link(index, link)
-                && let Some(action) = sort_action(&child, label)
-            {
-                return Some(action);
-            }
+        if let Some(section) = model.item_link(index, "section")
+            && let Some(action) = sort_action(&section, label)
+        {
+            return Some(action);
         }
     }
     None
@@ -606,7 +522,7 @@ fn remove_native_click_controllers(widget: &gtk::Widget) {
 
 fn hide_native_indicators(children: &[gtk::Widget]) {
     for child in children {
-        if (child.type_().name() == "GtkBuiltinIcon" && child.css_name() != "arrow")
+        if child.type_().name() == "GtkBuiltinIcon"
             || self_contained_indicator(child)
         {
             child.set_visible(false);
@@ -634,7 +550,6 @@ thread_local! {
     static OPEN_MENUS: RefCell<Vec<Weak<SortMenu>>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Refreshes the open sort menus of `browser`'s pane at `depth` once its sort settles.
 pub(in crate::ui) fn sync_open_sort_menus(browser: &Browser, depth: usize) {
     let open: Vec<Rc<SortMenu>> = OPEN_MENUS.with_borrow(|menus| {
         menus.iter().filter_map(Weak::upgrade).collect()
