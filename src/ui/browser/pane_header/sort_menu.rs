@@ -55,6 +55,7 @@ impl SortMenu {
         popover.set_has_arrow(false);
         popover.set_halign(gtk::Align::End);
         popover.add_css_class("column-popover");
+        popover.add_css_class("sort-menu-popover");
         let group = gio::SimpleActionGroup::new();
         popover.insert_action_group("sorting", Some(&group));
         crate::ui::scrolling::popover::dismiss_on_outside_scroll(popover.upcast_ref());

@@ -4894,7 +4894,8 @@ colorchooser box.osd.popover spinbutton > button {
   padding-bottom: 8px;
 }
 
-.actions-context-popover.folder-menu-body > contents {
+.actions-context-popover.folder-menu-body > contents,
+.actions-context-popover.sort-menu-popover > contents {
   padding-top: 8px;
 }
 
