@@ -91,6 +91,7 @@ impl NavigationState {
         Some((position, column.entries.get(position)?.clone()))
     }
 
+    /// Directories qualify for mtime only; directory size stays unknown by design.
     pub fn column_unknown_sort_metadata(
         &self,
         depth: usize,
