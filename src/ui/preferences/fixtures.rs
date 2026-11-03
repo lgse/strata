@@ -80,6 +80,8 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         folders_first: false,
         sort_key: "size".into(),
         sort_direction: "descending".into(),
+        natural_sort: false,
+        case_sensitive_sort: true,
         check_for_updates: false,
         preview_muted: true,
         preview_volume: 0.35,

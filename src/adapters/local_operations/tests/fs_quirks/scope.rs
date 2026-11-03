@@ -169,6 +169,10 @@ pub(super) fn take_due<T>(
 }
 
 impl State {
+    fn injects(&self, call: Logged<'_>) -> bool {
+        !(call.forced && self.quirks.skip_forced_stamps)
+    }
+
     /// Unplugs the device once the call it is unplugged after is due.
     fn count_unplug(&mut self, call: Logged<'_>) {
         let Some((unplug_op, pattern, skip)) = self.quirks.unplugged_after.as_mut() else {
@@ -245,14 +249,19 @@ impl Scope {
         if let Some(mut racer) = self.log(call)? {
             racer();
         }
-        let fault = take_due(&mut self.state().quirks.fail, call.op, call.names);
+        let injected = self.state().injects(call);
+        let fault = injected
+            .then(|| take_due(&mut self.state().quirks.fail, call.op, call.names))
+            .flatten();
         if let Some(errno) = fault {
             return Err(errno);
         }
         self.reap();
         let result = perform(self);
         self.performed(call, result.is_ok());
-        let racer = take_due(&mut self.state().quirks.after, call.op, call.names);
+        let racer = injected
+            .then(|| take_due(&mut self.state().quirks.after, call.op, call.names))
+            .flatten();
         if let Some(mut racer) = racer {
             racer();
         }
@@ -275,6 +284,9 @@ impl Scope {
         });
         if state.unplugged {
             return Err(Errno::IO);
+        }
+        if !state.injects(call) {
+            return Ok(None);
         }
         Ok(take_due(&mut state.quirks.before, call.op, call.names))
     }

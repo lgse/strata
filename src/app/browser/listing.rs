@@ -263,7 +263,10 @@ impl Browser {
             .column_preferences(depth)
             .map(|preferences| preferences.sort_key)
             .unwrap_or_else(|| self.preferences.get().sort_key);
-        let include_metadata = matches!(sort_key, SortKey::Size | SortKey::Modified);
+        let include_metadata = matches!(
+            sort_key,
+            SortKey::Size | SortKey::Modified | SortKey::Created
+        );
         let (max_entries, time_budget) = if location.is_camera_photo_root() {
             (usize::MAX, Duration::MAX)
         } else {

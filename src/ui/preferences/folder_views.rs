@@ -91,7 +91,7 @@ fn local_path(path: &Path) -> Option<PathBuf> {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(in crate::ui) struct FolderView {
-    pub(in crate::ui) sort: Option<(SortKey, SortDirection)>,
+    pub(in crate::ui) sort: Option<crate::model::SortOptions>,
     pub(in crate::ui) icons_size: Option<i32>,
 }
 
@@ -218,7 +218,7 @@ impl FolderViews {
         true
     }
 
-    pub(in crate::ui) fn prune_default_sort(&mut self, sort: (SortKey, SortDirection)) -> bool {
+    pub(in crate::ui) fn prune_default_sort(&mut self, sort: crate::model::SortOptions) -> bool {
         self.update_all(|view| {
             if view.sort == Some(sort) {
                 view.sort = None;
@@ -483,15 +483,16 @@ impl FolderViews {
                         (Some(uuid.as_str()), relative.to_str()?)
                     }
                 };
-                let sort = entry
-                    .view
-                    .sort
-                    .and_then(|(key, direction)| Some((key.stored_name()?, direction)));
+                let sort = entry.view.sort.and_then(|(key, direction, comparison)| {
+                    Some((key.stored_name()?, direction, comparison))
+                });
                 Some(StoredFolder {
                     volume,
                     path,
-                    sort: sort.map(|(key, _)| key),
-                    direction: sort.map(|(_, direction)| direction.stored_name()),
+                    sort: sort.map(|(key, _, _)| key),
+                    direction: sort.map(|(_, direction, _)| direction.stored_name()),
+                    natural_sort: sort.map(|(_, _, comparison)| comparison.natural),
+                    case_sensitive_sort: sort.map(|(_, _, comparison)| comparison.case_sensitive),
                     icons_size: entry.view.icons_size,
                     used: entry.used,
                 })
@@ -521,6 +522,10 @@ struct StoredFolder<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     direction: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    natural_sort: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    case_sensitive_sort: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     icons_size: Option<i32>,
     used: u64,
 }
@@ -546,7 +551,9 @@ fn parse_entry(value: &toml::Value) -> Option<(FolderKey, Entry, bool)> {
                         .and_then(SortDirection::from_stored),
                 );
             clean &= sort.is_some();
-            sort
+            let (comparison, valid) = parse_comparison(table);
+            clean &= valid;
+            sort.map(|(key, direction)| (key, direction, comparison))
         }
     };
     let icons_size = match table.get("icons_size") {
@@ -581,3 +588,19 @@ fn parse_entry(value: &toml::Value) -> Option<(FolderKey, Entry, bool)> {
 
 #[cfg(test)]
 mod tests;
+
+fn parse_comparison(table: &toml::Table) -> (crate::model::NameComparison, bool) {
+    let mut comparison = crate::model::NameComparison::default();
+    let mut clean = true;
+    for (name, target) in [
+        ("natural_sort", &mut comparison.natural),
+        ("case_sensitive_sort", &mut comparison.case_sensitive),
+    ] {
+        match table.get(name) {
+            Some(toml::Value::Boolean(value)) => *target = *value,
+            Some(_) => clean = false,
+            None => {}
+        }
+    }
+    (comparison, clean)
+}

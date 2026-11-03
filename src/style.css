@@ -4894,7 +4894,8 @@ colorchooser box.osd.popover spinbutton > button {
   padding-bottom: 8px;
 }
 
-.actions-context-popover.folder-menu-body > contents {
+.actions-context-popover.folder-menu-body > contents,
+.actions-context-popover.sort-menu-popover > contents {
   padding-top: 8px;
 }
 
@@ -7652,4 +7653,8 @@ popover.settings-action-library > contents {
 .search-dialog.modal-constrained,
 .settings-dialog.modal-constrained {
   min-width: 0;
+}
+
+menubutton.sort-menu-button > button {
+  color: @strata_text;
 }

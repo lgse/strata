@@ -247,6 +247,10 @@ pub(in crate::ui) struct Preferences {
     sort_key: String,
     #[serde(default = "default_sort_direction")]
     sort_direction: String,
+    #[serde(default = "defaults::default_natural_sort")]
+    natural_sort: bool,
+    #[serde(default)]
+    case_sensitive_sort: bool,
     #[serde(default = "default_enabled")]
     check_for_updates: bool,
     #[serde(default)]

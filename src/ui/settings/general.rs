@@ -393,6 +393,9 @@ fn append_folder_view_options(content: &gtk::Box, manager: &Rc<PreferenceManager
             ("Size", SortKey::Size),
             ("Modified", SortKey::Modified),
             ("Type", SortKey::Type),
+            ("Extension", SortKey::Extension),
+            ("Created", SortKey::Created),
+            ("Unsorted", SortKey::Unsorted),
         ],
         |manager| manager.default_sort().0,
         |manager, sort_key| manager.set_default_sort(sort_key, manager.default_sort().1),
@@ -408,6 +411,11 @@ fn append_folder_view_options(content: &gtk::Box, manager: &Rc<PreferenceManager
         |manager, sort_direction| {
             manager.set_default_sort(manager.default_sort().0, sort_direction)
         },
+    );
+    manager.bind_preference(
+        &sort_direction,
+        |manager| manager.default_sort().0,
+        |control, key| control.set_sensitive(key != SortKey::Unsorted),
     );
     let sort_controls = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     sort_controls.append(&sort_key);

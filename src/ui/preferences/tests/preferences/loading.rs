@@ -283,6 +283,7 @@ fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
                 kind: EntryKind::File,
                 size: MetadataValue::Known(4),
                 modified_unix_seconds: MetadataValue::Known(seconds),
+                created_unix_seconds: MetadataValue::Unknown,
                 mode: MetadataValue::Known(0o100644),
                 recent_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,

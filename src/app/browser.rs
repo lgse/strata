@@ -305,6 +305,7 @@ pub enum BrowserEvent {
         location: Location,
         sort_key: SortKey,
         sort_direction: SortDirection,
+        name_comparison: crate::model::NameComparison,
     },
     /// An item an operation of this browser renamed or moved, published as it
     /// lands, even when a later operation superseded that one. `merged` means
@@ -583,6 +584,7 @@ pub struct Browser {
     redo_claim: RefCell<Option<(u64, UndoEntry)>>,
     next_request: Cell<u64>,
     pending_sort: Cell<Option<(u64, usize)>>,
+    requested_sort: RefCell<Option<(metadata_fills::SortPass, Location)>>,
     /// A debounced sort stays pending after it reorders its column, until a newer
     /// sort or a cancel replaces it; this tells that apart from one not yet applied.
     pending_sort_applied: Cell<bool>,
@@ -666,6 +668,7 @@ impl Browser {
             redo_claim: RefCell::new(None),
             next_request: Cell::new(1),
             pending_sort: Cell::new(None),
+            requested_sort: RefCell::new(None),
             pending_sort_applied: Cell::new(false),
             sort_generation: Cell::new(0),
             preferences: Cell::new(preferences),
@@ -685,6 +688,11 @@ impl Browser {
 
     pub fn observe(&self, observer: impl Fn(&BrowserEvent) + 'static) {
         self.observers.borrow_mut().push(Rc::new(observer));
+    }
+
+    #[cfg(test)]
+    pub fn observer_count(&self) -> usize {
+        self.observers.borrow().len()
     }
 
     pub fn set_chooser_mode(&self, chooser: bool) {

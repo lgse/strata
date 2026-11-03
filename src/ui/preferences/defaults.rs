@@ -69,6 +69,8 @@ impl Default for Preferences {
             folders_first: true,
             sort_key: default_sort_key(),
             sort_direction: default_sort_direction(),
+            natural_sort: true,
+            case_sensitive_sort: false,
             check_for_updates: true,
             preview_muted: false,
             preview_volume: default_full_volume(),
@@ -194,4 +196,8 @@ pub(super) fn default_date_format() -> String {
 
 pub(super) fn default_cross_volume_drop_strategy() -> String {
     CrossVolumeDropStrategy::Ask.as_str().to_owned()
+}
+
+pub(super) fn default_natural_sort() -> bool {
+    true
 }

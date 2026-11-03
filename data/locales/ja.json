@@ -553,7 +553,7 @@
   "MODIFIED": "更新日時",
   "MOTION": "モーション",
   "Make this the default size": "このサイズをデフォルトにする",
-  "Make this the default sort": "この並べ替えをデフォルトにする",
+  "Make default": "デフォルトにする",
   "Maximize window": "ウィンドウを最大化",
   "Maximum items": "最大項目数",
   "Measuring Trash…": "ゴミ箱を計測中…",
@@ -1535,5 +1535,14 @@
   "%{minimum}–%{maximum} ft": "%{minimum}～%{maximum} フィート",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} フィート",
-  "No action": "アクションなし"
+  "No action": "アクションなし",
+  "Natural": "自然順",
+  "Alphabetical": "辞書順",
+  "NAME ORDER": "名前の順序",
+  "Case-sensitive names": "名前の大文字と小文字を区別",
+  "Extension": "拡張子",
+  "Unsorted": "並べ替えなし",
+  "Sort: %{field} %{direction}": "並べ替え: %{field} %{direction}",
+  "%{field} · %{order}": "%{field} · %{order}",
+  "%{field} · case-sensitive": "%{field} · 大文字と小文字を区別"
 }

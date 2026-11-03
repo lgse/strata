@@ -574,17 +574,19 @@ fn icons_left_wraps_row_starts_and_leaves_only_the_first_tile() {
             fixture.view.set_view_mode(BrowserMode::Icons);
             wait_loaded(&browser, 0);
             focus_files(&fixture);
-            pump(100);
             for scoped in [true, false] {
                 preferences.set_arrow_navigation_scoped(scoped);
                 focus_files(&fixture);
-                fixture.press(Key::Home, NONE);
+                // Before layout Down steps one tile; the column count then depends on the
+                // GTK version's tile width, so any later row start serves.
+                wait_until(|| {
+                    fixture.press(Key::Home, NONE);
+                    gtk::prelude::GtkWindowExt::focus(&fixture.window)
+                        .is_some_and(|tile| tile.width() > 0)
+                });
                 fixture.press(Key::Down, NONE);
                 let row_start = focused_index(&browser);
-                assert!(
-                    row_start > 1,
-                    "Down from the first tile reached {row_start}"
-                );
+                assert!(row_start > 0, "Down left the first tile focused");
                 fixture.press(Key::Left, NONE);
                 assert_eq!(
                     (focused_index(&browser), sidebar_has_focus(&fixture)),

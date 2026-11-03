@@ -352,7 +352,11 @@ fn list_column_customization_preserves_saved_and_live_folder_sorts() {
             );
             assert_eq!(
                 manager.resolve_folder_sort(&location, false),
-                FolderSort::Saved(size_descending.0, size_descending.1)
+                FolderSort::Saved(
+                    size_descending.0,
+                    size_descending.1,
+                    crate::model::NameComparison::default()
+                )
             );
 
             manager.set_list_column_visible(ListColumnId::Size, true);
@@ -397,7 +401,11 @@ fn list_column_customization_preserves_saved_and_live_folder_sorts() {
             }
             assert_eq!(
                 manager.resolve_folder_sort(&location, false),
-                FolderSort::Saved(size_descending.0, size_descending.1)
+                FolderSort::Saved(
+                    size_descending.0,
+                    size_descending.1,
+                    crate::model::NameComparison::default()
+                )
             );
             manager.flush_folder_views();
             crate::storage::writer::settle();

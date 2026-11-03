@@ -83,7 +83,11 @@ fn renamed_folder_keeps_its_customization_and_a_new_folder_at_the_old_path_does_
             let manager = PreferenceManager::shared();
             let folder_sort =
                 |path: &std::path::Path| manager.resolve_folder_sort(&Location::local(path), false);
-            let size_sort = FolderSort::Saved(SortKey::Size, SortDirection::Descending);
+            let size_sort = FolderSort::Saved(
+                SortKey::Size,
+                SortDirection::Descending,
+                crate::model::NameComparison::default(),
+            );
             manager.set_folder_sort(
                 &Location::local(&old),
                 SortKey::Size,

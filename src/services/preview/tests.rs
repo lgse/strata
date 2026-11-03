@@ -660,6 +660,7 @@ fn password_request(password: Option<&str>) -> super::PreviewRequest {
             kind: EntryKind::File,
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Unknown,
+            created_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
             recent_unix_seconds: MetadataValue::Unknown,
             image_dimensions: MetadataValue::Unknown,

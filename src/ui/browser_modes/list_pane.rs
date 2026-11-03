@@ -90,6 +90,7 @@ impl ListTable {
 struct ListActions {
     widget: gtk::Box,
     content: ContentActions,
+    sort_menu: gtk::MenuButton,
 }
 
 impl ListActions {
@@ -98,35 +99,34 @@ impl ListActions {
         let depth = inputs.depth;
         let widget = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         widget.add_css_class("icons-header-actions");
+        let sort_menu = browser::list_sort_menu(browser, depth);
+        browser::sync_list_sort_menu(browser, depth, &sort_menu);
+        sort_menu.set_margin_end(12);
+        widget.append(&sort_menu);
         let content = ContentActions::append(&widget, browser, depth);
         if let Some(state) = inputs.new_folder_state.as_ref() {
             widget.append(&browser::pane_new_folder_button(state.clone(), depth));
         }
         widget.append(&browser::pane_refresh_button(browser, depth));
-        let actions = Self { widget, content };
+        let actions = Self {
+            widget,
+            content,
+            sort_menu,
+        };
         actions.append_sort_controls(inputs);
         actions.append_columns_menu(table);
         actions
     }
 
-    /// Recent and camera folders keep sort controls; others sort from the headings.
     fn append_sort_controls(&self, inputs: &PaneBuild) {
-        let location = inputs.location();
-        let camera_photos = location
-            .as_ref()
-            .is_some_and(|location| location.is_camera_photo_root());
-        let recent = location
-            .as_ref()
-            .is_some_and(|location| location.is_recent_root());
-        if recent {
+        if inputs
+            .location()
+            .is_some_and(|location| location.is_recent_root())
+        {
             self.widget.append(&browser::column_sort_direction_toggle(
                 &inputs.browser,
                 inputs.depth,
             ));
-        }
-        if camera_photos || recent {
-            self.widget
-                .append(&browser::column_sort_menu(&inputs.browser, inputs.depth));
         }
     }
 
@@ -179,6 +179,7 @@ pub(super) fn build_list_pane(inputs: &PaneBuild, group_by_type: bool) -> Pane {
     pane.group_by_type = group_by_type;
     pane.type_group_sorter = type_group_sorter;
     pane.sorting = Some(table.sorting);
+    pane.sort_menu = Some(actions.sort_menu);
     pane.list_headings = Some(table.headings);
     pane.list_columns = Some(table.columns);
     refresh_marquee_targets(&pane);

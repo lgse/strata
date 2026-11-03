@@ -553,7 +553,7 @@
   "MODIFIED": "MODIFICADO",
   "MOTION": "MOVIMENTO",
   "Make this the default size": "Tornar este o tamanho padrão",
-  "Make this the default sort": "Tornar esta a ordenação padrão",
+  "Make default": "Tornar padrão",
   "Maximize window": "Maximizar janela",
   "Maximum items": "Máximo de itens",
   "Measuring Trash…": "Medindo a Lixeira…",
@@ -1535,5 +1535,14 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} pés",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} pés",
-  "No action": "Nenhuma ação"
+  "No action": "Nenhuma ação",
+  "Natural": "Natural",
+  "Alphabetical": "Alfabética",
+  "NAME ORDER": "ORDEM DOS NOMES",
+  "Case-sensitive names": "Diferenciar maiúsculas e minúsculas",
+  "Extension": "Extensão",
+  "Unsorted": "Sem ordenação",
+  "Sort: %{field} %{direction}": "Ordenação: %{field} %{direction}",
+  "%{field} · %{order}": "%{field} · %{order}",
+  "%{field} · case-sensitive": "%{field} · diferencia maiúsculas"
 }

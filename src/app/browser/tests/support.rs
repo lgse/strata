@@ -168,6 +168,7 @@ pub(super) fn entry_at(location: Location, kind: EntryKind) -> FileEntry {
         kind,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
@@ -187,6 +188,7 @@ pub(super) fn batch_entry(name: &str) -> FileEntry {
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         mode: MetadataValue::Unknown,
         recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
@@ -311,6 +313,7 @@ pub(super) fn staged_entry(
         kind,
         size,
         modified_unix_seconds: MetadataValue::Known(modified),
+        created_unix_seconds: MetadataValue::Unknown,
         ..batch_entry(name)
     }
 }
