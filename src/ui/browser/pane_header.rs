@@ -124,14 +124,27 @@ pub(in crate::ui) fn lists_back_history(focused: &gtk::Widget) -> bool {
 /// Right-click, long-press, or the context-menu key on Back lists the back
 /// history, most recent first, and jumps to a chosen entry in one step.
 pub(in crate::ui) fn attach_back_history(browser: &Rc<Browser>, back: &gtk::Button) {
+    describe_back_history(back);
+    if browser.can_go_back() {
+        install_back_history_menu(browser, back);
+    }
+}
+
+/// [`attach_back_history`] for a Back button that stays up across navigation.
+pub(in crate::ui) fn attach_live_back_history(browser: &Rc<Browser>, back: &gtk::Button) {
+    describe_back_history(back);
+    install_back_history_menu(browser, back);
+}
+
+fn describe_back_history(back: &gtk::Button) {
     super::super::shortcut_reference::follow_description(
         back,
         "Right-click, hold, or press %{keys} to list the back history",
         keys::Keys::One(CONTEXT_MENU.shown()),
     );
-    if !browser.can_go_back() {
-        return;
-    }
+}
+
+fn install_back_history_menu(browser: &Rc<Browser>, back: &gtk::Button) {
     let content = crate::ui::accessibility::menu_box();
     content.add_css_class("column-menu");
     content.add_css_class("history-menu");

@@ -82,6 +82,7 @@ use pane::{
     BoundModeItem, Pane, PaneSection, bound_edit, focus_pane_surface, install_edit_unbind,
     refresh_mark_pane, register_bound_mode_item, set_mode_mark_style,
 };
+pub(super) use pane_header::{header_navigation, sync_navigation};
 pub(super) use search_options::{FilteredFileClick, filtered_file_click};
 use selection::{reset_native_range_origin, scroll_collection_to, set_selections};
 use source_index::{PanePositions, SourceIndexMap, view_position_for_source};

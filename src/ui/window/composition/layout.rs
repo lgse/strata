@@ -143,6 +143,9 @@ impl Header {
         content.set_hexpand(true);
         content.set_valign(gtk::Align::Center);
         content.append(&sidebar_toggle);
+        let history_navigation = browser.history_navigation_widget();
+        history_navigation.set_valign(gtk::Align::Center);
+        content.append(&history_navigation);
         content.append(&location);
         content.append(&actions);
         widget.set_title_widget(Some(&content));

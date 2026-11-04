@@ -20,31 +20,69 @@ use crate::{
 
 /// Back, Forward, and Parent folder buttons.
 pub(super) fn list_navigation(browser: &Rc<Browser>) -> gtk::Box {
+    let actions = navigation_buttons(browser);
+    if let Some(back) = actions.first_child().and_downcast::<gtk::Button>() {
+        browser::attach_back_history(browser, &back);
+    }
+    actions
+}
+
+/// The window header outlives navigation, so its buttons follow
+/// [`sync_navigation`] and Back lists the history whenever there is one.
+pub(in crate::ui) fn header_navigation(browser: &Rc<Browser>) -> gtk::Box {
+    let actions = navigation_buttons(browser);
+    if let Some(back) = actions.first_child().and_downcast::<gtk::Button>() {
+        browser::attach_live_back_history(browser, &back);
+    }
+    actions
+}
+
+/// Enables Back, Forward, and Parent folder by what the history allows now.
+pub(in crate::ui) fn sync_navigation(actions: &gtk::Box, browser: &Browser) {
+    let mut button = actions.first_child();
+    for available in navigation_availability(browser) {
+        let Some(widget) = button else {
+            return;
+        };
+        widget.set_sensitive(available);
+        button = widget.next_sibling();
+    }
+}
+
+fn navigation_availability(browser: &Browser) -> [bool; 3] {
+    [
+        browser.can_go_back(),
+        browser.can_go_forward(),
+        browser.can_go_parent(),
+    ]
+}
+
+fn navigation_buttons(browser: &Rc<Browser>) -> gtk::Box {
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     actions.add_css_class("list-navigation");
-    for (icon, tooltip, binding, action, available) in [
+    let buttons = [
         (
             crate::assets::icons::ARROW_LEFT,
             "Back (%{keys})",
             HISTORY_BACK,
             Browser::back as fn(&Rc<Browser>),
-            browser.can_go_back(),
         ),
         (
             crate::assets::icons::ARROW_RIGHT,
             "Forward (%{keys})",
             HISTORY_FORWARD,
             Browser::forward as fn(&Rc<Browser>),
-            browser.can_go_forward(),
         ),
         (
             crate::assets::icons::ARROW_UP,
             "Parent folder (%{keys})",
             PARENT_FOLDER,
             Browser::parent as fn(&Rc<Browser>),
-            browser.can_go_parent(),
         ),
-    ] {
+    ];
+    for ((icon, tooltip, binding, action), available) in
+        buttons.into_iter().zip(navigation_availability(browser))
+    {
         let button = gtk::Button::builder().sensitive(available).build();
         let keys = Keys::One(binding.alternate(0).shown());
         shortcut_reference::follow_tooltip(&button, tooltip, keys);
@@ -59,9 +97,6 @@ pub(super) fn list_navigation(browser: &Rc<Browser>) -> gtk::Box {
             }
         });
         actions.append(&button);
-    }
-    if let Some(back) = actions.first_child().and_downcast::<gtk::Button>() {
-        browser::attach_back_history(browser, &back);
     }
     actions
 }

@@ -254,7 +254,8 @@ headerbar.browser-header menubutton.header-action > button {
 .directory-column .column-header menubutton.column-header-action > button,
 .mode-pane-header button.column-header-action,
 .mode-pane-header menubutton.column-header-action > button,
-.mode-pane-header .list-navigation-button {
+.mode-pane-header .list-navigation-button,
+headerbar.browser-header .list-navigation-button {
   padding: 0;
 }
 

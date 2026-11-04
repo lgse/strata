@@ -140,6 +140,7 @@ impl ViewState {
             self.truncate(len);
         }
         self.sync_displayed_location();
+        self.sync_history_navigation();
     }
 
     pub(super) fn on_column_added(self: &Rc<Self>, depth: usize, location: &Location) {
@@ -147,7 +148,12 @@ impl ViewState {
         if self.mode_views.borrow().mode() == BrowserMode::Columns {
             self.append_column(depth, location);
         }
+        self.sync_history_navigation();
         self.settle_connect_column(location);
+    }
+
+    fn sync_history_navigation(&self) {
+        crate::ui::browser_modes::sync_navigation(&self.history_navigation, &self.browser);
     }
 
     pub(super) fn on_columns_relocated(self: &Rc<Self>, from_depth: usize) {

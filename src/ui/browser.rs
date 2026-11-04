@@ -123,9 +123,9 @@ pub(in crate::ui) use crate::ui::browser::listing_filter::{
 };
 pub(in crate::ui) use crate::ui::browser::location::ConnectOutcome;
 pub(super) use crate::ui::browser::pane_header::{
-    attach_back_history, column_sort_direction_toggle, column_sort_menu, empty_trash_button,
-    leftovers_button, list_sort_menu, lists_back_history, pane_new_folder_button,
-    pane_refresh_button, sync_column_sort_direction, sync_list_sort_menu,
+    attach_back_history, attach_live_back_history, column_sort_direction_toggle, column_sort_menu,
+    empty_trash_button, leftovers_button, list_sort_menu, lists_back_history,
+    pane_new_folder_button, pane_refresh_button, sync_column_sort_direction, sync_list_sort_menu,
 };
 pub(super) use crate::ui::browser::paths::is_trash_root;
 pub use crate::ui::browser::peek::PeekBehavior;
@@ -206,6 +206,7 @@ pub(super) struct SendToMenuHandlers {
 pub(super) struct ViewState {
     overlay: gtk::Overlay,
     location_control: gtk::Box,
+    history_navigation: gtk::Box,
     location_stack: gtk::Stack,
     global_activity_spinner: gtk::Spinner,
     global_activity: RefCell<GlobalActivityState>,

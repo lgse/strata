@@ -348,9 +348,11 @@ fn new_view_state(parts: StateParts) -> Rc<ViewState> {
         interactive,
         browser,
     } = parts;
+    let history_navigation = crate::ui::browser_modes::header_navigation(&browser);
     Rc::new(ViewState {
         overlay: overlay.clone(),
         location_control,
+        history_navigation,
         location_stack,
         global_activity_spinner,
         global_activity: RefCell::new(GlobalActivityState::default()),

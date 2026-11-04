@@ -216,6 +216,11 @@ impl BrowserView {
         self.state.location_control.clone().upcast()
     }
 
+    /// Back, Forward, and Parent folder for the window header.
+    pub fn history_navigation_widget(&self) -> gtk::Widget {
+        self.state.history_navigation.clone().upcast()
+    }
+
     /// Shows the shared header spinner until the returned activity guard is dropped.
     pub fn begin_global_activity(&self, label: impl Into<String>) -> GlobalActivity {
         self.state.begin_global_activity(label)
