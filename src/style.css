@@ -902,11 +902,6 @@ button.appearance-density-snap:focus-visible {
 
 .settings-backdrop {
   background: alpha(@strata_bg, 0.82);
-  transition: opacity 200ms ease-out;
-}
-
-.settings-backdrop.modal-hidden {
-  opacity: 0;
 }
 
 .modal-backdrop,
@@ -923,14 +918,12 @@ button.appearance-density-snap:focus-visible {
 }
 
 .action-dialog,
-.search-dialog,
-.settings-dialog {
+.search-dialog {
   transition: opacity 200ms ease-out, transform 200ms ease-out;
 }
 
 .modal-hidden .action-dialog,
-.modal-hidden .search-dialog,
-.modal-hidden .settings-dialog {
+.modal-hidden .search-dialog {
   opacity: 0;
   transform: scale(0.96);
 }

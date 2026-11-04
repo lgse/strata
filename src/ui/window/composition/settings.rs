@@ -32,6 +32,10 @@ mod tests;
 
 type AvailableUpdate = Rc<RefCell<Option<(ReleaseMetadata, InstallRequest, UpdateMethod)>>>;
 
+thread_local! {
+    static LAYER_PREPARATION_CLAIMED: Cell<bool> = const { Cell::new(false) };
+}
+
 pub(super) fn install(
     window: &gtk::ApplicationWindow,
     content: &WindowContent,
@@ -55,6 +59,7 @@ pub(super) fn install(
         guard,
         shortcuts: content.footer.shortcuts.clone(),
     });
+    prepare_after_first_paint(&launcher);
     let clicked_settings = Rc::downgrade(&launcher);
     content.header.settings.connect_clicked(move |_| {
         if let Some(launcher) = clicked_settings.upgrade() {
@@ -79,6 +84,36 @@ pub(super) fn install(
     );
     content.key_controllers.borrow_mut().push(controller);
     notice
+}
+
+/// Most of the first open's cost is paid once per process, so only the first tab shown
+/// prepares its layer: later tabs still open quickly and do not each keep a copy of Settings.
+fn prepare_after_first_paint(launcher: &Rc<SettingsLauncher>) {
+    let launcher_for_map = Rc::downgrade(launcher);
+    launcher.overlay.connect_map(move |overlay| {
+        if LAYER_PREPARATION_CLAIMED.get() {
+            return;
+        }
+        let Some(clock) = overlay.frame_clock() else {
+            return;
+        };
+        LAYER_PREPARATION_CLAIMED.set(true);
+        let launcher = launcher_for_map.clone();
+        let handler = Rc::new(RefCell::new(None));
+        let handler_for_paint = handler.clone();
+        let id = clock.connect_after_paint(move |clock| {
+            if let Some(id) = handler_for_paint.borrow_mut().take() {
+                clock.disconnect(id);
+            }
+            let launcher = launcher.clone();
+            glib::idle_add_local_once(move || {
+                if let Some(launcher) = launcher.upgrade() {
+                    launcher.prepare();
+                }
+            });
+        });
+        handler.replace(Some(id));
+    });
 }
 
 struct SettingsLauncher {
@@ -122,6 +157,19 @@ impl SettingsLauncher {
         layer
     }
 
+    /// Separate idle callbacks let input and frames through between the two blocking steps.
+    fn prepare(&self) {
+        if self.layer.borrow().is_some() {
+            return;
+        }
+        let layer = self.layer().widget.downgrade();
+        glib::idle_add_local_once(move || {
+            if let Some(layer) = layer.upgrade() {
+                settings::prepare_layout(&layer);
+            }
+        });
+    }
+
     fn show(&self) {
         if self
             .overlay
@@ -146,7 +194,7 @@ impl SettingsLauncher {
         }
         layer.focus_current_page();
         self.button.add_css_class("active");
-        crate::ui::browser::animate_in(&layer.widget);
+        crate::ui::modal::fade_in(layer.widget.upcast_ref());
     }
 }
 

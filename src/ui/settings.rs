@@ -239,6 +239,26 @@ pub fn build_layer(
     }
 }
 
+/// Computes a hidden layer's styles and layout without mapping it, so that its first
+/// open mostly only has to render. GTK does not run between the visibility changes,
+/// so nothing can see the layer as open.
+pub fn prepare_layout(layer: &gtk::Box) {
+    let Some(parent) = layer.parent().filter(|parent| parent.width() > 0) else {
+        return;
+    };
+    if layer.is_visible() {
+        return;
+    }
+    layer.set_child_visible(false);
+    layer.set_visible(true);
+    let (min_width, ..) = layer.measure(gtk::Orientation::Horizontal, -1);
+    let width = parent.width().max(min_width);
+    let (min_height, ..) = layer.measure(gtk::Orientation::Vertical, width);
+    layer.allocate(width, parent.height().max(min_height), -1, None);
+    layer.set_visible(false);
+    layer.set_child_visible(true);
+}
+
 fn backdrop_layer() -> gtk::Box {
     let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
     layer.add_css_class("app-modal-layer");
@@ -518,8 +538,9 @@ fn hide(layer: &gtk::Box, button: &gtk::Button, root: &BlurBin, hooks: &DismissH
     let layer = layer.clone();
     let root = root.clone();
     let button = button.clone();
-    super::browser::animate_out(&layer_for_anim, move || {
+    super::modal::fade_out(layer_for_anim.upcast_ref(), move || {
         layer.set_visible(false);
+        layer.set_opacity(1.0);
         layer.remove_css_class("dismissing");
         layer.set_sensitive(true);
         root.set_blurred(false);
