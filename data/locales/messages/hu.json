@@ -661,7 +661,7 @@
   "Refusing to replace non-regular portal configuration %{path}": "Nem szabályos portálbeállítások (%{path}) cseréje visszautasítva",
   "Refusing to replace non-regular udiskie configuration %{path}": "Nem szabályos udiskie-beállítások (%{path}) cseréje visszautasítva",
   "Refusing unsafe archive path: %{name}": "Nem biztonságos archívum-útvonal visszautasítva: %{name}",
-  "Refusing to extract through the symbolic link “%{path}”": "A kibontás a(z) „%{path}” szimbolikus hivatkozáson keresztül visszautasítva",
+  "Refusing to extract through the symbolic link “%{path}”": "„%{path}” szimbolikus hivatkozáson keresztüli kibontás visszautasítása",
   "Release notes unavailable for this build": "Ehhez az összeállításhoz nem érhetők el a kiadási megjegyzések",
   "Remote preview exceeds the %{limit} download limit": "A távoli előnézet meghaladja a(z) %{limit} letöltési korlátot",
   "Remove %{name}": "%{name} eltávolítása",
