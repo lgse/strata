@@ -253,7 +253,7 @@ pub(in crate::ui) struct Preferences {
     preview_muted: bool,
     #[serde(default = "default_full_volume")]
     preview_volume: f64,
-    #[serde(default)]
+    #[serde(default = "default_enabled")]
     preview_text_wrap: bool,
     #[serde(default)]
     unit_system: UnitSystem,

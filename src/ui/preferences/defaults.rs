@@ -72,7 +72,7 @@ impl Default for Preferences {
             check_for_updates: true,
             preview_muted: false,
             preview_volume: default_full_volume(),
-            preview_text_wrap: false,
+            preview_text_wrap: true,
             unit_system: UnitSystem::Metric,
             preview_autoplay: false,
             watch_network_folders: true,
