@@ -38,12 +38,12 @@ impl PinnedSection {
         self.items.replace(items);
     }
 
-    pub(super) fn apply_state(&self, collapsed: bool) {
+    pub(super) fn apply_state(&self, collapsed: bool, rail: bool) {
         for revealer in [&self.upper_revealer, &self.lower_revealer] {
             revealer.set_transition_duration(section_transition_duration());
             revealer.set_reveal_child(!collapsed);
         }
-        self.header.apply_state(collapsed);
+        self.header.apply_state(collapsed, rail);
     }
 }
 
@@ -69,16 +69,18 @@ impl CollapsibleSection {
         count
     }
 
-    pub(super) fn apply_state(&self, collapsed: bool) {
+    pub(super) fn apply_state(&self, collapsed: bool, rail: bool) {
         self.revealer
             .set_transition_duration(section_transition_duration());
         self.revealer.set_reveal_child(!collapsed);
-        self.header.apply_state(collapsed);
+        self.header.apply_state(collapsed, rail);
     }
 }
 
 pub(super) struct SectionHeader {
     pub(super) toggle: gtk::Button,
+    pub(super) title: gtk::Label,
+    pub(super) rule: gtk::Separator,
     pub(super) chevron: gtk::Image,
     pub(super) badge: gtk::Label,
     pub(super) item_count: Cell<usize>,
@@ -94,7 +96,20 @@ impl SectionHeader {
         );
     }
 
-    pub(super) fn apply_state(&self, collapsed: bool) {
+    /// The rail keeps the header's row so toggling moves no icon, leaving only
+    /// the chevron to fold the section.
+    pub(super) fn apply_state(&self, collapsed: bool, rail: bool) {
+        self.title.set_visible(!rail);
+        self.rule.set_visible(!rail);
+        if let Some(content) = self.toggle.child() {
+            content.set_halign(if rail {
+                gtk::Align::Center
+            } else {
+                gtk::Align::Fill
+            });
+        }
+        self.toggle
+            .set_tooltip_text(rail.then(|| self.title.label()).as_deref());
         if collapsed {
             self.toggle.remove_css_class("expanded");
         } else {
@@ -109,7 +124,7 @@ impl SectionHeader {
         };
         crate::assets::set_primary_icon(&self.chevron, icon);
         self.badge
-            .set_visible(collapsed && self.item_count.get() > 0);
+            .set_visible(!rail && collapsed && self.item_count.get() > 0);
         self.toggle
             .update_state(&[gtk::accessible::State::Expanded(Some(!collapsed))]);
     }
@@ -181,7 +196,6 @@ impl SidebarState {
             .build();
         toggle.add_css_class("sidebar-heading-toggle");
         toggle.set_cursor_from_name(Some("pointer"));
-        toggle.set_visible(!self.rail.get());
         crate::ui::accessibility::set_label(&toggle, &title);
         let weak = Rc::downgrade(self);
         toggle.connect_clicked(move |_| {
@@ -193,6 +207,8 @@ impl SidebarState {
         self.widget.append(&toggle);
         SectionHeader {
             toggle,
+            title: label,
+            rule,
             chevron,
             badge,
             item_count: Cell::new(0),
@@ -216,7 +232,7 @@ impl SidebarState {
         let header = self.append_section_header(SidebarSection::Pinned);
         header.set_item_count(item_count);
         let collapsed = item_count > 0 && self.section_collapsed(SidebarSection::Pinned);
-        header.apply_state(collapsed);
+        header.apply_state(collapsed, self.rail.get());
         let (upper_revealer, upper_box) = self.append_section_revealer(collapsed);
         let (lower_revealer, lower_box) = self.append_section_revealer(collapsed);
         PinnedSection {
@@ -240,19 +256,19 @@ impl SidebarState {
         }
     }
 
-    /// The icon rail hides the section headers, so it shows every section.
     pub(super) fn section_collapsed(&self, section: SidebarSection) -> bool {
-        !self.rail.get() && section.is_collapsed(&self.preference_manager)
+        section.is_collapsed(&self.preference_manager)
     }
 
     pub(super) fn sync_section_states(&self) {
+        let rail = self.rail.get();
         if let Some(section) = self.pinned_section.borrow().as_ref() {
             let collapsed = section.header.item_count.get() > 0
                 && self.section_collapsed(SidebarSection::Pinned);
-            section.apply_state(collapsed);
+            section.apply_state(collapsed, rail);
         }
         if let Some(section) = self.devices_section.borrow().as_ref() {
-            section.apply_state(self.section_collapsed(SidebarSection::Devices));
+            section.apply_state(self.section_collapsed(SidebarSection::Devices), rail);
         }
     }
 

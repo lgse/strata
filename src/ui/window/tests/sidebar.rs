@@ -365,7 +365,7 @@ fn an_empty_pinned_section_shows_only_while_files_are_dragged_over_the_sidebar()
             assert!(!pinned_shown(), "a rebuild without a drag keeps it hidden");
             sidebar.state.set_rail(true);
             sidebar.state.set_file_drag_over(true);
-            assert!(!pinned_shown(), "the rail hides the heading during a drag");
+            assert!(!pinned_shown(), "the rail hides the title during a drag");
             assert!(
                 shows_class(sidebar.widget.upcast_ref(), "sidebar-pin-gap"),
                 "the rail keeps the pin drop target during a drag"

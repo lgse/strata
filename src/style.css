@@ -2310,7 +2310,9 @@ scrollbar.horizontal > range > trough > slider {
   box-shadow: none;
   color: @strata_accent;
   min-height: 38px;
-  padding: 4px 13px;
+  min-width: 0;
+  /* The sidebar's inset, so the icon shares the row icons' column in both modes. */
+  padding: 4px 5px;
   transition: transform 160ms ease-out, background 160ms ease-out;
 }
 
@@ -2354,7 +2356,8 @@ scrollbar.horizontal > range > trough > slider {
   border-radius: 6px;
   box-shadow: none;
   color: @strata_text;
-  min-height: 24px;
+  /* Height comes from the theme-sized icon box, so it matches the rail at any text size. */
+  min-height: 0;
   min-width: 0;
   outline: 1px solid transparent;
   outline-offset: -1px;
@@ -2542,18 +2545,8 @@ scrollbar.horizontal > range > trough > slider {
   padding: 5px;
 }
 
-/* Rail rows take the scaled header-control size from code, like the toggle. */
-.sidebar-rail .sidebar-row {
-  min-height: 0;
-  min-width: 0;
-  padding: 0;
-}
-
 .sidebar-rail .sidebar-row > box > label,
-.sidebar-rail .sidebar-heading,
-.sidebar-rail .sidebar-device-actions,
-.sidebar-rail .sidebar-update-label,
-.sidebar-rail .sidebar-update-version {
+.sidebar-rail .sidebar-device-actions {
   opacity: 0;
   min-width: 0;
   min-height: 0;
@@ -2562,17 +2555,15 @@ scrollbar.horizontal > range > trough > slider {
 
 .sidebar-rail .sidebar-separator {
   margin: 6px 2px;
+  min-width: 0;
 }
 
 .sidebar-rail .sidebar-update-separator {
   margin: 0;
 }
 
-.sidebar-rail .sidebar-update {
-  margin: 0;
-  min-height: 0;
-  min-width: 0;
-  padding: 0;
+.sidebar-rail .sidebar-heading-chevron {
+  margin-right: 0;
 }
 
 .sidebar-heading {
@@ -2599,6 +2590,7 @@ scrollbar.horizontal > range > trough > slider {
   border-radius: 6px;
   box-shadow: none;
   min-height: 24px;
+  min-width: 0;
   padding: 0;
 }
 

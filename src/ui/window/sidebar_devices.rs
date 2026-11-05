@@ -70,7 +70,10 @@ impl SidebarState {
         }
         let count = section.collect_rows(&self.widget);
         section.header.set_item_count(count);
-        section.apply_state(self.section_collapsed(SidebarSection::Devices));
+        section.apply_state(
+            self.section_collapsed(SidebarSection::Devices),
+            self.rail.get(),
+        );
         self.devices_section.replace(Some(section));
     }
 
