@@ -267,6 +267,51 @@ fn settings_row_open_does_not_write_config() {
 }
 
 #[test]
+fn settings_row_polls_only_while_its_settings_layer_is_shown() {
+    let bin = tempfile::tempdir().expect("isolated PATH");
+    gtk_test_with_env(
+        "ui::udiskie_preferences::tests::settings_row_polls_only_while_its_settings_layer_is_shown",
+        [("PATH", bin.path())],
+        || {
+            crate::ui::prepare_portal_ui();
+            seed_omarchy();
+            let bin = PathBuf::from(std::env::var_os("PATH").expect("isolated PATH"));
+            let row = settings_row();
+            let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            layer.add_css_class("settings-backdrop");
+            layer.append(&row);
+            layer.set_visible(false);
+            let overlay = gtk::Overlay::new();
+            overlay.add_overlay(&layer);
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+            wait_until(
+                || has_action_label(&row, "Use Strata"),
+                "construction reload to finish",
+            );
+
+            write_udiskie_stub(&bin);
+            let context = glib::MainContext::default();
+            let keep_waking =
+                glib::timeout_add_local(Duration::from_millis(10), || glib::ControlFlow::Continue);
+            let past_a_poll = Instant::now() + Duration::from_millis(2500);
+            while Instant::now() < past_a_poll {
+                context.iteration(true);
+            }
+            keep_waking.remove();
+            assert!(
+                !row.get_visible(),
+                "closed Settings should not poll for availability"
+            );
+
+            layer.set_visible(true);
+            wait_until(|| row.get_visible(), "open Settings to poll again");
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn settings_row_polls_availability_while_hidden() {
     let bin = tempfile::tempdir().expect("isolated PATH");
     gtk_test_with_env(

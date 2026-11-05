@@ -40,8 +40,11 @@ pub(super) fn settings_row() -> gtk::Box {
     let poll = Rc::clone(&summary);
     let weak_row = row.downgrade();
     glib::timeout_add_local(Duration::from_secs(2), move || {
-        if weak_row.upgrade().is_none() {
+        let Some(row) = weak_row.upgrade() else {
             return glib::ControlFlow::Break;
+        };
+        if in_closed_settings(&row) {
+            return glib::ControlFlow::Continue;
         }
         poll.set_sensitive(!SETUP_RUNNING.get() && !poll.busy.get());
         if !SETUP_RUNNING.get() {
@@ -50,6 +53,13 @@ pub(super) fn settings_row() -> gtk::Box {
         glib::ControlFlow::Continue
     });
     row
+}
+
+/// Settings may be built long before it opens, or never open at all.
+fn in_closed_settings(row: &gtk::Box) -> bool {
+    std::iter::successors(row.parent(), gtk::Widget::parent)
+        .find(|widget| widget.has_css_class("settings-backdrop"))
+        .is_some_and(|layer| !layer.is_mapped())
 }
 
 pub(crate) struct UdiskieIntegrationStatus {
