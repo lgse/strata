@@ -2474,7 +2474,6 @@ scrollbar.horizontal > range > trough > slider {
   min-width: 0;
   outline: 1px solid transparent;
   outline-offset: -1px;
-  padding-right: 2px;
   transition: background 220ms ease-out, outline-color 220ms ease-out;
 }
 
@@ -2509,15 +2508,20 @@ scrollbar.horizontal > range > trough > slider {
 
 .sidebar-eject:hover,
 .sidebar-device-action:hover {
-  background: alpha(@strata_accent, 0.15);
   opacity: 1;
 }
 
 .sidebar-eject:focus,
 .sidebar-device-action:focus {
   opacity: 1;
+  outline: none;
+}
+
+/* The icon sits off-centre in its button, so the ring follows the icon. */
+.sidebar-device-action:focus-visible > image {
+  border-radius: 4px;
   outline: 1px solid @strata_accent;
-  outline-offset: -1px;
+  outline-offset: 1px;
 }
 
 .sidebar-separator {
@@ -2543,10 +2547,6 @@ scrollbar.horizontal > range > trough > slider {
   min-height: 0;
   min-width: 0;
   padding: 0;
-}
-
-.sidebar-rail .sidebar-device {
-  padding-right: 0;
 }
 
 .sidebar-rail .sidebar-row > box > label,
@@ -2627,10 +2627,12 @@ scrollbar.horizontal > range > trough > slider {
   -gtk-icon-filter: opacity(0.65);
 }
 
-/* Sized from the theme like .sidebar-device-action. The margin is the device row's 2px
-   right padding plus 1px, which optically centres the chevron over the eject buttons. */
-.sidebar-heading-chevron {
-  margin-right: 3px;
+/* The chevron's built-in side bearing supplies most of its inset, so its right gap
+   matches the title's left gap. Device actions share the inset and icon size, which
+   keeps the chevron and eject tips in one column. */
+.sidebar-heading-chevron,
+.sidebar-device-action > image {
+  margin-right: 1px;
 }
 
 /* Left padding comes from the theme so the title starts where the row icons do. */
