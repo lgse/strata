@@ -8,6 +8,7 @@ use gtk::prelude::*;
 
 use super::{
     SidebarState,
+    sidebar::{UPDATE_TEXT_HIDDEN, UPDATE_TEXT_SHOWN},
     sidebar_width::{
         MIN_SIDEBAR_WIDTH, SidebarFit, preferred_sidebar_width, sidebar_minimum_width,
         sidebar_rail_button_size, sidebar_rail_width,
@@ -52,10 +53,9 @@ fn apply_rail_to_paned(paned: &gtk::Paned, rail: bool) {
     }
 }
 
+/// Section headers keep their row and follow `sync_section_states` instead.
 fn sync_rail_button(button: &gtk::Button, rail: bool) {
-    if button.has_css_class("sidebar-heading-toggle") {
-        button.set_visible(!rail);
-    } else {
+    if !button.has_css_class("sidebar-heading-toggle") {
         sync_sidebar_button(button, rail);
     }
 }
@@ -93,37 +93,28 @@ impl SidebarState {
     }
 
     fn sync_update_notice_rail(&self, rail: bool) {
-        let text = self.update_label.parent();
-        if let Some(text) = &text {
-            text.set_visible(!rail);
-        }
-        let Some(content) = text
-            .and_then(|text| text.parent())
-            .and_downcast::<gtk::Box>()
+        let Some(slot) = self
+            .update_label
+            .ancestor(gtk::Stack::static_type())
+            .and_downcast::<gtk::Stack>()
         else {
             return;
         };
-        content.set_spacing(if rail { 0 } else { 8 });
-        content.set_halign(if rail {
-            gtk::Align::Center
+        slot.set_visible_child_name(if rail {
+            UPDATE_TEXT_HIDDEN
         } else {
-            gtk::Align::Fill
+            UPDATE_TEXT_SHOWN
         });
-        if let Some(dot) = content.first_child() {
+        let Some(content) = slot.parent().and_downcast::<gtk::Box>() else {
+            return;
+        };
+        content.set_spacing(if rail { 0 } else { 8 });
+        if let Some(dot) = content.last_child() {
             dot.set_visible(!rail);
         }
     }
 
     pub(super) fn sync_rail_rows(&self) {
-        let rail = self.rail.get();
-        let size = if rail { sidebar_rail_button_size() } else { -1 };
-        if let Some(notice) = self
-            .update_label
-            .ancestor(gtk::Button::static_type())
-            .and_downcast::<gtk::Button>()
-        {
-            notice.set_size_request(if rail { sidebar_rail_width() } else { -1 }, size);
-        }
         let mut widget_child = self.widget.first_child();
         while let Some(child) = widget_child {
             widget_child = child.next_sibling();
@@ -196,8 +187,8 @@ impl SidebarState {
 }
 
 pub(super) fn sync_sidebar_button(button: &gtk::Button, rail: bool) {
-    let size = if rail { sidebar_rail_button_size() } else { -1 };
-    button.set_size_request(size, size);
+    // Height stays with the theme, so a row is equally tall in both modes.
+    button.set_size_request(if rail { sidebar_rail_button_size() } else { -1 }, -1);
     let Some(content) = button.child() else {
         return;
     };

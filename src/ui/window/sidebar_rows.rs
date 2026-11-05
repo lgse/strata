@@ -182,6 +182,6 @@ pub(super) fn customize_sidebar_folder_icon(row: &gtk::Button, location: &Locati
             .and_then(|content| content.first_child())
             .and_downcast::<gtk::Image>()
     {
-        crate::ui::thumbnail::show_customized_folder_image(&image, path, icon, image.pixel_size());
+        crate::ui::thumbnail::show_customized_folder_image(&image, path, icon);
     }
 }
