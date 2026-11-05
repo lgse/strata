@@ -78,6 +78,7 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
     saved.remove("folder_peeking");
     saved.remove("columns_show_sizes");
     saved.remove("language");
+    saved.remove("preview_text_wrap");
     let restored: Preferences = saved.try_into().expect("backward-compatible preferences");
     assert_eq!(
         restored,
@@ -94,6 +95,7 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
             file_icon_colors: FileIconColors::Brand,
             folder_peeking: false,
             columns_show_sizes: true,
+            preview_text_wrap: true,
             ..non_default_preferences()
         }
     );

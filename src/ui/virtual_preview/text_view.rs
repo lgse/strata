@@ -82,12 +82,26 @@ pub(super) fn unwrapped_document_width(
             end.forward_to_line_end();
         }
         let location = view.iter_location(&end);
-        widest = widest.max(location.x() + location.width());
+        widest = widest.max(location.x() + location.width() + line_right_margin(view, &line));
         if !line.forward_line() {
             break;
         }
     }
-    widest + view.right_margin()
+    widest
+}
+
+/// The larger of the view's right margin and the line's tagged one, so code
+/// lines keep room for their inset and copy button without narrowing others.
+fn line_right_margin(
+    view: &super::super::document_view::DocumentTextView,
+    line: &gtk::TextIter,
+) -> i32 {
+    line.tags()
+        .iter()
+        .rev()
+        .find(|tag| tag.is_right_margin_set())
+        .map_or(0, gtk::TextTag::right_margin)
+        .max(view.right_margin())
 }
 
 pub(super) fn set_text_view_content(view: &gtk::TextView, text: &str, padding: i32) {
@@ -146,8 +160,8 @@ pub(super) fn document_text_view(
     view.set_editable(false);
     view.set_cursor_visible(false);
     view.set_accepts_tab(false);
-    view.set_left_margin(16);
-    view.set_right_margin(16);
+    view.set_left_margin(super::tags::DOCUMENT_MARGIN);
+    view.set_right_margin(super::tags::DOCUMENT_MARGIN);
     view.set_can_target(false);
     view.set_focusable(false);
     view.add_css_class("preview-document");
