@@ -528,7 +528,10 @@ pub(super) fn sidebar_lock_button(
 fn device_action_button(label: &str, icon: &str, on_click: impl Fn() + 'static) -> gtk::Button {
     let button = gtk::Button::new();
     crate::ui::accessibility::set_tooltip_and_label(&button, label);
-    button.set_child(Some(&crate::assets::primary_icon(icon, 14)));
+    let image = crate::assets::primary_icon(icon, 14);
+    image.set_halign(gtk::Align::End);
+    image.set_valign(gtk::Align::Center);
+    button.set_child(Some(&image));
     button.add_css_class("sidebar-eject");
     button.add_css_class("sidebar-device-action");
     button.set_cursor_from_name(Some("pointer"));
