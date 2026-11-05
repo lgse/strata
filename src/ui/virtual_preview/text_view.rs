@@ -90,6 +90,8 @@ pub(super) fn unwrapped_document_width(
     widest
 }
 
+/// The larger of the view's right margin and the line's tagged one, so code
+/// lines keep room for their inset and copy button without narrowing others.
 fn line_right_margin(
     view: &super::super::document_view::DocumentTextView,
     line: &gtk::TextIter,
@@ -98,7 +100,8 @@ fn line_right_margin(
         .iter()
         .rev()
         .find(|tag| tag.is_right_margin_set())
-        .map_or_else(|| view.right_margin(), gtk::TextTag::right_margin)
+        .map_or(0, gtk::TextTag::right_margin)
+        .max(view.right_margin())
 }
 
 pub(super) fn set_text_view_content(view: &gtk::TextView, text: &str, padding: i32) {
