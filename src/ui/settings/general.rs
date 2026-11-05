@@ -27,13 +27,7 @@ pub(super) fn general_page(
 ) -> (gtk::Widget, Vec<gtk::Box>, Vec<ResponsiveActivationRow>) {
     let preferences = page_content();
 
-    append_language_option(&preferences, &manager);
-    let units = super::unit_system_control(&manager);
-    preferences.append(&super::control_row(
-        "Units",
-        "For things like distances, heights and volumes.",
-        &units,
-    ));
+    append_language_and_units_options(&preferences, &manager);
     append_browsing_options(&preferences, &manager);
     append_sidebar_options(&preferences, &manager);
 
@@ -128,8 +122,18 @@ pub(super) fn general_page(
     )
 }
 
-fn append_language_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
-    let group = super::settings_group(content, "LANGUAGE");
+fn append_language_and_units_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
+    let group = super::settings_group(content, "LANGUAGE & UNITS");
+    append_language_option(&group, manager);
+    let units = super::unit_system_control(manager);
+    group.append(&super::control_row(
+        "Units",
+        "For things like distances, heights and volumes.",
+        &units,
+    ));
+}
+
+fn append_language_option(group: &gtk::Box, manager: &Rc<PreferenceManager>) {
     let choice = super::bindings::choice_menu(
         manager,
         "Language",
