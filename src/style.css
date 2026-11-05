@@ -2545,14 +2545,6 @@ scrollbar.horizontal > range > trough > slider {
   padding: 5px;
 }
 
-.sidebar-rail .sidebar-row > box > label,
-.sidebar-rail .sidebar-device-actions {
-  opacity: 0;
-  min-width: 0;
-  min-height: 0;
-  font-size: 0;
-}
-
 .sidebar-rail .sidebar-separator {
   margin: 6px 2px;
   min-width: 0;
