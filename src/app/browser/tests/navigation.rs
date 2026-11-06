@@ -730,6 +730,9 @@ struct FolderTree {
     /// While set, listings wait for `release` instead of answering at once.
     held: Cell<bool>,
     pending: RefCell<Vec<(DirectoryRequest, DirectoryEmit)>>,
+    /// While set, validations wait for `answer_validation`.
+    hold_validation: Cell<bool>,
+    validations: RefCell<Vec<Validation>>,
 }
 
 impl FolderTree {
@@ -766,6 +769,15 @@ impl FolderTree {
         }
     }
 
+    fn answer_validation(&self, location: &Location) {
+        let pending = self.validations.take();
+        let (_, emit) = pending
+            .into_iter()
+            .find(|(validated, _)| validated == location)
+            .expect("a pending validation");
+        emit(Ok(()));
+    }
+
     fn answer(&self, request: &DirectoryRequest, emit: &DirectoryEmit) {
         let entries = self
             .listings
@@ -798,6 +810,19 @@ fn tree_location(path: &str) -> Location {
 impl FileSource for FolderTree {
     fn validate_location(&self, _: &Location) -> Result<(), LocationValidationError> {
         Ok(())
+    }
+
+    fn validate_location_async(
+        &self,
+        location: Location,
+        emit: Rc<dyn Fn(Result<(), LocationValidationError>)>,
+    ) -> LoadHandle {
+        if self.hold_validation.get() {
+            self.validations.borrow_mut().push((location, emit));
+        } else {
+            emit(Ok(()));
+        }
+        LoadHandle::new(|| {})
     }
 
     fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
@@ -1149,5 +1174,164 @@ fn a_remote_reload_announces_the_neighbour_cursor_of_an_inactive_column() {
             }
         )),
         "the child column's cursor moves to z and is published"
+    );
+}
+
+/// What another view left selected in the folder Columns returns to.
+#[derive(Clone, Copy)]
+enum LeftSelection<'a> {
+    /// The cursor the folder's load placed on its first folder, `art`.
+    LoadCursor,
+    Cleared,
+    Names(&'a [&'a str]),
+}
+
+/// One selection left by another view, and the columns Columns should keep for it.
+struct ReturningSelection<'a> {
+    case: &'a str,
+    selected: LeftSelection<'a>,
+    opens: Option<&'a str>,
+    kept: &'a [&'a str],
+}
+
+const OPEN_PATH: &[&str] = &["/fx/docs", "/fx/docs/inner"];
+
+fn returning_selections() -> [ReturningSelection<'static>; 6] {
+    let case = |case, selected, opens, kept| ReturningSelection {
+        case,
+        selected,
+        opens,
+        kept,
+    };
+    [
+        case(
+            "load cursor on a folder",
+            LeftSelection::LoadCursor,
+            None,
+            &[],
+        ),
+        case("empty selection", LeftSelection::Cleared, None, &[]),
+        case(
+            "open child still selected",
+            LeftSelection::Names(&["docs"]),
+            None,
+            OPEN_PATH,
+        ),
+        case(
+            "open child among several",
+            LeftSelection::Names(&["docs", "pics"]),
+            None,
+            OPEN_PATH,
+        ),
+        case(
+            "several without the open child",
+            LeftSelection::Names(&["art", "pics"]),
+            None,
+            &[],
+        ),
+        case(
+            "another folder selected",
+            LeftSelection::Names(&["pics"]),
+            Some("/fx/pics"),
+            &[],
+        ),
+    ]
+}
+
+/// `/fx` with `docs` and its `inner` open as child columns and `/fx` active.
+fn columns_with_open_child() -> (Rc<Browser>, Rc<FolderTree>) {
+    let (browser, _, tree) = folder_browser(FolderTree::with(&[
+        ("/fx", &["art", "docs", "pics"]),
+        ("/fx/docs", &["inner"]),
+    ]));
+    let loaded = |depth: usize| {
+        browser
+            .column_snapshot(depth)
+            .is_some_and(|snapshot| !snapshot.loading)
+    };
+    browser.navigate(Location::local("/fx"));
+    pump_until(|| loaded(0));
+    browser.show_child(0, Location::local("/fx/docs"));
+    pump_until(|| loaded(1));
+    browser.show_child(1, Location::local("/fx/docs/inner"));
+    pump_until(|| loaded(2));
+    browser.set_active_column(0);
+    (browser, tree)
+}
+
+fn open_children(browser: &Browser) -> Vec<Location> {
+    (1..)
+        .map_while(|depth| browser.location_at(depth))
+        .collect()
+}
+
+#[test]
+fn returning_columns_reopen_only_the_child_the_selection_holds() {
+    for ReturningSelection {
+        case,
+        selected,
+        opens,
+        kept,
+    } in returning_selections()
+    {
+        let (browser, _) = columns_with_open_child();
+        match selected {
+            LeftSelection::LoadCursor => {
+                assert!(browser.selection_is_load_cursor(), "{case}");
+            }
+            LeftSelection::Cleared => assert!(browser.clear_active_selection(), "{case}"),
+            LeftSelection::Names(names) => {
+                let names: Vec<String> = names.iter().map(|name| (*name).to_owned()).collect();
+                assert!(browser.select_entries_by_name_at(0, &names), "{case}");
+            }
+        }
+        let history = browser.back_locations().len();
+
+        let reopened = browser.follow_selection_on_return();
+
+        assert_eq!(
+            reopened,
+            opens.map(|path| (0, Location::local(path))),
+            "{case}"
+        );
+        let kept: Vec<_> = kept.iter().map(|path| Location::local(*path)).collect();
+        assert_eq!(open_children(&browser), kept, "{case}");
+        assert_eq!(
+            browser.active_depth(),
+            Some(0),
+            "{case}: the parent stays active"
+        );
+        assert_eq!(
+            browser.back_locations().len(),
+            history,
+            "{case}: closing the stale child adds no history"
+        );
+    }
+}
+
+#[test]
+fn returning_columns_leave_a_validating_navigation_alone() {
+    let (browser, tree) = columns_with_open_child();
+    assert!(browser.clear_active_selection());
+    tree.hold_validation.set(true);
+    let share = tree_location("smb://host/share");
+    browser.navigate_location(share.clone(), true);
+    assert!(browser.pending_navigation_generation().is_some());
+
+    assert_eq!(browser.follow_selection_on_return(), None);
+
+    assert_eq!(
+        open_children(&browser),
+        OPEN_PATH
+            .iter()
+            .map(|path| Location::local(*path))
+            .collect::<Vec<_>>(),
+        "the stale child waits for the navigation"
+    );
+    tree.answer_validation(&share);
+    assert_eq!(
+        browser.active_location(),
+        Some(share),
+        "the validated navigation still opens"
     );
 }
