@@ -853,11 +853,13 @@ fn cursor_result(target: &Target) -> Option<FileEntry> {
         .map(super::collection::search_result_entry)
 }
 
-/// The text a selection or an overwritten character held before an input
-/// method's commit replaced it, and where the commit goes.
+/// The field's text before a commit replaced its selection or an overwritten
+/// character, where the commit goes, and where the cursor returns if the text
+/// is put back.
 struct Replaced {
     text: glib::GString,
     at: i32,
+    cursor: i32,
 }
 
 /// Enters a folder for a `/` committed into `entry` when `accepts`, keeping the
@@ -875,6 +877,8 @@ pub(in crate::ui) fn connect_path_separator(
     };
     // Within one change, GTK deletes the selection, or the character overwrite
     // mode replaces, before inserting the commit; a `/` taken here puts it back.
+    // An input method that shows `/` as preedit before committing it still
+    // drops a selected query: GTK deletes the selection when the preedit starts.
     let replaced: Rc<RefCell<Option<Replaced>>> = Rc::default();
     let restoring = Rc::new(Cell::new(false));
     let deleted = replaced.clone();
@@ -883,18 +887,26 @@ pub(in crate::ui) fn connect_path_separator(
         if restoring_delete.get() || !text.is_focus() {
             return;
         }
-        let selection = text.selection_bounds() == Some((start, end));
-        let overwritten = end == start + 1
+        let selection = text.selection_bounds();
+        // Overwrite mode replaces the grapheme at the cursor, however many
+        // characters it holds.
+        let overwritten = selection.is_none()
             && start == text.position()
             && text
                 .downcast_ref::<gtk::Text>()
                 .is_some_and(gtk::Text::is_overwrite_mode);
-        if selection || overwritten {
-            deleted.replace(Some(Replaced {
-                text: text.text(),
-                at: start,
-            }));
-        }
+        let cursor = if selection == Some((start, end)) {
+            end
+        } else if overwritten {
+            start
+        } else {
+            return;
+        };
+        deleted.replace(Some(Replaced {
+            text: text.text(),
+            at: start,
+            cursor,
+        }));
     });
     let finished = replaced.clone();
     text.connect_changed(move |_| {
@@ -910,7 +922,7 @@ pub(in crate::ui) fn connect_path_separator(
             restoring.set(true);
             text.set_text(&replaced.text);
             restoring.set(false);
-            *position = i32::try_from(replaced.text.chars().count()).unwrap_or(i32::MAX);
+            *position = replaced.cursor;
         }
         descend();
     });
