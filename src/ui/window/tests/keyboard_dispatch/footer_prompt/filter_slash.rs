@@ -31,7 +31,7 @@ fn filter_slash_waits_through_empty_indexing_batches() {
                         ));
                         let entry = focused_entry(&fixture.window);
                         entry.set_text("doc");
-                        assert!(fixture.press(Key::slash, ModifierType::empty()));
+                        type_slash(&fixture);
                         let results = |items, indexing| SearchEvent::Results {
                             query: "doc".to_owned(),
                             items,
@@ -62,7 +62,7 @@ fn filter_slash_waits_through_empty_indexing_batches() {
                                 Some(Location::local(root)),
                                 "a completed miss must not navigate on later results"
                             );
-                            assert!(fixture.press(Key::slash, ModifierType::empty()));
+                            type_slash(&fixture);
                         } else {
                             sender
                                 .send(results(
@@ -119,7 +119,7 @@ fn tenxer_filter_slash_descends_and_keeps_filtering() {
                         order[0].clone()
                     };
                     let destination = root.join(first);
-                    assert!(fixture.press(Key::slash, none), "{mode:?} {query}");
+                    type_slash(&fixture);
                     wait_until_or(
                         || browser.active_location() == Some(Location::local(&destination)),
                         || {
@@ -137,7 +137,7 @@ fn tenxer_filter_slash_descends_and_keeps_filtering() {
                     assert_eq!(fixture.shortcuts.prompt_text(), "");
                     assert_eq!(fixture.view.listing_filter(), None);
                     fixture.shortcuts.prompt().set_text("proj");
-                    assert!(fixture.press(Key::slash, none));
+                    type_slash(&fixture);
                     wait_until_or(
                         || {
                             browser.active_location()
@@ -186,7 +186,7 @@ fn tenxer_filter_slash_uses_the_latest_query_and_rejects_files_and_misses() {
                 for query in ["", "no-such-match", "report"] {
                     fixture.shortcuts.prompt().set_text(query);
                     let generation = browser.navigation_generation();
-                    assert!(fixture.press(Key::slash, none), "{mode:?} {query}");
+                    type_slash(&fixture);
                     pump(350);
                     assert_eq!(
                         browser.navigation_generation(),
@@ -198,23 +198,24 @@ fn tenxer_filter_slash_uses_the_latest_query_and_rejects_files_and_misses() {
                 }
                 fixture.shortcuts.prompt().set_text("Documents");
                 let generation = browser.navigation_generation();
-                assert!(
-                    !press_arabic_zah(&fixture),
-                    "{mode:?}: ظ reaches the prompt"
-                );
+                crate::test_support::commit_text(fixture.shortcuts.prompt(), "/Projects");
                 pump(350);
                 assert_eq!(browser.navigation_generation(), generation, "{mode:?}");
+                assert!(
+                    fixture.shortcuts.prompt_text().contains('/'),
+                    "{mode:?}: a pasted path is typed"
+                );
                 assert!(fixture.shortcuts.prompt_has_focus());
                 fixture.shortcuts.prompt().set_text("doc");
                 wait_results(&fixture, &["Documents"]);
                 fixture.shortcuts.prompt().set_text("arc");
-                assert!(fixture.press(Key::slash, none));
+                type_slash(&fixture);
                 fixture.shortcuts.prompt().set_text("report");
                 pump(350);
                 assert_eq!(browser.active_location(), Some(Location::local(root)));
                 assert_eq!(fixture.shortcuts.prompt_text(), "report");
                 fixture.shortcuts.prompt().set_text("arc");
-                assert!(fixture.press(Key::slash, none));
+                type_slash(&fixture);
                 wait_until(|| {
                     browser.active_location() == Some(Location::local(root.join("Archive")))
                 });
@@ -228,14 +229,14 @@ fn tenxer_filter_slash_uses_the_latest_query_and_rejects_files_and_misses() {
                 assert!(fixture.press(Key::f, none));
                 // Focus returns before the prompt's idle close; the blur alone cancels.
                 fixture.shortcuts.prompt().set_text("arc");
-                assert!(fixture.press(Key::slash, none));
+                type_slash(&fixture);
                 fixture.sidebar_toggle.grab_focus();
                 fixture.shortcuts.prompt().grab_focus();
                 pump(350);
                 assert_eq!(fixture.shortcuts.prompt_text(), "arc", "{mode:?}");
                 assert_eq!(browser.active_location(), Some(Location::local(root)));
                 fixture.shortcuts.prompt().set_text("doc");
-                assert!(fixture.press(Key::slash, none));
+                type_slash(&fixture);
                 assert!(fixture.press(Key::Escape, none));
                 pump(350);
                 assert_eq!(fixture.shortcuts.open_prompt_kind(), None);

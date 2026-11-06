@@ -118,6 +118,23 @@ pub(super) fn submit_prompt_on_activate(
     });
 }
 
+/// A `/` reaches a filter field's input method like any typed key; a lone `/`
+/// it commits enters the matching folder instead of reaching the query.
+pub(super) fn descend_on_committed_slash(dispatcher: &Rc<Dispatcher>) {
+    let prompt = Rc::downgrade(dispatcher);
+    dispatcher.shortcuts.connect_prompt_path_separator(move || {
+        prompt
+            .upgrade()
+            .is_some_and(|dispatcher| dispatcher.prompt_descends())
+    });
+    let entry = Rc::downgrade(dispatcher);
+    dispatcher.view.connect_filter_descent(Rc::new(move || {
+        entry
+            .upgrade()
+            .is_some_and(|dispatcher| dispatcher.filter_entry_descends())
+    }));
+}
+
 pub(super) fn bind_prompt_hints(dispatcher: &Dispatcher) {
     use crate::ui::tenxer_mode::Prompt;
     let revision = dispatcher.destination_revision.clone();

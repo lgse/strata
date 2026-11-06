@@ -24,7 +24,6 @@ impl Dispatcher {
             })
             .or_else(|| self.chrome_owner(press))
             .or_else(|| self.prompt_owner(browser, press))
-            .or_else(|| self.normal_filter_keys(press))
             .or_else(|| self.preview_and_footer_owner(browser, press))
     }
 

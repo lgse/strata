@@ -115,19 +115,26 @@ pub(super) fn finish_filter_descent(
     }
 }
 
-/// A letter that reads as `/` only through the layout fallback is typed.
-fn descends(press: &KeyPress) -> bool {
-    press.is(FILTER_DESCEND) && !press.used_fallback()
-}
-
 impl Dispatcher {
-    pub(super) fn normal_filter_keys(&self, press: &KeyPress) -> KeyResult {
-        if self.type_to_search.preferences.tenxer_mode() || !descends(press) {
-            return None;
+    /// A `/` committed into the focused **Ctrl+F** field; 10xer types it there.
+    pub(super) fn filter_entry_descends(&self) -> bool {
+        if self.type_to_search.preferences.tenxer_mode() {
+            return false;
         }
-        let entry = self.view.focused_filter_entry()?;
+        let Some(entry) = self.view.focused_filter_entry() else {
+            return false;
+        };
         self.begin_filter_descent(Some(entry));
-        Some(Propagation::Stop)
+        true
+    }
+
+    /// A `/` committed into the 10xer **f** prompt.
+    pub(super) fn prompt_descends(&self) -> bool {
+        if self.shortcuts.open_prompt_kind() != Some(Prompt::Filter) {
+            return false;
+        }
+        self.begin_filter_descent(None);
+        true
     }
 
     fn begin_filter_descent(&self, entry: Option<gtk::Entry>) {
@@ -253,8 +260,6 @@ impl Dispatcher {
             }
         } else if press.is(ENTER_ANY_SHIFT) {
             self.submit_prompt(browser);
-        } else if kind == Some(Prompt::Filter) && descends(press) {
-            self.begin_filter_descent(None);
         } else if let Some(delta) = step
             && kind.is_some_and(Prompt::picks_history)
         {

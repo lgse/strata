@@ -566,12 +566,14 @@ fn visible_menu(widget: &gtk::Widget) -> Option<gtk::PopoverMenu> {
     children(widget).find_map(|child| visible_menu(&child))
 }
 
-/// The Arabic layout types ظ on the US slash key; it is typed, never a descent.
-fn press_arabic_zah(fixture: &KeyboardFixture) -> bool {
-    fixture.keys.emit_by_name::<bool>(
-        "key-pressed",
-        &[&Key::Arabic_zah, &61u32, &ModifierType::empty()],
-    )
+/// `/` as typed: the window leaves the key to the focused field's input method,
+/// which commits it.
+fn type_slash(fixture: &KeyboardFixture) {
+    assert!(
+        !fixture.press(Key::slash, ModifierType::empty()),
+        "the input method gets /"
+    );
+    crate::test_support::commit_text(&focused_entry(&fixture.window), "/");
 }
 
 fn focused_entry(window: &gtk::ApplicationWindow) -> gtk::Entry {

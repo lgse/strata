@@ -238,6 +238,15 @@ pub(crate) fn create_empty_file(path: &std::path::Path) -> std::io::Result<()> {
     .map_err(std::io::Error::from)
 }
 
+/// Text an input method commits into `entry`, inserted at the cursor as
+/// typing or a paste inserts it.
+pub(crate) fn commit_text(entry: &gtk::Entry, text: &str) {
+    use gtk::prelude::*;
+    let editable = entry.delegate().expect("an entry delegates to its text");
+    let mut position = editable.position();
+    editable.insert_text(text, &mut position);
+}
+
 pub(crate) fn present_window(window: &gtk::Window) {
     use gtk::prelude::*;
 

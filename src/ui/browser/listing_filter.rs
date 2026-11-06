@@ -32,6 +32,9 @@ pub(super) struct FilterState {
     footer_focus: RefCell<Option<Rc<dyn Fn() -> bool>>>,
     /// The search query and the hit the cursor last rested on in its results.
     cursor_hit: RefCell<Option<(String, PathBuf)>>,
+    /// Takes a `/` committed into one of this browser's filter fields; whether it
+    /// entered, or waits to enter, a folder rather than typing the `/`.
+    descent: RefCell<Option<Rc<dyn Fn() -> bool>>>,
 }
 
 impl FilterState {
@@ -811,6 +814,10 @@ impl BrowserView {
             .replace(Some(has_focus));
     }
 
+    pub(in crate::ui) fn connect_filter_descent(&self, handler: Rc<dyn Fn() -> bool>) {
+        self.state.listing_filter.descent.replace(Some(handler));
+    }
+
     pub(in crate::ui) fn connect_filter_results_changed(&self, handler: Rc<dyn Fn()>) {
         self.state
             .listing_filter
@@ -818,6 +825,32 @@ impl BrowserView {
             .borrow_mut()
             .push(handler);
     }
+}
+
+/// Offers a `/` committed into `entry` to `descend`, which keeps it out of the
+/// text by returning `true`. The `/` is read once the input method has had the
+/// key, so a Zhuyin, Array30 or Boshiamy code that starts with it still composes.
+/// Only a lone `/` typed or pasted into the focused field counts: no file name
+/// holds one, while longer text holding it, such as a pasted path, is typed.
+pub(in crate::ui) fn connect_path_separator(entry: &gtk::Entry, descend: impl Fn() -> bool + 'static) {
+    let Some(text) = entry.delegate() else {
+        return;
+    };
+    text.connect_insert_text(move |text, inserted, _| {
+        if inserted == "/" && text.is_focus() && descend() {
+            text.stop_signal_emission_by_name("insert-text");
+        }
+    });
+}
+
+/// A `/` committed into a pane's filter field goes to the browser's descent.
+pub(in crate::ui) fn bind_filter_descent(entry: &gtk::Entry, state: Weak<ViewState>) {
+    connect_path_separator(entry, move || {
+        let descent = state
+            .upgrade()
+            .and_then(|state| state.listing_filter.descent.borrow().clone());
+        descent.is_some_and(|descend| descend())
+    });
 }
 
 impl Target {

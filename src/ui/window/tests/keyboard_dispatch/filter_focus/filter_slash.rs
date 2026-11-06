@@ -80,7 +80,7 @@ fn normal_filter_slash_rejects_files_and_cancels_on_edit_focus_loss_and_escape()
                 for query in ["", "no-such-match", "report"] {
                     entry.set_text(query);
                     let generation = browser.navigation_generation();
-                    assert!(fixture.press(Key::slash, none));
+                    type_slash(&fixture);
                     pump(150);
                     assert_eq!(
                         browser.navigation_generation(),
@@ -92,17 +92,18 @@ fn normal_filter_slash_rejects_files_and_cancels_on_edit_focus_loss_and_escape()
                 }
                 entry.set_text("Documents");
                 let generation = browser.navigation_generation();
-                assert!(!press_arabic_zah(&fixture), "{mode:?}: ظ reaches the field");
+                crate::test_support::commit_text(&entry, "/Projects");
                 pump(150);
                 assert_eq!(browser.navigation_generation(), generation, "{mode:?}");
+                assert!(entry.text().contains('/'), "{mode:?}: a pasted path is typed");
                 assert!(fixture.view.filter_has_focus());
                 entry.set_text("doc");
-                assert!(fixture.press(Key::slash, none));
+                type_slash(&fixture);
                 entry.set_text("report");
                 pump(150);
                 assert_eq!(browser.active_location(), Some(Location::local(root)));
                 entry.set_text("doc");
-                assert!(fixture.press(Key::slash, none));
+                type_slash(&fixture);
                 fixture.sidebar_toggle.grab_focus();
                 assert!(fixture.view.show_filter());
                 pump(150);
@@ -113,7 +114,7 @@ fn normal_filter_slash_rejects_files_and_cancels_on_edit_focus_loss_and_escape()
                 );
                 assert_eq!(entry.text(), "doc");
                 entry.set_text("Documents");
-                assert!(fixture.press(Key::slash, none));
+                type_slash(&fixture);
                 assert!(fixture.press(Key::Escape, none));
                 pump(150);
                 assert_eq!(browser.active_location(), Some(Location::local(root)));
@@ -145,7 +146,7 @@ fn normal_filter_slash_descends_and_keeps_filtering() {
                     assert!(fixture.press(Key::f, ModifierType::CONTROL_MASK));
                     let entry = focused_entry(&fixture.window);
                     entry.set_text("doc");
-                    assert!(fixture.press(Key::slash, ModifierType::empty()));
+                    type_slash(&fixture);
                     wait_until(|| {
                         browser.active_location() == Some(Location::local(root.join("Documents")))
                             && fixture.view.filter_has_focus()
@@ -153,7 +154,7 @@ fn normal_filter_slash_descends_and_keeps_filtering() {
                     let entry = focused_entry(&fixture.window);
                     assert_eq!(entry.text(), "");
                     entry.set_text("proj");
-                    assert!(fixture.press(Key::slash, ModifierType::empty()));
+                    type_slash(&fixture);
                     wait_until(|| {
                         browser.active_location()
                             == Some(Location::local(root.join("Documents/Projects")))
@@ -167,7 +168,7 @@ fn normal_filter_slash_descends_and_keeps_filtering() {
                         focus_files(&fixture);
                         assert!(fixture.press(Key::f, ModifierType::CONTROL_MASK));
                         focused_entry(&fixture.window).set_text("arc");
-                        assert!(fixture.press(Key::slash, ModifierType::empty()));
+                        type_slash(&fixture);
                         wait_until(|| {
                             browser.active_location()
                                 == Some(Location::local(root.join("nested/Archive")))
@@ -200,7 +201,7 @@ fn normal_filter_slash_enters_a_remote_folder_from_in_place_results() {
                 focus_files(&fixture);
                 assert!(fixture.press(Key::f, ModifierType::CONTROL_MASK));
                 focused_entry(&fixture.window).set_text("notes");
-                assert!(fixture.press(Key::slash, ModifierType::empty()));
+                type_slash(&fixture);
                 wait_until_or(
                     || {
                         browser.active_location()
@@ -282,7 +283,7 @@ fn normal_filter_slash_waits_for_a_folder_still_listing() {
                 });
                 assert!(fixture.view.show_filter(), "{mode:?}");
                 focused_entry(&fixture.window).set_text("notes");
-                assert!(fixture.press(Key::slash, ModifierType::empty()));
+                type_slash(&fixture);
                 pump(400);
                 assert_eq!(
                     browser.active_location(),

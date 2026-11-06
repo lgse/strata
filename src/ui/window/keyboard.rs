@@ -40,7 +40,7 @@ mod wheel_zoom;
 
 use footer_bindings::{
     bind_candidate_prompts, bind_footer_filter, bind_prompt_hints, clear_find_on_mode_exit,
-    release_preview_keys_on_mode_exit, submit_prompt_on_activate,
+    descend_on_committed_slash, release_preview_keys_on_mode_exit, submit_prompt_on_activate,
 };
 #[cfg(test)]
 pub(super) use wheel_zoom::WheelZoom;
@@ -91,6 +91,7 @@ pub(super) fn install_on(
     let wheel_view = parts.view.downgrade();
     let dispatcher = Rc::new(Dispatcher::bind(window, sidebar, parts, None));
     submit_prompt_on_activate(&dispatcher, weak_browser.clone());
+    descend_on_committed_slash(&dispatcher);
     connect_key_presses(&keys, root.as_ref(), dispatcher, weak_browser);
     window.add_controller(keys.clone());
     let wheel = wheel_zoom::zoom_controller(root.as_ref(), preferences, wheel_view);
@@ -190,6 +191,7 @@ impl ChooserKeys {
         let browser = Rc::downgrade(&parts.view.browser());
         let dispatcher = Rc::new(Dispatcher::bind(window, sidebar, parts, Some(policy)));
         submit_prompt_on_activate(&dispatcher, browser.clone());
+        descend_on_committed_slash(&dispatcher);
         Self {
             dispatcher,
             browser,
@@ -341,9 +343,7 @@ impl Dispatcher {
             return Some(result);
         }
         if !self.type_to_search.preferences.tenxer_mode() {
-            return self
-                .normal_filter_keys(press)
-                .or_else(|| self.tenxer_keys(browser, press));
+            return self.tenxer_keys(browser, press);
         }
         if !press.is_modifier() {
             self.open_with.invalidate();

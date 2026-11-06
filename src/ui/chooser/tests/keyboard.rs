@@ -686,7 +686,8 @@ fn filter_slash_enters_folders_without_accepting_the_chooser() {
                         [("doc", "Documents"), ("proj", "Documents/Projects")]
                     {
                         input().set_text(query);
-                        assert!(chooser.press(Key::slash), "{mode:?} {query}");
+                        assert!(!chooser.press(Key::slash), "{mode:?}: the field gets /");
+                        crate::test_support::commit_text(&input(), "/");
                         let deadline =
                             std::time::Instant::now() + std::time::Duration::from_secs(5);
                         while chooser.state.view.browser().active_location()
