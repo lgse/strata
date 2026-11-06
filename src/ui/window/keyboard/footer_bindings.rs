@@ -43,7 +43,7 @@ pub(super) fn bind_footer_filter(dispatcher: &Dispatcher) {
     dispatcher
         .shortcuts
         .connect_prompt_changed(move |kind, text| {
-            prompts::cancel_edited_filter_descent(&descent, &text);
+            descent.take();
             cursor_moved.set(false);
             let Some(view) = view.upgrade() else {
                 return;
