@@ -7,7 +7,7 @@ use std::cmp::Ordering;
 
 use crate::{
     model::{SortDirection, SortKey, ViewPreferences},
-    services::{FOLDER_TYPE_NAME, OTHER_TYPE_NAME, entry_type},
+    services::{EntryType, FOLDER_TYPE_NAME, OTHER_TYPE_NAME, entry_type},
 };
 
 use super::{ColumnState, NavigationState, compare_display_names};
@@ -88,18 +88,40 @@ impl ColumnState {
             .position(|entry| entry.is_directory() && self.shows(entry))
     }
 
+    /// The last row the view shows: the last visible entry, or in a grouped listing
+    /// the last entry of the last group.
+    pub(super) fn last_displayed_entry(&self) -> Option<usize> {
+        if !self.shows_type_groups() || self.preferences.sort_key == SortKey::Type {
+            return self.last_visible();
+        }
+        // The Folder group comes first, so with no files the last folder is last.
+        self.last_in_file_groups().or_else(|| self.last_visible())
+    }
+
     fn first_in_file_groups(&self) -> Option<usize> {
-        let preferences = self.preferences;
+        // `min_by` keeps the first of equal groups, the earliest in listing order.
+        self.visible_file_groups()
+            .min_by(|(left, _), (right, _)| self.compare_groups(left, right))
+            .map(|(_, position)| position)
+    }
+
+    fn last_in_file_groups(&self) -> Option<usize> {
+        // `max_by` keeps the last of equal groups, the latest in listing order.
+        self.visible_file_groups()
+            .max_by(|(left, _), (right, _)| self.compare_groups(left, right))
+            .map(|(_, position)| position)
+    }
+
+    fn visible_file_groups(&self) -> impl Iterator<Item = (EntryType, usize)> + '_ {
         self.entries
             .iter()
             .enumerate()
-            .filter(|(_, entry)| self.shows(entry))
+            .filter(|(_, entry)| !entry.is_directory() && self.shows(entry))
             .map(|(position, entry)| (entry_type(entry), position))
-            // `min_by` keeps the first of equal groups, the earliest in listing order.
-            .min_by(|(left, _), (right, _)| {
-                compare_type_groups(left.description(), right.description(), preferences)
-            })
-            .map(|(_, position)| position)
+    }
+
+    fn compare_groups(&self, left: &EntryType, right: &EntryType) -> Ordering {
+        compare_type_groups(left.description(), right.description(), self.preferences)
     }
 }
 

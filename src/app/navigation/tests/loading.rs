@@ -364,16 +364,46 @@ fn grouped_batches_pick_the_first_row_once_complete() {
     assert_eq!(fill_and_focus(&state, 0), landed_on(&state, "c"));
 }
 
+/// How a key moves from a listing with no cursor.
+#[derive(Clone, Copy, Debug)]
+enum Move {
+    Step,
+    Extend,
+}
+
 #[test]
-fn a_step_without_a_cursor_starts_on_the_first_row_shown() {
-    for (grouped, expected) in [(false, "a"), (true, "c")] {
+fn a_move_without_a_cursor_starts_at_the_end_shown() {
+    // Grouped, the listing shows c, d, then a; ungrouped a, c, d.
+    let cases = [
+        (false, Move::Step, 1, "a"),
+        (true, Move::Step, 1, "c"),
+        (false, Move::Step, -1, "d"),
+        (true, Move::Step, -1, "a"),
+        (false, Move::Extend, 1, "a"),
+        (true, Move::Extend, 1, "c"),
+        (false, Move::Extend, -1, "d"),
+        (true, Move::Extend, -1, "a"),
+    ];
+    let mut failures = Vec::new();
+    for (grouped, key, direction, expected) in cases {
         let mut state = NavigationState::default();
         state.set_type_grouping(grouped);
         state.navigate(location("/docs"), RequestId(1));
         state.install_snapshot(RequestId(1), mixed_types_listing());
-        let stepped = state
-            .move_selection(1)
-            .map(|(_, position)| state.columns[0].entries[position].display_name.clone());
-        assert_eq!(stepped.as_deref(), Some(expected), "grouped {grouped}");
+        let moved = match key {
+            Move::Step => state
+                .move_selection(direction)
+                .map(|(_, position)| position),
+            Move::Extend => state
+                .extend_selection(direction)
+                .map(|(_, focused, _)| focused),
+        };
+        let landed = moved.map(|position| state.columns[0].entries[position].display_name.clone());
+        if landed.as_deref() != Some(expected) {
+            failures.push(format!(
+                "grouped {grouped}, {key:?} {direction}: landed on {landed:?}, expected {expected}"
+            ));
+        }
     }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
