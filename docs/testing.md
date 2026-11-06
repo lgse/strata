@@ -684,8 +684,8 @@ deferring its move to the paste, Return in the location editor, Keep Both
 selecting the numbered copy, Enter, click-away and Escape in the inline
 editor, a new entry colliding with an existing name, the rename error dialog,
 Delete moving to the trash, focus returning to a Columns filter result after a
-dismissed delete confirmation, and Shift+click ranges. Each patch belongs to
-exactly one scenario.
+dismissed delete confirmation, Shift+click ranges, and the first-visit cursor of
+a grouped List. Each patch belongs to exactly one scenario.
 
 The chosen scenarios first run once on the unmodified tree, and every run of a
 scenario must pass, or its patch is not tried. Under the patch, the mutation

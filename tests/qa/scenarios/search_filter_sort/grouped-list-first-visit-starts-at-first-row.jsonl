@@ -1,0 +1,35 @@
+{"scenario":"grouped-list-first-visit-starts-at-first-row","modes":["list"],"prefs":{"group_by_type":true,"show_hidden":false},"layout":"us","mutation":"grouped-first-row","known_bug":null,"tree":{"grouped":{"alpha.txt":"alpha\n","beta.csv":"beta\n","gamma.md":"# gamma\n"},"large":{"a{000..299}.txt":"a\n","b{000..299}.csv":"b\n"}},"quality":{"impact":2,"coverage":4,"criticality":3,"diagnostic":4,"score":35,"note":"Grouped List first visit starts on the first row shown by Ctrl+L and by double-click on a chunked listing; revisit restores; unit test pins only the model pick"}}
+{"wait":{"entries":["grouped","large"],"dir":"$root"},"message":"the fixture folders are listed"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location editor to take focus"}
+{"remember":{"field":true},"as":"location"}
+{"key":"ctrl+a"}
+{"type":"$fixture/grouped"}
+{"wait":{"field":{"of":"location","text":"$fixture/grouped"}},"message":"the typed folder path"}
+{"key":"Return"}
+{"wait":{"directory":"grouped"},"message":"the typed path to open 'grouped'"}
+{"wait":{"entries":["beta.csv","gamma.md","alpha.txt"],"dir":"grouped"},"message":"type groups to show the files out of name order"}
+{"wait":{"selected":["beta.csv"],"dir":"grouped"},"message":"the first visit to select the first row shown, not the first name"}
+{"wait":{"focused":"beta.csv"},"message":"keyboard focus to start on the first row shown"}
+{"key":"Down"}
+{"wait":{"focused":"gamma.md"},"message":"Down to move to the second row shown"}
+{"wait":{"selected":["gamma.md"],"dir":"grouped"},"message":"the selection to follow the cursor to 'gamma.md'"}
+{"key":"alt+Up"}
+{"wait":{"directory":"$root"},"message":"Alt+Up to return to the fixture root"}
+{"wait":{"focused":"grouped"},"message":"keyboard focus to reach 'grouped' in the root"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location editor to take focus again"}
+{"remember":{"field":true},"as":"location_again"}
+{"key":"ctrl+a"}
+{"type":"$fixture/grouped"}
+{"wait":{"field":{"of":"location_again","text":"$fixture/grouped"}},"message":"the typed folder path again"}
+{"key":"Return"}
+{"wait":{"directory":"grouped"},"message":"the typed path to reopen 'grouped'"}
+{"wait":{"focused":"gamma.md"},"message":"a revisit to restore the remembered cursor"}
+{"wait":{"selected":["gamma.md"],"dir":"grouped"},"message":"a revisit to restore the remembered selection"}
+{"key":"alt+Up"}
+{"wait":{"directory":"$root"},"message":"Alt+Up to return to the fixture root again"}
+{"click":{"entry":"large","dir":"$root"},"count":2}
+{"wait":{"directory":"large"},"message":"a double-click to open 'large'"}
+{"wait":{"focused":"b000.csv"},"message":"a pointer first visit to a large grouped folder to focus the first row shown, after its rows arrived in name order"}
+{"expect":{"selected":[],"dir":"large"},"message":"a pointer first visit to select nothing"}
