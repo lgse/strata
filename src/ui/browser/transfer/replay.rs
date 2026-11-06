@@ -55,7 +55,6 @@ impl ReplayKey {
     }
 }
 
-/// A record whose destination already holds an item, and what their kinds allow.
 #[derive(Clone)]
 struct ReplayCollision {
     record: MoveRecord,
