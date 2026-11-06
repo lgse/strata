@@ -20,6 +20,7 @@ mod escape_precedence;
 mod file_commands;
 mod file_verbs;
 mod filter_focus;
+mod first_column;
 mod folder_jump;
 mod footer_prompt;
 mod go_prompt;
