@@ -315,19 +315,30 @@ impl ModeViews {
     }
 }
 
+/// Without a cursor, as after a pointer opened the folder, the first row shown takes
+/// focus. GTK's own focus row follows its item, which a grouped listing publishing in
+/// chunks moves away from the top.
 fn cursor_target(pane: &Pane, focused: Option<&FocusedItem>) -> CursorTarget {
-    focused
-        .and_then(|(_, source, _)| pane.cursor_view(*source))
-        .map_or_else(
-            || CursorTarget {
-                view: pane.focus_view(),
-                position: None,
-            },
-            |(view, position)| CursorTarget {
-                view,
-                position: Some(position),
-            },
-        )
+    let Some((_, source, _)) = focused else {
+        let view = pane.focus_view();
+        let position = pane
+            .item_sections()
+            .into_iter()
+            .find(|section| section.view == view)
+            .filter(|section| section.view_model.n_items() > 0)
+            .map(|_| 0);
+        return CursorTarget { view, position };
+    };
+    pane.cursor_view(*source).map_or_else(
+        || CursorTarget {
+            view: pane.focus_view(),
+            position: None,
+        },
+        |(view, position)| CursorTarget {
+            view,
+            position: Some(position),
+        },
+    )
 }
 
 /// Re-asserts the cursor focus once pending input and layout have settled.
