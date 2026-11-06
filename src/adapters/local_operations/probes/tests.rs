@@ -12,7 +12,6 @@ use super::{
     Presence, child_folders, destination_folder, folder, folder_was_deleted, presence,
     writable_folder,
 };
-use crate::test_support::PrivateContext;
 use crate::{
     adapters::{
         local_operations::tests::fs_quirks::{FsQuirks, Op, Quirks},
@@ -20,7 +19,7 @@ use crate::{
     },
     model::Location,
     services::{LocationValidationError, file_activity},
-    test_support::Gate,
+    test_support::{Gate, PrivateContext},
 };
 
 fn answer<T>(probe: impl Future<Output = T>) -> T {
