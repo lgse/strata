@@ -15,7 +15,7 @@ use crate::{
     drive::file_failure,
     fixture::{OrderedMap, expand_tree, fixed_fixture_name, manifest},
     fs_check::{FsState, FsStep, contained},
-    fs_helpers::{glob_matches, pdf_image, raw_photo},
+    fs_helpers::{check_isobmff_brand, glob_matches, pdf_image, raw_photo},
     peer_steps::Relaunch,
     peers,
     process::wait_for_exit,
@@ -677,6 +677,28 @@ pub(crate) fn glob_and_zipcrypto_helpers_match_names_and_write_archives() {
                 .expect("readable names"),
             ["some.txt"]
         );
+    }
+}
+
+pub(crate) fn a_heif_family_output_must_carry_its_iso_bmff_brand() {
+    let png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".as_slice();
+    let avif = b"\0\0\0\x1cftypavif\0\0\0\0avifmif1miaf".as_slice();
+    let heic = b"\0\0\0\x18ftypheic\0\0\0\0mif1heic".as_slice();
+    let directory = tempfile::tempdir().expect("a scratch directory");
+    for (name, bytes, accepted) in [
+        ("camera.avif", avif, true),
+        ("camera.AVIF", avif, true),
+        ("camera.heic", heic, true),
+        ("camera.heif", heic, true),
+        ("camera.avif", png, false),
+        ("camera.heic", png, false),
+        ("camera.heic", avif, false),
+        ("camera.avif", &avif[..10], false),
+        ("small.png", png, true),
+    ] {
+        let path = directory.path().join(name);
+        fs::write(&path, bytes).expect("the fixture should be written");
+        assert_eq!(check_isobmff_brand(&path).is_ok(), accepted, "{name}");
     }
 }
 

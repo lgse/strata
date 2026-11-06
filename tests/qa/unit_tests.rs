@@ -12,6 +12,7 @@ use crate::{
     },
     step_tests::{
         a_flag_keeps_whether_a_predicate_held_and_always_runs,
+        a_heif_family_output_must_carry_its_iso_bmff_brand,
         a_numbered_tree_expands_like_the_python_comprehension,
         a_run_keeps_its_own_mode_steps_and_rejects_a_malformed_one,
         a_slice_keeps_the_middle_band_or_one_name_of_a_noted_list,
@@ -60,6 +61,7 @@ unit_tests! {
     log_proc_and_each_steps_check_their_shape_before_the_run,
     peer_restart_and_guard_steps_check_their_shape_before_the_run,
     glob_and_zipcrypto_helpers_match_names_and_write_archives,
+    a_heif_family_output_must_carry_its_iso_bmff_brand,
     baseline_comparison_thresholds_pixels_and_budget,
     baseline_mismatches_fail_and_only_an_update_writes_the_baseline,
     fixture_roots_and_baseline_steps_check_their_shape_before_the_run,

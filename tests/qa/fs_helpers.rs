@@ -393,6 +393,36 @@ pub(crate) fn pdf_image(image: &Image) -> Result<Vec<u8>, String> {
     Ok(pdf)
 }
 
+/// ImageMagick without an encoder for the requested format exits 0 and writes the
+/// input's format under the requested name, so these outputs must carry the brand.
+const ISOBMFF_BRANDS: &[(&str, &[&[u8; 4]])] = &[
+    ("avif", &[b"avif"]),
+    ("heic", &[b"heic", b"heix"]),
+    ("heif", &[b"mif1", b"heic", b"heix"]),
+];
+
+pub(crate) fn check_isobmff_brand(path: &Path) -> Result<(), String> {
+    let extension = path.extension().and_then(|extension| extension.to_str());
+    let Some((name, brands)) = ISOBMFF_BRANDS
+        .iter()
+        .find(|(name, _)| extension.is_some_and(|extension| extension.eq_ignore_ascii_case(name)))
+    else {
+        return Ok(());
+    };
+    let mut header = [0; 12];
+    File::open(path)
+        .and_then(|mut file| std::io::Read::read_exact(&mut file, &mut header))
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    let branded = &header[4..8] == b"ftyp" && brands.iter().any(|brand| header[8..12] == **brand);
+    branded.then_some(()).ok_or_else(|| {
+        format!(
+            "ImageMagick wrote {} without an ISO BMFF {name} brand; the pinned image lacks \
+             its {name} encoder",
+            path.display()
+        )
+    })
+}
+
 pub(crate) fn magick(arguments: &[String], output: &Path) -> Result<(), String> {
     let found = |name: &str| {
         std::env::var_os("PATH")
@@ -415,7 +445,7 @@ pub(crate) fn magick(arguments: &[String], output: &Path) -> Result<(), String> 
     let deadline = Instant::now() + FFMPEG_TIMEOUT;
     loop {
         match child.try_wait().map_err(|error| error.to_string())? {
-            Some(status) if status.success() => return Ok(()),
+            Some(status) if status.success() => return check_isobmff_brand(output),
             Some(status) => {
                 let mut errors = String::new();
                 if let Some(mut stderr) = child.stderr.take() {
