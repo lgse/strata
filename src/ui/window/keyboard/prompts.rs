@@ -121,29 +121,37 @@ pub(super) fn finish_filter_descent(
     }
 }
 
+/// A change that leaves the pending query's text, such as GTK reporting a
+/// selection a `/` put back, keeps its descent.
+pub(super) fn cancel_edited_filter_descent(pending: &RefCell<Option<FilterDescent>>, text: &str) {
+    let edited = pending
+        .borrow()
+        .as_ref()
+        .is_some_and(|pending| pending.query != text);
+    if edited {
+        pending.take();
+    }
+}
+
 impl Dispatcher {
-    /// A `/` committed into the focused **Ctrl+F** field; 10xer types it there.
-    pub(super) fn filter_entry_descends(&self) -> bool {
-        if self.type_to_search.preferences.tenxer_mode() {
-            return false;
-        }
-        let Some(entry) = self.view.focused_filter_entry() else {
-            return false;
-        };
-        self.begin_filter_descent(Some(entry));
-        true
+    /// A `/` committed into the focused **Ctrl+F** field enters a folder; 10xer
+    /// types it there.
+    pub(super) fn filter_entry_accepts_slash(&self) -> bool {
+        !self.type_to_search.preferences.tenxer_mode() && self.view.focused_filter_entry().is_some()
     }
 
-    /// A `/` committed into the 10xer **f** prompt.
-    pub(super) fn prompt_descends(&self) -> bool {
-        if self.shortcuts.open_prompt_kind() != Some(Prompt::Filter) {
-            return false;
+    pub(super) fn descend_from_filter_entry(&self) {
+        if let Some(entry) = self.view.focused_filter_entry() {
+            self.begin_filter_descent(Some(entry));
         }
-        self.begin_filter_descent(None);
-        true
     }
 
-    fn begin_filter_descent(&self, entry: Option<gtk::Entry>) {
+    /// A `/` committed into the 10xer **f** prompt enters a folder.
+    pub(super) fn prompt_accepts_slash(&self) -> bool {
+        self.shortcuts.open_prompt_kind() == Some(Prompt::Filter)
+    }
+
+    pub(super) fn begin_filter_descent(&self, entry: Option<gtk::Entry>) {
         let query = entry
             .as_ref()
             .map(|entry| entry.text().to_string())
@@ -153,9 +161,9 @@ impl Dispatcher {
         }
         let input = entry.map(|entry| {
             let pending = Rc::downgrade(&self.filter_descent);
-            let changed = entry.connect_changed(move |_| {
+            let changed = entry.connect_changed(move |entry| {
                 if let Some(pending) = pending.upgrade() {
-                    pending.take();
+                    cancel_edited_filter_descent(&pending, &entry.text());
                 }
             });
             FilterEntry {

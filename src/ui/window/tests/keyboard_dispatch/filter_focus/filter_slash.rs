@@ -79,6 +79,7 @@ fn normal_filter_slash_rejects_files_and_cancels_on_edit_focus_loss_and_escape()
                 let entry = focused_entry(&fixture.window);
                 for query in ["", "no-such-match", "report"] {
                     entry.set_text(query);
+                    entry.select_region(0, -1);
                     let generation = browser.navigation_generation();
                     type_slash(&fixture);
                     pump(150);
@@ -90,6 +91,12 @@ fn normal_filter_slash_rejects_files_and_cancels_on_edit_focus_loss_and_escape()
                     assert_eq!(entry.text(), query);
                     assert!(fixture.view.filter_has_focus());
                 }
+                entry.set_overwrite_mode(true);
+                entry.set_position(0);
+                type_slash(&fixture);
+                pump(150);
+                assert_eq!(entry.text(), "report", "{mode:?}: / overwrote a character");
+                entry.set_overwrite_mode(false);
                 entry.set_text("Documents");
                 let generation = browser.navigation_generation();
                 crate::test_support::commit_text(&entry, "/Projects");
@@ -149,6 +156,8 @@ fn normal_filter_slash_descends_and_keeps_filtering() {
                     assert!(fixture.press(Key::f, ModifierType::CONTROL_MASK));
                     let entry = focused_entry(&fixture.window);
                     entry.set_text("doc");
+                    // Ctrl+F onto a query selects it, and a commit replaces a selection.
+                    entry.select_region(0, -1);
                     type_slash(&fixture);
                     wait_until(|| {
                         browser.active_location() == Some(Location::local(root.join("Documents")))

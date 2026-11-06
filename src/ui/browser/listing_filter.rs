@@ -32,9 +32,15 @@ pub(super) struct FilterState {
     footer_focus: RefCell<Option<Rc<dyn Fn() -> bool>>>,
     /// The search query and the hit the cursor last rested on in its results.
     cursor_hit: RefCell<Option<(String, PathBuf)>>,
-    /// Takes a `/` committed into one of this browser's filter fields; whether it
-    /// entered, or waits to enter, a folder rather than typing the `/`.
-    descent: RefCell<Option<Rc<dyn Fn() -> bool>>>,
+    /// Takes a `/` committed into one of this browser's filter fields.
+    descent: RefCell<Option<Rc<FilterDescentHandler>>>,
+}
+
+/// Whether a filter field's `/` enters a folder rather than being typed, and the
+/// descent that then runs.
+pub(in crate::ui) struct FilterDescentHandler {
+    pub(in crate::ui) accepts: Box<dyn Fn() -> bool>,
+    pub(in crate::ui) descend: Box<dyn Fn()>,
 }
 
 impl FilterState {
@@ -818,8 +824,8 @@ impl BrowserView {
             .replace(Some(has_focus));
     }
 
-    pub(in crate::ui) fn connect_filter_descent(&self, handler: Rc<dyn Fn() -> bool>) {
-        self.state.listing_filter.descent.replace(Some(handler));
+    pub(in crate::ui) fn connect_filter_descent(&self, handler: FilterDescentHandler) {
+        self.state.listing_filter.descent.replace(Some(Rc::new(handler)));
     }
 
     pub(in crate::ui) fn connect_filter_results_changed(&self, handler: Rc<dyn Fn()>) {
@@ -841,33 +847,86 @@ fn cursor_result(target: &Target) -> Option<FileEntry> {
         .map(super::collection::search_result_entry)
 }
 
-/// Offers a `/` committed into `entry` to `descend`, which keeps it out of the
-/// text by returning `true`. The `/` is read once the input method has had the
-/// key, so a Zhuyin, Array30 or Boshiamy code that starts with it still composes.
+/// The text a selection or an overwritten character held before an input
+/// method's commit replaced it, and where the commit goes.
+struct Replaced {
+    text: glib::GString,
+    at: i32,
+}
+
+/// Enters a folder for a `/` committed into `entry` when `accepts`, keeping the
+/// `/` out of the text. The `/` is read once the input method has had the key,
+/// so a Zhuyin, Array30 or Boshiamy code that starts with it still composes.
 /// Only a lone `/` typed or pasted into the focused field counts: no file name
 /// holds one, while longer text holding it, such as a pasted path, is typed.
 pub(in crate::ui) fn connect_path_separator(
     entry: &gtk::Entry,
-    descend: impl Fn() -> bool + 'static,
+    accepts: impl Fn() -> bool + 'static,
+    descend: impl Fn() + 'static,
 ) {
     let Some(text) = entry.delegate() else {
         return;
     };
-    text.connect_insert_text(move |text, inserted, _| {
-        if inserted == "/" && text.is_focus() && descend() {
-            text.stop_signal_emission_by_name("insert-text");
+    // Within one change, GTK deletes the selection, or the character overwrite
+    // mode replaces, before inserting the commit; a `/` taken here puts it back.
+    let replaced: Rc<RefCell<Option<Replaced>>> = Rc::default();
+    let restoring = Rc::new(Cell::new(false));
+    let deleted = replaced.clone();
+    let restoring_delete = restoring.clone();
+    text.connect_delete_text(move |text, start, end| {
+        if restoring_delete.get() || !text.is_focus() {
+            return;
         }
+        let selection = text.selection_bounds() == Some((start, end));
+        let overwritten = end == start + 1
+            && start == text.position()
+            && text
+                .downcast_ref::<gtk::Text>()
+                .is_some_and(gtk::Text::is_overwrite_mode);
+        if selection || overwritten {
+            deleted.replace(Some(Replaced {
+                text: text.text(),
+                at: start,
+            }));
+        }
+    });
+    let finished = replaced.clone();
+    text.connect_changed(move |_| {
+        finished.take();
+    });
+    text.connect_insert_text(move |text, inserted, position| {
+        let replaced = replaced.take();
+        if restoring.get() || inserted != "/" || !text.is_focus() || !accepts() {
+            return;
+        }
+        text.stop_signal_emission_by_name("insert-text");
+        if let Some(replaced) = replaced.filter(|replaced| replaced.at == *position) {
+            restoring.set(true);
+            text.set_text(&replaced.text);
+            restoring.set(false);
+            *position = i32::try_from(replaced.text.chars().count()).unwrap_or(i32::MAX);
+        }
+        descend();
     });
 }
 
-/// A `/` committed into a pane's filter field goes to the browser's descent.
+/// A pane filter field's `/` goes to the browser's descent.
 pub(in crate::ui) fn bind_filter_descent(entry: &gtk::Entry, state: Weak<ViewState>) {
-    connect_path_separator(entry, move || {
-        let descent = state
+    let handler = move || {
+        state
             .upgrade()
-            .and_then(|state| state.listing_filter.descent.borrow().clone());
-        descent.is_some_and(|descend| descend())
-    });
+            .and_then(|state| state.listing_filter.descent.borrow().clone())
+    };
+    let descend = handler.clone();
+    connect_path_separator(
+        entry,
+        move || handler().is_some_and(|descent| (descent.accepts)()),
+        move || {
+            if let Some(descent) = descend() {
+                (descent.descend)();
+            }
+        },
+    );
 }
 
 impl Target {

@@ -119,8 +119,8 @@ pub(crate) use crate::ui::browser::file_commands::{
 };
 pub(super) use crate::ui::browser::inline_edit::{queue_rename, reveal_rename_row};
 pub(in crate::ui) use crate::ui::browser::listing_filter::{
-    FilterFocus, FilterStatus, bind_filter_descent, connect_path_separator, results_step_target,
-    scroll_results_to, selected_cursor,
+    FilterDescentHandler, FilterFocus, FilterStatus, bind_filter_descent, connect_path_separator,
+    results_step_target, scroll_results_to, selected_cursor,
 };
 pub(in crate::ui) use crate::ui::browser::location::ConnectOutcome;
 pub(super) use crate::ui::browser::pane_header::{

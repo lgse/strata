@@ -43,7 +43,7 @@ pub(super) fn bind_footer_filter(dispatcher: &Dispatcher) {
     dispatcher
         .shortcuts
         .connect_prompt_changed(move |kind, text| {
-            descent.take();
+            prompts::cancel_edited_filter_descent(&descent, &text);
             cursor_moved.set(false);
             let Some(view) = view.upgrade() else {
                 return;
@@ -123,18 +123,36 @@ pub(super) fn submit_prompt_on_activate(
 /// A `/` reaches a filter field's input method like any typed key; a lone `/`
 /// it commits enters the matching folder instead of reaching the query.
 pub(super) fn descend_on_committed_slash(dispatcher: &Rc<Dispatcher>) {
-    let prompt = Rc::downgrade(dispatcher);
-    dispatcher.shortcuts.connect_prompt_path_separator(move || {
-        prompt
-            .upgrade()
-            .is_some_and(|dispatcher| dispatcher.prompt_descends())
-    });
-    let entry = Rc::downgrade(dispatcher);
-    dispatcher.view.connect_filter_descent(Rc::new(move || {
-        entry
-            .upgrade()
-            .is_some_and(|dispatcher| dispatcher.filter_entry_descends())
-    }));
+    let weak = Rc::downgrade(dispatcher);
+    let accepts = weak.clone();
+    let descends = weak.clone();
+    dispatcher.shortcuts.connect_prompt_path_separator(
+        move || {
+            accepts
+                .upgrade()
+                .is_some_and(|dispatcher| dispatcher.prompt_accepts_slash())
+        },
+        move || {
+            if let Some(dispatcher) = descends.upgrade() {
+                dispatcher.begin_filter_descent(None);
+            }
+        },
+    );
+    let accepts = weak.clone();
+    dispatcher
+        .view
+        .connect_filter_descent(crate::ui::browser::FilterDescentHandler {
+            accepts: Box::new(move || {
+                accepts
+                    .upgrade()
+                    .is_some_and(|dispatcher| dispatcher.filter_entry_accepts_slash())
+            }),
+            descend: Box::new(move || {
+                if let Some(dispatcher) = weak.upgrade() {
+                    dispatcher.descend_from_filter_entry();
+                }
+            }),
+        });
 }
 
 pub(super) fn bind_prompt_hints(dispatcher: &Dispatcher) {

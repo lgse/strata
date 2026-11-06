@@ -238,13 +238,17 @@ pub(crate) fn create_empty_file(path: &std::path::Path) -> std::io::Result<()> {
     .map_err(std::io::Error::from)
 }
 
-/// Text an input method commits into `entry`, inserted at the cursor as
-/// typing or a paste inserts it.
+/// Text an input method commits into `entry`. The commit goes through the
+/// field's own input method, which replaces a selection with it as typing does.
 pub(crate) fn commit_text(entry: &gtk::Entry, text: &str) {
     use gtk::prelude::*;
-    let editable = entry.delegate().expect("an entry delegates to its text");
-    let mut position = editable.position();
-    editable.insert_text(text, &mut position);
+    let field = entry.delegate().expect("an entry delegates to its text");
+    let controllers = field.observe_controllers();
+    let input_method = (0..controllers.n_items())
+        .filter_map(|index| controllers.item(index).and_downcast::<gtk::EventControllerKey>())
+        .find_map(|keys| keys.im_context())
+        .expect("a text field's input method");
+    input_method.emit_by_name::<()>("commit", &[&text]);
 }
 
 pub(crate) fn present_window(window: &gtk::Window) {
