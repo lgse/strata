@@ -3,7 +3,7 @@
 use std::rc::{Rc, Weak};
 
 use crate::{
-    app::navigation::NavigationPath,
+    app::navigation::{LoadState, NavigationPath},
     model::Location,
     services::{DirectoryRequest, LocationValidationError},
 };
@@ -230,6 +230,10 @@ impl Browser {
         let depth = self.active_depth()?;
         let (open_child, selected, load_cursor) = {
             let state = self.state.borrow();
+            // A loading column has not restored its selection yet.
+            if state.columns.get(depth)?.load_state == LoadState::Loading {
+                return None;
+            }
             let selected: Vec<_> = state
                 .selected_positions(depth)
                 .into_iter()

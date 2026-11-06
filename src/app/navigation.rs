@@ -122,7 +122,6 @@ pub struct ColumnState {
     reload_cursor: Option<usize>,
     // Auto-selection must not redirect paste into the first folder.
     load_cursor: Option<Location>,
-    /// See `NavigationState::set_type_grouping`.
     type_grouping: bool,
 }
 
