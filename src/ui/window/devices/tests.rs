@@ -423,33 +423,24 @@ fn properties_resolve_the_innermost_block_mount_including_btrfs_and_escaped_path
 }
 
 #[test]
-fn mount_table_fallback_keeps_storage_but_not_system_mounts() {
+fn global_search_follows_the_devices_list_not_the_raw_mount_table() {
     crate::test_support::gtk_test(
-        "ui::window::devices::tests::mount_table_fallback_keeps_storage_but_not_system_mounts",
+        "ui::window::devices::tests::global_search_follows_the_devices_list_not_the_raw_mount_table",
         || {
             crate::adapters::mount_watch::publish_for_isolated_test(Some(MountTable::parse(
-                br"25 1 8:1 / / rw - ext4 /dev/sda1 rw
-26 1 8:2 / /boot rw - vfat /dev/sda2 rw
-27 1 0:1 / /proc rw - proc proc rw
+                br"25 1 0:31 /@ / rw - btrfs /dev/sda1 rw,subvol=/@
+26 1 0:31 /@pkg /var/cache/pacman/pkg rw - btrfs /dev/sda1 rw,subvol=/@pkg
+27 1 8:4 / /mnt/Archive ro - fuseblk /dev/sdc1 ro
 28 1 8:3 / /run/media/me/USB\040Backup rw shared:1 - exfat /dev/sdb1 rw
-29 1 8:4 / /mnt/Archive ro - fuseblk /dev/sdc1 ro
-30 1 0:2 / /run/user/1000/gvfs rw - fuse.gvfsd-fuse gvfsd-fuse rw
-malformed
-31 1 8:5 / /mnt/missing-source rw - ext4
 ",
             )));
-            let roots = global_search_roots();
-            for (root, searched) in [
-                ("/", false),
-                ("/run/media/me/USB Backup", true),
-                ("/mnt/Archive", true),
-                ("/boot", false),
-                ("/proc", false),
-                ("/run/user/1000/gvfs", false),
-                ("/mnt/missing-source", false),
-            ] {
-                assert_eq!(roots.contains(&PathBuf::from(root)), searched, "{root}");
-            }
+            let shown = PathBuf::from("/run/media/me/USB Backup");
+            offer_device_roots_for_test(vec![shown.clone()]);
+            assert_eq!(
+                global_search_roots(),
+                [super::super::home_directory(), shown],
+                "only Home and the mounts Devices shows are searched"
+            );
         },
     );
 }

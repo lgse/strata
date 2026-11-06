@@ -81,15 +81,8 @@ impl SidebarState {
         &self,
         volumes: &[gio::Volume],
     ) -> Vec<(String, Location, gio::Mount)> {
-        self.volume_monitor
-            .mounts()
+        super::devices::mounts_without_listed_volumes(&self.volume_monitor, volumes)
             .into_iter()
-            .filter(|mount| !mount.is_shadowed())
-            .filter(|mount| {
-                !mount
-                    .volume()
-                    .is_some_and(|volume| volumes.contains(&volume))
-            })
             .filter_map(|mount| {
                 let name = mount.name().to_string();
                 let location = location_for_file(&mount.root())?;

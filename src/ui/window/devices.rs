@@ -11,18 +11,6 @@ use gtk::{gio, prelude::*};
 
 use crate::adapters::MountTable;
 
-fn mounted_devices(table: &MountTable) -> Vec<PathBuf> {
-    table
-        .sources()
-        .filter(|(point, source)| {
-            source.starts_with("/dev")
-                && point.is_absolute()
-                && !gio_unix::functions::is_mount_path_system_internal(point)
-        })
-        .map(|(point, _)| point.to_owned())
-        .collect()
-}
-
 pub(super) fn block_device_from_mount_table(table: &MountTable, path: &Path) -> Option<PathBuf> {
     table
         .source_for(path)
@@ -879,15 +867,53 @@ pub(super) fn password_drive_is_orphaned(
     should_list_orphaned_password_drive(start_stop, covered)
 }
 
-pub(super) fn global_search_roots() -> Vec<PathBuf> {
-    let monitor = gio::VolumeMonitor::get();
-    let roots = monitor
+/// The mounts Devices lists on their own rows: unshadowed mounts whose volume
+/// does not already have a row.
+pub(super) fn mounts_without_listed_volumes(
+    monitor: &gio::VolumeMonitor,
+    volumes: &[gio::Volume],
+) -> Vec<gio::Mount> {
+    monitor
         .mounts()
         .into_iter()
         .filter(|mount| !mount.is_shadowed())
+        .filter(|mount| {
+            !mount
+                .volume()
+                .is_some_and(|volume| volumes.contains(&volume))
+        })
+        .collect()
+}
+
+/// Local roots of the mounts Devices shows, from the volume monitor alone, so
+/// search skips what the backend hides, such as btrfs subvolume mounts.
+fn device_mount_roots() -> Vec<PathBuf> {
+    #[cfg(test)]
+    if let Some(offered) = DEVICE_ROOTS_FOR_TEST.with(|roots| roots.borrow().clone()) {
+        return offered;
+    }
+    let monitor = gio::VolumeMonitor::get();
+    let volumes = monitor.volumes();
+    volumes
+        .iter()
+        .filter_map(VolumeExt::get_mount)
+        .chain(mounts_without_listed_volumes(&monitor, &volumes))
         .filter_map(|mount| mount.root().path())
-        .chain(mounted_devices(&crate::adapters::mount_watch::latest()));
-    search_roots(&super::home_directory(), roots)
+        .collect()
+}
+
+#[cfg(test)]
+thread_local! {
+    static DEVICE_ROOTS_FOR_TEST: RefCell<Option<Vec<PathBuf>>> = const { RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn offer_device_roots_for_test(roots: Vec<PathBuf>) {
+    DEVICE_ROOTS_FOR_TEST.with(|offered| offered.replace(Some(roots)));
+}
+
+pub(super) fn global_search_roots() -> Vec<PathBuf> {
+    search_roots(&super::home_directory(), device_mount_roots())
 }
 
 fn search_roots(home: &Path, mounts: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
