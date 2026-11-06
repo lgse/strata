@@ -265,7 +265,7 @@ impl DecodedMedia {
         let percent = self.imp().start_percent.take();
         (header.width > 0 && header.duration_us != media::MAX_DURATION_US)
             .then(|| header.duration_us / 100 * u64::from(percent))
-            .filter(|&position| position > 0)
+            .filter(|&position| media::seek_tick(position, header.duration_us) > 0)
     }
 
     fn on_frame(&self, mut frame: Frame) -> Result<(), String> {

@@ -240,7 +240,15 @@ fn start_at_the_configured_percent() {
         duration_us: media::MAX_DURATION_US,
         ..test_header(0)
     };
-    for (path, audio_only, header) in [("/track", true, audio), ("/live", false, unknown_length)] {
+    let before_first_frame = Header {
+        duration_us: 100_000,
+        ..test_header(0)
+    };
+    for (path, audio_only, header) in [
+        ("/track", true, audio),
+        ("/live", false, unknown_length),
+        ("/blink", false, before_first_frame),
+    ] {
         let media = DecodedMedia::new(SandboxedMedia {
             audio_only,
             ..test_source(path)
@@ -261,7 +269,7 @@ fn start_at_the_configured_percent() {
         assert_eq!(
             *calls.borrow(),
             vec![0],
-            "{path}: audio and video of unknown length start at the beginning"
+            "{path}: audio, video of unknown length, and a start before the first frame begin at 0"
         );
         media.close();
     }
