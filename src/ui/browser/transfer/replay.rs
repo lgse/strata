@@ -133,6 +133,14 @@ fn replay_conflict_explanation(collision: &ReplayCollision, redo: bool) -> Strin
     }
 }
 
+/// Skip, and Apply to All beside it, only while an answer can still move something: an item
+/// already accepted, or a later conflict that Replace can resolve. Otherwise only Cancel is left.
+fn replay_prompt_visibility(remaining: &[ReplayCollision], accepted: usize) -> (bool, bool) {
+    let applicable = accepted > 0 || remaining.iter().any(|later| later.kinds.replaceable);
+    let (apply_to_all, skip) = ConflictPrompt::visibility(remaining.len(), accepted);
+    (apply_to_all && applicable, skip && applicable)
+}
+
 fn replay_destination(record: &MoveRecord, redo: bool) -> &Location {
     if redo {
         &record.current
@@ -372,9 +380,11 @@ impl ViewState {
         group: Option<GroupReplay>,
     ) {
         let generation = key.generation;
+        // Every conflict was skipped, so nothing moves: the entry stays, as after Cancel.
         if accepted.is_empty() {
-            key.discard(&self.browser);
-        } else if let Some(state) = group {
+            return;
+        }
+        if let Some(state) = group {
             if state.had_missing && !state.skipped {
                 self.browser
                     .undo_group_retaining_folder(generation, accepted);
@@ -403,7 +413,7 @@ impl ViewState {
         let name = replay_destination(&collision.record, key.redo).display_name();
         let explanation = replay_conflict_explanation(&collision, key.redo);
         let (apply_to_all_visible, skip_visible) =
-            ConflictPrompt::visibility(collisions.len(), accepted.len());
+            replay_prompt_visibility(&collisions, accepted.len());
         let state = self.clone();
         self.confirm_replace_conflict(
             ConflictPrompt {
