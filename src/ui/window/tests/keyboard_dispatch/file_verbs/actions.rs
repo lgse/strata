@@ -103,7 +103,13 @@ fn write_numbered_actions(output: &Path) {
         .with_extra("enabled = false")
         .write(output);
     ActionManifest::new("images", "Aaa images", "top", "extensions = [\"png\"]").write(output);
-    ActionManifest::new("confirming", "Aaa confirm", "submenu", "extensions = [\"md\"]").write(output);
+    ActionManifest::new(
+        "confirming",
+        "Aaa confirm",
+        "submenu",
+        "extensions = [\"md\"]",
+    )
+    .write(output);
     require_confirmation("confirming");
     reload_actions();
 }
@@ -137,7 +143,10 @@ fn digits_run_the_listed_action(fixture: &KeyboardFixture, directory: &Path, out
     plain(fixture, Key::_1);
     assert_eq!(
         wait_invocations(output, 2),
-        ["top-a selection".to_owned(), path_text(directory.join("a.txt"))]
+        [
+            "top-a selection".to_owned(),
+            path_text(directory.join("a.txt"))
+        ]
     );
     std::fs::remove_file(output).expect("reset recorder");
 }
@@ -311,7 +320,10 @@ fn tenxer_folder_actions_run_on_the_focused_folder_not_the_cursor_item() {
             plain(&fixture, Key::_1);
             assert_eq!(
                 wait_invocations(&output, 2),
-                ["folders background".to_owned(), path_text(directory.clone())]
+                [
+                    "folders background".to_owned(),
+                    path_text(directory.clone())
+                ]
             );
             std::fs::remove_file(&output).expect("reset recorder");
 
@@ -388,8 +400,10 @@ fn default_map_custom_action_slots_run_their_listed_action() {
             ActionManifest::new("a-off", "Off", "top", "extensions = [\"txt\"]")
                 .with_extra("enabled = false")
                 .write(&output);
-            ActionManifest::new("b-images", "Images", "top", "extensions = [\"png\"]").write(&output);
-            ActionManifest::new("c-text", "Text", "submenu", "extensions = [\"txt\"]").write(&output);
+            ActionManifest::new("b-images", "Images", "top", "extensions = [\"png\"]")
+                .write(&output);
+            ActionManifest::new("c-text", "Text", "submenu", "extensions = [\"txt\"]")
+                .write(&output);
             reload_actions();
             let key = Binding::ctrl_alt(Key::e);
             let press_slot = |number: usize| {
@@ -405,7 +419,10 @@ fn default_map_custom_action_slots_run_their_listed_action() {
             press_slot(3);
             assert_eq!(
                 wait_invocations(&output, 2),
-                ["c-text selection".to_owned(), path_text(directory.join("a.txt"))]
+                [
+                    "c-text selection".to_owned(),
+                    path_text(directory.join("a.txt"))
+                ]
             );
             std::fs::remove_file(&output).expect("reset recorder");
 
