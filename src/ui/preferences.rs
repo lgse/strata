@@ -80,8 +80,8 @@ pub(in crate::ui) use stored::{
 };
 use stored::{
     browser_mode_from_stored, configured_hardware_acceleration, configured_video_preview_backend,
-    normalized_search_limit, normalized_video_start, normalized_volume, sort_preferences, store_density, store_sort,
-    stored_browser_mode, stored_density,
+    normalized_search_limit, normalized_video_start, normalized_volume, sort_preferences,
+    store_density, store_sort, stored_browser_mode, stored_density,
 };
 pub use text_size::TextSize;
 
