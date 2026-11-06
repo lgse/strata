@@ -867,6 +867,51 @@ pub(super) fn password_drive_is_orphaned(
     should_list_orphaned_password_drive(start_stop, covered)
 }
 
+/// How Devices lists a mount from the volume monitor's mount list.
+#[derive(Clone, Copy, Debug)]
+struct MountListing {
+    shadowed: bool,
+    volume_listed: bool,
+}
+
+impl MountListing {
+    fn of(mount: &gio::Mount, volumes: &[gio::Volume]) -> Self {
+        Self {
+            shadowed: mount.is_shadowed(),
+            volume_listed: mount
+                .volume()
+                .is_some_and(|volume| volumes.contains(&volume)),
+        }
+    }
+
+    /// A listed volume's row already stands for its mount.
+    fn has_own_row(self) -> bool {
+        !self.shadowed && !self.volume_listed
+    }
+}
+
+/// A mount's root, read as `location_for_file` reads it.
+#[derive(Clone, Debug)]
+struct MountRoot {
+    native: bool,
+    path: Option<PathBuf>,
+}
+
+impl MountRoot {
+    fn of(mount: &gio::Mount) -> Self {
+        let root = mount.root();
+        Self {
+            native: root.is_native(),
+            path: root.path(),
+        }
+    }
+
+    /// GVfs FUSE mirrors of remote shares have a path but are not native.
+    fn local_path(self) -> Option<PathBuf> {
+        self.path.filter(|_| self.native)
+    }
+}
+
 /// The mounts Devices lists on their own rows: unshadowed mounts whose volume
 /// does not already have a row.
 pub(super) fn mounts_without_listed_volumes(
@@ -876,40 +921,42 @@ pub(super) fn mounts_without_listed_volumes(
     monitor
         .mounts()
         .into_iter()
-        .filter(|mount| !mount.is_shadowed())
-        .filter(|mount| {
-            !mount
-                .volume()
-                .is_some_and(|volume| volumes.contains(&volume))
-        })
+        .filter(|mount| MountListing::of(mount, volumes).has_own_row())
         .collect()
 }
 
-/// Local roots of the mounts Devices shows, from the volume monitor alone, so
-/// search skips what the backend hides, such as btrfs subvolume mounts.
+/// Local roots of the volume mounts and own-row mounts that Devices lists.
+fn local_device_roots(
+    volume_mounts: impl IntoIterator<Item = MountRoot>,
+    other_mounts: impl IntoIterator<Item = (MountRoot, MountListing)>,
+) -> Vec<PathBuf> {
+    volume_mounts
+        .into_iter()
+        .chain(
+            other_mounts
+                .into_iter()
+                .filter(|(_, listing)| listing.has_own_row())
+                .map(|(root, _)| root),
+        )
+        .filter_map(MountRoot::local_path)
+        .collect()
+}
+
+/// Taken from the volume monitor alone, so search skips what the backend
+/// hides, such as btrfs subvolume mounts.
 fn device_mount_roots() -> Vec<PathBuf> {
-    #[cfg(test)]
-    if let Some(offered) = DEVICE_ROOTS_FOR_TEST.with(|roots| roots.borrow().clone()) {
-        return offered;
-    }
     let monitor = gio::VolumeMonitor::get();
     let volumes = monitor.volumes();
-    volumes
+    let volume_mounts: Vec<_> = volumes
         .iter()
         .filter_map(VolumeExt::get_mount)
-        .chain(mounts_without_listed_volumes(&monitor, &volumes))
-        .filter_map(|mount| mount.root().path())
-        .collect()
-}
-
-#[cfg(test)]
-thread_local! {
-    static DEVICE_ROOTS_FOR_TEST: RefCell<Option<Vec<PathBuf>>> = const { RefCell::new(None) };
-}
-
-#[cfg(test)]
-fn offer_device_roots_for_test(roots: Vec<PathBuf>) {
-    DEVICE_ROOTS_FOR_TEST.with(|offered| offered.replace(Some(roots)));
+        .map(|mount| MountRoot::of(&mount))
+        .collect();
+    let other_mounts = monitor
+        .mounts()
+        .into_iter()
+        .map(|mount| (MountRoot::of(&mount), MountListing::of(&mount, &volumes)));
+    local_device_roots(volume_mounts, other_mounts)
 }
 
 pub(super) fn global_search_roots() -> Vec<PathBuf> {
