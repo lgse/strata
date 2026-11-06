@@ -22,6 +22,29 @@ use std::{
     time::Duration,
 };
 
+#[cfg(test)]
+thread_local! {
+    static NEXT_RESULTS: RefCell<Option<Receiver<SearchEvent>>> = const { RefCell::new(None) };
+}
+
+/// The next search started on this thread reads its results from the returned
+/// sender instead of its worker, so a test controls the batches and their order.
+#[cfg(test)]
+pub(in crate::ui) fn next_results_for_test() -> std::sync::mpsc::Sender<SearchEvent> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    NEXT_RESULTS.with_borrow_mut(|next| {
+        assert!(next.replace(receiver).is_none());
+    });
+    sender
+}
+
+#[cfg(test)]
+fn intercept_results(receiver: Receiver<SearchEvent>) -> Receiver<SearchEvent> {
+    NEXT_RESULTS
+        .with_borrow_mut(Option::take)
+        .unwrap_or(receiver)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::ui) enum SearchScope {
     Folder,
@@ -306,7 +329,7 @@ impl SearchSession {
             ),
         };
         #[cfg(test)]
-        let receiver = tests::intercept_results(receiver);
+        let receiver = intercept_results(receiver);
         self.0.worker.replace(Some(Worker {
             input,
             limits,
@@ -392,4 +415,4 @@ fn drain(
 }
 
 #[cfg(test)]
-pub(in crate::ui) mod tests;
+mod tests;

@@ -28,7 +28,7 @@ fn filter_slash_waits_through_empty_indexing_batches() {
                         }
                         fixture.view.set_view_mode(mode);
                         focus_files(&fixture);
-                        let sender = crate::ui::search_session::tests::next_results();
+                        let sender = crate::ui::search_session::next_results_for_test();
                         assert!(fixture.press(
                             Key::f,
                             if tenxer {
