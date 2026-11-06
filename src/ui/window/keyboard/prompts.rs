@@ -121,8 +121,8 @@ pub(super) fn finish_filter_descent(
     }
 }
 
-/// A change that leaves the pending query's text, such as GTK reporting a
-/// selection a `/` put back, keeps its descent.
+/// A change that keeps the pending query's text, such as the `changed` GTK
+/// reports after a `/` restores a selection, keeps its descent.
 pub(super) fn cancel_edited_filter_descent(pending: &RefCell<Option<FilterDescent>>, text: &str) {
     let edited = pending
         .borrow()
