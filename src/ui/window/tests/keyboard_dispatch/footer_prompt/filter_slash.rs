@@ -226,6 +226,14 @@ fn tenxer_filter_slash_uses_the_latest_query_and_rejects_files_and_misses() {
                 wait_loaded(&browser, 0);
                 focus_files(&fixture);
                 assert!(fixture.press(Key::f, none));
+                // Focus returns before the prompt's idle close; the blur alone cancels.
+                fixture.shortcuts.prompt().set_text("arc");
+                assert!(fixture.press(Key::slash, none));
+                fixture.sidebar_toggle.grab_focus();
+                fixture.shortcuts.prompt().grab_focus();
+                pump(350);
+                assert_eq!(fixture.shortcuts.prompt_text(), "arc", "{mode:?}");
+                assert_eq!(browser.active_location(), Some(Location::local(root)));
                 fixture.shortcuts.prompt().set_text("doc");
                 assert!(fixture.press(Key::slash, none));
                 assert!(fixture.press(Key::Escape, none));
