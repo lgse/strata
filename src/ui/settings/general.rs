@@ -463,10 +463,9 @@ fn append_video_start_option(content: &gtk::Box, manager: &Rc<PreferenceManager>
         |manager, value| manager.set_preview_video_start(value as u32),
     );
     control.set_halign(gtk::Align::Start);
-    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     controls.set_valign(gtk::Align::Center);
     controls.append(&control);
-    controls.append(&gtk::Label::new(Some("%")));
     let row = super::control_row(
         "Video preview start",
         "Percent of a video's length to open it at; 0 starts at the beginning. A video you already previewed resumes where you left it.",
