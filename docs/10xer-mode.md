@@ -524,9 +524,9 @@ With no saved bookmarks, no options menu is shown. **Esc** cancels;
 unknown or modified second keys cancel without running another command.
 After choosing a letter, the jump stays pending while its directory is checked.
 **Esc** or another command key cancels that pending jump without changing the
-listing, selection, or preview; changing the selection also cancels it. Only a
-successful check navigates: missing, unreadable, unavailable, or timed-out
-folders leave the current directory intact.
+listing, selection, or preview; changing the selection yourself also cancels
+it. Only a successful check navigates: missing, unreadable, unavailable, or
+timed-out folders leave the current directory intact.
 Text fields keep these keys as ordinary text, and the default keyboard map is
 unchanged. **m** and **'** can be rebound as the `bookmark_set` and
 `bookmark_go` chord triggers (see [Keymap](keymap.md)); the letters after

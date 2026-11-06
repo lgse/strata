@@ -99,17 +99,16 @@ fn config_folder() -> Option<GoTarget> {
     })
 }
 
-/// Whether `event` cancels a pending bookmark jump. A cursor or selection
-/// moved by an outside change or a background load is not the user's, so it
-/// leaves the jump pending; the folder check at completion still applies.
+/// Whether `event` cancels a pending bookmark jump. Only a cursor or
+/// selection moved by an outside edit to the listing is ignored, and the
+/// folder check at completion still applies. Loads and rescans publish their
+/// selection unflagged, so they still cancel the jump, which then stays put.
 pub(super) fn cancels_pending_bookmark(browser: &Browser, event: &BrowserEvent) -> bool {
     match event {
         BrowserEvent::NavigationStarting { .. } => true,
         BrowserEvent::FocusChanged { .. }
         | BrowserEvent::SelectionSetChanged { .. }
-        | BrowserEvent::SelectionSynced { .. } => {
-            !browser.focus_follows_external_change() && !browser.focus_follows_background_load()
-        }
+        | BrowserEvent::SelectionSynced { .. } => !browser.focus_follows_external_change(),
         _ => false,
     }
 }
