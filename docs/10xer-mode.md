@@ -530,7 +530,12 @@ folders leave the current directory intact.
 Text fields keep these keys as ordinary text, and the default keyboard map is
 unchanged. **m** and **'** can be rebound as the `bookmark_set` and
 `bookmark_go` chord triggers (see [Keymap](keymap.md)); the letters after
-them are fixed. The file chooser does not save or open letter bookmarks. Document
+them are fixed. On layouts where **'** is a dead key, such as US International
+(`us(intl)`), the key composes an accent instead of opening the menu, and the
+letter after it runs its own 10xer command; rebind `bookmark_go` to a key that
+is not dead there (see
+[Dead keys](keyboard-shortcuts.md#how-a-key-press-becomes-a-shortcut)). The
+file chooser does not save or open letter bookmarks. Document
 and archive previews swallow both bookmark prefixes. In a media preview,
 **m** still mutes; return to the listing before using bookmarks.
 
