@@ -250,7 +250,8 @@ impl ColumnState {
         self.restore_pending_selection();
         self.resolve_preferred_on_load();
         self.resolve_open_child_on_load();
-        if self.select_first_on_load && !self.entries.is_empty() {
+        // A grouped listing's first row is known only once every batch is in.
+        if self.select_first_on_load && !self.entries.is_empty() && !self.shows_type_groups() {
             self.select_first_displayed_entry();
         }
     }
@@ -332,13 +333,14 @@ impl ColumnState {
         place_committed_cursor(self, position);
     }
 
-    /// Fallbacks that need the complete listing: the first visible entry for a preferred
-    /// entry that never arrived, and a cursor-only neighbour for a reloaded cursor whose
-    /// entry is gone. Returns whether the cursor moved.
+    /// Picks that need the complete listing: the first row shown for a grouped first
+    /// visit or a preferred entry that never arrived, and a cursor-only neighbour for a
+    /// reloaded cursor whose entry is gone. Returns whether the cursor moved.
     pub(super) fn complete_load_selection(&mut self) -> bool {
         let before = self.selected;
         self.open_child_on_load = None;
-        if self.preferred_on_load.take().is_some() && self.awaits_fallback_cursor() {
+        let preferred = self.preferred_on_load.take().is_some();
+        if (preferred || self.select_first_on_load) && self.awaits_fallback_cursor() {
             self.select_first_displayed_entry();
         }
         if let Some(previous) = self.reload_cursor.take()

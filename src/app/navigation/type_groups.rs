@@ -72,9 +72,23 @@ impl ColumnState {
     /// The first row the view shows: the first visible entry, or in a grouped
     /// listing the first entry of the first group. Groups keep listing order.
     pub(super) fn first_displayed_entry(&self) -> Option<usize> {
-        if !self.shows_type_groups() {
+        // A type sort already lists the entries in group order.
+        if !self.shows_type_groups() || self.preferences.sort_key == SortKey::Type {
             return self.first_visible();
         }
+        // Under any other sort the Folder group comes first, so a listed folder
+        // spares a type lookup for every entry.
+        self.first_visible_folder()
+            .or_else(|| self.first_in_file_groups())
+    }
+
+    fn first_visible_folder(&self) -> Option<usize> {
+        self.entries
+            .iter()
+            .position(|entry| entry.is_directory() && self.shows(entry))
+    }
+
+    fn first_in_file_groups(&self) -> Option<usize> {
         let preferences = self.preferences;
         self.entries
             .iter()

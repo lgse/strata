@@ -33,7 +33,7 @@ impl ColumnState {
     fn stepped_cursor(&self, direction: i32) -> Option<usize> {
         match (self.selected, direction.cmp(&0)) {
             (None, Ordering::Less) => self.last_visible(),
-            (None, _) => self.first_visible(),
+            (None, _) => self.first_displayed_entry(),
             (Some(current), Ordering::Less) => Some(self.step_back(current)),
             (Some(current), Ordering::Greater) => Some(self.step_forward(current)),
             (Some(current), Ordering::Equal) => match self.shows(&self.entries[current]) {
