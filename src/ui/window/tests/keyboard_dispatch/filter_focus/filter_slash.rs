@@ -63,7 +63,11 @@ fn normal_filter_slash_rejects_files_and_cancels_on_edit_focus_loss_and_escape()
                 type_slash(&fixture);
                 pump(150);
                 assert_eq!(entry.text(), "report", "{mode:?}: / overwrote a character");
-                assert_eq!(entry.position(), 0, "{mode:?}: the cursor stays where it was");
+                assert_eq!(
+                    entry.position(),
+                    0,
+                    "{mode:?}: the cursor stays where it was"
+                );
                 entry.set_overwrite_mode(false);
                 entry.set_text("Documents");
                 let generation = browser.navigation_generation();
