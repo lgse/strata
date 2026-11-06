@@ -95,9 +95,10 @@ pub use preview::{
 pub(crate) use preview::{
     INCORRECT_ARCHIVE_PASSWORD, archive_preview_format, bytes_support_named_family, content_family,
     guess_content_type, has_plain_text_extension, is_extensionless_dotfile, is_image_path,
-    is_media_path, is_model, is_non_executable_extensionless_dotfile, looks_like_text,
-    model_format, normalize_preview_text, read_head_sample, read_supports_named_family,
-    reconcile_with_sample, refine_reported_content_type, split_archive_name, supports_remote_video,
+    is_media_path, is_model, is_non_executable_extensionless_dotfile, is_raw_video_stream,
+    looks_like_text, model_format, normalize_preview_text, read_head_sample,
+    read_supports_named_family, reconcile_with_sample, refine_reported_content_type,
+    split_archive_name, supports_remote_video,
 };
 pub(crate) use transfer_action::{
     CrossVolumeDropStrategy, DropActionInput, DropCommit, DropOverride, TransferKind,

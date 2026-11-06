@@ -21,7 +21,8 @@ impl PreviewState {
         let handed_off = self.handed_off.borrow().as_ref() == Some(&preview.entry.location);
         source.audio_only = family == Some(MediaFamily::Audio);
         let preferences = super::super::preferences::PreferenceManager::shared();
-        let start_percent = if is_gif {
+        let starts_at_zero = is_gif || crate::services::is_raw_video_stream(&preview.content_type);
+        let start_percent = if starts_at_zero {
             0
         } else {
             preferences.preview_video_start()
