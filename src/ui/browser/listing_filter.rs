@@ -618,10 +618,13 @@ impl BrowserView {
             Some(results) => results.first().map(super::collection::search_result_entry),
             None => {
                 let depth = self.state.filter_depth()?;
-                let entry = self
-                    .displayed_order(depth)
-                    .and_then(|order| order.first().copied())
-                    .and_then(|position| self.state.browser.entry_at(depth, position));
+                let order = self.displayed_order(depth).unwrap_or_default();
+                if at_cursor && let Some(index) = self.cursor_index(depth, &order) {
+                    return Some(self.state.browser.entry_at(depth, order[index]));
+                }
+                let entry = order
+                    .first()
+                    .and_then(|&position| self.state.browser.entry_at(depth, position));
                 // A folder still listing may yet show a folder ahead of a file match.
                 let loading = self
                     .state
@@ -837,8 +840,8 @@ impl BrowserView {
     }
 }
 
-/// The result under the cursor that Up and Down move. The 10xer prompt shows its
-/// matches as result rows with or without **Include subfolders**.
+/// The result row under the cursor that Up and Down move. A folder without a
+/// native path filters its listing in place instead, without result rows.
 fn cursor_result(target: &Target) -> Option<FileEntry> {
     let cursor = usize::try_from(target.hits()?.cursor?).ok()?;
     target

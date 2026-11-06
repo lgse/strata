@@ -23,39 +23,6 @@ fn remote_entry(name: &str, kind: EntryKind) -> FileEntry {
     }
 }
 
-struct RemoteFolders;
-
-impl FileSource for RemoteFolders {
-    fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
-        RemoteShare.validate_location(location)
-    }
-
-    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
-        let remote = request.location.native_path().is_none();
-        RemoteShare.enumerate(
-            request,
-            Rc::new(move |event| {
-                let event = match event {
-                    DirectoryEvent::Batch {
-                        request_id,
-                        mut entries,
-                    } if remote => {
-                        for entry in &mut entries {
-                            entry.kind = EntryKind::Directory;
-                        }
-                        DirectoryEvent::Batch {
-                            request_id,
-                            entries,
-                        }
-                    }
-                    event => event,
-                };
-                emit(event);
-            }),
-        )
-    }
-}
-
 #[test]
 fn normal_filter_slash_rejects_files_and_cancels_on_edit_focus_loss_and_escape() {
     crate::test_support::gtk_test(

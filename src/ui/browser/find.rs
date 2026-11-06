@@ -359,7 +359,7 @@ impl BrowserView {
         true
     }
 
-    fn cursor_index(&self, depth: usize, order: &[usize]) -> Option<usize> {
+    pub(super) fn cursor_index(&self, depth: usize, order: &[usize]) -> Option<usize> {
         let (_, position, _) = self
             .state
             .browser

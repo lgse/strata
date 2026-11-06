@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::ui::window::tests::keyboard_dispatch::filter_focus::{RemoteFolders, SHARE};
 
 #[test]
 fn filter_slash_waits_through_empty_indexing_batches() {
@@ -83,6 +84,51 @@ fn filter_slash_waits_through_empty_indexing_batches() {
                     }
                 }
             }
+        },
+    );
+}
+
+/// A folder without a native path filters its listing in place, with no result rows,
+/// so the highlighted match is the listing's cursor.
+fn tenxer_slash_enters_the_highlighted_remote_folder(mode: BrowserMode) {
+    let none = ModifierType::empty();
+    let fixture = KeyboardFixture::with_parts(Rc::new(TextPreview), || {
+        BrowserView::new(
+            Rc::new(RemoteFolders),
+            crate::ui::browser::PeekBehavior::default(),
+        )
+    });
+    enable_tenxer(&fixture);
+    fixture.view.set_view_mode(mode);
+    let browser = fixture.view.browser();
+    browser.navigate(Location::uri(SHARE));
+    wait_loaded(&browser, 0);
+    focus_files(&fixture);
+    // The first move off a load's cursor focuses the listing, so it comes first.
+    assert!(fixture.press(Key::End, none));
+    assert!(fixture.press(Key::Home, none));
+    assert!(fixture.press(Key::f, none));
+    fixture.shortcuts.prompt().set_text("txt");
+    wait_until(|| fixture.view.listing_filter().as_deref() == Some("txt"));
+    assert!(fixture.press(Key::Down, none));
+    assert!(fixture.press(Key::Down, none));
+    let (depth, position, _) = browser.focused_item().expect("a listing cursor");
+    let highlighted = browser
+        .entry_at(depth, position)
+        .expect("the highlighted folder");
+    assert_ne!(
+        highlighted.display_name, "alpha-report.txt",
+        "{mode:?}: Down moves past the first match"
+    );
+    type_slash(&fixture);
+    wait_until_or(
+        || browser.active_location() == Some(highlighted.location.clone()),
+        || {
+            format!(
+                "{mode:?} remote: location {:?}, expected {:?}",
+                browser.active_location(),
+                highlighted.location
+            )
         },
     );
 }
@@ -180,6 +226,7 @@ fn tenxer_filter_slash_descends_and_keeps_filtering() {
                     assert_eq!(fixture.shortcuts.prompt_text(), "");
                     assert!(fixture.press(Key::Escape, none));
                 }
+                tenxer_slash_enters_the_highlighted_remote_folder(mode);
             }
         },
     );
