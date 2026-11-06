@@ -219,6 +219,42 @@ impl Browser {
         self.truncate_columns(depth, true);
     }
 
+    /// Columns shown again after another view: the active column's child column
+    /// follows its selection. Closes a child the selection no longer holds and
+    /// returns the lone selected folder that should open in its place.
+    pub fn close_unselected_child(self: &Rc<Self>) -> Option<(usize, Location)> {
+        let depth = self.active_depth()?;
+        let (open_child, selected, load_cursor) = {
+            let state = self.state.borrow();
+            let selected: Vec<_> = state
+                .selected_positions(depth)
+                .into_iter()
+                .filter_map(|position| state.entry_at(depth, position))
+                .collect();
+            (
+                state.location_at(depth + 1),
+                selected,
+                state.selection_is_load_cursor(),
+            )
+        };
+        if open_child
+            .as_ref()
+            .is_some_and(|child| selected.iter().any(|entry| &entry.location == child))
+        {
+            return None;
+        }
+        if open_child.is_some() {
+            self.truncate_columns(depth + 1, false);
+        }
+        // A cursor a load placed on its own is not a choice to open that folder.
+        match selected.as_slice() {
+            [entry] if entry.is_directory() && !load_cursor => {
+                Some((depth, entry.location.clone()))
+            }
+            _ => None,
+        }
+    }
+
     pub(super) fn truncate_columns(self: &Rc<Self>, depth: usize, record_history: bool) {
         let _update = self.navigation_update();
         self.close_peek();

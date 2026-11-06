@@ -1151,3 +1151,95 @@ fn a_remote_reload_announces_the_neighbour_cursor_of_an_inactive_column() {
         "the child column's cursor moves to z and is published"
     );
 }
+
+/// One selection left by another view, and the columns Columns should keep for it.
+struct ReturningSelection<'a> {
+    case: &'a str,
+    selected: &'a [&'a str],
+    opens: Option<&'a str>,
+    kept: &'a [&'a str],
+}
+
+#[test]
+fn returning_columns_reopen_only_the_child_the_selection_holds() {
+    let cases = [
+        ReturningSelection {
+            case: "empty selection",
+            selected: &[],
+            opens: None,
+            kept: &[],
+        },
+        ReturningSelection {
+            case: "open child still selected",
+            selected: &["docs"],
+            opens: None,
+            kept: &["/fx/docs", "/fx/docs/inner"],
+        },
+        ReturningSelection {
+            case: "open child among several",
+            selected: &["docs", "pics"],
+            opens: None,
+            kept: &["/fx/docs", "/fx/docs/inner"],
+        },
+        ReturningSelection {
+            case: "another folder selected",
+            selected: &["pics"],
+            opens: Some("/fx/pics"),
+            kept: &[],
+        },
+    ];
+    for ReturningSelection {
+        case,
+        selected,
+        opens,
+        kept,
+    } in cases
+    {
+        let (browser, _, _) = folder_browser(FolderTree::with(&[
+            ("/fx", &["docs", "pics"]),
+            ("/fx/docs", &["inner"]),
+        ]));
+        let loaded = |depth: usize| {
+            browser
+                .column_snapshot(depth)
+                .is_some_and(|snapshot| !snapshot.loading)
+        };
+        browser.navigate(Location::local("/fx"));
+        pump_until(|| loaded(0));
+        browser.show_child(0, Location::local("/fx/docs"));
+        pump_until(|| loaded(1));
+        browser.show_child(1, Location::local("/fx/docs/inner"));
+        pump_until(|| loaded(2));
+        browser.set_active_column(0);
+        if selected.is_empty() {
+            browser.clear_active_selection();
+        } else {
+            let names: Vec<String> = selected.iter().map(|name| (*name).to_owned()).collect();
+            assert!(browser.select_entries_by_name_at(0, &names), "{case}");
+        }
+        let history = browser.back_locations().len();
+
+        let reopened = browser.close_unselected_child();
+
+        assert_eq!(
+            reopened,
+            opens.map(|path| (0, Location::local(path))),
+            "{case}"
+        );
+        let open: Vec<_> = (1..)
+            .map_while(|depth| browser.location_at(depth))
+            .collect();
+        let kept: Vec<_> = kept.iter().map(|path| Location::local(*path)).collect();
+        assert_eq!(open, kept, "{case}");
+        assert_eq!(
+            browser.active_depth(),
+            Some(0),
+            "{case}: the parent stays active"
+        );
+        assert_eq!(
+            browser.back_locations().len(),
+            history,
+            "{case}: following the selection adds no history"
+        );
+    }
+}
