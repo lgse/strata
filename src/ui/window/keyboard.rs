@@ -324,15 +324,12 @@ impl Dispatcher {
         });
         let pending = dispatcher.bookmark_pending.clone();
         let shortcuts = dispatcher.shortcuts.clone();
+        let observed = Rc::downgrade(&dispatcher.view.browser());
         dispatcher.view.browser().observe(move |event| {
             if pending.get()
-                && matches!(
-                    event,
-                    crate::app::BrowserEvent::NavigationStarting { .. }
-                        | crate::app::BrowserEvent::FocusChanged { .. }
-                        | crate::app::BrowserEvent::SelectionSetChanged { .. }
-                        | crate::app::BrowserEvent::SelectionSynced { .. }
-                )
+                && observed
+                    .upgrade()
+                    .is_some_and(|browser| chords::cancels_pending_bookmark(&browser, event))
             {
                 shortcuts.cancel_chord();
             }

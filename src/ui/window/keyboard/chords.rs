@@ -15,7 +15,7 @@ use gtk::{
 
 use super::{Dispatcher, KeyResult};
 use crate::{
-    app::Browser,
+    app::{Browser, BrowserEvent},
     model::Location,
     services::InvocationSource,
     ui::{
@@ -97,6 +97,21 @@ fn config_folder() -> Option<GoTarget> {
         location: Location::local(home_directory().join(".config")),
         missing: crate::i18n::tr("No .config folder"),
     })
+}
+
+/// Whether `event` cancels a pending bookmark jump. A cursor or selection
+/// moved by an outside change or a background load is not the user's, so it
+/// leaves the jump pending; the folder check at completion still applies.
+pub(super) fn cancels_pending_bookmark(browser: &Browser, event: &BrowserEvent) -> bool {
+    match event {
+        BrowserEvent::NavigationStarting { .. } => true,
+        BrowserEvent::FocusChanged { .. }
+        | BrowserEvent::SelectionSetChanged { .. }
+        | BrowserEvent::SelectionSynced { .. } => {
+            !browser.focus_follows_external_change() && !browser.focus_follows_background_load()
+        }
+        _ => false,
+    }
 }
 
 fn user_folder(directory: glib::UserDirectory, missing: &str) -> Option<GoTarget> {
@@ -238,8 +253,9 @@ impl Dispatcher {
         });
     }
 
-    /// The jump stays pending while its folder is checked; any key, focus or
-    /// selection change, or mode exit cancels it before it navigates.
+    /// The jump stays pending while its folder is checked; any key, a focus or
+    /// selection change of the user's, or mode exit cancels it before it
+    /// navigates.
     fn jump_to_bookmark(&self, browser: &Rc<Browser>, letter: char) {
         let weak_browser = Rc::downgrade(browser);
         let generation = browser.navigation_generation();

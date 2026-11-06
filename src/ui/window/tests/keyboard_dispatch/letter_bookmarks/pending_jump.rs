@@ -210,6 +210,49 @@ fn pending_letter_bookmark_cancel_preserves_selection_and_preview() {
 }
 
 #[test]
+fn letter_bookmark_jump_survives_an_outside_removal_of_the_focused_item() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::letter_bookmarks::pending_jump::letter_bookmark_jump_survives_an_outside_removal_of_the_focused_item",
+        || {
+            let fixture = KeyboardFixture::new();
+            PreferenceManager::shared().set_tenxer_mode(true);
+            let browser = fixture.view.browser();
+            browser.select(0, 0);
+            let tree = tempfile::tempdir().expect("target tree");
+            let target = tree.path().join("target");
+            std::fs::create_dir(&target).expect("target folder");
+            save_target(&target);
+            let gate = crate::test_support::Gate::default();
+            let _scope = crate::adapters::FsQuirks::install(
+                tree.path(),
+                crate::adapters::Quirks {
+                    before: vec![(
+                        crate::adapters::FsOp::FolderStamp,
+                        "target",
+                        0,
+                        gate.racer(),
+                    )],
+                    ..crate::adapters::Quirks::default()
+                },
+            );
+            mark(&fixture, Key::apostrophe, Key::a);
+            wait_until(|| gate.reached());
+            std::fs::remove_file(fixture._directory.path().join("a.txt"))
+                .expect("remove the focused item");
+            wait_until(|| !rendered_name(&fixture.view.widget(), "a.txt"));
+            pump(20);
+            assert_eq!(
+                fixture.shortcuts.armed_chord(),
+                Some(crate::ui::tenxer_mode::Chord::BookmarkGo),
+                "an outside change is not the user's"
+            );
+            gate.release();
+            wait_until(|| browser.active_location() == Some(Location::local(&target)));
+        },
+    );
+}
+
+#[test]
 fn missing_letter_bookmark_does_not_cancel_navigation_validation() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::letter_bookmarks::pending_jump::missing_letter_bookmark_does_not_cancel_navigation_validation",
