@@ -458,9 +458,9 @@ fn owned_rows(rows: &[(&str, &str)]) -> Vec<(String, String)> {
 }
 
 #[test]
-fn tenxer_action_chord_terminal_refuses_a_non_local_folder() {
+fn tenxer_action_chord_steps_refuse_a_non_local_folder() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::file_verbs::actions::tenxer_action_chord_terminal_refuses_a_non_local_folder",
+        "ui::window::tests::keyboard_dispatch::file_verbs::actions::tenxer_action_chord_steps_refuse_a_non_local_folder",
         || {
             let fixture = KeyboardFixture::new();
             enable_tenxer(&fixture);
@@ -475,6 +475,18 @@ fn tenxer_action_chord_terminal_refuses_a_non_local_folder() {
             assert_eq!(feedback(&fixture), "Can\u{2019}t open a terminal here");
             assert!(!modal_visible(&fixture.overlay), "no error dialog");
             assert_eq!(fixture.shortcuts.armed_chord(), None);
+
+            plain(&fixture, Key::semicolon);
+            plain(&fixture, Key::period);
+            assert_eq!(fixture.shortcuts.armed_chord(), Some(Chord::FolderAction));
+            assert_eq!(
+                chord_rows(&fixture),
+                owned_rows(&[("1\u{2013}9 / 0", "No matching actions")]),
+                "a folder without a native path offers no actions"
+            );
+            plain(&fixture, Key::_1);
+            assert_eq!(feedback(&fixture), "No action 1");
+            assert!(!modal_visible(&fixture.overlay), "no error dialog");
         },
     );
 }
