@@ -234,31 +234,41 @@ fn start_at_the_configured_percent() {
     assert_eq!(*calls.borrow(), vec![0]);
     media.close();
 
-    let media = DecodedMedia::new(SandboxedMedia {
-        audio_only: true,
-        ..test_source("/track")
-    });
-    media.set_start_percent(20);
-    let calls = Rc::new(RefCell::new(Vec::new()));
-    let audio_calls = calls.clone();
-    media.imp().loader.replace(Some(Rc::new(move |_, tick| {
-        audio_calls.borrow_mut().push(tick);
-        crate::sandbox::media::tests::stream(Header {
-            width: 0,
-            height: 0,
-            audio: true,
-            ..test_header(tick)
-        })
-    })));
-    media.upcast_ref::<gtk::MediaStream>().play();
-    drive_until(&media, &calls, 1);
-    settle(&media);
-    assert_eq!(
-        *calls.borrow(),
-        vec![0],
-        "audio always starts at the beginning"
-    );
-    media.close();
+    let audio = Header {
+        width: 0,
+        height: 0,
+        audio: true,
+        ..test_header(0)
+    };
+    let unknown_length = Header {
+        duration_us: media::MAX_DURATION_US,
+        ..test_header(0)
+    };
+    for (path, audio_only, header) in [("/track", true, audio), ("/live", false, unknown_length)] {
+        let media = DecodedMedia::new(SandboxedMedia {
+            audio_only,
+            ..test_source(path)
+        });
+        media.set_start_percent(20);
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let loader_calls = calls.clone();
+        media.imp().loader.replace(Some(Rc::new(move |_, tick| {
+            loader_calls.borrow_mut().push(tick);
+            crate::sandbox::media::tests::stream(Header {
+                start_tick: tick,
+                ..header
+            })
+        })));
+        media.upcast_ref::<gtk::MediaStream>().play();
+        drive_until(&media, &calls, 1);
+        settle(&media);
+        assert_eq!(
+            *calls.borrow(),
+            vec![0],
+            "{path}: audio and video of unknown length start at the beginning"
+        );
+        media.close();
+    }
 }
 
 fn pcm(values: impl IntoIterator<Item = i16>) -> Vec<u8> {
