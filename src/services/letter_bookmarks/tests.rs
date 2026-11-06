@@ -113,14 +113,17 @@ fn letter_bookmarks_never_follow_a_symlink_on_save() {
 #[test]
 fn letter_bookmarks_ignore_remote_uri_targets() {
     // Stands in for gvfs, which gives a mounted remote URI a FUSE path.
-    gio::Vfs::default().register_uri_scheme(
-        "strata-test-fuse",
-        Some(Box::new(|_, _| {
-            Some(gio::File::for_path(
-                "/run/user/1000/gvfs/sftp:host=example.test",
-            ))
-        })),
-        None,
+    assert!(
+        gio::Vfs::default().register_uri_scheme(
+            "strata-test-fuse",
+            Some(Box::new(|_, _| {
+                Some(gio::File::for_path(
+                    "/run/user/1000/gvfs/sftp:host=example.test",
+                ))
+            })),
+            None,
+        ),
+        "test scheme registered"
     );
     let root = tempfile::tempdir().expect("temporary directory");
     let store = root.path().join("marks.json");
