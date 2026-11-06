@@ -187,8 +187,7 @@ fn sort_transfer_targets(
             Some(collision) => collisions.push(TransferCollision {
                 source,
                 target_name,
-                mergeable: collision.mergeable,
-                replaceable: collision.replaceable,
+                kinds: collision,
                 fixes_inside,
             }),
             None => accepted.push(PasteItem {
