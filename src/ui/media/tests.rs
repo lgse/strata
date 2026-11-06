@@ -166,17 +166,13 @@ fn open_starting(path: &str, percent: u32) -> (DecodedMedia, Rc<RefCell<Vec<u32>
     (media, calls)
 }
 
-/// Waits for the decoder header, where the start is decided, then lets any
-/// restart it scheduled reach the loader.
+/// Waits for the decoder header, where the start is decided, and for any
+/// restart it scheduled to reach the loader.
 fn settle(media: &DecodedMedia) {
     let deadline = Instant::now() + Duration::from_secs(15);
-    while media.imp().header.get().is_none() {
+    while media.imp().header.get().is_none() || media.imp().restart.get().is_some() {
         tick_allowing_busy(media);
-        assert!(Instant::now() < deadline, "decoder header deadline");
-        std::thread::sleep(Duration::from_millis(1));
-    }
-    for _ in 0..20 {
-        tick_allowing_busy(media);
+        assert!(Instant::now() < deadline, "decoder settle deadline");
         std::thread::sleep(Duration::from_millis(1));
     }
 }
