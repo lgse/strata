@@ -128,8 +128,6 @@ impl PaneNavigation {
         self.first_visit = None;
     }
 
-    /// Ends the first visit when its pane's load at `depth` finished, reporting whether
-    /// no input reached the pane.
     pub(super) fn take_untouched_first_visit(&mut self, depth: usize) -> bool {
         FirstVisit::take_untouched(&mut self.first_visit, depth)
     }

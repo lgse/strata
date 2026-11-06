@@ -18,7 +18,6 @@ fn folder_on_file(name: &'static str) -> KindItem {
     (name, true, false)
 }
 
-/// How a case answers the replay's prompts.
 #[derive(Clone, Copy)]
 enum Answers {
     /// Replace with Apply to All on the first item, which also replaces the last, then Skip the
@@ -199,7 +198,6 @@ impl KindReplay {
         self.pending_move(redo).is_some()
     }
 
-    /// Replays the pending move and returns its generation.
     fn replay(&self, redo: bool) -> u64 {
         let (generation, records) = self.pending_move(redo).expect("pending replay");
         assert!(if redo {
@@ -272,7 +270,6 @@ fn replace_all_then_skip(replay: &KindReplay, case: &KindCase) {
     );
 }
 
-/// Asserts the replay moved nothing and its entry is still there to try again.
 fn assert_nothing_replayed(replay: &KindReplay, case: &KindCase, before: Before) {
     let name = case.name;
     let (from, onto) = replay.ends(case.redo);

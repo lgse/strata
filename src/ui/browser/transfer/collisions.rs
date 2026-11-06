@@ -15,7 +15,6 @@ pub(super) struct TransferCollision {
     pub(super) source: Location,
     /// The name the paste will use, already held by the colliding item.
     pub(super) target_name: Option<ShownName>,
-    /// Whether the two items' kinds let them merge or replace one another.
     pub(super) kinds: TransferTargetCollision,
     pub(super) fixes_inside: bool,
 }

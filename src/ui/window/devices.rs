@@ -925,7 +925,6 @@ pub(super) fn mounts_without_listed_volumes(
         .collect()
 }
 
-/// Local roots of the volume mounts and own-row mounts that Devices lists.
 fn local_device_roots(
     volume_mounts: impl IntoIterator<Item = MountRoot>,
     other_mounts: impl IntoIterator<Item = (MountRoot, MountListing)>,

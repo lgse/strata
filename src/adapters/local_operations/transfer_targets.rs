@@ -41,7 +41,6 @@ pub(crate) struct Collision {
 }
 
 impl Collision {
-    /// What an incoming item may do to the existing item it meets.
     pub(crate) fn between(incoming_folder: bool, existing_folder: bool) -> Self {
         Self {
             mergeable: incoming_folder && existing_folder,
@@ -49,7 +48,6 @@ impl Collision {
         }
     }
 
-    /// Whether an answer can resolve this collision.
     pub(crate) fn allows(self, conflict: TransferConflict) -> bool {
         match conflict {
             TransferConflict::Merge => self.mergeable,
