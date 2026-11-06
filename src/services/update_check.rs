@@ -301,11 +301,18 @@ fn unix_seconds_now() -> u64 {
         .unwrap_or(0)
 }
 
-#[derive(Serialize, Deserialize)]
+/// The installed tag's notes, or when GitHub last had no release for it. An entry for
+/// a missing release has no `notes`, so older versions that require them refetch.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 struct CachedReleaseNotes {
     tag: String,
-    notes: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    notes: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     published_at: Option<String>,
+    /// Rechecked after [`CHECK_INTERVAL`], so notes published later still appear.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    unavailable_at: Option<u64>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -677,42 +684,70 @@ fn package_update_from_response(available: &Version, response: &ReleaseResponse)
 }
 
 fn fetch_exact_release(tag: &str) -> ReleaseNotes {
-    let url = release_page_url(tag);
-    let cached = read_cache_file::<CachedReleaseNotes>(&release_notes_cache_path())
-        .filter(|cached| cached.tag == tag)
-        .zip(Version::parse(tag));
-    if let Some((cached, version)) = cached {
-        return ReleaseNotes::Found(ReleaseMetadata {
-            version: version.to_string(),
-            url,
-            note_blocks: parse_markdown(&cached.notes).blocks,
-            notes: cached.notes,
-            kind: version.build_kind(),
-            tag: tag.to_owned(),
-            published_at: cached.published_at,
-            commit: None,
-        });
+    let path = release_notes_cache_path();
+    let now = unix_seconds_now();
+    let cached = read_cache_file::<CachedReleaseNotes>(&path)
+        .and_then(|cached| cached_release_notes(cached, tag, now));
+    if let Some(notes) = cached {
+        return notes;
     }
-    match request_json::<ReleaseResponse>(&format!("{API_ROOT}/tags/{tag}")) {
-        Ok(release) => match to_release_summary(&release) {
-            Some(summary) => {
-                write_cache_file(
-                    &release_notes_cache_path(),
-                    &CachedReleaseNotes {
-                        tag: tag.to_owned(),
-                        notes: summary.notes.clone(),
-                        published_at: summary.published_at.clone(),
-                    },
-                );
-                ReleaseNotes::Found(release_metadata(&summary))
-            }
-            None => ReleaseNotes::Unavailable { url },
-        },
-        Err(ureq::Error::StatusCode(404)) => ReleaseNotes::Unavailable { url },
-        Err(error) => ReleaseNotes::Failed {
-            message: request_error_message(&error),
-            url,
-        },
+    let response = request_json::<ReleaseResponse>(&format!("{API_ROOT}/tags/{tag}"));
+    let (notes, cache) = exact_release_outcome(tag, response, now);
+    if let Some(cache) = cache {
+        write_cache_file(&path, &cache);
+    }
+    notes
+}
+
+fn cached_release_notes(cached: CachedReleaseNotes, tag: &str, now: u64) -> Option<ReleaseNotes> {
+    if cached.tag != tag {
+        return None;
+    }
+    let url = release_page_url(tag);
+    if let Some(checked_at) = cached.unavailable_at {
+        // A check stamped in the future came from a clock that ran ahead; recheck now.
+        let fresh = checked_at <= now && now - checked_at < CHECK_INTERVAL.as_secs();
+        return fresh.then_some(ReleaseNotes::Unavailable { url });
+    }
+    let (notes, version) = cached.notes.zip(Version::parse(tag))?;
+    Some(ReleaseNotes::Found(ReleaseMetadata {
+        version: version.to_string(),
+        url,
+        note_blocks: parse_markdown(&notes).blocks,
+        notes,
+        kind: version.build_kind(),
+        tag: tag.to_owned(),
+        published_at: cached.published_at,
+        commit: None,
+    }))
+}
+
+fn exact_release_outcome(
+    tag: &str,
+    response: Result<ReleaseResponse, ureq::Error>,
+    now: u64,
+) -> (ReleaseNotes, Option<CachedReleaseNotes>) {
+    let mut cache = CachedReleaseNotes {
+        tag: tag.to_owned(),
+        notes: None,
+        published_at: None,
+        unavailable_at: Some(now),
+    };
+    let url = release_page_url(tag);
+    match response.as_ref().map(to_release_summary) {
+        Ok(Some(summary)) => {
+            cache.notes = Some(summary.notes.clone());
+            cache.published_at = summary.published_at.clone();
+            cache.unavailable_at = None;
+            (ReleaseNotes::Found(release_metadata(&summary)), Some(cache))
+        }
+        Ok(None) | Err(ureq::Error::StatusCode(404)) => {
+            (ReleaseNotes::Unavailable { url }, Some(cache))
+        }
+        Err(error) => {
+            let message = request_error_message(error);
+            (ReleaseNotes::Failed { message, url }, None)
+        }
     }
 }
 

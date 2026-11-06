@@ -61,6 +61,13 @@ fn shows_label(widget: &gtk::Widget, text: &str) -> bool {
     false
 }
 
+fn shows_class(widget: &gtk::Widget, class: &str) -> bool {
+    widget.is_visible()
+        && (widget.has_css_class(class)
+            || std::iter::successors(widget.first_child(), gtk::Widget::next_sibling)
+                .any(|child| shows_class(&child, class)))
+}
+
 #[test]
 fn a_rejected_place_click_returns_the_highlight_to_the_open_location() {
     // Without a GVfs backend, network:// is rejected rather than opened.
@@ -354,6 +361,18 @@ fn an_empty_pinned_section_shows_only_while_files_are_dragged_over_the_sidebar()
             );
             sidebar.state.set_file_drag_over(false);
             assert!(!pinned_shown(), "leaving the sidebar hides it again");
+            sidebar.state.rebuild();
+            assert!(!pinned_shown(), "a rebuild without a drag keeps it hidden");
+            sidebar.state.set_rail(true);
+            sidebar.state.set_file_drag_over(true);
+            assert!(!pinned_shown(), "the rail hides the title during a drag");
+            assert!(
+                shows_class(sidebar.widget.upcast_ref(), "sidebar-pin-gap"),
+                "the rail keeps the pin drop target during a drag"
+            );
+            sidebar.state.set_file_drag_over(false);
+            sidebar.state.set_rail(false);
+            assert!(!pinned_shown(), "leaving the rail keeps it hidden");
 
             sidebar
                 .state
@@ -365,6 +384,28 @@ fn an_empty_pinned_section_shows_only_while_files_are_dragged_over_the_sidebar()
             window.destroy();
         },
     );
+}
+
+#[test]
+fn sidebar_trash_refuses_dropped_web_addresses() {
+    for (sources, accepted) in [
+        (vec![Location::local("/fixture/notes.txt")], true),
+        (vec![Location::uri("sftp://host.example/notes.txt")], true),
+        (vec![Location::uri("https://example.com/page")], false),
+        (
+            vec![
+                Location::local("/fixture/notes.txt"),
+                Location::uri("HTTP://example.com/image.png"),
+            ],
+            false,
+        ),
+    ] {
+        assert_eq!(
+            crate::ui::browser::BrowserView::can_trash_file_drop(&sources),
+            accepted,
+            "{sources:?}"
+        );
+    }
 }
 
 #[test]
@@ -387,6 +428,28 @@ fn sidebar_reorders_only_distinct_rows_in_the_same_section() {
             "{source} -> {target}"
         );
     }
+}
+
+#[test]
+fn network_share_locations_are_recognised_by_scheme() {
+    for (uri, share) in [
+        ("smb://server/share/", true),
+        ("SFTP://user@host/", true),
+        ("ftp://host/", true),
+        ("davs://host/remote.php/", true),
+        ("trash:///", false),
+        ("admin:///etc/", false),
+        ("mtp://phone/", false),
+    ] {
+        assert_eq!(
+            super::super::sidebar_devices::is_network_share(&Location::uri(uri)),
+            share,
+            "{uri}"
+        );
+    }
+    assert!(!super::super::sidebar_devices::is_network_share(
+        &Location::local("/run/media/disk")
+    ));
 }
 
 fn pin(path: &str, name: &str) -> (Location, String) {

@@ -5,7 +5,7 @@ use super::*;
 #[test]
 fn exhausted_autoscroll_keeps_destination_highlight_until_drag_leaves() {
     crate::test_support::gtk_test(
-        "exhausted_autoscroll_keeps_destination_highlight_until_drag_leaves",
+        "ui::browser::columns::drag_scroll::tests::exhausted_autoscroll_keeps_destination_highlight_until_drag_leaves",
         || {
             let controller = gtk::DropControllerMotion::new();
             let tracker = DragAutoscroll {

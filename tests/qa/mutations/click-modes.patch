@@ -1,8 +1,8 @@
-diff --git a/src/ui/browser.rs b/src/ui/browser.rs
-index 11f9f7b..f8e2a47 100644
---- a/src/ui/browser.rs
-+++ b/src/ui/browser.rs
-@@ -1008,6 +1008,7 @@ impl BrowserView {
+diff --git a/src/ui/browser/view_modes.rs b/src/ui/browser/view_modes.rs
+index 22824527..de642893 100644
+--- a/src/ui/browser/view_modes.rs
++++ b/src/ui/browser/view_modes.rs
+@@ -242,6 +242,7 @@ impl BrowserView {
      }
  
      pub fn set_click_activation(&self, mode: BrowserMode, activation: ClickActivation) {

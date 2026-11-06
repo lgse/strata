@@ -187,12 +187,20 @@ fn location_input_accepts_uri_schemes_for_local_and_remote_locations() {
         Some(Location::local("/regular/absolute/path"))
     );
 
-    assert_eq!(browser.navigate_input("network:///"), Ok(()));
-    assert_eq!(
-        browser.active_location(),
-        Some(Location::uri("network:///"))
-    );
-
+    for (typed, root) in [
+        ("network:///", "network:///"),
+        ("network://", "network:///"),
+        ("network:", "network:///"),
+        ("Trash:", "trash:///"),
+        ("trash://", "trash:///"),
+    ] {
+        assert_eq!(browser.navigate_input(typed), Ok(()), "{typed}");
+        assert_eq!(
+            browser.active_location(),
+            Some(Location::uri(root)),
+            "{typed}"
+        );
+    }
     assert_eq!(browser.navigate_input("recent:///"), Ok(()));
     assert_eq!(browser.active_location(), Some(Location::uri("recent:///")));
     assert_eq!(browser.navigate_input("recent://"), Ok(()));
@@ -237,6 +245,7 @@ fn relative_input_resolves_only_against_a_given_native_folder() {
             "smb://host/share/sub",
             Location::uri("smb://host/share/sub"),
         ),
+        ("network:", Location::uri("network:///")),
     ] {
         browser.navigate(Location::local("/fixture"));
         assert_eq!(
@@ -253,6 +262,28 @@ fn relative_input_resolves_only_against_a_given_native_folder() {
         Err(LocationValidationError::UnsupportedShorthand(_))
     ));
     assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
+}
+
+#[test]
+fn typed_remote_addresses_drop_the_query_and_fragment_gvfs_would_mount() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    for (input, expected) in [
+        ("sftp://host/served?tok=QTOKEN#frag", "sftp://host/served"),
+        (
+            "sftp://user@host:2222/?tok=QTOKEN",
+            "sftp://user@host:2222/",
+        ),
+        ("smb://host/my share#frag", "smb://host/my%20share"),
+        ("ftp://host/pub/a%2Fb?x=%FF", "ftp://host/pub/a%2Fb"),
+    ] {
+        browser.navigate(Location::local("/fixture"));
+        assert_eq!(browser.navigate_input(input), Ok(()), "{input}");
+        assert_eq!(
+            browser.active_location(),
+            Some(Location::uri(expected)),
+            "{input}"
+        );
+    }
 }
 
 #[test]
@@ -564,6 +595,7 @@ pub(super) fn listing_file(location: Location, name: &str, is_hidden: bool) -> F
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         recent_unix_seconds: MetadataValue::Unknown,
         is_hidden,
         mode: MetadataValue::Unknown,

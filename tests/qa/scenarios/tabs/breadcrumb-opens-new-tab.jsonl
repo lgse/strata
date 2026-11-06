@@ -1,0 +1,12 @@
+{"scenario":"breadcrumb-opens-new-tab","modes":["columns","list"]}
+{"select":{"entry":"documents","dir":"$root"}}
+{"key":"Return","modes":["list"]}
+{"wait":{"directory":"documents"},"message":"the original tab to be working in 'documents'"}
+{"wait":{"present":{"role":"button","name":"$root"}},"message":"the breadcrumb for the fixture root"}
+{"settle":{"role":"button","name":"$root"}}
+{"move":{"role":"button","name":"$root"}}
+{"button_down":2}
+{"button_up":2}
+{"wait":{"all":[{"directory":"$root"},{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}}]},"message":"middle-clicking the root breadcrumb opens it in a new tab"}
+{"key":"ctrl+shift+1"}
+{"wait":{"all":[{"directory":"documents"},{"state":{"target":{"role":"page tab","name":"documents"},"selected":true}}]},"message":"the original tab stays in 'documents'"}

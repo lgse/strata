@@ -10,8 +10,12 @@ use crate::services::{
 };
 use crate::ui::browser::ViewState;
 use crate::ui::browser::columns::set_mark_path_style;
+use crate::ui::browser::content_drop::{
+    self, DropHandler, DropRequest, attach_drop_target, commit_dropped_value,
+};
 use crate::ui::browser::paths::{can_remove_location, is_trash_location};
 use crate::ui::browser::transfer::ConflictFocus;
+use formats::ClipboardFiles;
 use gtk::prelude::*;
 use gtk::{glib, graphene};
 use std::cell::{Cell, RefCell};
@@ -20,6 +24,8 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
+
+pub(crate) mod formats;
 
 const DRAG_PROXY_PADDING: f64 = 3.0;
 const DRAG_PROXY_STACK_OFFSET: f64 = 5.0;
@@ -258,6 +264,8 @@ pub(crate) fn clear_active_drag() {
 
 pub(crate) const SPRING_LOAD_NAVIGATE_DELAY: Duration = Duration::from_millis(750);
 
+type OfferFilter = Box<dyn Fn(&gtk::gdk::Drop) -> bool>;
+
 /// Reuses one classification for cursor feedback and the eventual transfer.
 pub(crate) struct FileDropState {
     destination: Rc<dyn Fn() -> Option<Location>>,
@@ -265,6 +273,7 @@ pub(crate) struct FileDropState {
     sources: RefCell<Option<Rc<[Location]>>>,
     classification: RefCell<Option<DropClassification>>,
     spring_load: RefCell<Option<SpringLoadPending>>,
+    offer_filter: RefCell<Option<OfferFilter>>,
 }
 
 struct SpringLoadPending {
@@ -295,11 +304,26 @@ impl FileDropState {
             sources: RefCell::new(None),
             classification: RefCell::new(None),
             spring_load: RefCell::new(None),
+            offer_filter: RefCell::new(None),
         }
     }
 
     pub(crate) fn destination(&self) -> Option<Location> {
         (self.destination)()
+    }
+
+    /// Narrows the offers this target accepts beyond the shared rules.
+    pub(crate) fn filter_offers(&self, filter: impl Fn(&gtk::gdk::Drop) -> bool + 'static) {
+        self.offer_filter.replace(Some(Box::new(filter)));
+    }
+
+    pub(super) fn accepts(&self, target: &gtk::DropTarget, offered: &gtk::gdk::Drop) -> bool {
+        content_drop::accepts_offer(target, offered, self.destination().as_ref())
+            && self
+                .offer_filter
+                .borrow()
+                .as_ref()
+                .is_none_or(|filter| filter(offered))
     }
 
     // Repeated motion must not postpone navigation; recycled rows must not open stale destinations.
@@ -456,14 +480,7 @@ pub(crate) fn file_drag_hover_target(
     target: &gtk::DropTarget,
 ) -> Option<Location> {
     let destination = drop_state.destination()?;
-    target
-        .current_drop()
-        .filter(|offered| {
-            offered
-                .formats()
-                .contains_type(gtk::gdk::FileList::static_type())
-        })
-        .map(|_| destination)
+    target.current_drop().map(|_| destination)
 }
 
 /// Ignore drop validity so the source folder can spring open even though a self-drop is forbidden.
@@ -497,11 +514,16 @@ pub(crate) fn prepare_file_drop_target(
     destination: impl Fn() -> Option<Location> + 'static,
 ) -> PreparedFileDrop {
     let drop = gtk::DropTarget::new(
-        gtk::gdk::FileList::static_type(),
+        glib::Type::INVALID,
         gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
     );
-    drop.set_preload(true);
+    drop.set_types(&content_drop::drop_types());
     let state = Rc::new(FileDropState::new(Rc::new(destination)));
+    let state_for_accept = state.clone();
+    drop.connect_accept(move |target, offered| {
+        target.set_preload(content_drop::preloads(offered));
+        state_for_accept.accepts(target, offered)
+    });
     let state_for_leave = state.clone();
     drop.connect_leave(move |_| state_for_leave.reset());
     let state_for_value = state.clone();
@@ -544,43 +566,37 @@ pub(super) fn install_directory_drop_target(
     let state_for_motion = drop_state.clone();
     drop.connect_motion(move |target, _, _| file_drop_action(target, &state_for_motion));
     let weak = Rc::downgrade(state);
-    drop.connect_drop(move |target, value, _, _| {
-        let Some(state) = weak.upgrade() else {
-            return false;
-        };
-        transfer_dropped_files(&state, target, value, destination.clone(), &drop_state)
+    let handler: DropHandler = Rc::new(move |destination, request| {
+        if let Some(state) = weak.upgrade() {
+            state.commit_drop(destination, request);
+        }
     });
-    widget.add_controller(drop);
-}
-
-fn transfer_dropped_files(
-    state: &Rc<ViewState>,
-    target: &gtk::DropTarget,
-    value: &glib::Value,
-    destination: Location,
-    drop_state: &Rc<FileDropState>,
-) -> bool {
-    let sources = drop_state.sources(target);
-    let sources = if sources.is_empty() {
-        let Some(sources) = locations_from_file_list_value(value) else {
-            return false;
-        };
-        sources
-    } else {
-        sources.to_vec()
-    };
-    if sources.is_empty() {
-        return false;
-    }
-    let state = state.clone();
-    file_drop_commit(
-        target,
-        destination,
-        sources,
-        drop_state,
-        move |destination, sources, commit| state.commit_file_drop(destination, sources, commit),
-    );
-    true
+    let handler_for_drop = handler.clone();
+    let state_for_drop = drop_state.clone();
+    drop.connect_drop(move |target, value, _, _| {
+        let handler = handler_for_drop.clone();
+        let sources = state_for_drop.sources(target);
+        if sources.is_empty() || content_drop::value_kind(value) != content_drop::ValueKind::Files {
+            return commit_dropped_value(
+                target,
+                value,
+                destination.clone(),
+                &state_for_drop,
+                move |destination, request| handler(destination, request),
+            );
+        }
+        file_drop_commit(
+            target,
+            destination.clone(),
+            sources.to_vec(),
+            &state_for_drop,
+            move |destination, sources, commit| {
+                handler(destination, DropRequest::Files(sources, commit));
+            },
+        );
+        true
+    });
+    attach_drop_target(widget, &drop, &drop_state, handler);
 }
 
 pub(crate) fn drag_actions_for_modifiers(
@@ -600,6 +616,10 @@ pub(crate) fn file_drop_action(
     state: &Rc<FileDropState>,
 ) -> gtk::gdk::DragAction {
     let destination = state.destination();
+    // Classifying files may query their volumes, which a web address must never reach.
+    if let Some(action) = content_drop::content_drop_action(target, destination.as_ref()) {
+        return action;
+    }
     let sources = state.sources(target);
     drop_commit_action(
         classify_file_drop(target, state, destination.as_ref(), sources, false)
@@ -823,16 +843,8 @@ pub(in crate::ui) fn file_drag_content(
         .collect::<Vec<_>>();
     let file_list =
         gtk::gdk::ContentProvider::for_value(&gtk::gdk::FileList::from_array(&files).to_value());
-    let mut uri_list = String::with_capacity(files.len() * 48);
-    for file in &files {
-        uri_list.push_str(&file.uri());
-        uri_list.push_str("\r\n");
-    }
-    let uri_list = gtk::gdk::ContentProvider::for_bytes(
-        "text/uri-list",
-        &glib::Bytes::from_owned(uri_list.into_bytes()),
-    );
-    let content = gtk::gdk::ContentProvider::new_union(&[file_list, uri_list]);
+    let content =
+        gtk::gdk::ContentProvider::new_union(&[file_list, formats::uri_list_provider(&files)]);
     let locations = entries.iter().map(|entry| entry.location.clone()).collect();
     ACTIVE_DRAG.with(|cell| {
         *cell.borrow_mut() = Some(ActiveDrag {
@@ -987,9 +999,9 @@ pub(crate) fn mark_in(marks: &ClipboardMarks, location: &Location) -> ClipboardM
     marks.get(location).copied().unwrap_or_default()
 }
 
-// Process-wide copy/cut intent shared by every window. The GDK clipboard only
-// carries a `FileList` with no cut marker, so this thread-local (GTK stays on
-// the main thread) is the source of truth for both paste behavior and styling.
+// Process-wide copy/cut intent shared by every window. The clipboard carries
+// the cut marker for other applications, but this thread-local (GTK stays on
+// the main thread) is the source of truth for row styling and our own pastes.
 thread_local! {
     static SHARED_CUT_LOCATIONS: RefCell<Vec<Location>> = const { RefCell::new(Vec::new()) };
     static SHARED_COPY_LOCATIONS: RefCell<Vec<Location>> = const { RefCell::new(Vec::new()) };
@@ -1138,12 +1150,12 @@ pub(super) fn unyank() {
 pub(super) fn clipboard_may_paste() -> bool {
     gtk::gdk::Display::default().is_some_and(|display| {
         let formats = display.clipboard().formats();
-        formats.contains_type(gtk::gdk::FileList::static_type())
+        formats::offers_files(&formats)
             || formats.contains_type(gtk::gdk::Texture::static_type())
             || formats
                 .mime_types()
                 .iter()
-                .any(|mime| mime == "text/uri-list" || mime.starts_with("image/"))
+                .any(|mime| mime.starts_with("image/"))
     })
 }
 
@@ -1156,16 +1168,17 @@ fn is_cut_match(sources: &[Location]) -> bool {
     same_locations(sources, &shared_cut_locations())
 }
 
-fn set_files_clipboard(entries: &[FileEntry]) -> bool {
+fn set_files_clipboard(entries: &[FileEntry], cut: bool) -> bool {
     set_location_files_clipboard(
         &entries
             .iter()
             .map(|entry| entry.location.clone())
             .collect::<Vec<_>>(),
+        cut,
     )
 }
 
-fn set_location_files_clipboard(locations: &[Location]) -> bool {
+fn set_location_files_clipboard(locations: &[Location], cut: bool) -> bool {
     let files = locations
         .iter()
         .map(gio_file_for_location)
@@ -1174,9 +1187,7 @@ fn set_location_files_clipboard(locations: &[Location]) -> bool {
         return false;
     }
     gtk::gdk::Display::default().is_some_and(|display| {
-        let provider = gtk::gdk::ContentProvider::for_value(
-            &gtk::gdk::FileList::from_array(&files).to_value(),
-        );
+        let provider = formats::file_content(&files, cut);
         // Owned before claiming, so the ownership watcher sees this claim as ours.
         let previous = OWNED_FILE_PROVIDER.with(|owned| owned.replace(Some(provider.clone())));
         if display.clipboard().set_content(Some(&provider)).is_err() {
@@ -1229,7 +1240,7 @@ fn retain_untransferred(cut: &mut Vec<Location>, transferred: &[Location]) {
 
 impl ViewState {
     pub(super) fn copy_entries(&self, entries: &[FileEntry]) {
-        if set_files_clipboard(entries) {
+        if set_files_clipboard(entries, false) {
             let locations: Vec<Location> =
                 entries.iter().map(|entry| entry.location.clone()).collect();
             set_shared_marks(&locations, &[]);
@@ -1243,7 +1254,7 @@ impl ViewState {
         {
             return false;
         }
-        if set_files_clipboard(entries) {
+        if set_files_clipboard(entries, true) {
             let locations: Vec<Location> =
                 entries.iter().map(|entry| entry.location.clone()).collect();
             set_shared_marks(&[], &locations);
@@ -1287,7 +1298,7 @@ impl ViewState {
                 OWNED_FILE_PROVIDER.with(|owned| owned.replace(None));
             }
         } else {
-            let _set = set_location_files_clipboard(&remaining);
+            let _set = set_location_files_clipboard(&remaining, true);
         }
     }
 
@@ -1339,33 +1350,23 @@ impl ViewState {
         let clipboard = display.clipboard();
         let weak = Rc::downgrade(self);
         glib::MainContext::default().spawn_local(async move {
-            let result = clipboard
-                .read_value_future(gtk::gdk::FileList::static_type(), glib::Priority::DEFAULT)
-                .await;
-            let files = match result {
-                Ok(value) => match value.get::<gtk::gdk::FileList>() {
-                    Ok(files) => files.files(),
-                    Err(_) => return nothing(),
-                },
-                Err(_) => match clipboard.read_texture_future().await {
+            let files = if formats::offers_files(&clipboard.formats()) {
+                formats::read_files(&clipboard).await
+            } else {
+                None
+            };
+            let Some(ClipboardFiles { sources, cut }) = files else {
+                return match clipboard.read_texture_future().await {
                     Ok(Some(texture)) => {
                         if let Some(state) = weak.upgrade() {
                             state.paste_image_from_texture(&destination, &texture);
                         }
-                        return;
                     }
-                    _ => return nothing(),
-                },
+                    _ => nothing(),
+                };
             };
-            let sources = files
-                .into_iter()
-                .filter_map(|file| location_for_file(&file))
-                .collect::<Vec<_>>();
-            if sources.is_empty() {
-                return nothing();
-            }
             if let Some(state) = weak.upgrade() {
-                let move_sources = is_cut_match(&sources);
+                let move_sources = cut || is_cut_match(&sources);
                 state.paste_transfer(destination, sources, move_sources, focus);
             }
         });
@@ -1382,41 +1383,13 @@ impl ViewState {
         let png_bytes = texture.save_to_png_bytes();
         let stem = crate::i18n::tr("pasted_image.name");
         gio::spawn_blocking(move || {
-            if let Err(error) = write_pasted_image(&dir, &stem, png_bytes.as_ref()) {
+            if let Err(error) =
+                crate::services::save_new_file(&dir, &stem, "png", png_bytes.as_ref())
+            {
                 tracing::warn!(%error, "unable to write pasted image");
             }
         });
     }
-}
-
-fn write_pasted_image(
-    dir: &std::path::Path,
-    stem: &str,
-    bytes: &[u8],
-) -> std::io::Result<std::path::PathBuf> {
-    use std::io::Write;
-
-    for suffix in 0u64.. {
-        let name = if suffix == 0 {
-            format!("{stem}.png")
-        } else {
-            format!("{stem} ({suffix}).png")
-        };
-        let path = dir.join(name);
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-        {
-            Ok(mut file) => {
-                file.write_all(bytes)?;
-                return Ok(path);
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
-        }
-    }
-    Err(std::io::Error::other("image filename suffixes exhausted"))
 }
 
 #[cfg(test)]

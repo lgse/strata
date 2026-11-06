@@ -275,7 +275,9 @@ pub(super) fn install(popover: &gtk::Popover) {
                 .find(|button| button.has_focus())
             {
                 // activate() waits for a key release that this controller consumes.
-                if let Some(button) = button.downcast_ref::<gtk::Button>() {
+                if button.has_css_class("sort-stay-open") {
+                    let _ = button.activate_action("sort-row.activate", None);
+                } else if let Some(button) = button.downcast_ref::<gtk::Button>() {
                     button.emit_clicked();
                 } else {
                     button.activate();
@@ -314,6 +316,7 @@ fn collect_buttons(widget: &gtk::Widget, popover: &gtk::Popover, buttons: &mut V
         return;
     }
     if widget.is::<gtk::Button>()
+        || widget.has_css_class("sort-stay-open")
         || (widget.is_focusable() && widget.accessible_role() == gtk::AccessibleRole::MenuItem)
     {
         buttons.push(widget.clone());

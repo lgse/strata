@@ -52,6 +52,9 @@ catalog! {
             tenxer [Binding::plain(Key::i)];
     }
     default_only {
+        /// Columns: the focused column becomes the first one. 10xer keeps
+        /// its parent, current and preview strip.
+        MAKE_FIRST_COLUMN: Command "make_first_column" = Binding::alt(Key::Down);
         EXTEND_UP: Binding = Binding::shift(Key::Up);
         EXTEND_DOWN: Binding = Binding::shift(Key::Down);
         EXTEND_PAGE_UP: Binding = Binding::shift(Key::Page_Up);
@@ -68,7 +71,8 @@ catalog! {
         COMPLETE: Command "complete" = Binding::plain(Key::Tab), live in both;
     }
     unlisted {
-        // Range selection that GTK performs once the dispatcher passes the key on.
+        // Range selection that GTK performs once the dispatcher passes the key on;
+        // Columns extends to the first or last item itself.
         EXTEND_LEFT: Binding = Binding::shift(Key::Left);
         EXTEND_RIGHT: Binding = Binding::shift(Key::Right);
         EXTEND_TO_FIRST: Binding = Binding::shift(Key::Home);

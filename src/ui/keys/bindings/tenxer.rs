@@ -58,6 +58,12 @@ catalog! {
         SORT_BY_MODIFIED: Command "sort.modified" step(Sort) = Binding::plain(Key::m);
         SORT_BY_SIZE: Command "sort.size" step(Sort) = Binding::plain(Key::s);
         SORT_BY_TYPE: Command "sort.type" step(Sort) = Binding::plain(Key::e);
+        SORT_BY_EXTENSION: Command "sort.extension" step(Sort) = Binding::plain(Key::x);
+        SORT_BY_CREATED: Command "sort.created" step(Sort) = Binding::plain(Key::b);
+        SORT_BY_UNSORTED: Command "sort.unsorted" step(Sort) = Binding::plain(Key::u);
+        SORT_BY_NATURAL: Command "sort.natural" step(Sort) = Binding::plain(Key::n);
+        SORT_BY_ALPHABETICAL: Command "sort.alphabetical" step(Sort) = Binding::plain(Key::l);
+        SORT_BY_CASE_SENSITIVE: Command "sort.case_sensitive" step(Sort) = Binding::plain(Key::c);
 
         COPY_AS: Command "copy_as" trigger(CopyAs) = Binding::plain(Key::c);
         COPY_AS_PATH: Command "copy_as.path" step(CopyAs) = Binding::plain(Key::c);

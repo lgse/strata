@@ -356,34 +356,90 @@ fn empty_directory_focus_is_a_named_mapped_surface_and_tabs_out() {
 }
 
 #[test]
-fn tab_inside_an_inline_rename_commits_and_leaves_the_list() {
+fn tab_inside_an_inline_rename_commits_and_renames_the_next_item() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::pane_focus::tab_inside_an_inline_rename_commits_and_leaves_the_list",
+        "ui::window::tests::keyboard_dispatch::pane_focus::tab_inside_an_inline_rename_commits_and_renames_the_next_item",
         || {
+            fn name(stem: &str, round: usize) -> String {
+                if round == 0 {
+                    format!("{stem}.txt")
+                } else {
+                    format!("{stem}{round}.txt")
+                }
+            }
             let fixture = KeyboardFixture::new();
             let directory = fixture._directory.path().to_path_buf();
-            for (mode, original) in [
-                (BrowserMode::List, "a.txt"),
-                (BrowserMode::Columns, "b.txt"),
-            ] {
-                fixture.view.set_view_mode(mode);
-                select_named(&fixture, original);
+            let editing = |name: &str| {
+                fixture.view.active_rename_field().is_some_and(|field| {
+                    field.text().as_str() == name
+                        && focus(&fixture).is_some_and(|focused| focused.is_ancestor(&field))
+                })
+            };
+            let listed = |name: &str| {
+                let browser = fixture.view.browser();
+                let count = browser.column_snapshot(0).expect("column").count;
+                browser
+                    .with_entries(0, 0..count, |entries| {
+                        entries.iter().any(|entry| entry.display_name == name)
+                    })
+                    .unwrap_or(false)
+            };
+            let open_rename_on = |name: &str| {
+                select_named(&fixture, name);
                 wait_until(|| fixture.view.rename_is_active() || fixture.view.begin_rename());
-                wait_until(|| fixture.view.active_rename_field().is_some());
+                wait_until(|| editing(name));
+            };
+            let rename_with = |original: &str, renamed: &str, direction: gtk::DirectionType| {
                 let field = fixture.view.active_rename_field().expect("rename field");
-                let renamed = format!("renamed-{original}");
-                field.set_text(&renamed);
+                assert_eq!(field.text().as_str(), original);
+                field.set_text(renamed);
+                tab(&fixture, direction);
+                wait_until(|| directory.join(renamed).is_file());
+                assert!(!directory.join(original).exists());
+            };
+            for (round, mode) in MODES.into_iter().enumerate() {
+                fixture.view.set_view_mode(mode);
+                let (a, b, c) = (name("a", round), name("b", round), name("c", round));
+                let (a_new, b_new, c_new) = (
+                    name("a", round + 1),
+                    name("b", round + 1),
+                    name("c", round + 1),
+                );
 
-                tab(&fixture, gtk::DirectionType::TabForward);
-                wait_until(|| directory.join(&renamed).is_file());
-                assert!(!directory.join(original).exists(), "{mode:?}");
+                open_rename_on(&a);
+                rename_with(&a, &a_new, gtk::DirectionType::TabForward);
+                wait_until_or(
+                    || editing(&b),
+                    || {
+                        format!(
+                            "{mode:?}: Tab did not move the rename to {b}: {}",
+                            describe_focus(&fixture)
+                        )
+                    },
+                );
+                wait_until(|| listed(&a_new));
+                rename_with(&b, &b_new, gtk::DirectionType::TabBackward);
+                wait_until_or(
+                    || editing(&a_new),
+                    || {
+                        format!(
+                            "{mode:?}: Shift+Tab did not move the rename back to {a_new}: {}",
+                            describe_focus(&fixture)
+                        )
+                    },
+                );
+                assert!(fixture.view.cancel_rename(), "{mode:?}");
+                assert!(directory.join(&a_new).is_file(), "{mode:?}");
+
+                open_rename_on(&c);
+                rename_with(&c, &c_new, gtk::DirectionType::TabForward);
+                wait_until(|| !fixture.view.rename_is_active());
                 assert!(
                     !focus(&fixture)
                         .is_some_and(|focused| crate::ui::focus_navigation::editable(&focused)),
-                    "{mode:?}: Tab left focus in an editor: {}",
+                    "{mode:?}: Tab past the last item left focus in an editor: {}",
                     describe_focus(&fixture)
                 );
-                wait_until(|| !fixture.view.rename_is_active());
             }
         },
     );

@@ -174,9 +174,10 @@ pub(crate) enum Command {
         timeout: Option<Duration>,
         hold: Option<Duration>,
     },
-    ClipboardSet(String),
+    ClipboardSet(ClipboardContent),
     Clipboard {
         text: TextMatch,
+        mime: Option<String>,
         message: Option<String>,
     },
     Query(Query),
@@ -623,13 +624,36 @@ struct ExpectFields {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ClipboardSetFields {
-    clipboard_set: String,
+    clipboard_set: ClipboardContent,
+}
+
+/// Text, or raw offers under their MIME types the way another application
+/// such as a file manager fills the clipboard.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub(crate) enum ClipboardContent {
+    Text(String),
+    Offers(ClipboardOffers),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ClipboardOffers {
+    pub(crate) offers: Vec<ClipboardOffer>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ClipboardOffer {
+    pub(crate) mime: String,
+    pub(crate) text: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ClipboardFields {
     clipboard: TextMatch,
+    mime: Option<String>,
     message: Option<String>,
 }
 

@@ -3,20 +3,20 @@
 use std::{
     cell::{Cell, RefCell},
     collections::HashSet,
-    rc::{Rc, Weak},
+    rc::Rc,
     time::{Duration, Instant},
 };
 
 use gtk::glib;
 
 use crate::{
-    app::{BrowserEvent, navigation::LoadState},
+    app::navigation::LoadState,
     model::Location,
-    services::{
-        DirectoryChange, DirectoryStamp, LoadHandle, MountToken, RequestId, Responsiveness,
-        StampAnswer, file_activity,
-    },
+    services::{DirectoryStamp, LoadHandle, MountToken, RequestId, Responsiveness, file_activity},
 };
+
+#[cfg(test)]
+use crate::services::StampAnswer;
 
 use super::Browser;
 
@@ -109,19 +109,6 @@ impl ColumnFreshness {
     }
 }
 
-type Checked = (usize, Location, Weak<RefCell<ColumnFreshness>>);
-
-#[derive(Clone, Copy)]
-enum Finding {
-    Unchanged,
-    Stale,
-    Departed,
-    Inaccessible,
-    Unreachable,
-    Unanswered,
-    Unsupported,
-}
-
 #[derive(Default)]
 pub(super) struct Freshness {
     input: Cell<FreshnessInput>,
@@ -135,6 +122,46 @@ pub(super) struct Freshness {
     lanes: RefCell<Option<LoadHandle>>,
     #[cfg(test)]
     clock: Cell<Option<(Instant, Duration)>>,
+}
+
+mod checks;
+mod responsiveness;
+
+/// What one finished listing says about its mount, compared with the listing before it.
+struct BlindEvidence {
+    moved: bool,
+    same_names: bool,
+    lagged: bool,
+    unchanged: bool,
+    cached: bool,
+}
+
+impl BlindEvidence {
+    fn names_may_lag(&self) -> bool {
+        self.same_names && (self.moved || self.lagged)
+    }
+
+    /// Names changed under a stamp that did not move, with no daemon cache to
+    /// blame: this mount hides changes from stamps.
+    fn proves_blind(&self) -> bool {
+        self.unchanged && !self.same_names && !self.lagged && !self.cached
+    }
+
+    fn count_unchanged(&self, unchanged: u32) -> u32 {
+        match self.unchanged && self.same_names {
+            true => unchanged.saturating_add(1),
+            false => 0,
+        }
+    }
+}
+
+fn listing_evidence(
+    listing: Option<&Listing>,
+    current: Option<RequestId>,
+) -> Option<(&DirectoryStamp, u64)> {
+    let listing = listing.filter(|listing| Some(listing.request) == current)?;
+    let (stamp, _) = listing.stamp.as_ref()?;
+    Some((stamp, listing.digest?))
 }
 
 impl Browser {
@@ -329,15 +356,7 @@ impl Browser {
 
     fn learn_blind_mounts(&self, depth: usize, column: &mut ColumnFreshness) {
         let current = self.state.borrow().request_id_for_depth(depth);
-        let Some(Listing {
-            stamp: Some((stamp, _)),
-            digest: Some(digest),
-            ..
-        }) = column
-            .listing
-            .as_ref()
-            .filter(|listing| Some(listing.request) == current)
-        else {
+        let Some((stamp, digest)) = listing_evidence(column.listing.as_ref(), current) else {
             return;
         };
         let (Some(baseline), Some(before), Some(mount)) =
@@ -346,19 +365,19 @@ impl Browser {
             return;
         };
         let moved = stamp.moved_since(baseline);
-        let same_names = *digest == before;
-        let lagged = column.names_may_lag;
-        column.names_may_lag = same_names && (moved || lagged);
-        let unchanged = !moved && !baseline.may_hide_changes();
-        let cached = stamp.daemon_cache.is_some() || baseline.daemon_cache.is_some();
-        if unchanged && !same_names && !lagged && !cached {
+        let evidence = BlindEvidence {
+            same_names: digest == before,
+            moved,
+            lagged: column.names_may_lag,
+            unchanged: !moved && !baseline.may_hide_changes(),
+            cached: stamp.daemon_cache.is_some() || baseline.daemon_cache.is_some(),
+        };
+        column.names_may_lag = evidence.names_may_lag();
+        if evidence.proves_blind() {
             BLIND_MOUNTS.with(|mounts| mounts.borrow_mut().insert(mount.clone()));
         }
         if blind(&mount) {
-            column.unchanged = match unchanged && same_names {
-                true => column.unchanged.saturating_add(1),
-                false => 0,
-            };
+            column.unchanged = evidence.count_unchanged(column.unchanged);
         }
     }
 
@@ -459,324 +478,6 @@ impl Browser {
             .iter()
             .map(|monitor| monitor.freshness.clone())
             .collect()
-    }
-
-    pub(crate) fn freshness_tick(self: &Rc<Self>) {
-        let now = self.freshness_now();
-        self.freshness
-            .jobs
-            .borrow_mut()
-            .retain(|(unanswered, _)| unanswered.get() > 0);
-        let mut groups: Vec<(Option<MountToken>, Vec<Checked>)> = Vec::new();
-        if self.checking() {
-            self.start_relists();
-            for (depth, column) in self.freshness_columns().into_iter().enumerate() {
-                let Some(location) = self.location_at(depth) else {
-                    continue;
-                };
-                let due = |at: Option<Instant>| at.is_some_and(|at| at <= now);
-                let (check, confirm, mount) = {
-                    let column = column.borrow();
-                    if !self.watched(depth, &column) {
-                        continue;
-                    }
-                    (due(column.next_due), due(column.confirm_at), column.mount())
-                };
-                if !check && !confirm {
-                    continue;
-                }
-                let later = |column: &ColumnFreshness| Some(now + self.column_interval(column));
-                if mount.as_ref().is_some_and(blind) {
-                    let mut column = column.borrow_mut();
-                    column.relist = true;
-                    column.confirm_at = None;
-                    column.next_due = later(&column);
-                    continue;
-                }
-                if !self.settled(depth) || Self::operation_touches(&location) {
-                    let mut column = column.borrow_mut();
-                    if check {
-                        column.next_due = later(&column);
-                    }
-                    if confirm {
-                        column.confirm_at = later(&column);
-                    }
-                    continue;
-                }
-                {
-                    let mut column = column.borrow_mut();
-                    if confirm {
-                        column.confirm_at = None;
-                        column.confirming = true;
-                    }
-                    column.checking = true;
-                }
-                let checked = (depth, location, Rc::downgrade(&column));
-                match groups
-                    .iter_mut()
-                    .find(|(token, _)| mount.is_some() && *token == mount)
-                {
-                    Some((_, group)) => group.push(checked),
-                    None => groups.push((mount, vec![checked])),
-                }
-            }
-        }
-        for (_, group) in groups {
-            self.check_columns(group);
-        }
-        if self.checking() {
-            self.start_relists();
-        }
-        self.reschedule_freshness();
-        self.follow_responsiveness();
-    }
-
-    fn check_columns(self: &Rc<Self>, group: Vec<Checked>) {
-        let mut locations: Vec<Location> = Vec::new();
-        for (_, location, _) in &group {
-            if !locations.contains(location) {
-                locations.push(location.clone());
-            }
-        }
-        let unanswered = Rc::new(Cell::new(locations.len()));
-        let left = unanswered.clone();
-        let weak = Rc::downgrade(self);
-        let departed = Cell::new(None::<usize>);
-        let emit = Rc::new(move |location: Location, answer: StampAnswer| {
-            left.set(left.get().saturating_sub(1));
-            let Some(browser) = weak.upgrade() else {
-                return;
-            };
-            for (depth, _, column) in group.iter().filter(|(_, checked, _)| *checked == location) {
-                let below_departed = departed.get().is_some_and(|above| above < *depth);
-                if browser.apply_check(*depth, column, &location, answer.clone(), below_departed) {
-                    departed.set(Some(*depth));
-                }
-            }
-            browser.start_relists();
-            browser.follow_responsiveness();
-        });
-        let job = self.source.check_stamps(locations, emit);
-        if unanswered.get() > 0 {
-            self.freshness.jobs.borrow_mut().push((unanswered, job));
-        }
-    }
-
-    fn apply_check(
-        self: &Rc<Self>,
-        depth: usize,
-        column: &Weak<RefCell<ColumnFreshness>>,
-        location: &Location,
-        answer: StampAnswer,
-        below_departed: bool,
-    ) -> bool {
-        let Some(column) = column.upgrade() else {
-            return false;
-        };
-        column.borrow_mut().checking = false;
-        let current = self
-            .column_freshness(depth)
-            .is_some_and(|known| Rc::ptr_eq(&known, &column))
-            && self.location_at(depth).as_ref() == Some(location);
-        if !current {
-            return false;
-        }
-        let now = self.freshness_now();
-        let (finding, confirming) = {
-            let mut column = column.borrow_mut();
-            let finding = match (&answer, column.baseline.as_ref()) {
-                (StampAnswer::Stamp(stamp), Some(baseline)) if stamp.replaced(baseline) => {
-                    Finding::Departed
-                }
-                (StampAnswer::Stamp(stamp), Some(baseline)) if !stamp.moved_since(baseline) => {
-                    Finding::Unchanged
-                }
-                (StampAnswer::Stamp(_), _) => Finding::Stale,
-                (StampAnswer::Missing, _) => Finding::Departed,
-                (StampAnswer::Inaccessible, _) => Finding::Inaccessible,
-                (StampAnswer::Unreachable, _) => Finding::Unreachable,
-                (StampAnswer::Unresponsive, _) => Finding::Unanswered,
-                (StampAnswer::Unsupported, _) => Finding::Unsupported,
-            };
-            column.unchanged = match finding {
-                Finding::Unchanged => column.unchanged.saturating_add(1),
-                _ => 0,
-            };
-            let at_interval = now + self.check_interval(column.unchanged);
-            column.next_due = match finding {
-                Finding::Unsupported => None,
-                Finding::Unreachable => Some(now + UNREACHABLE_RETRY),
-                _ => Some(
-                    column
-                        .quiet_until
-                        .map_or(at_interval, |quiet| at_interval.max(quiet)),
-                ),
-            };
-            (finding, std::mem::take(&mut column.confirming))
-        };
-        let free = self.settled(depth) && !Self::operation_touches(location);
-        let relist = match finding {
-            Finding::Stale => true,
-            Finding::Unchanged => confirming,
-            _ => false,
-        };
-        {
-            let mut column = column.borrow_mut();
-            if relist && free && !self.freshness_held() {
-                column.relist = true;
-                column.confirming = confirming && matches!(finding, Finding::Unchanged);
-            } else if confirming {
-                column.confirm_at = column.next_due;
-            }
-        }
-        let departed = match finding {
-            Finding::Inaccessible if free && !self.freshness_held() => {
-                self.refresh_column_preserving_entries(depth);
-                false
-            }
-            Finding::Departed if free && !below_departed => {
-                self.handle_root_departure(
-                    depth,
-                    location,
-                    DirectoryChange::Remove(location.clone()),
-                );
-                true
-            }
-            _ => false,
-        };
-        self.reschedule_freshness();
-        departed
-    }
-
-    fn start_relists(self: &Rc<Self>) {
-        while let Some(depth) = self.next_relist() {
-            self.refresh_keeping_listing(depth, true);
-        }
-    }
-
-    fn next_relist(&self) -> Option<usize> {
-        let now = self.freshness_now();
-        let columns = self.freshness_columns();
-        let busy: Vec<MountToken> = columns
-            .iter()
-            .filter_map(|column| {
-                let column = column.borrow();
-                let working = column.checking
-                    || column
-                        .listing
-                        .as_ref()
-                        .is_some_and(|listing| listing.background);
-                working.then(|| column.mount()).flatten()
-            })
-            .collect();
-        for (depth, column) in columns.iter().enumerate() {
-            let mut column = column.borrow_mut();
-            if !column.relist
-                || column.mount().is_some_and(|mount| busy.contains(&mount))
-                || column.quiet_until.is_some_and(|quiet| quiet > now)
-            {
-                continue;
-            }
-            if self.settled(depth)
-                && self
-                    .location_at(depth)
-                    .is_some_and(|location| !Self::operation_touches(&location))
-                && !self.freshness_held()
-            {
-                column.relist = false;
-                return Some(depth);
-            }
-        }
-        None
-    }
-
-    pub(super) fn column_not_responding(&self, depth: usize) -> bool {
-        self.column_freshness(depth)
-            .is_some_and(|column| column.borrow().not_responding)
-    }
-
-    pub(super) fn follow_lanes(self: &Rc<Self>) {
-        let weak = Rc::downgrade(self);
-        let lanes = self.source.follow_responsiveness(Rc::new(move || {
-            if let Some(browser) = weak.upgrade() {
-                browser.follow_responsiveness();
-            }
-        }));
-        self.freshness.lanes.replace(Some(lanes));
-    }
-
-    pub(crate) fn follow_responsiveness(self: &Rc<Self>) {
-        let mut follow = false;
-        let mut changed = Vec::new();
-        let mut answered = Vec::new();
-        for (depth, column) in self.freshness_columns().into_iter().enumerate() {
-            let Some(location) = self.location_at(depth) else {
-                continue;
-            };
-            let responsiveness = self.source.responsiveness(&location);
-            let (loading, failed) = match self
-                .state
-                .borrow()
-                .columns
-                .get(depth)
-                .map(|column| &column.load_state)
-            {
-                Some(LoadState::Loading) => (true, false),
-                Some(LoadState::Error(_) | LoadState::Denied { .. }) => (false, true),
-                _ => (false, false),
-            };
-            let answering = responsiveness == Responsiveness::Answering;
-            let not_responding = responsiveness == Responsiveness::NotResponding && !failed;
-            let mut column = column.borrow_mut();
-            if !loading
-                && answering
-                && column.retry_when_answering
-                && (failed || (!self.freshness_held() && !Self::operation_touches(&location)))
-            {
-                column.retry_when_answering = false;
-                answered.push((depth, failed));
-            }
-            follow |= loading || column.checking || !answering || column.retry_when_answering;
-            if column.not_responding != not_responding {
-                column.not_responding = not_responding;
-                changed.push((depth, not_responding));
-            }
-        }
-        for (depth, not_responding) in changed {
-            self.emit(BrowserEvent::ColumnNotResponding {
-                depth,
-                not_responding,
-            });
-        }
-        self.keep_following_responsiveness(follow);
-        for (depth, failed) in answered {
-            match failed {
-                true => self.retry_column(depth),
-                false => self.refresh_keeping_listing(depth, false),
-            }
-        }
-    }
-
-    fn keep_following_responsiveness(self: &Rc<Self>, follow: bool) {
-        let follow = follow && self.freshness.input.get().presence != Presence::Hidden;
-        if follow == self.freshness.following.replace(follow) {
-            return;
-        }
-        if let Some(timer) = self.freshness.follow_timer.take() {
-            timer.remove();
-        }
-        if !follow || cfg!(test) {
-            return;
-        }
-        let weak = Rc::downgrade(self);
-        let timer = glib::timeout_add_seconds_local_once(1, move || {
-            if let Some(browser) = weak.upgrade() {
-                browser.freshness.follow_timer.take();
-                browser.freshness.following.set(false);
-                browser.follow_responsiveness();
-            }
-        });
-        self.freshness.follow_timer.replace(Some(timer));
     }
 
     pub(super) fn reschedule_freshness(self: &Rc<Self>) {

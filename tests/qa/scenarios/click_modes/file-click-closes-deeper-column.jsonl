@@ -1,0 +1,9 @@
+{"scenario":"file-click-closes-deeper-column","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"previews-off","prefs":{"single_click_previews":false}},{"id":"previews-on","prefs":{"single_click_previews":true}}]}
+{"select":{"entry":"documents","dir":"$root"}}
+{"wait":{"entries":{"contains":["notes.txt"]},"dir":"documents"},"message":"the folder's child column to open"}
+{"click":{"entry":"todo.txt","dir":"$root"}}
+{"wait":{"selected":["todo.txt"],"dir":"$root"},"message":"the click to select the file in the parent column"}
+{"wait":{"panes":["$root"]},"message":"a plain click on a file to close the deeper column, whether or not it previews"}
+{"wait":{"directory":"$root"},"message":"the breadcrumb to end at the clicked file's folder"}
+{"wait":{"preview":true},"message":"single-click previews to open the clicked file","variants":["previews-on"]}
+{"expect":{"preview":null},"message":"no preview opens with single-click previews off","variants":["previews-off"]}

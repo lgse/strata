@@ -96,17 +96,19 @@ fn has_desktop_theme_override() -> bool {
     std::env::var_os(DESKTOP_THEME_OVERRIDE).is_some()
 }
 
-fn file_manager_debug_environment(
+fn service_debug_environment(
     arguments: &[OsString],
     debug: Option<&std::ffi::OsStr>,
 ) -> Option<OsString> {
-    if launch_mode(arguments) != LaunchMode::Application
-        || !arguments
-            .iter()
-            .skip(1)
-            .take_while(|argument| *argument != "--")
-            .any(|argument| argument == "--gapplication-service")
-    {
+    let mode = launch_mode(arguments);
+    let is_service = mode == LaunchMode::Portal
+        || (mode == LaunchMode::Application
+            && arguments
+                .iter()
+                .skip(1)
+                .take_while(|argument| *argument != "--")
+                .any(|argument| argument == "--gapplication-service"));
+    if !is_service {
         return None;
     }
     let debug = debug.unwrap_or_default();
@@ -142,8 +144,9 @@ fn restart_for_gtk_environment(
         .args(&arguments[1..])
         .env_remove(DESKTOP_THEME_OVERRIDE);
     if let Some(debug) = service_debug {
-        // OpenDirectory synchronously waits for FileManager1. GTK must not
-        // query that same portal while initializing this D-Bus-activated app.
+        // OpenDirectory synchronously waits for FileManager1, and OpenFile
+        // synchronously waits for FileChooser. GTK must not query that same
+        // portal while initializing this D-Bus-activated process.
         command
             .env(
                 child_environment::ORIGINAL_GDK_DEBUG,
@@ -240,8 +243,10 @@ fn main() -> gtk::glib::ExitCode {
             return gtk::glib::ExitCode::SUCCESS;
         }
         LaunchMode::Portal => {
-            if has_desktop_theme_override() {
-                return restart_for_gtk_environment(&arguments, false, None);
+            let service_debug =
+                service_debug_environment(&arguments, std::env::var_os("GDK_DEBUG").as_deref());
+            if has_desktop_theme_override() || service_debug.is_some() {
+                return restart_for_gtk_environment(&arguments, false, service_debug);
             }
             restart_with_local_vfs_if_gvfs_is_unresponsive();
             let _volumes = gio::VolumeMonitor::get();
@@ -265,10 +270,14 @@ fn main() -> gtk::glib::ExitCode {
         }
         LaunchMode::UdiskieHook => return run_udiskie_hook(&arguments[2..]),
         LaunchMode::InstallUdiskie => {
-            return finish_portal_setup(portal_setup::udiskie::install());
+            return finish_localized_setup(|| {
+                portal_setup::udiskie::install().map(portal_setup::udiskie::UdiskieChange::report)
+            });
         }
         LaunchMode::UninstallUdiskie => {
-            return finish_portal_setup(portal_setup::udiskie::uninstall());
+            return finish_localized_setup(|| {
+                portal_setup::udiskie::uninstall().map(portal_setup::udiskie::UdiskieChange::report)
+            });
         }
         #[cfg(feature = "qa")]
         LaunchMode::Qa => {}
@@ -312,12 +321,22 @@ fn main() -> gtk::glib::ExitCode {
     install_application_identity();
     metrics::initialize();
     logging::initialize();
+    // Timed from here so `window presented` covers the whole launch, the way
+    // the field harness measures mapped from process start.
+    let launched = std::time::Instant::now();
+    // Before anything creates GIO's default VFS: a hung gvfsd blocks that for
+    // about 25 s, and loading preferences already creates it.
+    restart_with_local_vfs_if_gvfs_is_unresponsive();
+    tracing::debug!(
+        elapsed_ms = launched.elapsed().as_millis() as u64,
+        "startup gvfs probe finished"
+    );
     let select_cairo = should_select_cairo(
         std::env::var_os("GSK_RENDERER").as_deref(),
         ui::preferences::PreferenceManager::shared().interface_renderer(),
     );
     let service_debug =
-        file_manager_debug_environment(&arguments, std::env::var_os("GDK_DEBUG").as_deref());
+        service_debug_environment(&arguments, std::env::var_os("GDK_DEBUG").as_deref());
     if select_cairo || has_desktop_theme_override() || service_debug.is_some() {
         // Replies already own the original stdout, which a restart would lose.
         #[cfg(feature = "qa")]
@@ -332,14 +351,6 @@ fn main() -> gtk::glib::ExitCode {
         tracing::warn!(%error, "could not refresh the stale Strata portal");
     }
 
-    // Timed from here so `window presented` covers the whole launch, the way
-    // the field harness measures mapped from process start.
-    let launched = std::time::Instant::now();
-    restart_with_local_vfs_if_gvfs_is_unresponsive();
-    tracing::debug!(
-        elapsed_ms = launched.elapsed().as_millis() as u64,
-        "startup gvfs probe finished"
-    );
     let assets_started = std::time::Instant::now();
     if let Err(error) = assets::prepare() {
         eprintln!("Unable to prepare bundled assets: {error}");
@@ -503,9 +514,31 @@ fn handle_command_line(
         }
         CommandLineAction::ServiceNoop => glib::ExitCode::SUCCESS,
         CommandLineAction::Usage(message) => {
-            eprintln!("{message}");
+            print_command_line_error(cmdline, message);
             glib::ExitCode::FAILURE
         }
+    }
+}
+
+/// Prints to the stderr of the process that ran the command, which is not
+/// this one when Strata was already running.
+#[expect(
+    unsafe_code,
+    reason = "gio-rs binds printerr_literal only from GLib 2.80, above the 2.72 Strata supports"
+)]
+fn print_command_line_error(cmdline: &gio::ApplicationCommandLine, message: &str) {
+    use glib::translate::ToGlibPtr as _;
+    let Ok(line) = std::ffi::CString::new(format!("{message}\n")) else {
+        return;
+    };
+    // SAFETY: the command line and both strings outlive the call, and the "%s"
+    // format consumes exactly the one NUL-terminated string passed after it.
+    unsafe {
+        gio::ffi::g_application_command_line_printerr(
+            cmdline.to_glib_none().0,
+            c"%s".as_ptr(),
+            line.as_ptr(),
+        );
     }
 }
 
@@ -543,6 +576,12 @@ fn run_preview_helper(arguments: &[OsString]) -> Result<(), String> {
     sandbox_helper::run(&arguments)
 }
 
+/// Terminal setup output follows the system locale, as the installer that runs it does.
+fn finish_localized_setup(setup: fn() -> Result<String, String>) -> gtk::glib::ExitCode {
+    rust_i18n::set_locale(i18n::detected_locale());
+    finish_portal_setup(setup())
+}
+
 fn finish_portal_setup(result: Result<String, String>) -> gtk::glib::ExitCode {
     match result {
         Ok(message) => {
@@ -571,7 +610,17 @@ fn export_file_manager_interface(application: &gtk::Application) {
     }
 }
 
+/// GIO registers its built-in implementations, `GLocalVfs` among them, when it
+/// first loads its modules, as creating its default VFS does.
+fn gio_modules_loaded() -> bool {
+    glib::Type::from_name("GLocalVfs").is_some()
+}
+
 fn restart_with_local_vfs_if_gvfs_is_unresponsive() {
+    debug_assert!(
+        !gio_modules_loaded(),
+        "GIO loaded its modules before the GVfs probe; a hung gvfsd blocks its default VFS"
+    );
     if std::env::var_os("GIO_USE_VFS").is_some() {
         return;
     }

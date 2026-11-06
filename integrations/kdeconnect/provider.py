@@ -53,11 +53,23 @@ class Ticket:
     paths: tuple
     identities: tuple
     expires: float
+    label: str = ""
 
 
 def label(text, limit=90):
     clean = "".join(c for c in text if unicodedata.category(c) != "Cc").strip()
     return (clean or tr("Device")).encode("utf-8")[:limit].decode("utf-8", "ignore")
+
+
+def device_labels(devices):
+    """Menu label per device in menu order; a shared name gets a stable suffix from the ID."""
+    names = {device: label(name) for device, name in devices.items()}
+    counts = Counter(names.values())
+    return {
+        device: names[device] + " (" + hashlib.sha256(device.encode()).hexdigest()[:6] + ")"
+        if counts[names[device]] > 1 else names[device]
+        for device in sorted(names, key=lambda d: (names[d].casefold(), d))
+    }
 
 
 def action_id(device):
@@ -180,13 +192,15 @@ class Provider:
         self.tickets.clear()
         return {"version": 1, "event": "invalidate", "revision": self.revision}
 
-    def ticket(self, snapshot, device, paths, identities):
+    def ticket(self, snapshot, device, paths, identities, label):
         now = self.clock()
         key = (snapshot.owner, device, tuple(paths))
         t = self.tickets.get(key)
         if t is None or t.identities != identities or t.expires < now:
             t = Ticket(secrets.token_hex(24), snapshot.owner, device, tuple(paths), identities, now + 120)
             self.tickets[key] = t
+        # The notice names the device as the menu last showed it.
+        t.label = label
         self.tickets.move_to_end(key)
         while len(self.tickets) > 256:
             self.tickets.popitem(last=False)
@@ -202,14 +216,9 @@ class Provider:
             return []
         if not snapshot.devices or len(snapshot.devices) > 63:
             return []
-        names = {device: label(name) for device, name in snapshot.devices.items()}
-        counts = Counter(names.values())
         actions = []
-        for device in sorted(names, key=lambda d: (names[d].casefold(), d)):
-            name = names[device]
-            if counts[name] > 1:
-                name += " (" + hashlib.sha256(device.encode()).hexdigest()[:6] + ")"
-            t = self.ticket(snapshot, device, paths, identities)
+        for device, name in device_labels(snapshot.devices).items():
+            t = self.ticket(snapshot, device, paths, identities, name)
             actions.append({"id": action_id(device), "label": name, "placement": "send-to",
                             "context": t.token})
         return actions
@@ -247,7 +256,7 @@ class Provider:
             return result("rejected", message)
         return result(
             "accepted", tr("Files submitted to {device}: {count}. KDE Connect handles transfer progress and results.",
-               device=label(snapshot.devices[t.device]), count=total),
+               device=t.label, count=total),
         )
 
     def handle(self, request):

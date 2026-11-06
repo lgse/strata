@@ -3,14 +3,21 @@
 use gtk::{gio, prelude::*};
 
 use super::{
-    BrowserMode, ModeViews, Pane, STATUS_PAGE,
+    BrowserMode, ModeViews,
+    focus::{pane_contains_focus, reload_focus_fell_back},
+    metadata::{update_bound_icons_metadata, update_bound_list_metadata},
     navigation::{FocusOwner, RestoreFocus},
-    pane_contains_focus, reconnect_pane_model, reload_focus_fell_back, replace_entries, select_all,
-    set_selections, show_count, update_bound_icons_metadata, update_bound_list_metadata,
+    pane::{
+        BoundModeItem, Pane, PaneSection, STATUS_PAGE, reconnect_pane_model, replace_entries,
+        show_count,
+    },
+    selection::{select_all, set_selections},
+    type_groups::{pane_type_group_sorter, type_group_header_factory},
 };
 use crate::{
     app::{Browser, BrowserEvent, EntryInsertion, EntrySplice, SelectionUpdate},
-    ui::browser::entry_model_value,
+    model::FileEntry,
+    ui::browser::{camera_scroll::CameraTopAnchor, entry_model_value},
 };
 
 impl ModeViews {
@@ -29,62 +36,68 @@ impl ModeViews {
 
     fn handle_structure_event(&mut self, event: &BrowserEvent) -> bool {
         match event {
-            BrowserEvent::NavigationStarting { history } => {
-                let pane = self.single_pane();
-                // An explicit navigation focuses the new listing, as a first visit does.
-                // Back, Forward and Up leave focus on a header button or the sidebar, but
-                // focus inside the pane, its filter included, goes away with it.
-                let takes_focus = !history
-                    || pane.is_none_or(|pane| {
-                        pane_contains_focus(pane) || self.listing_may_take_focus(pane.depth)
-                    });
-                let mut navigation = self.pane_navigation.borrow_mut();
-                navigation.leave(takes_focus);
-                if let Some(pane) = pane {
-                    navigation.capture(pane, &self.browser, self.mode);
-                }
-            }
-            BrowserEvent::ColumnReloading { depth } => {
-                if let Some(pane) = self.mode_pane(*depth) {
-                    let focus = self.focus_owner(pane);
-                    self.pane_navigation.borrow_mut().capture_reload(
-                        pane,
-                        &self.browser,
-                        self.mode,
-                        focus,
-                    );
-                }
-            }
+            BrowserEvent::NavigationStarting { history } => self.on_navigation_starting(*history),
+            BrowserEvent::ColumnReloading { depth } => self.on_column_reloading(*depth),
             BrowserEvent::Reset => {
                 self.clear_icons();
                 self.clear_list();
             }
             BrowserEvent::ColumnsTruncated { .. } => self.rebuild_active_mode(),
-            BrowserEvent::ColumnsRelocated { from_depth } => {
-                if let Some(depth) = self
-                    .browser
-                    .active_depth()
-                    .filter(|depth| depth >= from_depth)
-                {
-                    // The rebuild replaces the panes, including a focused filter field.
-                    let refocus = self
-                        .panes_at(depth)
-                        .iter()
-                        .any(|pane| pane_contains_focus(pane));
-                    self.rebuild_active_mode();
-                    if refocus {
-                        self.focus_visible_pane(depth);
-                    }
-                }
-            }
+            BrowserEvent::ColumnsRelocated { from_depth } => self.on_columns_relocated(*from_depth),
             BrowserEvent::ColumnAdded { depth, .. } => {
                 if self.browser.active_depth() == Some(*depth) {
+                    self.pane_navigation.borrow_mut().arrive();
                     self.rebuild_active_mode();
+                    self.pane_navigation.borrow_mut().arrived();
                 }
             }
             _ => return false,
         }
         true
+    }
+
+    fn on_navigation_starting(&self, history: bool) {
+        let pane = self.single_pane();
+        // An explicit navigation focuses the new listing, as a first visit does.
+        // Back, Forward and Up leave focus on a header button or the sidebar, but
+        // focus inside the pane, its filter included, goes away with it.
+        let takes_focus = !history
+            || pane.is_none_or(|pane| {
+                pane_contains_focus(pane) || self.listing_may_take_focus(pane.depth)
+            });
+        let mut navigation = self.pane_navigation.borrow_mut();
+        navigation.leave(takes_focus);
+        if let Some(pane) = pane {
+            navigation.capture(pane, &self.browser, self.mode);
+        }
+    }
+
+    fn on_column_reloading(&self, depth: usize) {
+        if let Some(pane) = self.mode_pane(depth) {
+            let focus = self.focus_owner(pane);
+            self.pane_navigation
+                .borrow_mut()
+                .capture_reload(pane, &self.browser, self.mode, focus);
+        }
+    }
+
+    fn on_columns_relocated(&mut self, from_depth: usize) {
+        let Some(depth) = self
+            .browser
+            .active_depth()
+            .filter(|depth| *depth >= from_depth)
+        else {
+            return;
+        };
+        // The rebuild replaces the panes, including a focused filter field.
+        let refocus = self
+            .panes_at(depth)
+            .iter()
+            .any(|pane| pane_contains_focus(pane));
+        self.rebuild_active_mode();
+        if refocus {
+            self.focus_visible_pane(depth);
+        }
     }
 
     fn rebuild_active_mode(&mut self) {
@@ -98,30 +111,7 @@ impl ModeViews {
     fn handle_rows_event(&self, event: &BrowserEvent, defer_empty: bool) -> bool {
         match event {
             BrowserEvent::EntriesInserted { depth, insertions } => {
-                let camera = self
-                    .browser
-                    .location_at(*depth)
-                    .is_some_and(|location| location.is_camera_photo_root());
-                self.update_panes(*depth, |pane| {
-                    let top = camera
-                        .then(|| {
-                            crate::ui::browser::camera_scroll::CameraTopAnchor::capture(
-                                &pane.section.view,
-                            )
-                        })
-                        .flatten();
-                    pane.insert_rows(insertions);
-                    if camera && pane.model.n_items() > 0 {
-                        reconnect_pane_model(pane);
-                        for section in pane.all_sections() {
-                            section.syncing.set(false);
-                        }
-                        show_count(pane);
-                    }
-                    if let Some(top) = top {
-                        top.restore();
-                    }
-                });
+                self.on_entries_inserted(*depth, insertions);
             }
             BrowserEvent::EntriesReplaced { depth, count } => {
                 self.update_panes(*depth, |pane| {
@@ -138,96 +128,90 @@ impl ModeViews {
                 });
             }
             BrowserEvent::EntriesSpliced { depth, splices, .. } => {
-                let restore_cursor = self.listing_holds_focus(*depth);
-                let positions = self.browser.selected_positions(*depth);
-                self.update_panes(*depth, |pane| {
-                    pane.splice_rows(splices, defer_empty);
-                    set_selections(pane, &positions);
-                });
-                if restore_cursor && !positions.is_empty() && !self.rename_is_active() {
-                    let target = self.browser.focused_item().map(|(_, position, _)| position);
-                    let missing_cursor = !self.panes_at(*depth).iter().any(|pane| {
-                        pane.item_sections().iter().any(|section| {
-                            let Some(focused) = section.view.root().and_then(|root| root.focus())
-                            else {
-                                return false;
-                            };
-                            if self.mode == BrowserMode::Icons && focused.is_ancestor(&section.view)
-                            {
-                                return true;
-                            }
-                            section.bound_items.borrow().iter().any(|bound| {
-                                let Some(item) = bound.item.upgrade() else {
-                                    return false;
-                                };
-                                let source = item
-                                    .item()
-                                    .and_then(|item| pane.source_index.of_item(&item));
-                                source == target
-                                    && bound
-                                        .widget
-                                        .upgrade()
-                                        .and_then(|widget| widget.parent())
-                                        .as_ref()
-                                        == Some(&focused)
-                            })
-                        })
-                    });
-                    if missing_cursor {
-                        self.suppress_focus_scroll();
-                        self.focus_visible_pane(*depth);
-                    }
-                }
+                self.on_entries_spliced(*depth, splices, defer_empty);
             }
             BrowserEvent::MetadataFilled { depth, updates } => {
-                if self.mode == BrowserMode::List {
-                    self.update_panes(*depth, |pane| update_bound_list_metadata(pane, updates));
-                } else if self.mode == BrowserMode::Icons {
-                    self.update_panes(*depth, |pane| update_bound_icons_metadata(pane, updates));
-                }
+                self.on_metadata_filled(*depth, updates);
             }
             _ => return false,
         }
         true
     }
 
+    fn on_entries_inserted(&self, depth: usize, insertions: &[EntryInsertion]) {
+        let camera = self
+            .browser
+            .location_at(depth)
+            .is_some_and(|location| location.is_camera_photo_root());
+        self.update_panes(depth, |pane| pane.insert_rows_at_top(insertions, camera));
+    }
+
+    fn on_entries_spliced(&self, depth: usize, splices: &[EntrySplice], defer_empty: bool) {
+        let restore_cursor = self.listing_holds_focus(depth);
+        let positions = self.browser.selected_positions(depth);
+        self.update_panes(depth, |pane| {
+            pane.splice_rows(splices, defer_empty);
+            set_selections(pane, &positions);
+        });
+        let keeps_cursor = restore_cursor && !positions.is_empty();
+        if !keeps_cursor || self.rename_is_active() {
+            return;
+        }
+        if self.cursor_missing(depth) {
+            self.suppress_focus_scroll();
+            self.focus_visible_pane(depth);
+        }
+    }
+
+    /// No view of `depth` still has focus on the browser's cursor row.
+    fn cursor_missing(&self, depth: usize) -> bool {
+        let target = self.browser.focused_item().map(|(_, position, _)| position);
+        !self.panes_at(depth).iter().any(|pane| {
+            pane.item_sections()
+                .iter()
+                .any(|section| self.section_holds_cursor(pane, section, target))
+        })
+    }
+
+    fn section_holds_cursor(
+        &self,
+        pane: &Pane,
+        section: &PaneSection,
+        target: Option<usize>,
+    ) -> bool {
+        let Some(focused) = section.view.root().and_then(|root| root.focus()) else {
+            return false;
+        };
+        if self.mode == BrowserMode::Icons && focused.is_ancestor(&section.view) {
+            return true;
+        }
+        section
+            .bound_items
+            .borrow()
+            .iter()
+            .any(|bound| bound_holds_cursor(pane, bound, target, &focused))
+    }
+
+    fn on_metadata_filled(&self, depth: usize, updates: &[(usize, FileEntry)]) {
+        match self.mode {
+            BrowserMode::List => {
+                self.update_panes(depth, |pane| update_bound_list_metadata(pane, updates));
+            }
+            BrowserMode::Icons => {
+                self.update_panes(depth, |pane| update_bound_icons_metadata(pane, updates));
+            }
+            BrowserMode::Columns => {}
+        }
+    }
+
     fn handle_loading_event(&mut self, event: &BrowserEvent, defer_empty: bool) -> bool {
         if let BrowserEvent::SortingFinished { depth } | BrowserEvent::ColumnReloaded { depth } =
             event
         {
-            let preferences = self.browser.column_preferences(*depth);
-            self.update_panes(*depth, |pane| {
-                if let Some(button) = &pane.sort_direction_button {
-                    super::super::browser::sync_column_sort_direction(
-                        &self.browser,
-                        *depth,
-                        button,
-                    );
-                }
-                if let (Some(sorting), Some(preferences)) = (&pane.sorting, preferences) {
-                    sorting.show(preferences.sort_key, preferences.sort_direction);
-                }
-                if let Some(sorter) = &pane.type_group_sorter {
-                    sorter.refresh(preferences);
-                }
-            });
+            self.refresh_sort_indicators(*depth);
         }
-        let changed_depth = match event {
-            BrowserEvent::ColumnReloaded { depth }
-            | BrowserEvent::SortingFinished { depth }
-            | BrowserEvent::LoadFinished { depth, .. }
-            | BrowserEvent::LoadFailed { depth, .. } => Some(*depth),
-            _ => None,
-        };
-        if let Some(depth) = changed_depth
-            && self.mode == BrowserMode::List
-            && let Some(snapshot) = self.browser.column_snapshot(depth)
-            && self.list_pane.as_ref().is_some_and(|pane| {
-                pane.depth == depth
-                    && pane.group_by_type != self.grouping_for_snapshot(depth, &snapshot)
-            })
-        {
-            self.update_camera_grouping(self.grouping_for_snapshot(depth, &snapshot));
+        if let Some(depth) = changed_depth(event) {
+            self.follow_camera_grouping(depth);
         }
         match event {
             BrowserEvent::ColumnNotResponding {
@@ -242,65 +226,128 @@ impl ModeViews {
             BrowserEvent::SortingFinished { depth } => {
                 self.update_panes(*depth, Pane::finish_sorting)
             }
-            BrowserEvent::ColumnReloaded { depth } => {
-                // A reload that reveals a target is not announced; the target wins.
-                if self.mode_pane(*depth).is_some()
-                    && self
-                        .browser
-                        .column_snapshot(*depth)
-                        .is_some_and(|snapshot| snapshot.reveal_pending)
-                {
-                    self.pane_navigation.borrow_mut().cancel();
-                }
-                self.update_panes(*depth, Pane::reload_rows);
-            }
+            BrowserEvent::ColumnReloaded { depth } => self.on_column_reloaded(*depth),
             BrowserEvent::LoadFinished { depth, truncated } => {
-                let restore_cursor = self
-                    .panes_at(*depth)
-                    .iter()
-                    .any(|pane| pane.stack.is_focus());
-                let positions = self.browser.selected_positions(*depth);
-                self.update_panes(*depth, |pane| {
-                    pane.finish_loading(*truncated, defer_empty, &positions)
-                });
-                // After the rows are back, so focus parked on the pane surface counts.
-                let restored = self.mode_pane(*depth).and_then(|pane| {
-                    // A hidden tab never takes focus.
-                    let allowed = if self.rename_is_active() || !pane.shell.is_mapped() {
-                        RestoreFocus::default()
-                    } else {
-                        RestoreFocus {
-                            listing: self.listing_may_take_focus(*depth),
-                            filter_entry: self.focus_owner(pane) == FocusOwner::FilterEntry
-                                || reload_focus_fell_back(pane),
-                        }
-                    };
-                    self.pane_navigation.borrow_mut().restore(
-                        pane,
-                        &self.browser,
-                        self.mode,
-                        allowed,
-                    )
-                });
-                if restored.is_none() && restore_cursor {
-                    self.focus_visible_pane(*depth);
-                }
+                self.on_load_finished(*depth, *truncated, defer_empty);
             }
             BrowserEvent::LoadFailed {
                 depth,
                 message,
                 administrator,
-            } => {
-                self.update_panes(*depth, |pane| {
-                    pane.fail_loading(message, administrator.is_some());
-                });
-                if self.mode_pane(*depth).is_some() {
-                    self.pane_navigation.borrow_mut().cancel();
-                }
-            }
+            } => self.on_load_failed(*depth, message, administrator.is_some()),
             _ => return false,
         }
         true
+    }
+
+    fn refresh_sort_indicators(&self, depth: usize) {
+        let preferences = self.browser.column_preferences(depth);
+        self.update_panes(depth, |pane| {
+            if let Some(button) = &pane.sort_direction_button {
+                crate::ui::browser::sync_column_sort_direction(&self.browser, depth, button);
+            }
+            if let (Some(sorting), Some(preferences)) = (&pane.sorting, preferences) {
+                sorting.show(preferences.sort_key, preferences.sort_direction);
+            }
+            if let Some(button) = &pane.sort_menu {
+                crate::ui::browser::sync_list_sort_menu(&self.browser, depth, button);
+            }
+            if let Some(sorter) = &pane.type_group_sorter {
+                sorter.refresh(preferences);
+            }
+        });
+    }
+
+    /// A camera folder groups its List rows only once the whole snapshot is in.
+    fn follow_camera_grouping(&mut self, depth: usize) {
+        if self.mode != BrowserMode::List {
+            return;
+        }
+        let grouped = self.browser.shows_type_groups(depth);
+        let stale = self
+            .list_pane
+            .as_ref()
+            .is_some_and(|pane| pane.depth == depth && pane.group_by_type != grouped);
+        if stale {
+            self.update_camera_grouping(grouped);
+        }
+    }
+
+    fn on_column_reloaded(&self, depth: usize) {
+        // A reload that reveals a target is not announced; the target wins.
+        let reveals_target = self.mode_pane(depth).is_some()
+            && self
+                .browser
+                .column_snapshot(depth)
+                .is_some_and(|snapshot| snapshot.reveal_pending);
+        if reveals_target {
+            self.pane_navigation.borrow_mut().cancel();
+        }
+        self.update_panes(depth, Pane::reload_rows);
+    }
+
+    fn on_load_finished(&self, depth: usize, truncated: bool, defer_empty: bool) {
+        let restore_cursor = self
+            .panes_at(depth)
+            .iter()
+            .any(|pane| pane.stack.is_focus());
+        let positions = self.browser.selected_positions(depth);
+        self.update_panes(depth, |pane| {
+            pane.finish_loading(truncated, defer_empty, &positions)
+        });
+        let first_visit = self
+            .pane_navigation
+            .borrow_mut()
+            .take_untouched_first_visit(depth);
+        // After the rows are back, so focus parked on the pane surface counts.
+        let restored = self.mode_pane(depth).and_then(|pane| {
+            let allowed = self.restore_focus_allowed(pane, depth);
+            self.pane_navigation
+                .borrow_mut()
+                .restore(pane, &self.browser, self.mode, allowed)
+        });
+        if restored.is_some() {
+            return;
+        }
+        if first_visit && self.grouped_focus_drifted(depth) {
+            self.focus_first_row(depth);
+        } else if restore_cursor {
+            self.focus_visible_pane(depth);
+        }
+    }
+
+    /// Rows publish in listing order, so a group that sorts first can arrive above the
+    /// row GTK focused when the first rows came in. Without a cursor to hold, as after
+    /// a pointer opened the folder, focus goes back to the first row shown.
+    fn grouped_focus_drifted(&self, depth: usize) -> bool {
+        let has_cursor = self
+            .browser
+            .focused_item()
+            .is_some_and(|(focused_depth, _, _)| focused_depth == depth);
+        !has_cursor
+            && self.mode_pane(depth).is_some_and(|pane| pane.group_by_type)
+            && self.listing_holds_focus(depth)
+    }
+
+    fn restore_focus_allowed(&self, pane: &Pane, depth: usize) -> RestoreFocus {
+        // A hidden tab never takes focus.
+        if self.rename_is_active() || !pane.shell.is_mapped() {
+            return RestoreFocus::default();
+        }
+        RestoreFocus {
+            listing: self.listing_may_take_focus(depth),
+            filter_entry: self.focus_owner(pane) == FocusOwner::FilterEntry
+                || reload_focus_fell_back(pane),
+        }
+    }
+
+    fn on_load_failed(&self, depth: usize, message: &str, offers_administrator: bool) {
+        self.update_panes(depth, |pane| {
+            pane.fail_loading(message, offers_administrator);
+        });
+        if self.mode_pane(depth).is_some() {
+            self.pane_navigation.borrow_mut().cancel();
+        }
     }
 
     fn update_camera_grouping(&mut self, grouped: bool) {
@@ -310,21 +357,24 @@ impl ModeViews {
         let Some(list) = pane.section.view.downcast_ref::<gtk::ListView>() else {
             return;
         };
-        let Some(model) = pane.section.view_model.downcast_ref::<gtk::SortListModel>() else {
+        let Some(model) = pane
+            .section
+            .view_model
+            .downcast_ref::<super::grouped_model::GroupedModel>()
+        else {
             return;
         };
-        let top = crate::ui::browser::camera_scroll::CameraTopAnchor::capture(&pane.section.view);
+        let top = CameraTopAnchor::capture(&pane.section.view);
         let was_syncing = pane.section.syncing.replace(true);
         // Remove section widgets before changing their model. Re-enable them only
         // after the complete camera snapshot is sorted. Keep the existing view,
         // selection model and both scrollers instead of resetting the viewport.
         list.set_header_factory(None::<&gtk::ListItemFactory>);
-        let sorter = grouped.then(|| super::pane_type_group_sorter(&self.browser, pane.depth));
-        model.set_section_sorter(sorter.as_ref().map(|sorter| &sorter.sorter));
+        let sorter = grouped.then(|| pane_type_group_sorter(&self.browser, pane.depth));
         model.set_sorter(sorter.as_ref().map(|sorter| &sorter.sorter));
         pane.type_group_sorter = sorter;
         if grouped {
-            list.set_header_factory(Some(&super::type_group_header_factory()));
+            list.set_header_factory(Some(&type_group_header_factory()));
         }
         pane.group_by_type = grouped;
         pane.section.syncing.set(was_syncing);
@@ -334,38 +384,10 @@ impl ModeViews {
     }
 
     fn handle_selection_event(&self, event: &BrowserEvent) {
-        if self.mode != BrowserMode::Columns && self.pane_navigation.borrow().is_restoring() {
-            let (takes_focus, settling) = {
-                let navigation = self.pane_navigation.borrow();
-                (navigation.history_takes_focus(), navigation.is_settling())
-            };
-            let depth = match event {
-                BrowserEvent::FocusChanged { depth, .. } => depth,
-                // Rows that change after the load, a re-sort for one, outdate the saved
-                // viewport.
-                BrowserEvent::SelectionSetChanged { .. } if settling => {
-                    self.pane_navigation.borrow_mut().cancel();
-                    return self.handle_selection_event(event);
-                }
-                _ => return,
-            };
-            if takes_focus {
-                // The rebuilt listing takes over focus from the one being left, as it
-                // does when there is no position to restore.
-                if !self.cursor_keeps_focus.get()
-                    && !self.outside_change_keeps_focus()
-                    && self.background_load_may_take_focus(*depth)
-                {
-                    self.focus_visible_pane(*depth);
-                }
-                return;
-            }
-            // A restore that left focus elsewhere must not swallow a later request to
-            // focus the listing; one that holds focus keeps its viewport.
-            if !settling || self.listing_holds_focus(*depth) {
-                return;
-            }
-            self.pane_navigation.borrow_mut().cancel();
+        let restoring =
+            self.mode != BrowserMode::Columns && self.pane_navigation.borrow().is_restoring();
+        if restoring && self.restore_absorbs(event) {
+            return;
         }
         match event {
             BrowserEvent::SelectionSetChanged {
@@ -376,28 +398,69 @@ impl ModeViews {
             } => {
                 self.update_selection(*depth, selection, *take_focus);
             }
-            BrowserEvent::FocusChanged { depth, .. } => {
-                let positions = self.browser.selected_positions(*depth);
-                self.update_panes(*depth, |pane| set_selections(pane, &positions));
-                if !self.cursor_keeps_focus.get()
-                    && !self.outside_change_keeps_focus()
-                    && self.background_load_may_take_focus(*depth)
-                {
-                    // A result rename keeps focus, as `focus_visible_pane` keeps a listing's.
-                    let results = !self.rename_is_active()
-                        && self
-                            .visible_panes()
-                            .into_iter()
-                            .any(|pane| pane.depth == *depth && pane.search.hits().is_some());
-                    if results {
-                        self.results_take_focus.set(Some(*depth));
-                    } else {
-                        self.focus_visible_pane(*depth);
-                    }
-                }
-            }
+            BrowserEvent::FocusChanged { depth, .. } => self.on_focus_changed(*depth),
             _ => {}
         }
+    }
+
+    /// Whether a pending viewport restore consumes `event`. A restore that is
+    /// cancelled here lets the event through.
+    fn restore_absorbs(&self, event: &BrowserEvent) -> bool {
+        let (takes_focus, settling) = {
+            let navigation = self.pane_navigation.borrow();
+            (navigation.history_takes_focus(), navigation.is_settling())
+        };
+        let depth = match event {
+            BrowserEvent::FocusChanged { depth, .. } => *depth,
+            // Rows that change after the load, a re-sort for one, outdate the saved
+            // viewport.
+            BrowserEvent::SelectionSetChanged { .. } if settling => {
+                self.pane_navigation.borrow_mut().cancel();
+                return false;
+            }
+            _ => return true,
+        };
+        if takes_focus {
+            // The rebuilt listing takes over focus from the one being left, as it
+            // does when there is no position to restore.
+            if self.may_refocus(depth) {
+                self.focus_visible_pane(depth);
+            }
+            return true;
+        }
+        // A restore that left focus elsewhere must not swallow a later request to
+        // focus the listing; one that holds focus keeps its viewport.
+        if !settling || self.listing_holds_focus(depth) {
+            return true;
+        }
+        self.pane_navigation.borrow_mut().cancel();
+        false
+    }
+
+    fn on_focus_changed(&self, depth: usize) {
+        let positions = self.browser.selected_positions(depth);
+        self.update_panes(depth, |pane| set_selections(pane, &positions));
+        if !self.may_refocus(depth) {
+            return;
+        }
+        // A result rename keeps focus, as `focus_visible_pane` keeps a listing's.
+        let results = !self.rename_is_active()
+            && self
+                .visible_panes()
+                .into_iter()
+                .any(|pane| pane.depth == depth && pane.search.hits().is_some());
+        if results {
+            self.results_take_focus.set(Some(depth));
+        } else {
+            self.focus_visible_pane(depth);
+        }
+    }
+
+    /// A background change may move focus to the listing's cursor.
+    fn may_refocus(&self, depth: usize) -> bool {
+        !self.cursor_keeps_focus.get()
+            && !self.outside_change_keeps_focus()
+            && self.background_load_may_take_focus(depth)
     }
 
     fn background_load_may_take_focus(&self, depth: usize) -> bool {
@@ -419,7 +482,8 @@ impl ModeViews {
         self.update_panes(depth, |pane| {
             let showing_error = pane.stack.visible_child_name().as_deref() == Some(STATUS_PAGE)
                 && pane.status.has_css_class("error");
-            if pane.model.n_items() == 0 && !pane.spinner.is_spinning() && !showing_error {
+            let idle_and_empty = pane.model.n_items() == 0 && !pane.spinner.is_spinning();
+            if idle_and_empty && !showing_error {
                 show_count(pane);
             }
         });
@@ -443,7 +507,8 @@ impl ModeViews {
             .is_some_and(|snapshot| snapshot.loading && snapshot.location.is_camera_photo_root());
         // Incoming photos shift source positions without a user selection change.
         // Re-focusing on every such update pulls scrolling back to the selected row.
-        if take_focus || (view_has_focus && has_selection && !camera_loading) {
+        let follows_selection = view_has_focus && has_selection && !camera_loading;
+        if take_focus || follows_selection {
             self.focus_visible_pane(depth);
         }
     }
@@ -453,7 +518,57 @@ impl ModeViews {
     }
 }
 
+fn changed_depth(event: &BrowserEvent) -> Option<usize> {
+    match event {
+        BrowserEvent::ColumnReloaded { depth }
+        | BrowserEvent::SortingFinished { depth }
+        | BrowserEvent::LoadFinished { depth, .. }
+        | BrowserEvent::LoadFailed { depth, .. } => Some(*depth),
+        _ => None,
+    }
+}
+
+/// The bound row of the cursor's entry is the one GTK focused.
+fn bound_holds_cursor(
+    pane: &Pane,
+    bound: &BoundModeItem,
+    target: Option<usize>,
+    focused: &gtk::Widget,
+) -> bool {
+    let Some(item) = bound.item.upgrade() else {
+        return false;
+    };
+    let source = item
+        .item()
+        .and_then(|item| pane.source_index.of_item(&item));
+    source == target
+        && bound
+            .widget
+            .upgrade()
+            .and_then(|widget| widget.parent())
+            .as_ref()
+            == Some(focused)
+}
+
 impl Pane {
+    /// Camera folders keep the top row in place while photos arrive.
+    fn insert_rows_at_top(&self, insertions: &[EntryInsertion], camera: bool) {
+        let top = camera
+            .then(|| CameraTopAnchor::capture(&self.section.view))
+            .flatten();
+        self.insert_rows(insertions);
+        if camera && self.model.n_items() > 0 {
+            reconnect_pane_model(self);
+            for section in self.all_sections() {
+                section.syncing.set(false);
+            }
+            show_count(self);
+        }
+        if let Some(top) = top {
+            top.restore();
+        }
+    }
+
     fn insert_rows(&self, insertions: &[EntryInsertion]) {
         for insertion in insertions {
             let values: Vec<_> = insertion.entries.iter().map(entry_model_value).collect();
@@ -566,12 +681,6 @@ impl Pane {
             section.syncing.set(false);
         }
         self.spinner.stop();
-        self.status.set_label(&rust_i18n::t!(
-            "Unable to read this directory\n%{message}",
-            message = message
-        ));
-        self.status.add_css_class("error");
-        self.administrator.set_visible(offers_administrator);
-        self.loading.show(STATUS_PAGE);
+        super::pane_state::show_load_error(self, message, offers_administrator);
     }
 }

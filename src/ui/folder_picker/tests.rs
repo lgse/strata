@@ -30,6 +30,11 @@ fn text_searches_the_open_folder_until_it_names_another() {
         ("~", picked(HOME, "")),
         ("~/", picked(HOME, "")),
         ("~/dev/str", picked("/home/user/dev", "str")),
+        ("~//x", picked(HOME, "x")),
+        ("~///x", picked(HOME, "x")),
+        ("~///", picked(HOME, "")),
+        ("~//dev//str", picked("/home/user/dev", "str")),
+        (".//x", picked(CURRENT, "x")),
         ("~/dev/ foo bar", picked("/home/user/dev", "foo bar")),
         (
             "~/My Documents/rep",
@@ -77,6 +82,7 @@ fn typed_paths_name_a_target_and_queries_do_not() {
     for (text, expected) in [
         ("~/dev/strata", Some("/home/user/dev/strata")),
         ("~", Some(HOME)),
+        ("~//zzqa", Some("/home/user/zzqa")),
         ("./src", Some("/work/project/src")),
         ("./", Some(CURRENT)),
         ("../sib/", Some("/work/sib")),

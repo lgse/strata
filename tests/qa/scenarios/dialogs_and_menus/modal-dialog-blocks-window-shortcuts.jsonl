@@ -29,6 +29,7 @@
 {"fs":{"path":"todo.txt","exists":true},"timeout_ms":0}
 {"key":"alt+Return"}
 {"wait":{"dialog":"todo.txt"},"message":"Properties opens over the active tab"}
+{"wait":{"focused_widget":"Close dialog"},"message":"Properties to open with focus on its first named control, not its unnamed layer"}
 {"key":"ctrl+comma"}
 {"expect":[{"dialog":"todo.txt"},{"absent":{"role":"button","name":"Close settings"}}],"message":"Ctrl+, must not open tab-local Settings behind a window-level Properties dialog"}
 {"key":"Escape"}

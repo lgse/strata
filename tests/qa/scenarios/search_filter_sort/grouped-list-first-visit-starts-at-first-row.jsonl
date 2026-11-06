@@ -1,0 +1,49 @@
+{"scenario":"grouped-list-first-visit-starts-at-first-row","modes":["list"],"prefs":{"group_by_type":true,"show_hidden":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"grouped":{"alpha.txt":"alpha\n","beta.csv":"beta\n","gamma.md":"# gamma\n"},"large":{"a{000..299}.txt":"a\n","b{000..299}.csv":"b\n"},"typed_large":{"a{000..299}.txt":"a\n","b{000..299}.csv":"b\n"}},"quality":{"impact":2,"coverage":4,"criticality":3,"diagnostic":3,"score":30,"note":"Grouped List first visit starts on the first row shown and stays at the top by Ctrl+L and double-click, small and chunked; revisit restores; model pick unit-tested"}}
+{"wait":{"entries":["grouped","large","typed_large"],"dir":"$root"},"message":"the fixture folders are listed"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location editor to take focus"}
+{"remember":{"field":true},"as":"location"}
+{"key":"ctrl+a"}
+{"type":"$fixture/grouped"}
+{"wait":{"field":{"of":"location","text":"$fixture/grouped"}},"message":"the typed folder path"}
+{"key":"Return"}
+{"wait":{"directory":"grouped"},"message":"the typed path to open 'grouped'"}
+{"wait":{"entries":["beta.csv","gamma.md","alpha.txt"],"dir":"grouped"},"message":"type groups to show the files out of name order"}
+{"wait":{"selected":["beta.csv"],"dir":"grouped"},"message":"the first visit to select the first row shown, not the first name"}
+{"wait":{"focused":"beta.csv"},"message":"keyboard focus to start on the first row shown"}
+{"key":"Down"}
+{"wait":{"focused":"gamma.md"},"message":"Down to move to the second row shown"}
+{"wait":{"selected":["gamma.md"],"dir":"grouped"},"message":"the selection to follow the cursor to 'gamma.md'"}
+{"key":"alt+Up"}
+{"wait":{"directory":"$root"},"message":"Alt+Up to return to the fixture root"}
+{"wait":{"focused":"grouped"},"message":"keyboard focus to reach 'grouped' in the root"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location editor to take focus again"}
+{"remember":{"field":true},"as":"location_again"}
+{"key":"ctrl+a"}
+{"type":"$fixture/grouped"}
+{"wait":{"field":{"of":"location_again","text":"$fixture/grouped"}},"message":"the typed folder path again"}
+{"key":"Return"}
+{"wait":{"directory":"grouped"},"message":"the typed path to reopen 'grouped'"}
+{"wait":{"focused":"gamma.md"},"message":"a revisit to restore the remembered cursor"}
+{"wait":{"selected":["gamma.md"],"dir":"grouped"},"message":"a revisit to restore the remembered selection"}
+{"key":"alt+Up"}
+{"wait":{"directory":"$root"},"message":"Alt+Up to return to the fixture root again"}
+{"click":{"entry":"large","dir":"$root"},"count":2}
+{"wait":{"directory":"large"},"message":"a double-click to open 'large'"}
+{"wait":{"focused":"b000.csv"},"message":"a pointer first visit to a large grouped folder to focus the first row shown, after its rows arrived in name order"}
+{"expect":{"selected":[],"dir":"large"},"message":"a pointer first visit to select nothing"}
+{"expect":{"visible":{"contains":["b000.csv"]},"dir":"large"},"timeout_ms":3000,"message":"a pointer first visit to keep the list at its top"}
+{"key":"alt+Up"}
+{"wait":{"directory":"$root"},"message":"Alt+Up to return to the fixture root a third time"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location editor to take focus for the large folder"}
+{"remember":{"field":true},"as":"location_large"}
+{"key":"ctrl+a"}
+{"type":"$fixture/typed_large"}
+{"wait":{"field":{"of":"location_large","text":"$fixture/typed_large"}},"message":"the typed path of the large folder"}
+{"key":"Return"}
+{"wait":{"directory":"typed_large"},"message":"the typed path to open 'typed_large'"}
+{"wait":{"selected":["b000.csv"],"dir":"typed_large"},"message":"a typed first visit to a large grouped folder to select the first row shown"}
+{"wait":{"focused":"b000.csv"},"message":"keyboard focus to start on the first row shown of the large folder"}
+{"expect":{"visible":{"contains":["b000.csv"]},"dir":"typed_large"},"timeout_ms":3000,"message":"a typed first visit to keep the list at its top, not scrolled to the middle"}

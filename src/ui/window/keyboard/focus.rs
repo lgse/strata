@@ -10,7 +10,7 @@ use crate::{
         focus_navigation::{
             FOCUS_MODIFIERS, arrow_direction, plain_tab_direction, vim_focus_direction,
         },
-        keys::{SHORTCUT_MODIFIERS, bindings::*},
+        keys::{KeyPress, SHORTCUT_MODIFIERS, bindings::*},
         window::sidebar_focus_direction,
     },
 };
@@ -27,6 +27,15 @@ impl Dispatcher {
             .or_else(|| self.top_bar_navigation(browser, event))
             .or_else(|| self.header_navigation(event))
             .or_else(|| self.sidebar_navigation(browser, event))
+    }
+
+    /// Tab inside an inline rename commits it and renames the neighbouring item instead
+    /// of moving focus.
+    pub(super) fn rename_tab(&self, press: &KeyPress) -> KeyResult {
+        let direction = plain_tab_direction(press)?;
+        self.view
+            .advance_rename(direction)
+            .then_some(Propagation::Stop)
     }
 
     /// Runs before inline editing so Tab from a rename field in Columns also leaves the strip.

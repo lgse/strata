@@ -1,0 +1,31 @@
+{"scenario":"new-item-named-with-path","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"nested-file","modes":["columns","list"],"vars":{"typed":"notes/today.txt","top":"notes","placed":"notes/today.txt","kind":"file"}},{"id":"file-to-folder","vars":{"typed":"docs/","top":"docs","placed":"docs","kind":"dir"}},{"id":"nested-folder","vars":{"typed":"a/b/","top":"a","placed":"a/b","kind":"dir"}},{"id":"own-name","vars":{"typed":"new file/","top":"new file","placed":"new file","kind":"dir"}},{"id":"refused","vars":{"typed":"todo.txt/today.txt"}}]}
+{"select":{"entry":"readme.md"}}
+{"fs":{"path":".","remember":"original"}}
+{"key":"ctrl+shift+n","variants":["nested-folder"]}
+{"click":{"background":true},"button":3,"variants":["nested-file","file-to-folder","own-name","refused"]}
+{"wait":{"present":{"menu_item":"New File"}},"message":"the menu item 'New File'","variants":["nested-file","file-to-folder","own-name","refused"]}
+{"settle":{"menu_item":"New File"},"variants":["nested-file","file-to-folder","own-name","refused"]}
+{"click":{"menu_item":"New File"},"variants":["nested-file","file-to-folder","own-name","refused"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["nested-file","file-to-folder","own-name","refused"]}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the new item's name editor to take focus"}
+{"remember":{"field":true},"as":"name"}
+{"type":"$typed"}
+{"wait":{"field":{"of":"name","text":"$typed"}},"message":"the path to be typed"}
+{"key":"Return"}
+{"fs":{"path":"$placed","is":"$kind"},"message":"the new item to reach '$placed'","variants":["nested-file","file-to-folder","own-name","nested-folder"]}
+{"fs":{"path":"new file","exists":false},"timeout_ms":0,"variants":["nested-file","file-to-folder"]}
+{"fs":{"path":"new folder","exists":false},"timeout_ms":0,"variants":["nested-folder"]}
+{"fs":{"path":"notes/today.txt","text":""},"timeout_ms":0,"variants":["nested-file"]}
+{"wait":{"selected":["$top"],"dir":"$root"},"message":"'$top' to take the new item's place in the selection","variants":["nested-file","file-to-folder","own-name","nested-folder"]}
+{"wait":{"focused":"$top"},"message":"keyboard focus to stay on '$top'","variants":["nested-file","file-to-folder","own-name","nested-folder"]}
+{"key":"ctrl+z","variants":["nested-file"]}
+{"fs":{"path":"notes","exists":false},"message":"undo to trash the folder the naming created","variants":["nested-file"]}
+{"fs":{"path":".","unchanged":"original"},"timeout_ms":0,"variants":["nested-file"]}
+{"wait":{"dialog":"Unable to rename item"},"message":"the refused path to be reported","variants":["refused"]}
+{"expect":{"present":{"role":"label","name":"“todo.txt” is not a folder"}},"message":"the dialog to name the file in the way","variants":["refused"]}
+{"click":{"dialog_button":"Close"},"variants":["refused"]}
+{"wait":{"dialog":null},"message":"the error to close","variants":["refused"]}
+{"wait":{"selected":["new file"],"dir":"$root"},"message":"the new file to keep its default name","variants":["refused"]}
+{"fs":{"path":"todo.txt","text":"todo\n"},"timeout_ms":0,"variants":["refused"]}
+{"fs":{"path":"todo.txt","is":"file"},"timeout_ms":0,"variants":["refused"]}
+{"fs":{"path":"new file","is":"file"},"timeout_ms":0,"variants":["refused"]}

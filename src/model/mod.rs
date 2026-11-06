@@ -124,6 +124,45 @@ fn parse_display_uri(uri: &str) -> Result<gio::glib::Uri, gio::glib::Error> {
     .or(encoded)
 }
 
+/// GIO's leaf name, or one read from the URI when GIO has none: GVfs names every mount root
+/// "/", even when its mount spec covers a path segment, as an SMB share's does.
+fn uri_display_name(uri: &str, file_name: Option<OsString>) -> String {
+    file_name
+        .map(|name| name.to_string_lossy().into_owned())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| uri_leaf_name(uri))
+}
+
+/// The decoded last path segment, or the host at a server root. `NON_DNS` keeps a non-ASCII
+/// host as typed instead of converting it to punycode.
+fn uri_leaf_name(uri: &str) -> String {
+    let flags = GIO_URI_PARSE_FLAGS.union(gio::glib::UriFlags::NON_DNS);
+    let Ok(parsed) = gio::glib::Uri::parse(uri, flags) else {
+        return uri
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or(uri)
+            .into();
+    };
+    let path = parsed.path();
+    let segment = path
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or_default();
+    if segment.is_empty() {
+        return parsed
+            .host()
+            .filter(|host| !host.is_empty())
+            .map_or_else(|| "/".to_owned(), String::from);
+    }
+    gio::glib::Uri::unescape_bytes(segment, None).map_or_else(
+        |_| segment.to_owned(),
+        |bytes| String::from_utf8_lossy(&bytes).into_owned(),
+    )
+}
+
 fn path_has_encoded_slash(path: &str) -> bool {
     path.as_bytes().windows(3).any(|escape| {
         escape[0] == b'%' && escape[1] == b'2' && escape[2].eq_ignore_ascii_case(&b'f')
@@ -445,17 +484,7 @@ impl Location {
                 .unwrap_or_else(|| path.to_string_lossy().into_owned()),
             LocationKind::Uri(uri) if uri.as_ref() == "trash:///" => crate::i18n::tr("Trash"),
             LocationKind::Uri(uri) if uri.as_ref() == "network:///" => crate::i18n::tr("Network"),
-            LocationKind::Uri(uri) => self
-                .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-                .filter(|name| !name.is_empty())
-                .unwrap_or_else(|| {
-                    uri.trim_end_matches('/')
-                        .rsplit('/')
-                        .next()
-                        .unwrap_or(uri)
-                        .into()
-                }),
+            LocationKind::Uri(uri) => uri_display_name(uri, self.file_name()),
         }
     }
 
@@ -486,7 +515,7 @@ pub enum FolderSort {
     Unremembered,
     /// Remembered per folder but not set: the default sort applies.
     Default,
-    Saved(SortKey, SortDirection),
+    Saved(SortKey, SortDirection, NameComparison),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -499,6 +528,9 @@ pub enum SortKey {
     Type,
     Size,
     Modified,
+    Extension,
+    Created,
+    Unsorted,
 }
 
 impl SortKey {
@@ -508,6 +540,9 @@ impl SortKey {
             "size" => Some(Self::Size),
             "modified" => Some(Self::Modified),
             "type" => Some(Self::Type),
+            "extension" => Some(Self::Extension),
+            "created" => Some(Self::Created),
+            "unsorted" => Some(Self::Unsorted),
             _ => None,
         }
     }
@@ -518,6 +553,9 @@ impl SortKey {
             Self::Size => Some("size"),
             Self::Modified => Some("modified"),
             Self::Type => Some("type"),
+            Self::Extension => Some("extension"),
+            Self::Created => Some("created"),
+            Self::Unsorted => Some("unsorted"),
             Self::DeviceOrder | Self::Recency => None,
         }
     }
@@ -547,14 +585,41 @@ impl SortDirection {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NameComparison {
+    pub natural: bool,
+    pub case_sensitive: bool,
+}
+
+impl Default for NameComparison {
+    fn default() -> Self {
+        Self {
+            natural: true,
+            case_sensitive: false,
+        }
+    }
+}
+
+pub type SortOptions = (SortKey, SortDirection, NameComparison);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ViewPreferences {
     pub show_hidden: bool,
     pub folders_first: bool,
     pub sort_key: SortKey,
     pub sort_direction: SortDirection,
+    pub name_comparison: NameComparison,
 }
 
 impl ViewPreferences {
+    pub fn sort_options(&self) -> SortOptions {
+        (self.sort_key, self.sort_direction, self.name_comparison)
+    }
+
+    pub fn set_sort_options(&mut self, (key, direction, comparison): SortOptions) {
+        self.set_sort((key, direction));
+        self.name_comparison = comparison;
+    }
+
     pub fn sort(&self) -> (SortKey, SortDirection) {
         (self.sort_key, self.sort_direction)
     }
@@ -572,6 +637,7 @@ impl Default for ViewPreferences {
             folders_first: true,
             sort_key: SortKey::Name,
             sort_direction: SortDirection::Ascending,
+            name_comparison: NameComparison::default(),
         }
     }
 }
@@ -603,6 +669,7 @@ pub struct FileEntry {
     pub kind: EntryKind,
     pub size: MetadataValue<u64>,
     pub modified_unix_seconds: MetadataValue<i64>,
+    pub created_unix_seconds: MetadataValue<i64>,
     pub recent_unix_seconds: MetadataValue<i64>,
     /// Registry handle for Recent rows; `location` instead identifies the real target.
     pub recent_uri: Option<String>,

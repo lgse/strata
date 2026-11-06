@@ -70,6 +70,8 @@ struct UdiskieInstallState {
     added_luks_automount_rule: bool,
     target_name: String,
     source_format: SourceFormat,
+    #[serde(default)]
+    created_config_directory: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -97,12 +99,51 @@ struct RestartOps<'a> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RestartOutcome {
+    Done,
+    ManualRestartNeeded,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RestartMode {
     EnsureRunning,
     ReloadIfRunning,
 }
 
-pub(crate) fn install() -> Result<String, String> {
+#[derive(Debug)]
+pub(crate) struct UdiskieChange {
+    summary: String,
+    restart: RestartOutcome,
+}
+
+impl UdiskieChange {
+    pub(crate) fn restart_warning(&self) -> Option<String> {
+        (self.restart == RestartOutcome::ManualRestartNeeded)
+            .then(|| crate::i18n::tr(RESTART_WARNING))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(restart_needed: bool) -> Self {
+        Self {
+            summary: String::new(),
+            restart: if restart_needed {
+                RestartOutcome::ManualRestartNeeded
+            } else {
+                RestartOutcome::Done
+            },
+        }
+    }
+
+    pub(crate) fn report(self) -> String {
+        match self.restart_warning() {
+            Some(warning) => format!("{}\n{warning}", self.summary),
+            None => self.summary,
+        }
+    }
+}
+
+pub(crate) fn install() -> Result<UdiskieChange, String> {
+    super::require_runtime_integrations()?;
     let executable = crate::services::installed_executable().map_err(|error| {
         rust_i18n::t!(
             "Could not locate the Strata executable: %{error}",
@@ -112,21 +153,22 @@ pub(crate) fn install() -> Result<String, String> {
     })?;
     let context = SetupContext::from_environment()?;
     let config = install_at(&context, &executable)?;
-    let restart_warning = restart_udiskie(RestartMode::EnsureRunning);
-    Ok(format!(
-        "Installed Strata as the encrypted-volume unlock handler.\nConfiguration: {}{}",
-        config.display(),
-        restart_warning
-    ))
+    let restart = restart_udiskie(RestartMode::EnsureRunning);
+    let summary = rust_i18n::t!(
+        "Installed Strata as the encrypted-volume unlock handler.\nConfiguration: %{path}",
+        path = config.display()
+    )
+    .into_owned();
+    Ok(UdiskieChange { summary, restart })
 }
 
-pub(crate) fn uninstall() -> Result<String, String> {
+pub(crate) fn uninstall() -> Result<UdiskieChange, String> {
+    super::require_runtime_integrations()?;
     let context = SetupContext::from_environment()?;
     uninstall_at(&context)?;
-    let restart_warning = restart_udiskie(RestartMode::ReloadIfRunning);
-    Ok(format!(
-        "Removed the Strata encrypted-volume unlock integration.{restart_warning}"
-    ))
+    let restart = restart_udiskie(RestartMode::ReloadIfRunning);
+    let summary = crate::i18n::tr("Removed the Strata encrypted-volume unlock integration.");
+    Ok(UdiskieChange { summary, restart })
 }
 
 pub(crate) fn status() -> Result<UdiskieStatus, String> {
@@ -234,24 +276,12 @@ fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, Stri
         file_mode(&yml)
     };
 
-    if let Some(parent) = yml.parent() {
-        fs::create_dir_all(parent).map_err(|error| path_error("create", parent, error))?;
-    }
-    fs::create_dir_all(&state_directory)
-        .map_err(|error| path_error("create", &state_directory, error))?;
-
-    let yaml_backup = state_directory.join(YAML_BACKUP);
-    let json_backup = state_directory.join(JSON_BACKUP);
+    let created_directory = create_directories(&yml, &state_directory)?;
+    let created_config_directory = existing_state
+        .as_ref()
+        .map_or(created_directory, |state| state.created_config_directory);
     if existing_state.is_none() {
-        match source_format {
-            SourceFormat::Yaml => {
-                write_config(&yaml_backup, &original, mode)?;
-            }
-            SourceFormat::Json => {
-                write_config(&json_backup, &original, mode)?;
-            }
-            SourceFormat::Missing => {}
-        }
+        back_up_original(&state_directory, source_format, &original, mode)?;
     }
 
     let written = (|| {
@@ -267,6 +297,7 @@ fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, Stri
                 added_luks_automount_rule,
                 target_name: CONFIG_YML.to_owned(),
                 source_format,
+                created_config_directory,
             },
         )?;
         validate_managed(&yml, Path::new(&executable))?;
@@ -290,11 +321,34 @@ fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, Stri
         }
         return Err(error);
     }
-
-    if source_format == SourceFormat::Yaml {
-        remove_if_exists(&yaml_backup)?;
-    }
     Ok(yml)
+}
+
+/// Creates the udiskie and state directories, reporting whether the udiskie
+/// one is new so uninstall can remove it again.
+fn create_directories(yml: &Path, state_directory: &Path) -> Result<bool, String> {
+    let mut created = false;
+    if let Some(parent) = yml.parent() {
+        created = !parent.exists();
+        fs::create_dir_all(parent).map_err(|error| path_error("create", parent, error))?;
+    }
+    fs::create_dir_all(state_directory)
+        .map_err(|error| path_error("create", state_directory, error))?;
+    Ok(created)
+}
+
+/// Keeps the user's original bytes so uninstall can put them back verbatim.
+fn back_up_original(
+    state_directory: &Path,
+    source_format: SourceFormat,
+    original: &[u8],
+    mode: u32,
+) -> Result<(), String> {
+    match source_format {
+        SourceFormat::Yaml => write_config(&state_directory.join(YAML_BACKUP), original, mode),
+        SourceFormat::Json => write_config(&state_directory.join(JSON_BACKUP), original, mode),
+        SourceFormat::Missing => Ok(()),
+    }
 }
 
 fn uninstall_at(context: &SetupContext) -> Result<(), String> {
@@ -308,51 +362,9 @@ fn uninstall_at(context: &SetupContext) -> Result<(), String> {
     };
 
     match state.source_format {
-        SourceFormat::Json => {
-            ensure_udiskie_target(&json)?;
-            ensure_udiskie_target(&yml)?;
-            if json.exists() {
-                return Err(crate::i18n::tr(
-                    "Refusing to overwrite a JSON configuration created after installation",
-                ));
-            }
-            let backup = state_directory.join(JSON_BACKUP);
-            let (bytes, mode) = if yml.exists() {
-                let mut root = into_mapping(parse_yaml(&read_utf8(&yml)?)?)?;
-                restore_managed(&mut root, &state);
-                let bytes = serde_json::to_vec_pretty(&root).map_err(|error| {
-                    rust_i18n::t!(
-                        "Could not restore udiskie JSON configuration: %{error}",
-                        error = error
-                    )
-                    .into_owned()
-                })?;
-                (bytes, file_mode(&yml))
-            } else {
-                ensure_udiskie_target(&backup)?;
-                (
-                    fs::read(&backup).map_err(|error| path_error("read", &backup, error))?,
-                    file_mode(&backup),
-                )
-            };
-            write_config(&json, &bytes, mode)?;
-            remove_if_exists(&yml)?;
-        }
+        SourceFormat::Json => restore_json_source(&yml, &json, &state_directory, &state)?,
         SourceFormat::Yaml | SourceFormat::Missing => {
-            if yml.exists() {
-                ensure_udiskie_target(&yml)?;
-                let current = read_utf8(&yml)?;
-                let mut root = into_mapping(parse_yaml(&current)?)?;
-                restore_managed(&mut root, &state);
-                if state.source_format == SourceFormat::Missing && document_has_no_user_keys(&root)
-                {
-                    remove_if_exists(&yml)?;
-                } else if root.is_empty() {
-                    write_config(&yml, b"", file_mode(&yml))?;
-                } else {
-                    write_config(&yml, emit_yaml(&root)?.as_bytes(), file_mode(&yml))?;
-                }
-            }
+            restore_yaml_source(&yml, &state_directory, &state)?;
         }
     }
 
@@ -370,6 +382,101 @@ fn uninstall_at(context: &SetupContext) -> Result<(), String> {
             Ok(())
         }
         Err(error) => Err(path_error("remove", &state_directory, error)),
+    }?;
+    if state.created_config_directory
+        && let Some(directory) = yml.parent()
+    {
+        remove_empty_directory(directory);
+    }
+    Ok(())
+}
+
+fn restore_json_source(
+    yml: &Path,
+    json: &Path,
+    state_directory: &Path,
+    state: &UdiskieInstallState,
+) -> Result<(), String> {
+    ensure_udiskie_target(json)?;
+    ensure_udiskie_target(yml)?;
+    if json.exists() {
+        return Err(crate::i18n::tr(
+            "Refusing to overwrite a JSON configuration created after installation",
+        ));
+    }
+    let backup = state_directory.join(JSON_BACKUP);
+    let (bytes, mode) = if yml.exists() {
+        let mut root = into_mapping(parse_yaml(&read_utf8(yml)?)?)?;
+        restore_managed(&mut root, state);
+        let bytes = match unchanged_original(&root, &backup, parse_json)? {
+            Some(original) => original,
+            None => emit_json(&root)?,
+        };
+        (bytes, file_mode(yml))
+    } else {
+        ensure_udiskie_target(&backup)?;
+        (
+            fs::read(&backup).map_err(|error| path_error("read", &backup, error))?,
+            file_mode(&backup),
+        )
+    };
+    write_config(json, &bytes, mode)?;
+    remove_if_exists(yml)
+}
+
+fn restore_yaml_source(
+    yml: &Path,
+    state_directory: &Path,
+    state: &UdiskieInstallState,
+) -> Result<(), String> {
+    if !yml.exists() {
+        return Ok(());
+    }
+    ensure_udiskie_target(yml)?;
+    let mut root = into_mapping(parse_yaml(&read_utf8(yml)?)?)?;
+    restore_managed(&mut root, state);
+    let backup = state_directory.join(YAML_BACKUP);
+    if state.source_format == SourceFormat::Missing && document_has_no_user_keys(&root) {
+        remove_if_exists(yml)
+    } else if let Some(original) = unchanged_original(&root, &backup, parse_yaml_bytes)? {
+        write_config(yml, &original, file_mode(yml))
+    } else if root.is_empty() {
+        write_config(yml, b"", file_mode(yml))
+    } else {
+        write_config(yml, emit_yaml(&root)?.as_bytes(), file_mode(yml))
+    }
+}
+
+/// The backed-up original bytes when the restored settings still match them,
+/// so comments and formatting survive; `None` keeps later user edits instead.
+fn unchanged_original(
+    restored: &Mapping,
+    backup: &Path,
+    parse: fn(&[u8]) -> Result<Value, String>,
+) -> Result<Option<Vec<u8>>, String> {
+    ensure_udiskie_target(backup)?;
+    let bytes = match fs::read(backup) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(path_error("read", backup, error)),
+    };
+    let original = parse(&bytes).and_then(into_mapping);
+    Ok(original
+        .is_ok_and(|original| &original == restored)
+        .then_some(bytes))
+}
+
+fn remove_empty_directory(directory: &Path) {
+    match fs::remove_dir(directory) {
+        Ok(()) => {}
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::DirectoryNotEmpty
+            ) => {}
+        Err(error) => {
+            tracing::warn!(%error, path = %directory.display(), "could not remove the udiskie directory");
+        }
     }
 }
 
@@ -662,6 +769,22 @@ fn parse_yaml(text: &str) -> Result<Value, String> {
     })
 }
 
+fn parse_yaml_bytes(bytes: &[u8]) -> Result<Value, String> {
+    parse_yaml(std::str::from_utf8(bytes).map_err(|error| error.to_string())?)
+}
+
+fn emit_json(root: &Mapping) -> Result<Vec<u8>, String> {
+    let mut bytes = serde_json::to_vec_pretty(root).map_err(|error| {
+        rust_i18n::t!(
+            "Could not restore udiskie JSON configuration: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
+    bytes.push(b'\n');
+    Ok(bytes)
+}
+
 fn parse_json(bytes: &[u8]) -> Result<Value, String> {
     let json: serde_json::Value = serde_json::from_slice(bytes).map_err(|error| {
         rust_i18n::t!(
@@ -791,7 +914,7 @@ fn program_on_path(name: &str) -> Option<PathBuf> {
     glib::find_program_in_path(name)
 }
 
-fn restart_udiskie(mode: RestartMode) -> String {
+fn restart_udiskie(mode: RestartMode) -> RestartOutcome {
     let mut spawn = |argv: &[String]| spawn_detached_with(argv, program_on_path);
     let mut signal = send_os_signal;
     let mut wait = |duration| std::thread::sleep(duration);
@@ -803,20 +926,17 @@ fn restart_udiskie(mode: RestartMode) -> String {
         wait: &mut wait,
         is_alive: &mut is_alive,
     };
-    match restart_udiskie_at(
+    restart_udiskie_at(
         Path::new("/proc"),
         rustix::process::geteuid().as_raw(),
         std::process::id(),
         &mut ops,
         mode,
-    ) {
-        Ok(None) => String::new(),
-        Ok(Some(warning)) => format!("\n{warning}"),
-        Err(error) => {
-            tracing::warn!("Could not restart udiskie: {error}");
-            format!("\n{RESTART_WARNING}")
-        }
-    }
+    )
+    .unwrap_or_else(|error| {
+        tracing::warn!("Could not restart udiskie: {error}");
+        RestartOutcome::ManualRestartNeeded
+    })
 }
 
 fn restart_udiskie_at(
@@ -825,10 +945,10 @@ fn restart_udiskie_at(
     current_pid: u32,
     ops: &mut RestartOps<'_>,
     mode: RestartMode,
-) -> Result<Option<String>, String> {
+) -> Result<RestartOutcome, String> {
     let snapshot = discover_udiskie_at(proc_root, euid, current_pid);
     if snapshot.is_empty() && mode == RestartMode::ReloadIfRunning {
-        return Ok(None);
+        return Ok(RestartOutcome::Done);
     }
     let argv = snapshot
         .iter()
@@ -836,15 +956,15 @@ fn restart_udiskie_at(
         .find(|argv| argv_is_usable(argv))
         .or_else(|| default_udiskie_argv(ops.lookup));
     let Some(argv) = argv else {
-        return Ok(Some(RESTART_WARNING.to_owned()));
+        return Ok(RestartOutcome::ManualRestartNeeded);
     };
     if let Err(error) = (ops.spawn)(&argv) {
         tracing::warn!("Could not relaunch udiskie: {error}");
-        return Ok(Some(RESTART_WARNING.to_owned()));
+        return Ok(RestartOutcome::ManualRestartNeeded);
     }
     let pids: Vec<u32> = snapshot.iter().map(|process| process.pid).collect();
     if pids.is_empty() {
-        return Ok(None);
+        return Ok(RestartOutcome::Done);
     }
     for pid in &pids {
         (ops.signal)(*pid, ProcessSignal::Term);
@@ -855,7 +975,7 @@ fn restart_udiskie_at(
             (ops.signal)(*pid, ProcessSignal::Kill);
         }
     }
-    Ok(None)
+    Ok(RestartOutcome::Done)
 }
 
 fn argv_is_usable(argv: &[String]) -> bool {

@@ -141,7 +141,10 @@ pub(super) fn load(section: &gtk::Box, path: PathBuf) -> MetadataLoad {
         let file = gio::File::for_path(&path);
         let Ok(info) = file
             .query_info_future(
-                "standard::content-type,standard::type",
+                &format!(
+                    "{},standard::type",
+                    crate::adapters::CONTENT_TYPE_ATTRIBUTES
+                ),
                 gio::FileQueryInfoFlags::NONE,
                 glib::Priority::DEFAULT,
             )
@@ -152,17 +155,12 @@ pub(super) fn load(section: &gtk::Box, path: PathBuf) -> MetadataLoad {
         if cancellation.is_cancelled() || info.file_type() != gio::FileType::Regular {
             return;
         }
-        let Some(mime) = info
-            .content_type()
+        let Some(mime) = crate::adapters::content_type_of(&info)
             .and_then(|content_type| gio::content_type_get_mime_type(&content_type))
         else {
             return;
         };
-        let mime = if mime == "application/octet-stream" {
-            crate::services::guess_content_type(&path).0
-        } else {
-            mime.to_string()
-        };
+        let mime = crate::services::refine_reported_content_type(&mime, &path);
         let image = mime.starts_with("image/");
         if !image && !mime.starts_with("audio/") && !mime.starts_with("video/") {
             return;

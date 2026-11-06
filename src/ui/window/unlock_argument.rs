@@ -9,6 +9,8 @@ use std::{
 
 use gtk::{gio, glib, prelude::*};
 
+use crate::app::BrowserEvent;
+
 use super::{
     BrowserView,
     open_argument::{CONNECTING_DELAY, clear_status, show_connecting_overlay, status_card},
@@ -51,8 +53,29 @@ impl UnlockTarget {
 
 pub fn present_unlock(application: &gtk::Application, target: UnlockTarget) -> BrowserView {
     let browser = present_target(application, None, Vec::new(), false, true, false);
-    start_unlock(browser.clone(), target);
+    after_first_folder(&browser, move |browser| start_unlock(browser, target));
     browser
+}
+
+// Opening the window's first folder removes status cards, so an already-present
+// volume must not be reported until that folder has opened.
+fn after_first_folder(browser: &BrowserView, start: impl FnOnce(BrowserView) + 'static) {
+    let start = Cell::new(Some(start));
+    let weak = browser.downgrade();
+    browser.browser().observe(move |event| {
+        if !matches!(event, BrowserEvent::Reset) {
+            return;
+        }
+        let Some(start) = start.take() else {
+            return;
+        };
+        let weak = weak.clone();
+        glib::idle_add_local_once(move || {
+            if let Some(browser) = weak.upgrade() {
+                start(browser);
+            }
+        });
+    });
 }
 
 fn start_unlock(browser: BrowserView, target: UnlockTarget) {

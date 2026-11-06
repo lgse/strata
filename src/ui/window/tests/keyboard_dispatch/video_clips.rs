@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-use super::audio_tracks::settle;
+use super::audio_tracks::{caption_reads, settle};
 use super::*;
 use crate::services::SandboxedMedia;
+
+/// GIO types an empty file as zero-size; a real MP4 signature keeps it a video.
+const MP4_BYTES: &[u8] = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom";
 
 struct MediaPreview;
 
@@ -15,10 +18,10 @@ impl PreviewProvider for MediaPreview {
                 .native_path()
                 .expect("local fixture")
                 .to_path_buf();
-            let content_type = if path.extension().is_some_and(|extension| extension == "mp4") {
-                "video/mp4"
-            } else {
-                "audio/x-wav"
+            let content_type = match path.extension().and_then(|extension| extension.to_str()) {
+                Some("mp4") => "video/mp4",
+                Some("h264") => "video/h264",
+                _ => "audio/x-wav",
             };
             emit(PreviewEvent::Ready(Preview {
                 request_id: request.id,
@@ -55,7 +58,7 @@ fn tenxer_angle_brackets_step_through_videos_and_skip_other_media() {
             let fixture = KeyboardFixture::with_provider(Rc::new(MediaPreview));
             let root = fixture._directory.path();
             for name in ["a.wav", "b.mp4", "c.wav", "d.mp4", "e.mp4"] {
-                std::fs::write(root.join(name), []).expect("media fixture");
+                std::fs::write(root.join(name), MP4_BYTES).expect("media fixture");
             }
             let preferences = PreferenceManager::shared();
             preferences.set_tenxer_mode(true);
@@ -78,6 +81,9 @@ fn tenxer_angle_brackets_step_through_videos_and_skip_other_media() {
             settle("first clip", || {
                 preview_has_focus(&fixture) && shows_clip(&fixture, "b.mp4")
             });
+            settle("folder sequence", || {
+                caption_reads(&fixture, "1 of 3 in folder")
+            });
 
             for (key, expected) in [
                 (Key::greater, "d.mp4"),
@@ -94,9 +100,7 @@ fn tenxer_angle_brackets_step_through_videos_and_skip_other_media() {
                 assert!(preview_has_focus(&fixture), "{key:?} kept the keys");
             }
             settle("folder caption", || {
-                widget_with_class(&fixture.preview.widget(), "preview-details-eyebrow")
-                    .and_downcast::<gtk::Label>()
-                    .is_some_and(|label| label.text() == "1 of 3 in folder")
+                caption_reads(&fixture, "1 of 3 in folder")
             });
 
             fixture.press(Key::h, ModifierType::empty());
@@ -109,6 +113,70 @@ fn tenxer_angle_brackets_step_through_videos_and_skip_other_media() {
                 focused_name(&browser) == "d.mp4" && shows_clip(&fixture, "d.mp4")
             });
             assert!(file_panes_have_focus(&fixture), "the listing kept the keys");
+        },
+    );
+}
+
+#[test]
+fn configured_start_skips_raw_video_streams() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::video_clips::configured_start_skips_raw_video_streams",
+        || {
+            crate::ui::media::use_test_streams(true);
+            let fixture = KeyboardFixture::with_provider(Rc::new(MediaPreview));
+            let root = fixture._directory.path();
+            for name in ["b.mp4", "c.h264"] {
+                std::fs::write(root.join(name), MP4_BYTES).expect("clip");
+            }
+            let preferences = PreferenceManager::shared();
+            preferences.set_tenxer_mode(true);
+            preferences.set_group_by_type(false);
+            preferences.set_preview_autoplay(false);
+            preferences.set_preview_video_start(20);
+            let browser = fixture.view.browser();
+            fixture.preview.observe_browser(&browser);
+            fixture.view.refresh();
+            wait_loaded(&browser, 0);
+            browser.set_folders_first(0, false);
+            browser.set_sort(0, SortKey::Name, SortDirection::Ascending);
+            fixture.view.set_view_mode(BrowserMode::List);
+            move_to_named(&fixture, &browser, "b.mp4");
+            fixture.press(Key::l, ModifierType::empty());
+            settle("the clip", || {
+                preview_has_focus(&fixture) && shows_clip(&fixture, "b.mp4")
+            });
+            settle("video stream ready", || {
+                fixture.preview.media_for_test().is_some()
+            });
+            let clip = fixture.preview.media_for_test().expect("video stream");
+            clip.play();
+            let decoded = clip
+                .downcast_ref::<crate::ui::media::DecodedMedia>()
+                .expect("decoded media");
+            settle("the clip's first frame", || decoded.has_frame());
+            assert!(
+                clip.timestamp() >= 11_000_000,
+                "the clip starts at its configured start, not at {}",
+                clip.timestamp()
+            );
+
+            assert!(fixture.press(Key::greater, ModifierType::SHIFT_MASK));
+            settle("the raw stream", || shows_clip(&fixture, "c.h264"));
+            settle("raw stream ready", || {
+                fixture
+                    .preview
+                    .media_for_test()
+                    .is_some_and(|media| media != clip)
+            });
+            let stream = fixture.preview.media_for_test().expect("raw stream");
+            stream.play();
+            settle("raw stream playback", || stream.timestamp() > 500_000);
+            assert!(
+                stream.timestamp() < 5_000_000,
+                "a raw stream starts at the beginning, not at {}",
+                stream.timestamp()
+            );
+            crate::ui::media::use_test_streams(false);
         },
     );
 }
@@ -157,18 +225,14 @@ fn enter_on_a_video_preview_opens_it_where_it_stopped() {
             crate::ui::media::use_test_streams(true);
             let fixture = KeyboardFixture::with_provider(Rc::new(MediaPreview));
             let root = fixture._directory.path();
-            // GIO types an empty file as zero-size; a real MP4 signature keeps it a video.
-            std::fs::write(
-                root.join("b.mp4"),
-                b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom",
-            )
-            .expect("clip");
+            std::fs::write(root.join("b.mp4"), MP4_BYTES).expect("clip");
             let output = root.join("launch.txt");
             player_recorder("video/mp4", &output);
             let preferences = PreferenceManager::shared();
             preferences.set_tenxer_mode(true);
             preferences.set_group_by_type(false);
             preferences.set_preview_autoplay(false);
+            preferences.set_preview_video_start(0);
             let browser = fixture.view.browser();
             fixture.preview.observe_browser(&browser);
             fixture.view.refresh();
@@ -182,6 +246,9 @@ fn enter_on_a_video_preview_opens_it_where_it_stopped() {
                 preview_has_focus(&fixture) && shows_clip(&fixture, "b.mp4")
             });
             let playing_video = || {
+                settle("video stream ready", || {
+                    fixture.preview.media_for_test().is_some()
+                });
                 let media = fixture.preview.media_for_test().expect("video stream");
                 media.play();
                 settle("playback past the first second", || {
@@ -248,11 +315,7 @@ fn page_home_and_end_seek_a_focused_timeline_in_both_key_maps() {
             const SHIFT: ModifierType = ModifierType::SHIFT_MASK;
             crate::ui::media::use_test_streams(true);
             let fixture = KeyboardFixture::with_provider(Rc::new(MediaPreview));
-            std::fs::write(
-                fixture._directory.path().join("b.mp4"),
-                b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom",
-            )
-            .expect("clip");
+            std::fs::write(fixture._directory.path().join("b.mp4"), MP4_BYTES).expect("clip");
             let preferences = PreferenceManager::shared();
             preferences.set_tenxer_mode(true);
             preferences.set_group_by_type(false);

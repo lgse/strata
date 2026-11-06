@@ -45,11 +45,14 @@ pub(super) struct ArmedActions {
 /// Shift with a step reverses it, on whatever key the step is bound to. A key
 /// bound to a step itself wins over another step's reversed key.
 fn sort_choice(press: &KeyPress) -> Option<(SortKey, SortDirection)> {
-    const STEPS: [(Command, SortKey); 4] = [
+    const STEPS: [(Command, SortKey); 7] = [
         (SORT_BY_NAME, SortKey::Name),
         (SORT_BY_MODIFIED, SortKey::Modified),
         (SORT_BY_SIZE, SortKey::Size),
         (SORT_BY_TYPE, SortKey::Type),
+        (SORT_BY_EXTENSION, SortKey::Extension),
+        (SORT_BY_CREATED, SortKey::Created),
+        (SORT_BY_UNSORTED, SortKey::Unsorted),
     ];
     let reversed = |step: Command| {
         step.bindings().into_iter().any(|binding| {
@@ -242,6 +245,16 @@ impl Dispatcher {
 
 impl Dispatcher {
     pub(super) fn complete_sort(&self, press: &KeyPress) -> bool {
+        if press.is(SORT_BY_NATURAL)
+            || press.is(SORT_BY_ALPHABETICAL)
+            || press.is(SORT_BY_CASE_SENSITIVE)
+        {
+            self.view.change_focused_name_comparison(
+                press.is(SORT_BY_CASE_SENSITIVE),
+                press.is(SORT_BY_NATURAL),
+            );
+            return true;
+        }
         let Some((sort_key, direction)) = sort_choice(press) else {
             return false;
         };

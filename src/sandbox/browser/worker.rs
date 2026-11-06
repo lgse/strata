@@ -16,6 +16,17 @@ pub(crate) fn run() -> Result<(), String> {
     restrict_mutations()?;
     let socket = UnixStream::from(rustix::io::dup(std::io::stdin()).map_err(|e| e.to_string())?);
     rustix::io::fcntl_setfd(&socket, rustix::io::FdFlags::CLOEXEC).map_err(|e| e.to_string())?;
+    let restricted = namespaces_restricted()?;
+    (&socket)
+        .write_all(&[if restricted {
+            wire::NAMESPACES_RESTRICTED
+        } else {
+            wire::READY
+        }])
+        .map_err(|e| e.to_string())?;
+    if restricted {
+        return Err("Job namespaces are restricted".into());
+    }
     while let Some((operation, input, write)) = wire::receive(&socket).map_err(|e| e.to_string())? {
         let child = match process::fork().map_err(|e| e.to_string())? {
             Some(child) => child,
@@ -42,6 +53,30 @@ pub(crate) fn run() -> Result<(), String> {
             .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+pub(super) const PROBE_RESTRICTED: i32 = 2;
+
+/// Some hosts deny nested namespaces to every bubblewrap child, for example
+/// AppArmor's `unpriv_bwrap` profile, so every job would fail. Only a permission
+/// denial counts: transient failures stay errors so the parent retries later.
+fn namespaces_restricted() -> Result<bool, String> {
+    match process::fork().map_err(|e| e.to_string())? {
+        Some(child) => match process::exit_code(child).map_err(|e| e.to_string())? {
+            Some(0) => Ok(false),
+            Some(PROBE_RESTRICTED) => Ok(true),
+            _ => Err("Job namespace probe failed".into()),
+        },
+        None => process::exit_with_status(probe_status(&process::namespaces())),
+    }
+}
+
+pub(super) fn probe_status(result: &io::Result<()>) -> i32 {
+    match result {
+        Ok(()) => 0,
+        Err(error) if error.kind() == io::ErrorKind::PermissionDenied => PROBE_RESTRICTED,
+        Err(_) => 1,
+    }
 }
 
 fn isolated_job(operation: Operation) -> Result<(), String> {

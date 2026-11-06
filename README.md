@@ -26,6 +26,7 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 
 - [Features](#features)
 - [Installation](#installation)
+  - [Nix and NixOS](#nix-and-nixos)
   - [Interactive installation](#interactive-installation)
   - [AI-assisted installation](#ai-assisted-installation)
   - [Manual installation](#manual-installation)
@@ -50,11 +51,11 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 
 - **Three browser modes:** navigable Columns, an Icons grid, and a sortable List table.
 - **Keyboard-first control:** directional-key movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also shows clipboard status. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md). Optional [10xer mode](docs/10xer-mode.md) hides window and pane chrome and uses Yazi-style keys. Change, add, or remove shortcuts, separately for each mode, in **Settings → Keyboard**; see [Keymap](docs/keymap.md).
-- **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed. Global search covers Home and all mounted local drives, regardless of the current folder. Hover the search field to see the included locations. The dialog warns when results are incomplete; raise or remove the indexing time and entry limits under **Settings → General → Search & filtering** for slow or network mounts. Folder-scoped filtering/search remains separate. URI-native remote shares are not yet included.
+- **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed. Global search covers Home and the mounted local drives listed under **Devices** in the sidebar, regardless of the current folder; system mounts that Devices hides, such as a btrfs subvolume for a package cache, are not searched. The dialog warns when results are incomplete; raise or remove the indexing time and entry limits under **Settings → General → Search & filtering** for slow or network mounts. Folder-scoped filtering/search remains separate. URI-native remote shares are not yet included.
 - **Rich previews and thumbnails:** native rendered Markdown and static HTML, plus bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application. Audio opens in a now-playing view with artwork and a live spectrum; video gets technical badges, a keyframe storyboard while scrubbing, ambient light around the frame, silent autoplay that eases its sound in, and <kbd>Enter</kbd> hands the position to your default player. File Properties shows available media resolution, duration, bitrate, codecs, HDR, subtitle and chapter counts, and audio/video rates. RAW previews and Properties also show dimensions, camera, lens, focal length, shutter speed, ISO, and GPS coordinates, with `N/A` for unavailable values.
 - **Shared storage properties:** volumes and mounted storage entries in Devices use the same Properties dialog for name, device, filesystem, mount status, and available capacity/usage. **Set label…** saves a display label only in Strata; it never changes the filesystem label, mounts/unmounts a drive, or alters system configuration. Labels update the sidebar and Properties live and can be cleared to restore the normal device name. Formatting remains restricted to eligible removable drives; release actions follow the device's reported capabilities.
 - **Responsive filesystem work:** cancellable directory loading, bounded streaming, incremental monitoring, stable selection, and virtualized large directories.
-- **Everyday file operations:** create folders, rename, cut, copy, paste, trash, permanent delete, sorting, hidden files, pins, and history.
+- **Everyday file operations:** create folders, rename, cut, copy, paste, trash, permanent delete, sorting, hidden files, pins, and history. [Drop images, selected text, and web links](docs/content-drops.md) from a browser into a folder to save them as files; a dropped link is saved as a link file and never fetched.
 - **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares and SFTP servers from the location field, with explicit host-key decisions.
 - **Administrator access:** open a local folder you can't read, such as a root-owned backup folder, after the system's polkit password prompt. See [Administrator access](docs/administrator-access.md).
 - **Adaptive appearance:** compact or airy density, 95 bundled themes, custom themes, and live Omarchy Quattro theme following.
@@ -67,6 +68,87 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 ## Installation
 
 Arch Linux and Omarchy are the primary supported environments. Current binaries require **glibc 2.39 or newer** and the runtime libraries listed below.
+
+### Nix and NixOS
+
+Build from source with Nix on `x86_64-linux` or `aarch64-linux`:
+
+```bash
+nix run github:lgse/strata
+nix profile add github:lgse/strata
+```
+
+For NixOS or Home Manager, add a flake input:
+
+```nix
+inputs.strata.url = "github:lgse/strata";
+```
+
+```nix
+{ inputs, pkgs, ... }:
+{
+  # Home Manager; use environment.systemPackages instead for NixOS.
+  home.packages = [ inputs.strata.packages.${pkgs.stdenv.hostPlatform.system}.default ];
+}
+```
+
+Pass `inputs` through `extraSpecialArgs` (Home Manager) or `specialArgs` (NixOS).
+Update the flake input and rebuild to upgrade. On NixOS, enable `services.gvfs.enable`
+for network shares and `services.udisks2.enable` for disk management.
+
+Non-free UnRAR support is omitted by default. Enable it from a package set that
+allows unfree software, such as one with `nixpkgs.config.allowUnfree = true;`:
+
+```nix
+pkgs.callPackage "${inputs.strata}/package.nix" { rarSupport = true; }
+```
+
+The Nix package builds with `STRATA_INTEGRATIONS=package`, so the desktop
+integrations that other installations set up from Settings or the command line
+(the file chooser portal, the FileManager1 service, and the udiskie unlock hook)
+come from your Nix configuration instead. Settings → General describes them as
+provided by the package, and `--install-portal`, `--uninstall-portal`,
+`--dismiss-portal-prompt`, `--install-udiskie-unlock`, and
+`--uninstall-udiskie-unlock` refuse. Those runtime installers would record the
+store path of the current build, which the next update or garbage collection
+invalidates; the derivations below follow the package through updates, rollbacks,
+and garbage collection.
+
+The package exposes `fileChooserPortal` (the `strata.portal` file and its D-Bus
+service) and `fileManagerService` (the `org.freedesktop.FileManager1` service).
+On NixOS:
+
+```nix
+{ inputs, pkgs, ... }:
+let
+  strata = inputs.strata.packages.${pkgs.stdenv.hostPlatform.system}.default;
+in
+{
+  environment.systemPackages = [ strata ];
+  xdg.portal.enable = true;
+  xdg.portal.extraPortals = [ strata.fileChooserPortal ];
+  xdg.portal.config.common."org.freedesktop.impl.portal.FileChooser" = [ "strata" "gtk" ];
+  services.dbus.packages = [ strata.fileManagerService ];
+}
+```
+
+Replace `gtk` with the chooser backend your desktop already uses, and keep
+Strata's FileManager1 service out of `services.dbus.packages` on a system whose
+desktop ships its own provider for that bus name unless Strata should answer
+"Open file location" everywhere. Home Manager has the same `xdg.portal` options;
+set `xdg.mimeApps.defaultApplications."inode/directory" = "io.github.lgse.Strata.desktop";`
+to make Strata the folder handler, and configure the udiskie unlock hook through
+`services.udiskie.settings`:
+
+```nix
+services.udiskie.settings = {
+  program_options = {
+    event_hook = [ (lib.getExe strata) "--udiskie-hook" "{event}" "{id_usage}" "{device_file}" "{id_uuid}" ];
+    password_prompt = false;
+  };
+  device_config = [ { is_luks = true; automount = false; } ];
+};
+```
 
 ### Interactive installation
 
@@ -404,7 +486,7 @@ omarchy menu keybindings --print | grep -i "file manager"
 
 ### Unlock encrypted volumes on Omarchy
 
-On Omarchy 3 or 4, the installer asks whether to use Strata for encrypted-volume unlock (default No). **Settings → General → Desktop integration** includes **Unlock encrypted volumes**. Choose **Use Strata** so plugging in an encrypted drive opens Strata's password prompt instead of udiskie's dialog. **Restore default** returns udiskie to its previous configuration.
+On Omarchy 3 or 4, the installer asks whether to use Strata for encrypted-volume unlock (default No). **Settings → General → Desktop integration** includes **Unlock encrypted volumes**. Choose **Use Strata** so plugging in an encrypted drive opens Strata's password prompt instead of udiskie's dialog. **Restore default** returns udiskie to its previous configuration. When this version of Strata or a later one made the setup and udiskie's settings have not changed since, it puts back the original file byte for byte, comments and formatting included; otherwise it keeps your later changes and removes only Strata's.
 
 On generic Arch, the installer offers the same step only when `udiskie` is already on `PATH`. Restore there with `strata --uninstall-udiskie-unlock`; Settings for this row stays Omarchy-only.
 
@@ -789,6 +871,13 @@ feature-disabled binary. See [third-party notices](THIRD_PARTY_LICENSES.md#unrar
 Distributions that ship Strata updates through their own packages build with
 `STRATA_UPDATER=disabled`, which removes update checks, installs, and the
 Updates settings page. See [distribution packaging](docs/packaging.md#building-without-the-in-app-updater).
+
+### Builds with package-provided integrations
+
+Store-based packages such as Nix build with `STRATA_INTEGRATIONS=package`, which
+turns off the runtime installers for the file chooser portal, the FileManager1
+service, the Omarchy shortcuts, and the udiskie unlock hook so the package can
+ship those files itself. See [distribution packaging](docs/packaging.md#building-with-package-provided-integrations).
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Deeper references:
 

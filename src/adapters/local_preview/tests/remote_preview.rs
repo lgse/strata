@@ -18,6 +18,7 @@ fn request(path: &Path, name: &str) -> PreviewRequest {
             kind: EntryKind::File,
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Known(1),
+            created_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
             recent_unix_seconds: MetadataValue::Unknown,
             is_hidden: false,

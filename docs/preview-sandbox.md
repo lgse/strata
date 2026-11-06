@@ -372,6 +372,14 @@ operations; unknown syscalls, alternate ABIs, and newer mutation interfaces fail
 closed. All setup completes before parsing a file. On systems without Landlock
 ABI 3, the pool retains the original one-shot read-only-bind bubblewrap path,
 with the same concurrency budget; it never silently decodes without protection.
+Some hosts let bubblewrap start but deny nested namespaces to everything inside
+it, for example AppArmor's `unpriv_bwrap` profile on Ubuntu 24.04 and its
+derivatives. Each supervisor therefore probes job-namespace setup before its
+first job and answers with a one-byte handshake: ready, or restricted when the
+probe was denied permission. A restricted answer switches the pool to the same
+one-shot path for the rest of the process. Any other startup failure (exit
+before the handshake, a failed probe fork, resource exhaustion, or the startup
+deadline) fails only that request, and the next request starts a supervisor again.
 GDK Pixbuf's glycin loaders cannot start their own bubblewrap sandbox inside a
 job, because Landlock blocks its namespace setup, so they run directly under the
 job's protections. The seccomp filter permits the loopback-interface lookup that
@@ -398,7 +406,10 @@ executors; decoder waits never occupy GIO's listing threads. Thumbnail admission
 does not wait for a GIO metadata fill. Lookup resolves local size/mtime off the
 GTK thread, then rechecks the RAM cache before decoding a disk hit.
 All views reuse the canonical 256-pixel RAM rendition irrespective of icon size;
-the Freedesktop `large` disk cache remains unchanged. These thumbnail caches do not
+the Freedesktop `large` disk cache remains unchanged. Files anywhere under
+`$XDG_CACHE_HOME/thumbnails` are never looked up or stored there, so browsing the
+cache itself renders its entries in memory only instead of thumbnailing them
+recursively. These thumbnail caches do not
 carry source dimensions or duration: cache hits still use the separately prioritized
 metadata path, whereas fresh image decodes publish their source dimensions directly.
 PNG texture decoding runs off the GTK thread. Persistence remains bounded and
@@ -707,11 +718,25 @@ paint, sized by the poster's aspect until the probe answers. Clicking the frame
 toggles playback; there is no separate centre button. Consecutive video files
 reuse one view, like audio. Previous/next step to the previous or next file of
 the same media family, so audio steps to audio and video to video, following
-visible search results like audio does. Playback errors remain visible inside the
-view without disabling navigation. The timeline is the audio view's waveform
-slider: the same overview peaks, grown in from nothing the same way once the
-storyboard has finished with the shared decode slot, with the played range,
-playhead and hover line shared and chapter starts added as ticks.
+visible search results like audio does. In every view, a local file joins the
+sequence by its content, not its name: a file whose metadata probe found no media,
+or whose leading bytes are text, is neither counted nor stepped to. Files the
+probe has not reached yet are checked by reading their first 8 KiB off the GTK
+thread, outward from the shown file in growing chunks, as background work through
+their mount's [request lane](filesystem-compatibility.md#request-lanes): while
+other requests keep the mount busy the reads wait their turn, for up to 10 s
+across all their folders, and once it stalls they give up at once. Until a file
+answers it stays out, and the position and previous/next buttons update after each
+chunk. When the shown file changes, reading starts again outward from it, and
+files not read before the wait ran out, that could not be read, or whose mount
+stalled are asked again. Reading stops when the preview closes or replaces the
+player with another kind of preview. Answers belong to one preview and last while
+its listing shows the file. Remote (GVfs) locations and route files still go by
+their name. Playback errors remain visible inside the view without disabling
+navigation. The timeline is the audio view's waveform slider: the same overview
+peaks, grown in from nothing the same way once the storyboard has finished with
+the shared decode slot, with the played range, playhead and hover line shared and
+chapter starts added as ticks.
 
 Badges under the title summarise the file from the same bounded `media-metadata`
 `ffprobe` operation that File Properties uses: resolution class by the long
@@ -964,6 +989,6 @@ now includes optional read-only binds of the BLAS/LAPACK alternatives used by
 media helpers on x86-64 and ARM64 Debian-family installations, plus the GL
 dispatch alternatives (`glx--*`) every helper needs to start there. This resolves their
 runtime links without exposing the whole `/etc/alternatives` directory or the
-rest of `/etc`. Canonical pinned-container HEIC, MOV,
+rest of `/etc`. Canonical pinned-container HEIC, AVIF, MOV,
 and MP4 preview tests exercise actual sandbox startup and decoding; installed
 systems still depend on their available codec libraries.

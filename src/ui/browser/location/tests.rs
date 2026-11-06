@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::model::Location;
+use crate::test_support::PrivateContext;
 use gtk::{gio, glib};
 use std::time::{Duration, Instant};
 
@@ -217,6 +218,13 @@ fn sftp_failure_guidance_and_host_key_rejection_do_not_reopen_credentials() {
             .expect("trust rejection is reportable")
             .contains("fingerprint")
     );
+    let lost = glib::Error::new(gio::IOErrorEnum::Failed, "Connection failed");
+    assert!(!mount_error_is_authentication_failure(&location, &lost));
+    assert!(
+        mount_failure_message(&location, &lost)
+            .expect("a dropped session is reportable")
+            .contains("server is running")
+    );
     let wrong_password = glib::Error::new(
         gio::IOErrorEnum::Failed,
         "Permission denied (publickey,password)",
@@ -225,6 +233,36 @@ fn sftp_failure_guidance_and_host_key_rejection_do_not_reopen_credentials() {
         &location,
         &wrong_password
     ));
+}
+
+/// GVfs-SMB carries the connection errno only as `g_strerror` text after a
+/// `G_IO_ERROR_FAILED` prefix; an unresolvable host reports just EINVAL.
+#[test]
+fn smb_connection_failures_reported_as_errno_text_get_transport_guidance() {
+    let location = Location::uri("smb://127.0.0.1:1/share");
+    let unexpected = crate::i18n::tr(crate::services::UNEXPECTED_SYSTEM_ERROR);
+    for (message, expected) in [
+        ("Failed to mount Windows share: Connection refused", "port"),
+        (
+            "Failed to retrieve share list from server: Connection refused",
+            "port",
+        ),
+        (
+            "Failed to mount Windows share: Connection timed out",
+            "firewall",
+        ),
+        ("Failed to mount Windows share: No route to host", "network"),
+        (
+            "Failed to mount Windows share: Invalid argument",
+            &unexpected,
+        ),
+        ("Connection refused: proxy handshake", &unexpected),
+    ] {
+        let error = glib::Error::new(gio::IOErrorEnum::Failed, message);
+        assert!(!mount_error_is_authentication_failure(&location, &error));
+        let reported = mount_failure_message(&location, &error).expect("reportable failure");
+        assert!(reported.contains(expected), "{message}: {reported}");
+    }
 }
 
 #[test]
@@ -363,7 +401,7 @@ fn external_volume_mount_completion_is_success() {
 
 #[test]
 fn foreign_mount_wait_finishes_on_signal_poll_or_timeout() {
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     context.block_on(async {
         let (send, receive) = oneshot::channel();
         let signal = async {
@@ -1245,4 +1283,84 @@ fn a_folder_arriving_while_a_location_is_typed_keeps_the_entry_open() {
             window.destroy();
         },
     );
+}
+
+/// Icons and List show only the active folder, so the location bar and Ctrl+L stop
+/// naming a child that Columns mirrored beside it.
+#[test]
+fn leaving_columns_names_the_active_folder_instead_of_its_mirrored_child() {
+    use crate::ui::browser_modes::BrowserMode;
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::leaving_columns_names_the_active_folder_instead_of_its_mirrored_child",
+        || {
+            let root = tempfile::tempdir().expect("fixture");
+            let beta = root.path().join("beta");
+            std::fs::create_dir(&beta).expect("folder");
+            let (view, window, _overlay) = hosted_browser();
+            let loaded = |depth: usize| {
+                view.browser()
+                    .column_snapshot(depth)
+                    .is_some_and(|snapshot| !snapshot.loading)
+            };
+            view.set_view_mode(BrowserMode::Columns);
+            view.browser().navigate(Location::local(root.path()));
+            wait_until(|| loaded(0), "the folder loads");
+            view.browser().show_child(0, Location::local(&beta));
+            wait_until(|| loaded(1), "the mirrored child loads");
+            let root_path = Location::local(root.path()).display_path();
+            let beta_path = Location::local(&beta).display_path();
+            assert_eq!(view.browser().active_depth(), Some(0));
+            assert_eq!(view.state.location_entry.text(), beta_path);
+            assert_eq!(
+                current_hierarchy_item(&view).as_deref(),
+                Some("beta"),
+                "the hierarchy menu marks the child the breadcrumbs name"
+            );
+
+            view.set_view_mode(BrowserMode::List);
+            assert_eq!(
+                view.state.location_entry.text(),
+                root_path,
+                "List shows the active folder"
+            );
+
+            view.set_view_mode(BrowserMode::Columns);
+            assert_eq!(
+                view.state.location_entry.text(),
+                beta_path,
+                "Columns shows the mirrored child again"
+            );
+            view.state.cancel_location_edit();
+            assert_eq!(
+                view.state.location_entry.text(),
+                beta_path,
+                "Esc restores the folder the breadcrumbs name"
+            );
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+/// Opens the breadcrumb hierarchy menu and reads the label of the item marked current.
+fn current_hierarchy_item(view: &BrowserView) -> Option<String> {
+    let anchor = view.widget();
+    view.state.show_breadcrumb_hierarchy_menu(&anchor, 0.0);
+    let popover = descendants(&anchor)
+        .into_iter()
+        .filter(|widget| widget.has_css_class("breadcrumb-popover"))
+        .find_map(|widget| widget.downcast::<gtk::Popover>().ok())
+        .expect("hierarchy menu");
+    let current = descendants(popover.upcast_ref())
+        .into_iter()
+        .filter(|widget| widget.has_css_class("breadcrumb-hierarchy-item"))
+        .find(|widget| widget.has_css_class("current"))
+        .and_then(|item| {
+            descendants(&item)
+                .into_iter()
+                .find_map(|widget| widget.downcast::<gtk::Label>().ok())
+        })
+        .map(|label| label.text().to_string());
+    popover.popdown();
+    current
 }
