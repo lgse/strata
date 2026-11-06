@@ -245,7 +245,11 @@ pub(crate) fn commit_text(entry: &gtk::Entry, text: &str) {
     let field = entry.delegate().expect("an entry delegates to its text");
     let controllers = field.observe_controllers();
     let input_method = (0..controllers.n_items())
-        .filter_map(|index| controllers.item(index).and_downcast::<gtk::EventControllerKey>())
+        .filter_map(|index| {
+            controllers
+                .item(index)
+                .and_downcast::<gtk::EventControllerKey>()
+        })
         .find_map(|keys| keys.im_context())
         .expect("a text field's input method");
     input_method.emit_by_name::<()>("commit", &[&text]);

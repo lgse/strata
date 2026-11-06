@@ -828,7 +828,10 @@ impl BrowserView {
     }
 
     pub(in crate::ui) fn connect_filter_descent(&self, handler: FilterDescentHandler) {
-        self.state.listing_filter.descent.replace(Some(Rc::new(handler)));
+        self.state
+            .listing_filter
+            .descent
+            .replace(Some(Rc::new(handler)));
     }
 
     pub(in crate::ui) fn connect_filter_results_changed(&self, handler: Rc<dyn Fn()>) {
