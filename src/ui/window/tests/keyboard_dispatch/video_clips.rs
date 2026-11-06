@@ -150,9 +150,15 @@ fn configured_start_skips_raw_video_streams() {
             });
             let clip = fixture.preview.media_for_test().expect("video stream");
             clip.play();
-            settle("the clip at its configured start", || {
-                clip.timestamp() > 11_000_000
-            });
+            let decoded = clip
+                .downcast_ref::<crate::ui::media::DecodedMedia>()
+                .expect("decoded media");
+            settle("the clip's first frame", || decoded.has_frame());
+            assert!(
+                clip.timestamp() >= 11_000_000,
+                "the clip starts at its configured start, not at {}",
+                clip.timestamp()
+            );
 
             assert!(fixture.press(Key::greater, ModifierType::SHIFT_MASK));
             settle("the raw stream", || shows_clip(&fixture, "c.h264"));
