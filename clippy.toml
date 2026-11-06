@@ -2,5 +2,6 @@ disallowed-methods = [
     { path = "gtk4::EventControllerKey::connect_key_pressed", reason = "read key presses with ui::keys::on_press" },
     { path = "gtk4::EventControllerKey::connect_key_released", reason = "read key releases with ui::keys::on_release" },
     { path = "gtk4::prelude::GtkApplicationExt::set_accels_for_action", reason = "shortcuts are commands in the ui::keys command registry, resolved through the keymap tables the window dispatcher matches" },
-    { path = "glib::MainContext::new", reason = "a test's private context must be test_support::PrivateContext, which drops its leftover local tasks on their own thread (#1963)" },
+    { path = "glib::MainContext::new", reason = "outside tests, a private context needs an `#[expect]` explaining who drops it; tests use `test_support::PrivateContext` (#1963)" },
+    { path = "glib::MainContext::with_flags", reason = "outside tests, a private context needs an `#[expect]` explaining who drops it; tests use `test_support::PrivateContext` (#1963)" },
 ]

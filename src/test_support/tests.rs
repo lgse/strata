@@ -56,6 +56,51 @@ fn a_test_that_panics_settles_its_pending_work_on_its_own_thread() {
     }
 }
 
+struct SpawnsOnDrop {
+    context: glib::MainContext,
+    marker: Option<DroppedOn>,
+}
+
+impl Drop for SpawnsOnDrop {
+    fn drop(&mut self) {
+        let marker = self.marker.take();
+        let context = &self.context;
+        context
+            .with_thread_default(|| {
+                drop(context.spawn_local(async move {
+                    let _marker = marker;
+                    std::future::pending::<()>().await;
+                }));
+            })
+            .expect("context");
+    }
+}
+
+#[test]
+fn a_task_attached_while_releasing_a_private_context_is_dropped_on_its_own_thread() {
+    let dropped = Arc::new(Mutex::new(None));
+    let context = PrivateContext::new();
+    let spawns = SpawnsOnDrop {
+        context: (*context).clone(),
+        marker: Some(DroppedOn(dropped.clone())),
+    };
+    context
+        .with_thread_default(|| {
+            drop(context.spawn_local(async move {
+                let _spawns = spawns;
+                std::future::pending::<()>().await;
+            }));
+        })
+        .expect("private context");
+    // Like a GIO pool thread's reference, this keeps the context from being finalized here.
+    let held = (*context).clone();
+    drop(context);
+
+    let dropped_on = *dropped.lock().expect("drop record");
+    assert_eq!(dropped_on, Some(thread::current().id()));
+    drop(held);
+}
+
 #[test]
 #[expect(
     unsafe_code,
