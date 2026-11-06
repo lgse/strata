@@ -989,6 +989,6 @@ now includes optional read-only binds of the BLAS/LAPACK alternatives used by
 media helpers on x86-64 and ARM64 Debian-family installations, plus the GL
 dispatch alternatives (`glx--*`) every helper needs to start there. This resolves their
 runtime links without exposing the whole `/etc/alternatives` directory or the
-rest of `/etc`. Canonical pinned-container HEIC, MOV,
+rest of `/etc`. Canonical pinned-container HEIC, AVIF, MOV,
 and MP4 preview tests exercise actual sandbox startup and decoding; installed
 systems still depend on their available codec libraries.
