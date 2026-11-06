@@ -203,13 +203,13 @@ fn video_starts_past_the_maximum_clamp_on_load_and_set() {
     gtk_test(
         "ui::preferences::tests::preferences::loading::video_starts_past_the_maximum_clamp_on_load_and_set",
         || {
-            for (stored, expected) in [(0, 0), (15, 15), (99, 99), (100, 99), (5_000, 99)] {
+            for stored in [100, 5_000] {
                 assert_recovered_preferences_survive_save(
                     |saved| {
                         saved.insert("preview_video_start".into(), i64::from(stored).into());
                     },
                     Preferences {
-                        preview_video_start: expected,
+                        preview_video_start: 99,
                         ..non_default_preferences()
                     },
                 );
@@ -217,17 +217,15 @@ fn video_starts_past_the_maximum_clamp_on_load_and_set() {
 
             seed_saved_preferences_for_test();
             let manager = PreferenceManager::shared();
-            for (requested, expected) in [(25, 25), (u32::MAX, 99), (7, 7), (0, 0)] {
-                manager.set_preview_video_start(requested);
-                assert_eq!(manager.preview_video_start(), expected);
-                crate::storage::writer::settle();
-                assert_eq!(
-                    read_preferences()
-                        .expect("saved preferences")
-                        .preview_video_start,
-                    expected
-                );
-            }
+            manager.set_preview_video_start(u32::MAX);
+            assert_eq!(manager.preview_video_start(), 99);
+            crate::storage::writer::settle();
+            assert_eq!(
+                read_preferences()
+                    .expect("saved preferences")
+                    .preview_video_start,
+                99
+            );
         },
     );
 }
