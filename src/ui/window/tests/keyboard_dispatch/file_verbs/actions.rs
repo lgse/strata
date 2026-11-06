@@ -463,10 +463,20 @@ fn tenxer_action_chord_steps_refuse_a_non_local_folder() {
         "ui::window::tests::keyboard_dispatch::file_verbs::actions::tenxer_action_chord_steps_refuse_a_non_local_folder",
         || {
             let fixture = KeyboardFixture::new();
+            let output = fixture._history_directory.path().join("invocations");
+            ActionManifest::new("folders", "Folders", "top", "kinds = [\"folder\"]").write(&output);
+            reload_actions();
+            // A named folder: the Trash root has no file name to match against.
+            let trashed = gtk::glib::home_dir().join("trashed-folder");
+            std::fs::create_dir(&trashed).expect("folder to trash");
+            gtk::gio::File::for_path(&trashed)
+                .trash(gtk::gio::Cancellable::NONE)
+                .expect("trash the folder");
+            let folder = Location::uri("trash:///trashed-folder");
             enable_tenxer(&fixture);
             let browser = fixture.view.browser();
-            browser.navigate(Location::uri("trash:///"));
-            wait_until(|| browser.active_location() == Some(Location::uri("trash:///")));
+            browser.navigate(folder.clone());
+            wait_until(|| browser.active_location().as_ref() == Some(&folder));
             wait_loaded(&browser, 0);
             focus_files(&fixture);
 
@@ -487,6 +497,11 @@ fn tenxer_action_chord_steps_refuse_a_non_local_folder() {
             plain(&fixture, Key::_1);
             assert_eq!(feedback(&fixture), "No action 1");
             assert!(!modal_visible(&fixture.overlay), "no error dialog");
+            run_jobs(Duration::from_millis(300));
+            assert!(
+                invocations(&output).is_empty(),
+                "a folder action never runs on a non-local folder"
+            );
         },
     );
 }
