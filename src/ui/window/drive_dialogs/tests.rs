@@ -456,24 +456,133 @@ fn storage_properties_separate_strata_labels_from_formatting() {
                 (false, true, false, [1, 0, 0]),
                 (false, false, false, [0, 0, 0]),
             ] {
+                let actions = PropertyActionSet {
+                    editable,
+                    can_label,
+                    release: can_release.then(|| PropertiesRelease {
+                        action: MediaRelease::EjectVolume,
+                        run: Rc::new(|| {}),
+                    }),
+                };
                 let invoked: [Rc<Cell<usize>>; 3] = std::array::from_fn(|_| Rc::new(Cell::new(0)));
                 for (index, action) in [
                     PropertyAction::Label,
-                    PropertyAction::Eject,
+                    PropertyAction::Release,
                     PropertyAction::Format,
                 ]
                 .into_iter()
                 .enumerate()
                 {
-                    if let Some(button) =
-                        property_action_control(action, editable, can_release, can_label)
-                    {
+                    if let Some(button) = property_action_control(action, &actions) {
                         let invoked = invoked[index].clone();
                         button.connect_clicked(move |_| invoked.set(invoked.get() + 1));
                         button.emit_clicked();
                     }
                 }
                 assert_eq!(invoked.map(|count| count.get()), expected);
+            }
+        },
+    );
+}
+
+#[test]
+fn properties_name_the_release_the_device_row_offers() {
+    crate::test_support::gtk_test(
+        "ui::window::drive_dialogs::tests::properties_name_the_release_the_device_row_offers",
+        || {
+            for (editable, release, expected) in [
+                (false, Some(MediaRelease::UnmountMount), "Unmount"),
+                (true, Some(MediaRelease::UnmountMount), "Unmount"),
+                (false, Some(MediaRelease::EjectMount), "Eject"),
+                (true, Some(MediaRelease::EjectVolume), "Eject"),
+                (true, None, "Eject"),
+            ] {
+                let actions = PropertyActionSet {
+                    editable,
+                    can_label: false,
+                    release: release.map(|action| PropertiesRelease {
+                        action,
+                        run: Rc::new(|| {}),
+                    }),
+                };
+                let button = property_action_control(PropertyAction::Release, &actions)
+                    .expect("release action");
+                assert!(has_label(button.upcast_ref(), expected), "{release:?}");
+                assert_eq!(button.is_sensitive(), release.is_some());
+            }
+        },
+    );
+}
+
+fn properties_action_button(root: &gtk::Widget, text: &str) -> Option<gtk::Button> {
+    descendants(root).into_iter().find_map(|widget| {
+        widget.downcast::<gtk::Button>().ok().filter(|button| {
+            button.has_css_class("properties-action") && has_label(button.upcast_ref(), text)
+        })
+    })
+}
+
+#[test]
+fn properties_open_on_a_harmless_action_so_enter_never_releases_or_formats() {
+    crate::test_support::gtk_test(
+        "ui::window::drive_dialogs::tests::properties_open_on_a_harmless_action_so_enter_never_releases_or_formats",
+        || {
+            for (editable, can_label) in
+                [(false, true), (false, false), (true, true), (true, false)]
+            {
+                let parent = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                let overlay = gtk::Overlay::new();
+                overlay.set_child(Some(&crate::ui::blur::BlurBin::new(&parent)));
+                let window = gtk::Window::builder().child(&overlay).build();
+                crate::test_support::present_window(&window);
+                let shell = modal_shell(
+                    parent.upcast_ref(),
+                    crate::assets::icons::INFO,
+                    "Properties",
+                    "Fixture",
+                    "Close",
+                    false,
+                )
+                .expect("properties host");
+                prepare_properties_footer(&shell);
+                let destructive = Rc::new(Cell::new(0));
+                let destructive_count = destructive.clone();
+                let actions = PropertyActionSet {
+                    editable,
+                    can_label,
+                    release: Some(PropertiesRelease {
+                        action: MediaRelease::UnmountMount,
+                        run: Rc::new(|| {}),
+                    }),
+                };
+                append_property_actions(
+                    &shell,
+                    &actions,
+                    Rc::new(move |action| {
+                        if !matches!(action, PropertyAction::Label) {
+                            destructive_count.set(destructive_count.get() + 1);
+                        }
+                    }),
+                );
+                let expected = if can_label {
+                    properties_action_button(shell.layout.actions.upcast_ref(), "Set label")
+                        .expect("Set label action")
+                        .upcast::<gtk::Widget>()
+                } else {
+                    shell.layout.close.clone().upcast()
+                };
+                let focus = gtk::prelude::GtkWindowExt::focus(&window).expect("initial focus");
+                assert!(
+                    focus == expected || focus.is_ancestor(&expected),
+                    "editable={editable} can_label={can_label}"
+                );
+                focus.activate();
+                assert_eq!(
+                    destructive.get(),
+                    0,
+                    "Enter released or formatted the device"
+                );
+                window.close();
             }
         },
     );
@@ -603,6 +712,38 @@ fn drive_properties_show_at_once_and_fill_in_facts_read_off_the_ui_thread() {
 }
 
 #[test]
+fn unmounted_volumes_name_the_filesystem_their_fstab_entry_declares() {
+    fn declared(device: &std::path::Path) -> Option<String> {
+        match device.to_str() {
+            Some("/nonexistent/strata-fixture-vfat") => Some("vfat".to_owned()),
+            Some("/nonexistent/strata-fixture-fuse") => Some("fuse.sshfs".to_owned()),
+            Some("/nonexistent/strata-fixture-auto") => Some("auto".to_owned()),
+            Some("/nonexistent/strata-fixture-none") => Some("none".to_owned()),
+            Some("/nonexistent/strata-fixture-blank") => Some(String::new()),
+            _ => None,
+        }
+    }
+    for (device, expected) in [
+        ("/nonexistent/strata-fixture-vfat", Some("FAT32")),
+        ("/nonexistent/strata-fixture-fuse", Some("fuse.sshfs")),
+        ("/nonexistent/strata-fixture-auto", None),
+        ("/nonexistent/strata-fixture-none", None),
+        ("/nonexistent/strata-fixture-blank", None),
+        ("/nonexistent/strata-fixture-undeclared", None),
+    ] {
+        let request = DriveFactsRequest {
+            device: Some(PathBuf::from(device)),
+            mount_root: None,
+        };
+        let facts = std::thread::spawn(move || gather_drive_facts_with(request, declared))
+            .join()
+            .expect("drive facts");
+        assert_eq!(facts.filesystem.as_deref(), expected, "{device}");
+        assert!(!facts.mounted);
+    }
+}
+
+#[test]
 fn format_dialog_reads_drive_facts_off_the_ui_thread_and_continue_waits_for_them() {
     let bin = tempfile::tempdir().expect("isolated PATH");
     crate::test_support::gtk_test_with_env(
@@ -645,7 +786,7 @@ fn format_dialog_reads_drive_facts_off_the_ui_thread_and_continue_waits_for_them
                 let overlay = gtk::Overlay::new();
                 overlay.set_child(Some(&crate::ui::blur::BlurBin::new(&sidebar)));
                 let window = gtk::Window::builder().child(&overlay).build();
-                window.present();
+                crate::test_support::present_window(&window);
                 let started = Rc::new(Cell::new(false));
                 let start = started.clone();
                 open_format_dialog(

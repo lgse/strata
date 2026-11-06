@@ -22,6 +22,29 @@ use std::{
     time::Duration,
 };
 
+#[cfg(test)]
+thread_local! {
+    static NEXT_RESULTS: RefCell<Option<Receiver<SearchEvent>>> = const { RefCell::new(None) };
+}
+
+/// The next search started on this thread reads its results from the returned
+/// sender instead of its worker, so a test controls the batches and their order.
+#[cfg(test)]
+pub(in crate::ui) fn next_results_for_test() -> std::sync::mpsc::Sender<SearchEvent> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    NEXT_RESULTS.with_borrow_mut(|next| {
+        assert!(next.replace(receiver).is_none());
+    });
+    sender
+}
+
+#[cfg(test)]
+fn intercept_results(receiver: Receiver<SearchEvent>) -> Receiver<SearchEvent> {
+    NEXT_RESULTS
+        .with_borrow_mut(Option::take)
+        .unwrap_or(receiver)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::ui) enum SearchScope {
     Folder,
@@ -81,6 +104,7 @@ struct State {
     source: RefCell<Option<glib::SourceId>>,
     deliver: RefCell<Option<Deliver>>,
     awaiting: Cell<bool>,
+    incomplete: Cell<bool>,
     pruning: RefCell<Option<gio::Cancellable>>,
     admission: RefCell<Option<Admission>>,
 }
@@ -109,6 +133,10 @@ impl SearchSession {
 
     pub(super) fn awaiting_results(&self) -> bool {
         self.0.awaiting.get()
+    }
+
+    pub(super) fn has_pending_results(&self) -> bool {
+        self.0.awaiting.get() || self.0.incomplete.get()
     }
 
     pub(super) fn searches(&self, input: &SearchInput) -> bool {
@@ -142,6 +170,7 @@ impl SearchSession {
         self.0.worker.take();
         self.0.deliver.take();
         self.0.awaiting.set(false);
+        self.0.incomplete.set(false);
         self.0.query.borrow_mut().clear();
     }
 
@@ -299,6 +328,8 @@ impl SearchSession {
                 limits,
             ),
         };
+        #[cfg(test)]
+        let receiver = intercept_results(receiver);
         self.0.worker.replace(Some(Worker {
             input,
             limits,
@@ -326,6 +357,7 @@ impl SearchSession {
             };
             if let Some(batch) = latest {
                 state.awaiting.set(false);
+                state.incomplete.set(batch.indexing || batch.has_more);
                 let deliver = state.deliver.borrow().clone();
                 if let Some(deliver) = deliver {
                     deliver(batch);

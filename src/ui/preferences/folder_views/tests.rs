@@ -19,7 +19,7 @@ fn volume(uuid: &str, relative: &str) -> FolderKey {
 
 fn sorted(key: SortKey, direction: SortDirection) -> FolderView {
     FolderView {
-        sort: Some((key, direction)),
+        sort: Some((key, direction, crate::model::NameComparison::default())),
         icons_size: None,
     }
 }
@@ -43,7 +43,14 @@ fn saved_views_round_trip_through_the_state_file() {
         &mut views,
         &photos,
         FolderView {
-            sort: Some((SortKey::Size, SortDirection::Ascending)),
+            sort: Some((
+                SortKey::Size,
+                SortDirection::Ascending,
+                crate::model::NameComparison {
+                    natural: false,
+                    case_sensitive: true,
+                },
+            )),
             icons_size: Some(208),
         },
     );
@@ -187,8 +194,16 @@ fn clearing_every_value_removes_the_folder_and_unchanged_updates_report_nothing(
 #[test]
 fn defaults_prune_matching_values_without_touching_other_fields() {
     let mut views = FolderViews::default();
-    let default = (SortKey::Modified, SortDirection::Descending);
-    let other = (SortKey::Size, SortDirection::Ascending);
+    let default = (
+        SortKey::Modified,
+        SortDirection::Descending,
+        crate::model::NameComparison::default(),
+    );
+    let other = (
+        SortKey::Size,
+        SortDirection::Ascending,
+        crate::model::NameComparison::default(),
+    );
     let view = |sort, icons_size| FolderView {
         sort: Some(sort),
         icons_size,

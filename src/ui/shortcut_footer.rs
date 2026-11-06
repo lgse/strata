@@ -2,7 +2,6 @@
 
 use std::{
     cell::{Cell, RefCell},
-    path::PathBuf,
     rc::Rc,
     time::Duration,
 };
@@ -10,29 +9,29 @@ use std::{
 use gtk::{gdk, glib, prelude::*};
 
 pub(in crate::ui) use candidates::CandidateKeys;
-use candidates::Candidates;
-use chord_panel::ChordPanel;
+use catalog::{ReferenceView, WeakReferenceView, rebuild_reference};
+use indicators::{ChordIndicator, CurrentHit, apply_experimental_label, update_visual_mode};
+use prompt::{PromptBar, WeakPromptBar};
+use reference::{ReferenceArea, ReferenceSession};
+#[cfg(test)]
+use status::selection_details;
+use status::{refresh_paste_availability, update_item_count, watch_status_widget};
 
-use super::keys::{
-    KeyPress,
-    bindings::{
-        DOWN, END_KEY, ENTER_ANY_SHIFT, ESCAPE_ANY, FOCUS_NEXT, FOCUS_PREVIOUS, HOME_KEY, LEFT,
-        PAGE_DOWN_KEY, PAGE_UP_KEY, REFERENCE, REFERENCE_CATEGORIES, REFERENCE_LIST,
-        REFERENCE_SEARCH, RIGHT, SPACE, UP,
-    },
-};
+#[cfg(test)]
+use super::keys::KeyPress;
 use super::{
     browser::FilterStatus,
     browser_modes::BrowserMode,
-    keys::{self, Keys, bindings},
-    shortcut_reference::{ChooserScope, ReferenceScope, Shortcut, with_keys},
-    tenxer_mode::{Chord, Prompt},
+    shortcut_reference::{ChooserScope, ReferenceScope},
+    tenxer_mode::Chord,
 };
 
 type ChordListener = Box<dyn Fn(Option<Chord>)>;
 type PromptResetListeners = Rc<RefCell<Vec<Box<dyn Fn()>>>>;
 /// `None` while the view is busy rebuilding; the footer then retries on idle.
 type FilterSource = Rc<RefCell<Option<Rc<dyn Fn() -> Option<Option<FilterStatus>>>>>>;
+
+const FEEDBACK_FLASH: Duration = Duration::from_millis(2_000);
 
 #[derive(Clone)]
 pub(super) struct ShortcutFooter {
@@ -66,864 +65,56 @@ pub(super) struct ShortcutFooter {
     reference_scope: Rc<Cell<ReferenceScope>>,
 }
 
-/// The search hit under the cursor, as its path below the searched folder.
-/// The folder part gives way to an ellipsis before the name does.
-#[derive(Clone)]
-struct CurrentHit {
-    root: gtk::Box,
-    folder: gtk::Label,
-    name: gtk::Label,
-}
-
-impl CurrentHit {
-    const NAME_MIN_CHARS: usize = 32;
-
-    fn new() -> Self {
-        let root = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        root.set_visible(false);
-        let folder = gtk::Label::new(None);
-        folder.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        folder.set_max_width_chars(60);
-        let name = gtk::Label::new(None);
-        name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
-        for label in [&folder, &name] {
-            label.add_css_class("shortcut-footer-chord-hint");
-            root.append(label);
-        }
-        Self { root, folder, name }
-    }
-
-    fn set(&self, path: Option<&std::path::Path>) {
-        let Some(path) = path.filter(|path| path.file_name().is_some()) else {
-            self.root.set_visible(false);
-            return;
-        };
-        let name = path.file_name().unwrap_or_default().to_string_lossy();
-        let folder = path
-            .parent()
-            .map(|folder| folder.to_string_lossy())
-            .unwrap_or_default();
-        self.folder.set_text(&folder);
-        self.folder.set_visible(!folder.is_empty());
-        let name = if folder.is_empty() {
-            name.into_owned()
-        } else {
-            format!("{}{name}", std::path::MAIN_SEPARATOR)
-        };
-        self.name.set_text(&name);
-        let chars = name.chars().count();
-        self.name
-            .set_width_chars(chars.min(Self::NAME_MIN_CHARS) as i32);
-        let full = path.to_string_lossy();
-        super::accessibility::set_label(&self.root, &full);
-        self.root.set_visible(true);
-    }
-}
-
-/// The chord is armed only while its pill is visible.
-#[derive(Clone)]
-struct ChordIndicator {
-    armed: Rc<Cell<Option<Chord>>>,
-    mark: glib::WeakRef<gtk::Label>,
-    panel: ChordPanel,
-    listeners: Rc<RefCell<Vec<ChordListener>>>,
-}
-
-impl ChordIndicator {
-    fn clear(&self) {
-        self.set_with(None, Vec::new());
-    }
-
-    /// Rows whose keys are unbound are left out.
-    fn set_with(&self, chord: Option<Chord>, mut rows: Vec<(String, String)>) {
-        rows.retain(|(keys, _)| !keys.is_empty());
-        let previous = self.armed.replace(chord);
-        if let Some(mark) = self.mark.upgrade() {
-            mark.set_text(&chord.map(Chord::mark).unwrap_or_default());
-            mark.set_visible(chord.is_some());
-            match chord {
-                Some(chord) if !rows.is_empty() => {
-                    self.panel.show(&mark, chord, &rows, self.armed.clone());
-                }
-                _ => self.panel.hide(),
-            }
-        }
-        if previous != chord {
-            for listener in self.listeners.borrow().iter() {
-                listener(chord);
-            }
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ReferenceArea {
-    Search,
-    Categories,
-    Results,
-}
-
-/// Space kept between the compact reference panel and the window edges, borders included.
-const REFERENCE_MARGIN: i32 = 56;
-
-#[derive(Clone)]
-struct ReferenceLayout {
-    header: glib::WeakRef<gtk::Box>,
-    body: glib::WeakRef<gtk::Box>,
-    sidebar: glib::WeakRef<gtk::ScrolledWindow>,
-    categories: glib::WeakRef<gtk::Box>,
-    scroll: glib::WeakRef<gtk::ScrolledWindow>,
-    reference: glib::WeakRef<gtk::Box>,
-    search: glib::WeakRef<gtk::Entry>,
-    footer: glib::WeakRef<gtk::Label>,
-    scope: Rc<Cell<ReferenceScope>>,
-    selected: Rc<RefCell<String>>,
-}
-
-impl ReferenceLayout {
-    fn update(&self, window: &gtk::Window) {
-        let (
-            Some(header),
-            Some(body),
-            Some(sidebar),
-            Some(categories),
-            Some(scroll),
-            Some(reference),
-            Some(search),
-        ) = (
-            self.header.upgrade(),
-            self.body.upgrade(),
-            self.sidebar.upgrade(),
-            self.categories.upgrade(),
-            self.scroll.upgrade(),
-            self.reference.upgrade(),
-            self.search.upgrade(),
-        )
-        else {
-            return;
-        };
-        let footer = self.footer.upgrade();
-        if let Some(footer) = &footer {
-            footer.set_max_width_chars(((window.width() - 80) / 9).max(10));
-        }
-        let compact = window.width() < 1480;
-        let changed = reference.has_css_class("compact") != compact;
-        header.set_orientation(if compact {
-            gtk::Orientation::Vertical
-        } else {
-            gtk::Orientation::Horizontal
-        });
-        body.set_orientation(if compact {
-            gtk::Orientation::Vertical
-        } else {
-            gtk::Orientation::Horizontal
-        });
-        if compact {
-            body.add_css_class("compact");
-            reference.add_css_class("compact");
-            categories.add_css_class("compact");
-        } else {
-            body.remove_css_class("compact");
-            reference.remove_css_class("compact");
-            categories.remove_css_class("compact");
-        }
-        categories.set_spacing(if compact { 8 } else { 0 });
-        if changed {
-            for button in category_buttons(&categories) {
-                if let Some(line) = button.child().and_downcast::<gtk::Box>() {
-                    if let Some(label) = line.first_child().and_downcast::<gtk::Label>() {
-                        label.set_hexpand(!compact);
-                    }
-                    if let Some(count) = line.last_child().and_downcast::<gtk::Label>() {
-                        count.set_visible(!compact);
-                    }
-                }
-                button.set_hexpand(!compact);
-                button.set_halign(if compact {
-                    gtk::Align::Start
-                } else {
-                    gtk::Align::Fill
-                });
-                if compact {
-                    button.add_css_class("action-library-category");
-                } else {
-                    button.remove_css_class("action-library-category");
-                }
-            }
-        }
-        if compact || changed {
-            reflow_categories(&categories, compact, (window.width() - 104).max(1));
-        }
-        let width = (window.width() - 80).max(1);
-        sidebar.set_height_request(-1);
-        sidebar.set_propagate_natural_height(compact);
-        sidebar.set_min_content_height(-1);
-        let max_sidebar_height = (window.height() / 4).clamp(60, 160);
-        sidebar.set_max_content_height(max_sidebar_height);
-        sidebar.set_vexpand(!compact);
-        scroll.set_width_request(if compact {
-            width
-        } else {
-            (window.width() - 340).clamp(1, 1200)
-        });
-        let mut results_height = window.height() - if compact { 300 } else { 160 };
-        if compact {
-            // Wrapped hints and chip rows take their height from the results, not the chips.
-            let sidebar_height = categories
-                .measure(gtk::Orientation::Vertical, width)
-                .1
-                .min(max_sidebar_height);
-            sidebar.set_min_content_height(sidebar_height);
-            let natural_height =
-                |widget: &gtk::Widget| widget.measure(gtk::Orientation::Vertical, width).1;
-            let footer_height = footer
-                .as_ref()
-                .and_then(|footer| footer.parent())
-                .map_or(0, |footer| natural_height(&footer));
-            let chrome = REFERENCE_MARGIN
-                + natural_height(header.upcast_ref())
-                + sidebar_height
-                + footer_height;
-            results_height = results_height.min(window.height() - chrome);
-        }
-        scroll.set_height_request(results_height.clamp(1, 620));
-        if changed {
-            render_reference(
-                &reference,
-                self.scope.get(),
-                &self.selected.borrow(),
-                &search.text(),
-                compact,
-            );
-        }
-    }
-}
-
-/// The open reference is drawn in the window's overlay rather than as a
-/// popover: compositors dismiss popup surfaces when the window loses focus.
-#[derive(Clone)]
-struct ReferenceSession {
+/// The chrome 10xer mode marks, cleared when the mode turns off.
+struct TenxerChrome {
+    tag: glib::WeakRef<gtk::Label>,
     panel: glib::WeakRef<gtk::Box>,
-    more: glib::WeakRef<gtk::ToggleButton>,
-    search: glib::WeakRef<gtk::Entry>,
-    sidebar: glib::WeakRef<gtk::ScrolledWindow>,
-    scroll: glib::WeakRef<gtk::ScrolledWindow>,
-    active_area: Rc<Cell<ReferenceArea>>,
-    layout: ReferenceLayout,
-    show_hints: Rc<Cell<bool>>,
-    focus_before: Rc<RefCell<Option<glib::WeakRef<gtk::Widget>>>>,
-    attached: Rc<RefCell<Option<AttachedReference>>>,
-}
-
-struct AttachedReference {
-    window: glib::WeakRef<gtk::Window>,
-    overlay: glib::WeakRef<gtk::Overlay>,
-    backdrop: gtk::Box,
-    focus_trap: glib::SignalHandlerId,
-    resize: gtk::TickCallbackId,
-}
-
-impl ReferenceSession {
-    fn is_open(&self) -> bool {
-        self.attached.borrow().is_some()
-    }
-
-    /// Opens over the window holding `anchor`, which must have an overlay child.
-    fn open(&self, anchor: &impl IsA<gtk::Widget>) -> bool {
-        if self.is_open() {
-            return true;
-        }
-        let (Some(panel), Some(search)) = (self.panel.upgrade(), self.search.upgrade()) else {
-            return false;
-        };
-        let Some(window) = anchor.as_ref().root().and_downcast::<gtk::Window>() else {
-            return false;
-        };
-        let Some(overlay) = window.child().and_downcast::<gtk::Overlay>() else {
-            return false;
-        };
-        if self.focus_before.borrow().is_none() {
-            self.focus_before
-                .replace(gtk::prelude::RootExt::focus(&window).map(|widget| widget.downgrade()));
-        }
-        if let Some(root) = overlay.child().and_downcast::<super::blur::BlurBin>() {
-            root.set_blurred(true);
-        }
-        let backdrop = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        backdrop.add_css_class("search-backdrop");
-        backdrop.set_halign(gtk::Align::Fill);
-        backdrop.set_valign(gtk::Align::Fill);
-        backdrop.set_hexpand(true);
-        backdrop.set_vexpand(true);
-        let click = gtk::GestureClick::new();
-        let session = self.clone();
-        click.connect_released(move |_, _, _, _| {
-            session.close();
-        });
-        backdrop.add_controller(click);
-        overlay.add_overlay(&backdrop);
-        overlay.add_overlay(&panel);
-        let focus_trap = self.trap_focus(&window);
-        self.active_area.set(ReferenceArea::Search);
-        if let Some(scroll) = self.scroll.upgrade() {
-            scroll.vadjustment().set_value(scroll.vadjustment().lower());
-        }
-        self.layout.update(&window);
-        let last_size = Cell::new((window.width(), window.height()));
-        let resized_window = window.downgrade();
-        let layout = self.layout.clone();
-        let resize = panel.add_tick_callback(move |_, _| {
-            if let Some(window) = resized_window.upgrade() {
-                let size = (window.width(), window.height());
-                if last_size.replace(size) != size {
-                    layout.update(&window);
-                }
-            }
-            glib::ControlFlow::Continue
-        });
-        self.attached.replace(Some(AttachedReference {
-            window: window.downgrade(),
-            overlay: overlay.downgrade(),
-            backdrop,
-            focus_trap,
-            resize,
-        }));
-        if let Some(more) = self.more.upgrade() {
-            more.set_active(true);
-        }
-        search.grab_focus();
-        true
-    }
-
-    fn trap_focus(&self, window: &gtk::Window) -> glib::SignalHandlerId {
-        let panel = self.panel.clone();
-        let search = self.search.clone();
-        let sidebar = self.sidebar.clone();
-        let scroll = self.scroll.clone();
-        let area = self.active_area.clone();
-        window.connect_focus_widget_notify(move |window| {
-            let (Some(panel), Some(search)) = (panel.upgrade(), search.upgrade()) else {
-                return;
-            };
-            let Some(focus) = gtk::prelude::RootExt::focus(window) else {
-                return;
-            };
-            if focus != *panel.upcast_ref::<gtk::Widget>() && !focus.is_ancestor(&panel) {
-                search.grab_focus();
-                return;
-            }
-            if focus == *search.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&search) {
-                area.set(ReferenceArea::Search);
-            } else if sidebar.upgrade().is_some_and(|sidebar| {
-                focus == *sidebar.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&sidebar)
-            }) {
-                area.set(ReferenceArea::Categories);
-            } else if scroll.upgrade().is_some_and(|scroll| {
-                focus == *scroll.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&scroll)
-            }) {
-                area.set(ReferenceArea::Results);
-            }
-        })
-    }
-
-    fn close(&self) -> bool {
-        let Some(attached) = self.attached.borrow_mut().take() else {
-            return false;
-        };
-        attached.resize.remove();
-        if let Some(window) = attached.window.upgrade() {
-            window.disconnect(attached.focus_trap);
-        }
-        if let Some(overlay) = attached.overlay.upgrade() {
-            if let Some(panel) = self.panel.upgrade() {
-                overlay.remove_overlay(&panel);
-            }
-            overlay.remove_overlay(&attached.backdrop);
-            if let Some(root) = overlay.child().and_downcast::<super::blur::BlurBin>() {
-                root.set_blurred(false);
-            }
-        }
-        if let Some(more) = self.more.upgrade() {
-            more.set_active(false);
-            more.set_visible(self.show_hints.get());
-        }
-        if let Some(previous) = self
-            .focus_before
-            .borrow_mut()
-            .take()
-            .and_then(|previous| previous.upgrade())
-            .filter(gtk::Widget::is_mapped)
-        {
-            previous.grab_focus();
-        }
-        true
-    }
-}
-
-/// The open footer prompt. Its bar covers the whole footer so typing never
-/// shares the row with status marks.
-#[derive(Clone)]
-struct PromptBar {
-    bar: gtk::Box,
-    label: gtk::Label,
-    entry: gtk::Entry,
-    hint: gtk::Label,
-    kind: Rc<Cell<Option<Prompt>>>,
-    resets: PromptResetListeners,
-    /// Set while a [`PromptSink`] replaces the text, which is not an edit.
-    replacing: Rc<Cell<bool>>,
-    candidates: Rc<Candidates>,
-}
-
-#[derive(Clone)]
-struct WeakPromptBar {
-    bar: glib::WeakRef<gtk::Box>,
-    label: glib::WeakRef<gtk::Label>,
-    entry: glib::WeakRef<gtk::Entry>,
-    hint: glib::WeakRef<gtk::Label>,
-    kind: Rc<Cell<Option<Prompt>>>,
-    resets: PromptResetListeners,
-    replacing: Rc<Cell<bool>>,
-    candidates: Rc<Candidates>,
-}
-
-impl PromptBar {
-    fn new() -> Self {
-        let bar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        bar.add_css_class("shortcut-footer-prompt-bar");
-        bar.set_visible(false);
-        let label = gtk::Label::new(None);
-        label.add_css_class("shortcut-footer-prompt-label");
-        let entry = gtk::Entry::new();
-        entry.add_css_class("form-control");
-        entry.add_css_class("shortcut-footer-prompt");
-        entry.set_hexpand(true);
-        crate::ui::accessibility::set_labelled_by(&entry, &[label.upcast_ref()]);
-        let hint = gtk::Label::new(None);
-        hint.add_css_class("shortcut-footer-chord-hint");
-        hint.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        hint.set_visible(false);
-        bar.append(&label);
-        bar.append(&entry);
-        bar.append(&hint);
-        let candidates = Candidates::attach(&entry);
-        Self {
-            bar,
-            label,
-            entry,
-            hint,
-            kind: Rc::new(Cell::new(None)),
-            resets: Rc::default(),
-            replacing: Rc::default(),
-            candidates,
-        }
-    }
-
-    fn downgrade(&self) -> WeakPromptBar {
-        WeakPromptBar {
-            bar: self.bar.downgrade(),
-            label: self.label.downgrade(),
-            entry: self.entry.downgrade(),
-            hint: self.hint.downgrade(),
-            kind: self.kind.clone(),
-            resets: self.resets.clone(),
-            replacing: self.replacing.clone(),
-            candidates: self.candidates.clone(),
-        }
-    }
-
-    fn set_hint(&self, text: Option<&str>) {
-        self.hint.set_text(text.unwrap_or_default());
-        self.hint.set_visible(text.is_some());
-        self.entry
-            .update_property(&[gtk::accessible::Property::Description(
-                text.unwrap_or_default(),
-            )]);
-    }
-
-    fn reset(&self) {
-        self.set_hint(None);
-        self.candidates.clear();
-        for listener in self.resets.borrow().iter() {
-            listener();
-        }
-    }
-
-    fn has_focus(&self) -> bool {
-        self.bar.is_visible()
-            && self
-                .bar
-                .root()
-                .and_then(|root| root.focus())
-                .is_some_and(|focus| {
-                    focus == *self.entry.upcast_ref::<gtk::Widget>()
-                        || focus.is_ancestor(&self.entry)
-                })
-    }
-
-    fn open(&self, stack: &gtk::Stack, kind: Prompt, text: &str) -> bool {
-        // Replacing an open prompt must not hand its text to the new kind.
-        self.kind.set(None);
-        self.entry.set_text("");
-        self.reset();
-        // Undo history could otherwise bring back typed credentials.
-        self.entry.set_enable_undo(kind != Prompt::Go);
-        self.kind.set(Some(kind));
-        self.label.set_text(&kind.label());
-        super::accessibility::set_label(&self.entry, &crate::i18n::tr(kind.name()));
-        self.entry.set_text(text);
-        self.bar.set_visible(true);
-        stack.set_visible_child(&self.bar);
-        // A pre-filled query stays unselected so typing extends it.
-        let focused = self.entry.grab_focus_without_selecting();
-        self.entry.set_position(-1);
-        focused
-    }
-
-    fn close(&self) {
-        self.kind.set(None);
-        self.entry.set_text("");
-        self.bar.set_visible(false);
-        self.reset();
-    }
-}
-
-impl WeakPromptBar {
-    fn upgrade(&self) -> Option<PromptBar> {
-        Some(PromptBar {
-            bar: self.bar.upgrade()?,
-            label: self.label.upgrade()?,
-            entry: self.entry.upgrade()?,
-            hint: self.hint.upgrade()?,
-            kind: self.kind.clone(),
-            resets: self.resets.clone(),
-            replacing: self.replacing.clone(),
-            candidates: self.candidates.clone(),
-        })
-    }
-}
-
-pub(in crate::ui) struct PromptSink {
+    feedback: glib::WeakRef<gtk::Label>,
     prompt: WeakPromptBar,
-    kind: Prompt,
+    chords: ChordIndicator,
+    view: WeakReferenceView,
+    primed: Cell<bool>,
 }
 
-impl PromptSink {
-    /// Replaces the text (caret at the end) and the hint, but only while the
-    /// same kind of prompt is still open.
-    pub(in crate::ui) fn show(&self, text: Option<&str>, hint: Option<&str>) {
-        let Some(prompt) = self.prompt.upgrade() else {
+impl TenxerChrome {
+    fn apply(&self, enabled: bool) {
+        let Some(tag) = self.tag.upgrade() else {
             return;
         };
-        if prompt.kind.get() != Some(self.kind) || !prompt.bar.is_visible() {
+        if !self.view.reference_alive() {
             return;
         }
-        if let Some(text) = text {
-            // GTK reports a replacement as two changes: cleared, then filled.
-            prompt.replacing.set(true);
-            prompt.entry.set_text(text);
-            prompt.replacing.set(false);
-            prompt.entry.set_position(-1);
+        let starting = !self.primed.replace(true);
+        apply_experimental_label(&tag, enabled);
+        if let Some(panel) = self.panel.upgrade() {
+            if enabled {
+                panel.add_css_class("tenxer-active");
+            } else {
+                panel.remove_css_class("tenxer-active");
+            }
         }
-        prompt.set_hint(hint);
+        if !starting && !enabled {
+            self.clear_session_marks();
+        }
+        if let Some(view) = self.view.upgrade() {
+            rebuild_reference(&view);
+        }
+    }
+
+    fn clear_session_marks(&self) {
+        let Some(feedback) = self.feedback.upgrade() else {
+            return;
+        };
+        feedback.set_text("");
+        feedback.set_visible(false);
+        if let Some(prompt) = self.prompt.upgrade() {
+            prompt.close();
+        }
+        self.chords.clear();
     }
 }
 
 impl ShortcutFooter {
-    pub fn new(mode: BrowserMode) -> Self {
-        let root = gtk::Stack::builder()
-            .transition_type(gtk::StackTransitionType::Crossfade)
-            .transition_duration(120)
-            .build();
-        root.add_css_class("shortcut-footer");
-        let status = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        let count = gtk::Label::new(None);
-        count.add_css_class("shortcut-footer-count");
-        count.set_visible(false);
-        let paste = gtk::Label::new(Some(&crate::i18n::tr("Files on clipboard")));
-        paste.add_css_class("shortcut-footer-paste");
-        crate::ui::shortcut_reference::follow_keys(&paste, |paste| {
-            crate::ui::accessibility::set_description(
-                paste,
-                Some(&with_keys(
-                    "Press %{keys} to paste into a supported directory.",
-                    Keys::One(bindings::PASTE.shown()),
-                )),
-            );
-        });
-        paste.set_visible(false);
-        let tag = gtk::Label::new(Some(crate::ui::tenxer_mode::TAG_TEXT));
-        tag.add_css_class("tenxer-tag");
-        let tag_name = crate::i18n::tr(crate::ui::tenxer_mode::TAG_NAME);
-        crate::ui::accessibility::set_description(&tag, Some(&tag_name));
-        super::accessibility::set_label(&tag, &tag_name);
-        tag.set_visible(false);
-        let chord = gtk::Label::new(None);
-        chord.add_css_class("shortcut-footer-chord-pill");
-        chord.set_visible(false);
-        let chords = ChordIndicator {
-            armed: Rc::new(Cell::new(None)),
-            mark: chord.downgrade(),
-            panel: ChordPanel::attach(&chord),
-            listeners: Rc::new(RefCell::new(Vec::new())),
-        };
-        let visual = gtk::Label::new(None);
-        visual.add_css_class("shortcut-footer-chord");
-        visual.set_visible(false);
-        let filter = gtk::Label::new(None);
-        filter.add_css_class("shortcut-footer-chord");
-        filter.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        filter.set_max_width_chars(40);
-        filter.set_visible(false);
-        let current = CurrentHit::new();
-        let prompt = PromptBar::new();
-        let feedback = gtk::Label::new(None);
-        feedback.add_css_class("shortcut-footer-feedback");
-        feedback.set_visible(false);
-        status.append(&paste);
-        status.append(&filter);
-        status.append(&visual);
-        status.append(&feedback);
-        status.append(&count);
-        status.append(&chord);
-        status.append(&tag);
-        root.add_child(&status);
-        root.add_child(&prompt.bar);
-        let show_hints = Rc::new(Cell::new(true));
-
-        let more = gtk::ToggleButton::new();
-        let more_text = gtk::Label::new(None);
-        more.set_child(Some(&more_text));
-        more.add_css_class("shortcut-footer-button");
-        let more_text = more_text.downgrade();
-        crate::ui::shortcut_reference::follow_keys(&more, move |more| {
-            let reference = Keys::One(bindings::REFERENCE.alternate(0).shown());
-            let more_label = with_keys("%{keys} Shortcuts", reference);
-            if let Some(text) = more_text.upgrade() {
-                text.set_text(&more_label);
-            }
-            super::accessibility::set_label(more, &more_label);
-            crate::ui::accessibility::set_description(
-                more,
-                Some(&with_keys(
-                    "Show all file-view shortcuts (%{keys})",
-                    reference,
-                )),
-            );
-        });
-        status.prepend(&more);
-        let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        spacer.set_hexpand(true);
-        status.insert_child_after(&current.root, Some(&more));
-        status.insert_child_after(&spacer, Some(&current.root));
-        let content = super::accessibility::dialog_box(&crate::i18n::tr("Keyboard shortcuts"));
-        content.add_css_class("shortcut-reference-panel");
-        content.set_halign(gtk::Align::Center);
-        content.set_valign(gtk::Align::Center);
-        content.set_overflow(gtk::Overflow::Hidden);
-        let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        header.add_css_class("shortcut-reference-header");
-        let title = gtk::Label::new(Some(&crate::i18n::tr("Keyboard shortcuts")));
-        title.add_css_class("shortcut-reference-title");
-        title.set_hexpand(true);
-        title.set_xalign(0.0);
-        header.append(&title);
-        let search = gtk::Entry::new();
-        search.add_css_class("form-control");
-        search.set_placeholder_text(Some(&crate::i18n::tr("Search actions or keys…")));
-        search.set_hexpand(true);
-        search.add_css_class("shortcut-reference-search");
-        crate::ui::accessibility::set_label(&search, &crate::i18n::tr("Search actions or keys…"));
-        header.append(&search);
-        content.append(&header);
-        let body = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        body.add_css_class("shortcut-reference-body");
-        let categories = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        categories.add_css_class("shortcut-reference-categories");
-        categories.set_valign(gtk::Align::Start);
-        let sidebar = gtk::ScrolledWindow::builder()
-            .child(&categories)
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .propagate_natural_height(true)
-            .build();
-        sidebar.add_css_class("shortcut-reference-sidebar");
-        body.append(&sidebar);
-        let reference = gtk::Box::new(gtk::Orientation::Vertical, 24);
-        reference.add_css_class("shortcut-reference-results");
-        let selected_category = Rc::new(RefCell::new(String::from("All")));
-        let active_area = Rc::new(Cell::new(ReferenceArea::Search));
-        let scroll = gtk::ScrolledWindow::builder()
-            .child(&reference)
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .height_request(440)
-            .focusable(true)
-            .build();
-        scroll.add_css_class("shortcut-reference-scroll");
-        body.append(&scroll);
-        content.append(&body);
-        let footer_note = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        footer_note.add_css_class("shortcut-reference-footer");
-        let note = gtk::Label::new(None);
-        // The panel is outside the window until it opens, so the footer
-        // anchors the binding and a closed window releases it.
-        let noted = note.downgrade();
-        crate::ui::shortcut_reference::follow_keys(&root, move |_| {
-            if let Some(note) = noted.upgrade() {
-                let note_text = reference_note();
-                note.set_text(&note_text);
-                note.set_attributes(Some(&hint_note_attributes(&note_text)));
-            }
-        });
-        note.set_wrap(true);
-        note.add_css_class("shortcut-reference-note");
-        note.set_hexpand(true);
-        note.set_xalign(0.0);
-        footer_note.append(&note);
-        content.append(&footer_note);
-        let search_reference = reference.downgrade();
-        let reference_scope = Rc::new(Cell::new(ReferenceScope::window(mode)));
-        let search_scope = reference_scope.clone();
-        let search_category = selected_category.clone();
-        search.connect_changed(move |entry| {
-            if let Some(reference) = search_reference.upgrade() {
-                render_reference(
-                    &reference,
-                    search_scope.get(),
-                    &search_category.borrow(),
-                    &entry.text(),
-                    reference.has_css_class("compact"),
-                );
-            }
-        });
-        let layout = ReferenceLayout {
-            header: header.downgrade(),
-            body: body.downgrade(),
-            sidebar: sidebar.downgrade(),
-            categories: categories.downgrade(),
-            scroll: scroll.downgrade(),
-            reference: reference.downgrade(),
-            search: search.downgrade(),
-            footer: note.downgrade(),
-            scope: reference_scope.clone(),
-            selected: selected_category.clone(),
-        };
-        let session = ReferenceSession {
-            panel: content.downgrade(),
-            more: more.downgrade(),
-            search: search.downgrade(),
-            sidebar: sidebar.downgrade(),
-            scroll: scroll.downgrade(),
-            active_area: active_area.clone(),
-            layout,
-            show_hints: show_hints.clone(),
-            focus_before: Rc::default(),
-            attached: Rc::default(),
-        };
-        let toggled = session.clone();
-        more.connect_clicked(move |more| {
-            if toggled.is_open() {
-                toggled.close();
-            } else if !toggled.open(more) {
-                more.set_active(false);
-            }
-        });
-        let status_widgets: Rc<RefCell<Vec<gtk::Widget>>> = Rc::new(RefCell::new(vec![
-            paste.clone().upcast::<gtk::Widget>(),
-            count.clone().upcast(),
-            more.clone().upcast(),
-            tag.clone().upcast(),
-            chord.clone().upcast(),
-            visual.clone().upcast(),
-            filter.clone().upcast(),
-            current.root.clone().upcast(),
-            prompt.bar.clone().upcast(),
-            feedback.clone().upcast(),
-        ]));
-        for widget in status_widgets.borrow().iter() {
-            watch_status_widget(widget, &status_widgets, &root);
-        }
-        let footer = Self {
-            root,
-            status,
-            paste,
-            count,
-            show_hints,
-            more,
-            panel: content,
-            session,
-            reference,
-            categories,
-            sidebar,
-            search,
-            selected_category,
-            active_area,
-            scroll,
-            status_widgets,
-            tag,
-            feedback,
-            feedback_epoch: Rc::new(Cell::new(0)),
-            prompt,
-            chords,
-            visual,
-            filter,
-            current,
-            filter_source: Rc::new(RefCell::new(None)),
-            filter_retry: Rc::new(Cell::new(false)),
-            observed: Rc::new(RefCell::new(std::rc::Weak::new())),
-            reference_scope,
-        };
-        let keys = gtk::EventControllerKey::new();
-        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-        let shortcuts = footer.clone();
-        super::keys::on_press(&keys, move |_, press| {
-            shortcuts
-                .handle_key(press)
-                .unwrap_or(glib::Propagation::Proceed)
-        });
-        footer.panel.add_controller(keys);
-        let unused = gtk::EventControllerKey::new();
-        super::keys::on_press(&unused, |_, press| {
-            if press.modifiers().intersects(
-                gdk::ModifierType::CONTROL_MASK
-                    | gdk::ModifierType::ALT_MASK
-                    | gdk::ModifierType::SUPER_MASK,
-            ) {
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
-        });
-        footer.search.add_controller(unused);
-        footer.close_prompt_on_focus_loss();
-        footer.set_mode(mode);
-        footer
-    }
-
-    /// Focus moving anywhere but the shortcut reference (a clicked row, another
-    /// pane) discards the prompt, so its text never reaches a browsing command.
-    fn close_prompt_on_focus_loss(&self) {
-        let focus = gtk::EventControllerFocus::new();
-        let prompt = self.prompt.downgrade();
-        let session = self.session.clone();
-        focus.connect_leave(move |_| {
-            let prompt = prompt.clone();
-            let session = session.clone();
-            // Focus has not settled on its new owner while ::leave runs.
-            glib::idle_add_local_once(move || {
-                if let Some(prompt) = prompt.upgrade()
-                    && prompt.bar.is_visible()
-                    && !prompt.has_focus()
-                    && !session.is_open()
-                {
-                    prompt.close();
-                }
-            });
-        });
-        self.prompt.entry.add_controller(focus);
-    }
-
     pub fn widget(&self) -> &gtk::Stack {
         &self.root
     }
@@ -935,69 +126,33 @@ impl ShortcutFooter {
         watch_status_widget(&widget, &self.status_widgets, &self.root);
     }
 
+    fn reference_view(&self) -> ReferenceView {
+        ReferenceView {
+            reference: self.reference.clone(),
+            categories: self.categories.clone(),
+            search: self.search.clone(),
+            scroll: self.scroll.clone(),
+            selected: self.selected_category.clone(),
+            scope: self.reference_scope.clone(),
+        }
+    }
+
     pub fn bind_preferences(&self, manager: &super::preferences::PreferenceManager) {
-        let tag = self.tag.downgrade();
-        let reference = self.reference.downgrade();
-        let categories = self.categories.downgrade();
-        let search = self.search.downgrade();
-        let selected = self.selected_category.clone();
-        let scroll = self.scroll.downgrade();
-        let panel = self.panel.downgrade();
-        let reference_scope = self.reference_scope.clone();
-        let feedback = self.feedback.downgrade();
-        let prompt = self.prompt.downgrade();
-        let chords = self.chords.clone();
-        let primed = Rc::new(Cell::new(false));
+        let chrome = TenxerChrome {
+            tag: self.tag.downgrade(),
+            panel: self.panel.downgrade(),
+            feedback: self.feedback.downgrade(),
+            prompt: self.prompt.downgrade(),
+            chords: self.chords.clone(),
+            view: self.reference_view().downgrade(),
+            primed: Cell::new(false),
+        };
         manager.bind_preference(
             &self.root,
             super::preferences::PreferenceManager::tenxer_mode,
-            move |_, enabled| {
-                let Some(tag) = tag.upgrade() else {
-                    return;
-                };
-                let Some(reference) = reference.upgrade() else {
-                    return;
-                };
-                let starting = !primed.replace(true);
-                apply_experimental_label(&tag, enabled);
-                if let Some(panel) = panel.upgrade() {
-                    if enabled {
-                        panel.add_css_class("tenxer-active");
-                    } else {
-                        panel.remove_css_class("tenxer-active");
-                    }
-                }
-                if !starting
-                    && !enabled
-                    && let Some(feedback) = feedback.upgrade()
-                {
-                    feedback.set_text("");
-                    feedback.set_visible(false);
-                    if let Some(prompt) = prompt.upgrade() {
-                        prompt.close();
-                    }
-                    chords.clear();
-                }
-                if let (Some(categories), Some(search), Some(scroll)) =
-                    (categories.upgrade(), search.upgrade(), scroll.upgrade())
-                {
-                    rebuild_reference(
-                        &reference,
-                        &categories,
-                        &search,
-                        &scroll,
-                        &selected,
-                        &reference_scope,
-                    );
-                }
-            },
+            move |_, enabled| chrome.apply(enabled),
         );
-        let reference = self.reference.downgrade();
-        let categories = self.categories.downgrade();
-        let search = self.search.downgrade();
-        let scroll = self.scroll.downgrade();
-        let selected = self.selected_category.clone();
-        let reference_scope = self.reference_scope.clone();
+        let view = self.reference_view().downgrade();
         let primed = Cell::new(false);
         manager.bind_preference(
             &self.root,
@@ -1007,20 +162,8 @@ impl ShortcutFooter {
                 if !primed.replace(true) {
                     return;
                 }
-                if let (Some(reference), Some(categories), Some(search), Some(scroll)) = (
-                    reference.upgrade(),
-                    categories.upgrade(),
-                    search.upgrade(),
-                    scroll.upgrade(),
-                ) {
-                    rebuild_reference(
-                        &reference,
-                        &categories,
-                        &search,
-                        &scroll,
-                        &selected,
-                        &reference_scope,
-                    );
+                if let Some(view) = view.upgrade() {
+                    rebuild_reference(&view);
                 }
             },
         );
@@ -1086,48 +229,61 @@ impl ShortcutFooter {
         self.refresh_filter();
     }
 
-    pub(in crate::ui) fn refresh_filter(&self) {
+    /// The source's filter, or `None` while it is busy.
+    fn read_filter(&self) -> Option<Option<FilterStatus>> {
         let source = self.filter_source.borrow().clone();
-        let status = match source {
-            Some(source) => match source() {
-                Some(status) => status,
-                None => {
-                    self.schedule_filter_refresh();
-                    return;
-                }
-            },
-            None => None,
+        match source {
+            Some(source) => source(),
+            None => Some(None),
+        }
+    }
+
+    pub(in crate::ui) fn refresh_filter(&self) {
+        let Some(status) = self.read_filter() else {
+            self.schedule_filter_refresh();
+            return;
         };
         // The default map keeps the pane's filter field on screen, but a
         // search started by a direct key has no field there.
         let named = status
             .as_ref()
             .filter(|status| status.search || crate::ui::tenxer_mode::chrome_suppressed());
-        match named {
-            Some(status) => {
-                let mark = if status.search {
-                    rust_i18n::t!("search: %{query}", query = status.query)
-                } else {
-                    rust_i18n::t!("filter: %{query}", query = status.query)
-                };
-                self.filter.set_text(&mark);
-                crate::ui::accessibility::set_description(&self.filter, Some(&status.query));
-                self.filter.set_visible(true);
-            }
-            None => self.filter.set_visible(false),
-        }
+        self.show_filter_mark(named);
         self.current
             .set(named.and_then(|status| status.current.as_deref()));
         let browser = self.observed.borrow().upgrade();
         if let Some(browser) = browser {
-            update_item_count(&self.count, &browser, status.as_ref());
-            // A range over results is theirs; the hidden directory's never shows.
-            let visual = match status.as_ref() {
-                Some(status) if status.visual.is_some() => status.visual,
-                _ => browser.visual_kind(),
-            };
-            update_visual_mode(&self.visual, visual);
+            self.show_listing_status(&browser, status.as_ref());
         }
+    }
+
+    fn show_filter_mark(&self, named: Option<&FilterStatus>) {
+        let Some(status) = named else {
+            self.filter.set_visible(false);
+            return;
+        };
+        let mark = if status.search {
+            rust_i18n::t!("search: %{query}", query = status.query)
+        } else {
+            rust_i18n::t!("filter: %{query}", query = status.query)
+        };
+        self.filter.set_text(&mark);
+        crate::ui::accessibility::set_description(&self.filter, Some(&status.query));
+        self.filter.set_visible(true);
+    }
+
+    fn show_listing_status(
+        &self,
+        browser: &Rc<crate::app::Browser>,
+        status: Option<&FilterStatus>,
+    ) {
+        update_item_count(&self.count, browser, status);
+        // A range over results is theirs; the hidden directory's never shows.
+        let visual = match status {
+            Some(status) if status.visual.is_some() => status.visual,
+            _ => browser.visual_kind(),
+        };
+        update_visual_mode(&self.visual, visual);
     }
 
     #[cfg(test)]
@@ -1150,14 +306,7 @@ impl ShortcutFooter {
 
     fn set_reference_scope(&self, scope: ReferenceScope) {
         self.reference_scope.set(scope);
-        rebuild_reference(
-            &self.reference,
-            &self.categories,
-            &self.search,
-            &self.scroll,
-            &self.selected_category,
-            &self.reference_scope,
-        );
+        rebuild_reference(&self.reference_view());
     }
 
     pub(in crate::ui) fn show_feedback(&self, text: &str) {
@@ -1199,80 +348,11 @@ impl ShortcutFooter {
         self.clear_feedback();
     }
 
-    pub(in crate::ui) fn open_prompt(&self, kind: Prompt) -> bool {
-        self.open_prompt_with(kind, "")
-    }
-
-    pub(in crate::ui) fn open_prompt_with(&self, kind: Prompt, text: &str) -> bool {
-        // An armed chord must stay visible, and the prompt covers its mark.
-        self.chords.clear();
-        self.prompt.open(&self.root, kind, text)
-    }
-
-    pub(in crate::ui) fn select_prompt_region(&self, start: i32, end: i32) {
-        self.prompt.entry.select_region(start, end);
-    }
-
-    /// Runs `listener` as the open prompt's text is edited, not when a prompt
-    /// opens empty or closes, or a [`PromptSink`] replaces the text.
-    pub(in crate::ui) fn connect_prompt_changed(
-        &self,
-        listener: impl Fn(Prompt, String) + 'static,
-    ) {
-        let kind = self.prompt.kind.clone();
-        let replacing = self.prompt.replacing.clone();
-        self.prompt.entry.connect_changed(move |entry| {
-            if replacing.get() {
-                return;
-            }
-            if let Some(kind) = kind.get() {
-                listener(kind, entry.text().to_string());
-            }
-        });
-    }
-
-    /// Runs `listener` whenever a prompt opens or closes, so work tied to the
-    /// previous text can be dropped.
-    pub(in crate::ui) fn connect_prompt_reset(&self, listener: impl Fn() + 'static) {
-        self.prompt.resets.borrow_mut().push(Box::new(listener));
-    }
-
-    #[cfg(test)]
-    pub(in crate::ui) fn prompt_hint(&self) -> Option<String> {
-        self.prompt
-            .hint
-            .is_visible()
-            .then(|| self.prompt.hint.text().to_string())
-    }
-
-    pub(in crate::ui) fn prompt_sink(&self, kind: Prompt) -> PromptSink {
-        PromptSink {
-            prompt: self.prompt.downgrade(),
-            kind,
-        }
-    }
-
     #[cfg(test)]
     pub(in crate::ui) fn filter_mark(&self) -> Option<String> {
         self.filter
             .is_visible()
             .then(|| self.filter.text().to_string())
-    }
-
-    #[cfg(test)]
-    pub(in crate::ui) fn current_hit(&self) -> Option<(String, String)> {
-        let current = &self.current;
-        current.root.is_visible().then(|| {
-            let folder = if current.folder.is_visible() {
-                current.folder.text().to_string()
-            } else {
-                String::new()
-            };
-            (
-                format!("{folder}{}", current.name.text()),
-                format!("{folder}{}", current.name.text()),
-            )
-        })
     }
 
     #[cfg(test)]
@@ -1282,884 +362,16 @@ impl ShortcutFooter {
             self.count.tooltip_text().unwrap_or_default().to_string(),
         )
     }
-
-    #[cfg(test)]
-    pub(in crate::ui) fn prompt(&self) -> &gtk::Entry {
-        &self.prompt.entry
-    }
-
-    pub(in crate::ui) fn open_prompt_kind(&self) -> Option<Prompt> {
-        self.prompt.kind.get()
-    }
-
-    pub(in crate::ui) fn prompt_text(&self) -> String {
-        self.prompt.entry.text().to_string()
-    }
-
-    /// Unlike `PromptSink`, this notifies edit listeners.
-    pub(in crate::ui) fn type_prompt_text(&self, text: &str) {
-        self.prompt.entry.set_text(text);
-        self.prompt.entry.set_position(-1);
-    }
-
-    #[cfg(test)]
-    pub(in crate::ui) fn prompt_label(&self) -> Option<String> {
-        (self.root.visible_child().as_ref() == Some(self.prompt.bar.upcast_ref()))
-            .then(|| self.prompt.label.text().to_string())
-    }
-
-    pub(in crate::ui) fn dismiss_prompt(&self) {
-        self.prompt.close();
-    }
-
-    pub(in crate::ui) fn show_candidates(&self, paths: Vec<PathBuf>, keys: CandidateKeys) {
-        if self.prompt.bar.is_visible() {
-            self.prompt.candidates.set(paths, keys);
-        }
-    }
-
-    pub(in crate::ui) fn step_candidate(&self, delta: i32) {
-        self.prompt.candidates.step(delta);
-    }
-
-    pub(in crate::ui) fn forget_candidate_step(&self) {
-        self.prompt.candidates.forget_step();
-    }
-
-    pub(in crate::ui) fn candidate_stepped(&self) -> bool {
-        self.prompt.candidates.stepped()
-    }
-
-    pub(in crate::ui) fn chosen_candidate(&self) -> Option<PathBuf> {
-        self.prompt.candidates.chosen()
-    }
-
-    pub(in crate::ui) fn candidate_position(&self) -> Option<(usize, usize)> {
-        self.prompt.candidates.position()
-    }
-
-    pub(in crate::ui) fn connect_prompt_activated(&self, listener: impl Fn() + 'static) {
-        self.prompt.entry.connect_activate(move |_| listener());
-    }
-
-    pub(in crate::ui) fn connect_candidate_activated(&self, listener: impl Fn(PathBuf) + 'static) {
-        self.prompt.candidates.connect_activated(listener);
-    }
-
-    #[cfg(test)]
-    pub(in crate::ui) fn candidates(&self) -> Vec<PathBuf> {
-        self.prompt.candidates.paths()
-    }
-
-    #[cfg(test)]
-    pub(in crate::ui) fn candidate_keys(&self) -> String {
-        self.prompt.candidates.keys_text()
-    }
-
-    #[cfg(test)]
-    pub(in crate::ui) fn candidates_shown(&self) -> bool {
-        self.prompt.candidates.is_shown()
-    }
-
-    #[cfg(test)]
-    pub(in crate::ui) fn click_candidate(&self, index: usize) {
-        self.prompt.candidates.activate(index);
-    }
-
-    pub(in crate::ui) fn arm_chord(&self, chord: Chord) {
-        let chooser = self.reference_scope.get().chooser.is_some();
-        let rows = chord
-            .options(chooser)
-            .into_iter()
-            .map(|(keys, action)| (keys.label(), crate::i18n::tr(action)))
-            .collect();
-        self.chords.set_with(Some(chord), rows);
-    }
-
-    pub(in crate::ui) fn arm_chord_with(&self, chord: Chord, rows: Vec<(String, String)>) {
-        self.chords.set_with(Some(chord), rows);
-    }
-
-    pub(in crate::ui) fn armed_chord(&self) -> Option<Chord> {
-        self.chords.armed.get()
-    }
-
-    pub(in crate::ui) fn cancel_chord(&self) {
-        self.chords.clear();
-    }
-
-    pub(in crate::ui) fn connect_chord_changed(&self, listener: impl Fn(Option<Chord>) + 'static) {
-        self.chords.listeners.borrow_mut().push(Box::new(listener));
-    }
-
-    #[cfg(test)]
-    pub(in crate::ui) fn chord(&self) -> gtk::Label {
-        self.chords.mark.upgrade().expect("chord mark")
-    }
-
-    #[cfg(test)]
-    pub(in crate::ui) fn chord_options(&self) -> Option<Vec<(String, String)>> {
-        self.chords.panel.shown_options()
-    }
-
-    pub(in crate::ui) fn prompt_is_visible(&self) -> bool {
-        self.prompt.bar.is_visible()
-    }
-
-    pub(in crate::ui) fn prompt_has_focus(&self) -> bool {
-        self.prompt.has_focus()
-    }
-
-    pub(in crate::ui) fn reference_is_open(&self) -> bool {
-        self.session.is_open()
-    }
-
-    pub(in crate::ui) fn handle_key(&self, press: &KeyPress) -> Option<glib::Propagation> {
-        const SHIFT: gdk::ModifierType = gdk::ModifierType::SHIFT_MASK;
-        let reference_open = self.session.is_open();
-        // A key that types, as 10xer's ~ does, toggles only where it would not type.
-        let typed = press.text().is_some();
-        let f1 = press.is(REFERENCE) && !typed;
-        let typed_toggle = typed && self.typed_key_toggles(press, reference_open);
-        if self.prompt_has_focus() && !f1 && !typed_toggle && !reference_open {
-            return None;
-        }
-        if f1 || typed_toggle {
-            if reference_open {
-                self.session.close();
-            } else {
-                self.session.open(&self.root);
-            }
-            return Some(glib::Propagation::Stop);
-        }
-        if !reference_open {
-            return None;
-        }
-        if press.is(ESCAPE_ANY) {
-            self.session.close();
-            return Some(glib::Propagation::Stop);
-        }
-        let focused = if press.is(REFERENCE_CATEGORIES) {
-            self.focus_category()
-        } else if press.is(REFERENCE_SEARCH) {
-            self.focus_search()
-        } else if press.is(REFERENCE_LIST) {
-            self.focus_results()
-        } else {
-            false
-        };
-        if focused {
-            return Some(glib::Propagation::Stop);
-        }
-        let focus = self.search.root().and_then(|root| root.focus());
-        let search_focused = focus.as_ref().is_some_and(|focus| {
-            focus == self.search.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&self.search)
-        });
-        let category_focused = focus.as_ref().is_some_and(|focus| {
-            focus == self.sidebar.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&self.sidebar)
-        });
-        let list_focused = focus.as_ref().is_some_and(|focus| {
-            focus == self.scroll.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&self.scroll)
-        });
-        if press.is_any(&[FOCUS_NEXT, FOCUS_PREVIOUS]) {
-            let backwards = press.is(FOCUS_PREVIOUS);
-            let current = if search_focused {
-                ReferenceArea::Search
-            } else if category_focused {
-                ReferenceArea::Categories
-            } else if list_focused {
-                ReferenceArea::Results
-            } else {
-                self.active_area.get()
-            };
-            match (current, backwards) {
-                (ReferenceArea::Search, false) | (ReferenceArea::Results, true) => {
-                    self.focus_category();
-                }
-                (ReferenceArea::Categories, false) | (ReferenceArea::Search, true) => {
-                    self.focus_results();
-                }
-                (ReferenceArea::Results, false) | (ReferenceArea::Categories, true) => {
-                    self.focus_search();
-                }
-            }
-            return Some(glib::Propagation::Stop);
-        }
-        if category_focused {
-            let direction = if press.is_any(&[
-                UP.ignoring(SHIFT).or_alternates(),
-                LEFT.ignoring(SHIFT).or_alternates(),
-            ]) {
-                Some(-1)
-            } else if press.is_any(&[
-                DOWN.ignoring(SHIFT).or_alternates(),
-                RIGHT.ignoring(SHIFT).or_alternates(),
-            ]) {
-                Some(1)
-            } else if press.is(HOME_KEY.ignoring(SHIFT)) {
-                Some(-100)
-            } else if press.is(END_KEY.ignoring(SHIFT)) {
-                Some(100)
-            } else {
-                None
-            };
-            if let Some(direction) = direction {
-                self.move_category(direction);
-                return Some(glib::Propagation::Stop);
-            }
-            if press.is(ENTER_ANY_SHIFT) || press.is(SPACE.ignoring(SHIFT)) {
-                return Some(glib::Propagation::Proceed);
-            }
-        }
-        let scrolls_search = press.is_any(&[UP.ignoring(SHIFT), DOWN.ignoring(SHIFT)])
-            || press.is_any(&[PAGE_UP_KEY.ignoring(SHIFT), PAGE_DOWN_KEY.ignoring(SHIFT)]);
-        if (list_focused || (search_focused && scrolls_search)) && self.scroll_reference(press) {
-            return Some(glib::Propagation::Stop);
-        }
-        if search_focused {
-            return Some(glib::Propagation::Proceed);
-        }
-        // No browsing shortcut may operate on files while the reference is open.
-        Some(glib::Propagation::Stop)
-    }
-
-    fn category_buttons(&self) -> Vec<gtk::Button> {
-        category_buttons(&self.categories)
-    }
-
-    fn focus_search(&self) -> bool {
-        let focused = self.search.grab_focus();
-        if focused {
-            self.active_area.set(ReferenceArea::Search);
-        }
-        focused
-    }
-
-    fn focus_results(&self) -> bool {
-        let focused = self.scroll.grab_focus();
-        if focused {
-            self.active_area.set(ReferenceArea::Results);
-        }
-        focused
-    }
-
-    fn focus_category(&self) -> bool {
-        let focused = self
-            .category_buttons()
-            .into_iter()
-            .find(|button| button.has_css_class("selected"))
-            .is_some_and(|button| button.grab_focus());
-        if focused {
-            self.active_area.set(ReferenceArea::Categories);
-        }
-        focused
-    }
-
-    fn move_category(&self, delta: isize) {
-        let buttons = self.category_buttons();
-        let Some(index) = buttons
-            .iter()
-            .position(|button| button.has_focus())
-            .or_else(|| {
-                buttons
-                    .iter()
-                    .position(|button| button.has_css_class("selected"))
-            })
-        else {
-            return;
-        };
-        let next = (index as isize + delta).clamp(0, buttons.len() as isize - 1) as usize;
-        buttons[next].grab_focus();
-        buttons[next].emit_clicked();
-    }
-
-    fn scroll_reference(&self, press: &KeyPress) -> bool {
-        const SHIFT: gdk::ModifierType = gdk::ModifierType::SHIFT_MASK;
-        // h and l do not scroll; j and k still match below as alternates.
-        let press = &press.untyped();
-        let adjustment = self.scroll.vadjustment();
-        let page = adjustment.page_size().max(1.0);
-        let step = if adjustment.step_increment() >= 1.0 {
-            adjustment.step_increment()
-        } else {
-            page / 10.0
-        };
-        let page_step = if adjustment.page_increment() >= 1.0 {
-            adjustment.page_increment()
-        } else {
-            page
-        };
-        let delta = if press.is_any(&[UP.ignoring(SHIFT).or_alternates(), LEFT.ignoring(SHIFT)]) {
-            -step
-        } else if press.is_any(&[DOWN.ignoring(SHIFT).or_alternates(), RIGHT.ignoring(SHIFT)]) {
-            step
-        } else if press.is(PAGE_UP_KEY.ignoring(SHIFT)) {
-            -page_step
-        } else if press.is(PAGE_DOWN_KEY.ignoring(SHIFT)) {
-            page_step
-        } else if press.is(HOME_KEY.ignoring(SHIFT)) {
-            adjustment.set_value(adjustment.lower());
-            return true;
-        } else if press.is(END_KEY.ignoring(SHIFT)) {
-            adjustment.set_value((adjustment.upper() - page).max(adjustment.lower()));
-            return true;
-        } else {
-            return false;
-        };
-        let limit = (adjustment.upper() - adjustment.page_size()).max(adjustment.lower());
-        adjustment.set_value((adjustment.value() + delta).clamp(adjustment.lower(), limit));
-        true
-    }
-
-    fn typed_key_toggles(&self, press: &KeyPress, reference_open: bool) -> bool {
-        if !press.is(REFERENCE) {
-            return false;
-        }
-        if reference_open {
-            !(press.used_fallback() && self.typing_has_focus())
-        } else {
-            !self.prompt_has_focus() && !self.typing_has_focus()
-        }
-    }
-
-    fn typing_has_focus(&self) -> bool {
-        self.root
-            .root()
-            .and_then(|root| root.focus())
-            .is_some_and(|focus| super::focus_navigation::accepts_typing(&focus))
-    }
 }
 
-fn reference_note() -> String {
-    use bindings::{
-        DOWN, ESCAPE, FOCUS_NEXT, REFERENCE_CATEGORIES, REFERENCE_LIST, REFERENCE_SEARCH, UP,
-    };
-    let label = |shown| keys::label(&shown);
-    rust_i18n::t!(
-        "%{category_keys} categories · %{search_keys} search · %{list_keys} list · %{move_keys} move · %{cycle_keys} cycle · %{close_keys} close",
-        category_keys = label(Keys::One(REFERENCE_CATEGORIES.shown())),
-        search_keys = label(Keys::One(REFERENCE_SEARCH.shown())),
-        list_keys = label(Keys::One(REFERENCE_LIST.shown())),
-        move_keys = label(Keys::Any(crate::ui::keys::shown![
-            DOWN.alternate(1),
-            UP.alternate(1),
-            UP.alternate(0),
-            DOWN.alternate(0)
-        ])),
-        cycle_keys = label(Keys::One(FOCUS_NEXT.shown())),
-        close_keys = label(Keys::One(ESCAPE.shown()))
-    )
-    .into_owned()
-}
-
-/// Keeps each hint, with the separator that follows it, on one line so the note wraps
-/// only after a "·", never inside a hint such as "j / k / ↑ / ↓ move".
-fn hint_note_attributes(note: &str) -> gtk::pango::AttrList {
-    const SEPARATOR: &str = " · ";
-    let attributes = gtk::pango::AttrList::new();
-    let mut start = 0;
-    while start < note.len() {
-        let end = note[start..].find(SEPARATOR).map_or(note.len(), |offset| {
-            start + offset + SEPARATOR.trim_end().len()
-        });
-        attributes.insert(super::controls::no_break_attribute(start..end));
-        start = end + 1;
-    }
-    attributes
-}
-
-fn category_buttons(categories: &gtk::Box) -> Vec<gtk::Button> {
-    let mut buttons = Vec::new();
-    let mut child = categories.first_child();
-    while let Some(row) = child {
-        child = row.next_sibling();
-        let mut item = row.first_child();
-        while let Some(widget) = item {
-            item = widget.next_sibling();
-            if let Ok(button) = widget.downcast::<gtk::Button>() {
-                buttons.push(button);
-            }
-        }
-    }
-    buttons
-}
-
-fn reflow_categories(categories: &gtk::Box, compact: bool, width: i32) {
-    let buttons = category_buttons(categories);
-    let focused = buttons.iter().position(|button| button.has_focus());
-    for button in &buttons {
-        if let Some(row) = button.parent().and_downcast::<gtk::Box>() {
-            row.remove(button);
-        }
-    }
-    while let Some(row) = categories.first_child() {
-        categories.remove(&row);
-    }
-    let mut row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    row.set_vexpand(false);
-    categories.append(&row);
-    let mut occupied = 0;
-    for button in &buttons {
-        let natural = button.measure(gtk::Orientation::Horizontal, -1).1;
-        let needed = if occupied == 0 {
-            natural
-        } else {
-            occupied + 8 + natural
-        };
-        if occupied > 0 && (!compact || needed > width) {
-            row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-            row.set_vexpand(false);
-            categories.append(&row);
-            occupied = 0;
-        } else {
-            occupied = if occupied == 0 { natural } else { needed };
-        }
-        row.append(button);
-        if occupied == 0 {
-            occupied = natural;
-        }
-    }
-    if let Some(index) = focused {
-        buttons[index].grab_focus();
-    }
-}
-
-fn rebuild_reference(
-    reference: &gtk::Box,
-    categories: &gtk::Box,
-    search: &gtk::Entry,
-    scroll: &gtk::ScrolledWindow,
-    selected: &Rc<RefCell<String>>,
-    scope: &Rc<Cell<ReferenceScope>>,
-) {
-    while let Some(child) = categories.first_child() {
-        categories.remove(&child);
-    }
-    let sections = super::shortcut_reference::reference_sections(scope.get());
-    if !sections
-        .iter()
-        .any(|section| section.title == selected.borrow().as_str())
-    {
-        *selected.borrow_mut() = String::from("All");
-    }
-    let total: usize = sections.iter().map(|section| section.rows.len()).sum();
-    for (name, count) in std::iter::once(("All", total)).chain(
-        sections
-            .iter()
-            .map(|section| (section.title, section.rows.len())),
-    ) {
-        let button = gtk::Button::new();
-        button.add_css_class("shortcut-reference-category");
-        let compact = categories.has_css_class("compact");
-        if compact {
-            button.add_css_class("action-library-category");
-        }
-        let is_selected = *selected.borrow() == name;
-        if is_selected {
-            button.add_css_class("selected");
-        }
-        button.update_state(&[gtk::accessible::State::Selected(Some(is_selected))]);
-        let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        let label = gtk::Label::new(Some(&crate::i18n::tr(name)));
-        label.set_hexpand(!compact);
-        label.set_xalign(0.0);
-        line.append(&label);
-        let amount = gtk::Label::new(Some(&count.to_string()));
-        amount.add_css_class("shortcut-reference-count");
-        amount.set_visible(!compact);
-        line.append(&amount);
-        button.set_child(Some(&line));
-        button.set_hexpand(!compact);
-        button.set_halign(if compact {
-            gtk::Align::Start
-        } else {
-            gtk::Align::Fill
-        });
-        let reference = reference.downgrade();
-        let weak_categories = categories.downgrade();
-        let search = search.downgrade();
-        let scroll = scroll.downgrade();
-        let selected = selected.clone();
-        let scope = scope.clone();
-        button.connect_clicked(move |button| {
-            *selected.borrow_mut() = name.to_owned();
-            if let (Some(reference), Some(categories), Some(search), Some(scroll)) = (
-                reference.upgrade(),
-                weak_categories.upgrade(),
-                search.upgrade(),
-                scroll.upgrade(),
-            ) {
-                for category in category_buttons(&categories) {
-                    category.remove_css_class("selected");
-                    category.update_state(&[gtk::accessible::State::Selected(Some(false))]);
-                }
-                button.add_css_class("selected");
-                button.update_state(&[gtk::accessible::State::Selected(Some(true))]);
-                render_reference(
-                    &reference,
-                    scope.get(),
-                    name,
-                    &search.text(),
-                    reference.has_css_class("compact"),
-                );
-                scroll.vadjustment().set_value(0.0);
-            }
-        });
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        row.set_vexpand(false);
-        row.append(&button);
-        categories.append(&row);
-    }
-    if categories.has_css_class("compact") {
-        let width = categories
-            .root()
-            .and_downcast::<gtk::Window>()
-            .map_or(400, |window| (window.width() - 104).max(1));
-        reflow_categories(categories, true, width);
-    }
-    render_reference(
-        reference,
-        scope.get(),
-        &selected.borrow(),
-        &search.text(),
-        reference.has_css_class("compact"),
-    );
-}
-
-fn render_reference(
-    reference: &gtk::Box,
-    scope: ReferenceScope,
-    selected: &str,
-    query: &str,
-    compact: bool,
-) {
-    while let Some(child) = reference.first_child() {
-        reference.remove(&child);
-    }
-    let query = super::shortcut_reference::search_folded(query.trim());
-    let mut found = false;
-    for section in super::shortcut_reference::reference_sections(scope) {
-        if selected != "All" && selected != section.title {
-            continue;
-        }
-        let rows: Vec<_> = section
-            .rows
-            .into_iter()
-            .filter(|shortcut| shortcut.matches(&query))
-            .collect();
-        if !rows.is_empty() {
-            found = true;
-            append_section(reference, section.title, &rows, compact);
-        }
-    }
-    if !found {
-        let empty = gtk::Label::new(Some(&crate::i18n::tr("No matching shortcuts")));
-        empty.add_css_class("shortcut-reference-note");
-        empty.set_wrap(true);
-        empty.set_justify(gtk::Justification::Center);
-        empty.set_halign(gtk::Align::Center);
-        empty.set_valign(gtk::Align::Center);
-        empty.set_vexpand(true);
-        empty.set_hexpand(true);
-        reference.set_vexpand(true);
-        reference.append(&empty);
-    } else {
-        reference.set_vexpand(false);
-    }
-}
-
-/// Keep the experimental caveat available to assistive technology.
-fn apply_experimental_label(tag: &gtk::Label, enabled: bool) {
-    tag.set_text(crate::ui::tenxer_mode::TAG_TEXT);
-    tag.set_visible(enabled);
-    let name = crate::i18n::tr(crate::ui::tenxer_mode::TAG_NAME);
-    let phrase = crate::i18n::tr(super::shortcut_reference::EXPERIMENTAL_LABEL);
-    let announced = if enabled {
-        rust_i18n::t!(
-            "%{mode} (experimental feature, under active development)",
-            mode = name
-        )
-        .into_owned()
-    } else {
-        name
-    };
-    tag.update_property(&[
-        gtk::accessible::Property::Label(&announced),
-        gtk::accessible::Property::Description(if enabled { &phrase } else { "" }),
-    ]);
-}
-
-const FEEDBACK_FLASH: Duration = Duration::from_millis(2_000);
-
-fn update_visual_mode(label: &gtk::Label, visual: Option<crate::app::VisualKind>) {
-    let (text, name) = match visual {
-        Some(crate::app::VisualKind::Select) => ("VISUAL", "Visual select"),
-        Some(crate::app::VisualKind::Unset) => ("UNSET", "Visual unset"),
-        None => ("", ""),
-    };
-    let (text, name) = if text.is_empty() {
-        (String::new(), String::new())
-    } else {
-        (crate::i18n::tr(text), crate::i18n::tr(name))
-    };
-    if label.text() != text {
-        label.set_text(&text);
-        super::accessibility::set_label(label, &name);
-    }
-    label.set_visible(!text.is_empty());
-}
-
-#[cfg(test)]
-impl ShortcutFooter {
-    pub(in crate::ui) fn visual_text(&self) -> Option<String> {
-        self.visual
-            .is_visible()
-            .then(|| self.visual.text().to_string())
-    }
-}
-
-fn update_item_count(
-    label: &gtk::Label,
-    browser: &Rc<crate::app::Browser>,
-    filter: Option<&FilterStatus>,
-) {
-    if let Some(filter) = filter.filter(|filter| filter.displayed) {
-        label.set_label(&crate::i18n::count("items", filter.total()));
-        crate::ui::accessibility::set_description(
-            label,
-            Some(&file_folder_breakdown(filter.files, filter.folders)),
-        );
-        label.set_visible(true);
-        return;
-    }
-    let Some(depth) = browser.active_depth() else {
-        label.set_visible(false);
-        return;
-    };
-    let counts = browser.column_entry_counts(depth).unwrap_or_default();
-    let selected_len = browser.selected_count();
-    if selected_len > 0 && selected_len <= 64 {
-        for position in browser.selected_positions(depth) {
-            if let Some(entry) = browser.entry_at(depth, position)
-                && !entry.is_directory()
-                && entry.size == crate::model::MetadataValue::Unknown
-            {
-                browser.request_metadata_fill(depth, position, entry.location, false);
-            }
-        }
-    }
-    if selected_len > 0 {
-        if counts.total > 0 && selected_len == counts.total {
-            let folders = counts.folders;
-            let files = counts.files;
-            let mut parts = Vec::new();
-            if folders > 0 {
-                parts.push(crate::i18n::count("folders", folders));
-            }
-            if files > 0 {
-                parts.push(crate::i18n::count("files", files));
-            }
-            let items = if parts.is_empty() {
-                crate::i18n::count("items", selected_len)
-            } else {
-                crate::i18n::list(parts)
-            };
-            let text = rust_i18n::t!("%{items} selected", items = items);
-            label.set_label(&text);
-        } else if selected_len > 64 {
-            label.set_label(&rust_i18n::t!(
-                "%{items} selected",
-                items = crate::i18n::count("items", selected_len)
-            ));
-        } else {
-            let selected = browser.selected_entries();
-            label.set_label(&selection_details(&selected));
-        }
-        // The plural form follows the total; the selected count fills in afterwards.
-        let selection = rust_i18n::replace_patterns(
-            &crate::i18n::count("selected_of_items", counts.total),
-            &["selected"],
-            &[crate::i18n::integer(selected_len as u64)],
-        );
-        crate::ui::accessibility::set_description(
-            label,
-            Some(&rust_i18n::t!(
-                "%{selection} Size includes selected files only; folder contents are not counted.",
-                selection = selection
-            )),
-        );
-    } else {
-        label.set_label(&crate::i18n::count("items", counts.total));
-        crate::ui::accessibility::set_description(
-            label,
-            Some(&file_folder_breakdown(counts.files, counts.folders)),
-        );
-    }
-    label.set_visible(true);
-}
-
-fn file_folder_breakdown(files: usize, folders: usize) -> String {
-    rust_i18n::t!(
-        "%{files}, %{folders}",
-        files = crate::i18n::count("files", files),
-        folders = crate::i18n::count("folders", folders)
-    )
-    .into_owned()
-}
-
-fn selection_details(entries: &[crate::model::FileEntry]) -> String {
-    let folders = entries.iter().filter(|entry| entry.is_directory()).count();
-    let files = entries.len() - folders;
-    let mut parts = Vec::new();
-    if folders > 0 {
-        parts.push(crate::i18n::count("folders", folders));
-    }
-    if files > 0 {
-        parts.push(crate::i18n::count("files", files));
-    }
-    let mut text =
-        rust_i18n::t!("%{items} selected", items = crate::i18n::list(parts)).into_owned();
-    if files > 0 {
-        let mut bytes = 0u64;
-        let mut known = 0;
-        for entry in entries.iter().filter(|entry| !entry.is_directory()) {
-            if let crate::model::MetadataValue::Known(size) = entry.size {
-                bytes = bytes.saturating_add(size);
-                known += 1;
-            }
-        }
-        let size = super::browser::format_file_size(bytes);
-        if known == files {
-            text.push_str(&format!(" ({size})"));
-        } else if known > 0 {
-            text.push_str(&rust_i18n::t!(
-                " (%{size} known; size incomplete)",
-                size = size
-            ));
-        } else {
-            text.push_str(&crate::i18n::tr(" (size unavailable)"));
-        }
-    }
-    text
-}
-
-fn watch_status_widget(
-    widget: &gtk::Widget,
-    status_widgets: &Rc<RefCell<Vec<gtk::Widget>>>,
-    root: &gtk::Stack,
-) {
-    let root = root.downgrade();
-    let statuses = status_widgets.clone();
-    widget.connect_visible_notify(move |_| {
-        // Ignore ancestor visibility so a hidden footer can reveal itself.
-        if let Some(root) = root.upgrade() {
-            root.set_visible(
-                statuses
-                    .borrow()
-                    .iter()
-                    .any(gtk::prelude::WidgetExt::get_visible),
-            );
-        }
-    });
-}
-
-fn refresh_paste_availability(
-    clipboard: &gdk::Clipboard,
-    label: &glib::WeakRef<gtk::Label>,
-    generation: &Rc<Cell<u64>>,
-) {
-    let revision = generation.get().wrapping_add(1);
-    generation.set(revision);
-    let Some(paste) = label.upgrade() else {
-        return;
-    };
-    paste.set_visible(false);
-    let formats = clipboard.formats();
-    if !formats.contains_type(gdk::FileList::static_type())
-        && !formats.contain_mime_type("text/uri-list")
-    {
-        return;
-    }
-    let clipboard = clipboard.clone();
-    let label = label.clone();
-    let generation = generation.clone();
-    glib::MainContext::default().spawn_local(async move {
-        let available = clipboard
-            .read_value_future(gdk::FileList::static_type(), glib::Priority::DEFAULT)
-            .await
-            .ok()
-            .and_then(|value| value.get::<gdk::FileList>().ok())
-            .is_some_and(|files| !files.files().is_empty());
-        if revision == generation.get()
-            && let Some(label) = label.upgrade()
-        {
-            label.set_visible(available);
-        }
-    });
-}
-
-fn append_section(parent: &gtk::Box, title: &str, shortcuts: &[Shortcut], compact: bool) {
-    let section = gtk::Box::new(gtk::Orientation::Vertical, 16);
-    let heading = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    let label = gtk::Label::new(Some(&crate::i18n::tr(title).to_uppercase()));
-    label.add_css_class("shortcut-reference-heading");
-    heading.append(&label);
-    let count = gtk::Label::new(Some(&shortcuts.len().to_string()));
-    count.add_css_class("shortcut-reference-count");
-    heading.append(&count);
-    let divider = gtk::Separator::new(gtk::Orientation::Horizontal);
-    divider.set_hexpand(true);
-    divider.set_valign(gtk::Align::Center);
-    heading.append(&divider);
-    section.append(&heading);
-    let grid = gtk::Grid::new();
-    grid.set_column_spacing(48);
-    grid.set_row_spacing(12);
-    for (index, shortcut) in shortcuts.iter().enumerate() {
-        let row = gtk::Box::new(
-            if compact {
-                gtk::Orientation::Vertical
-            } else {
-                gtk::Orientation::Horizontal
-            },
-            6,
-        );
-        row.add_css_class("shortcut-reference-row");
-        let action = gtk::Label::builder()
-            .label(shortcut.action_text())
-            .xalign(0.0)
-            .hexpand(true)
-            .wrap(true)
-            .wrap_mode(gtk::pango::WrapMode::WordChar)
-            .build();
-        action.add_css_class("shortcut-reference-description");
-        if compact {
-            action.set_max_width_chars(22);
-        }
-        row.append(&action);
-        let keys = gtk::Label::new(Some(&shortcut.key_text()));
-        keys.add_css_class("shortcut-reference-key");
-        keys.set_halign(gtk::Align::Start);
-        keys.set_wrap(compact);
-        keys.set_max_width_chars(if compact { 22 } else { 32 });
-        row.append(&keys);
-        grid.attach(
-            &row,
-            if compact { 0 } else { (index % 2) as i32 },
-            if compact {
-                index as i32
-            } else {
-                (index / 2) as i32
-            },
-            1,
-            1,
-        );
-    }
-    section.append(&grid);
-    parent.append(&section);
-}
-
+mod build;
 mod candidates;
+mod catalog;
 mod chord_panel;
+mod indicators;
+mod prompt;
+mod reference;
+mod reference_keys;
+mod status;
 #[cfg(test)]
 mod tests;

@@ -25,8 +25,8 @@ for grammatical count forms and calendar data, and for an English word that need
 a different translation in one context. Those context keys are prefixed with their
 use and their English value is the plain word: `completion.complete`,
 `chooser.filter`, `permissions.group`, `archive.format`, `properties.pinned`,
-`release_channel.preview`, `build_kind.nightly`, `pasted_image.name`, and
-`action_icon.*`.
+`release_channel.preview`, `build_kind.nightly`, `pasted_image.name`,
+`dropped_text.name`, and `action_icon.*`.
 `settings_keywords.<target id>` keys hold space-separated search synonyms for a
 Settings search target; their English value is the English alias list. All catalogs
 are build inputs: `build.rs` embeds them as static tables served by the
@@ -35,6 +35,8 @@ The installer embeds its messages from the same rust-i18n source catalog so it
 needs no translation files, Python, or installed Strata binary at runtime. It
 uses the system locale with the same `LANGUAGE` and POSIX precedence rules as the
 application; the saved application language does not affect installation.
+The `--install-udiskie-unlock` and `--uninstall-udiskie-unlock` command-line
+modes, whose output the installer shows, print in the same system locale.
 
 Do not point `i18n!` at `data/locales`; its per-message initializer needs megabytes of
 stack in unoptimized builds and overflows worker and test threads.
@@ -231,7 +233,9 @@ Run targeted regressions using the private display/session bus:
 ```
 
 Catalog tests require every supported locale to contain the same source keys
-and preserve interpolation placeholders. Behavioral tests cover saved startup
+and preserve interpolation placeholders. They cannot see a source string that
+was never added to a catalog, so a Settings test builds every page and requires
+each section heading to have an entry in every catalog. Behavioral tests cover saved startup
 language, restart-only application, synchronized Settings controls, restart
 close guards, plural rules, literal user data, and app-language calendar labels.
 For broad code changes, also follow the full validation policy in `AGENTS.md`.

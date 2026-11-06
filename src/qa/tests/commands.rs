@@ -8,8 +8,9 @@ use super::{
     super::{
         input,
         protocol::{
-            Accessor, At, Check, Chord, Command, EntryTarget, Modifier, Offset, Predicate,
-            Presence, Query, StateName, Target, TextMatch, changed_keys, parse_command,
+            Accessor, At, Check, Chord, ClipboardContent, ClipboardOffer, ClipboardOffers, Command,
+            EntryTarget, Modifier, Offset, Predicate, Presence, Query, StateName, Target,
+            TextMatch, changed_keys, parse_command,
         },
     },
     predicate,
@@ -457,13 +458,39 @@ fn prefs_panes_clipboard_holds_and_notes_parse_only_in_their_valid_shapes() {
         Ok(Command::Clipboard {
             text: serde_json::from_value(json!({"starts_with": "alpha", "longer_than": 5}))
                 .expect("the json should parse"),
+            mime: None,
             message: Some("m".to_owned()),
         })
     );
     assert_eq!(
-        parse_command(r#"{"clipboard_set":"selection-cleared"}"#),
-        Ok(Command::ClipboardSet("selection-cleared".to_owned()))
+        parse_command(r#"{"clipboard":"cut\nfile:///a","mime":"x-special/gnome-copied-files"}"#),
+        Ok(Command::Clipboard {
+            text: TextMatch::Exactly("cut\nfile:///a".to_owned()),
+            mime: Some("x-special/gnome-copied-files".to_owned()),
+            message: None,
+        })
     );
+    assert_eq!(
+        parse_command(r#"{"clipboard_set":"selection-cleared"}"#),
+        Ok(Command::ClipboardSet(ClipboardContent::Text(
+            "selection-cleared".to_owned()
+        )))
+    );
+    assert_eq!(
+        parse_command(
+            r#"{"clipboard_set":{"offers":[{"mime":"text/uri-list","text":"file:///a\r\n"}]}}"#
+        ),
+        Ok(Command::ClipboardSet(ClipboardContent::Offers(
+            ClipboardOffers {
+                offers: vec![ClipboardOffer {
+                    mime: "text/uri-list".to_owned(),
+                    text: "file:///a\r\n".to_owned(),
+                }],
+            }
+        )))
+    );
+    assert!(parse_command(r#"{"clipboard_set":{"offers":[{"mime":"text/uri-list"}]}}"#).is_err());
+    assert!(parse_command(r#"{"clipboard_set":{"offers":[],"path":"x"}}"#).is_err());
     assert!(parse_command(r#"{"expect":{"focused":null},"hold_ms":400}"#).is_err());
     assert!(
         parse_command(r#"{"expect":{"focused":null},"timeout_ms":3000,"hold_ms":400}"#).is_ok()

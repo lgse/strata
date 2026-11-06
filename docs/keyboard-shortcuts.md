@@ -113,6 +113,17 @@ Shortcuts follow the key's label first, then its physical position:
   Strata command takes a plain digit or punctuation key, so the first key of a
   syllable reaches the input method and the composition then sees the rest. New
   bindings on these keys must keep it that way.
+- **A filter's `/` is read after the input method.** In the **Ctrl+F** filter
+  and the 10xer **f** prompt, **/** enters a matching folder. It is the
+  one exception to recognizing commands from key presses, never from typed
+  text: the key goes to the field's input method like any other, and a lone `/`
+  it commits is taken from the field's `insert-text` before it reaches the
+  query (`browser::connect_path_separator`). A Zhuyin, Array30 or Boshiamy code
+  that starts with `/` therefore still composes, and a layout that types `/`
+  with Shift, such as German **Shift+7**, enters the folder too. Longer
+  committed text holding `/`, such as a pasted path, is typed; a lone pasted
+  `/` enters the folder as a typed one does, since no file name holds `/`.
+  `FILTER_DESCEND` stays in the catalog only for the F1 label.
 - **Hanyu Pinyin with AltGr dead keys** (`cn(altgr-pinyin)`): AltGr+1 to
   AltGr+4 are the tone dead keys that type ā á ǎ à, AltGr+6 and Shift+AltGr+6
   are the ^ and ¨ dead keys, and AltGr+v types ü. These are text input, never
@@ -256,7 +267,8 @@ window's direct stage (`window/keyboard/direct.rs`) gives some of them one,
 listed in `keys::DIRECT_IN_DEFAULT` and `keys::DIRECT_IN_TENXER`: in the
 default map Open with, Move to, Copy to, Restore, invert selection, search
 subfolders, the visited and recent folder jumps, half-page paging, and the Sort,
-Copy and Action chord steps, which there are plain keys with no trigger; in
+Copy and Action chord steps, which there are plain keys with no trigger, but not
+`actions.folder`, which only switches the 10xer **;** panel; in
 10xer duplicate, pin, jump to folder and arrow scope. A key a user binds to
 one of them runs the handler the other map's key runs, with the same prompt,
 dialog or action, on the active map's targets: 10xer duplicate acts on the
@@ -661,3 +673,12 @@ AZERTY, German QWERTZ, Caps Lock, and Hanyu Pinyin. With Hanyu Pinyin, GTK's
 own input method composes the AltGr tone keys in text fields, which stands in
 for a pinyin input method's composition. See
 [testing](testing.md).
+
+### Additional 10xer sort choices
+
+The sort chord adds Extension, Created and Unsorted, plus Natural, Alphabetical
+and case-sensitive name comparison. Their commands are `sort.extension`,
+`sort.created`, `sort.unsorted`, `sort.natural`, `sort.alphabetical` and
+`sort.case_sensitive`. Settings and F1 show their bindings from the key catalog;
+they can also be rebound in the default map. Reversing direction has no effect
+on Unsorted.

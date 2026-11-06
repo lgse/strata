@@ -9,8 +9,9 @@ use std::{
 };
 
 use super::*;
+use crate::test_support::PrivateContext;
 use crate::{model::Location, services::VolumeRelation};
-use gtk::{gio, glib};
+use gtk::gio;
 
 mod lookup_regressions;
 
@@ -22,7 +23,7 @@ fn resolve_on_private_context(
     query: &DropVolumeQuery,
     deadline: Duration,
 ) -> (Option<DropVolumeLookup>, bool) {
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     context
         .with_thread_default(|| {
             let result = Rc::new(RefCell::new(None));
@@ -331,7 +332,7 @@ fn dropping_the_pending_handle_inside_on_ready_is_safe() {
     let dest = Location::uri(gio::File::for_path(root.path()).uri().to_string());
     let source = Location::uri(gio::File::for_path(&file).uri().to_string());
     let query = DropVolumeQuery::new(&dest, &[source]);
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     let relation = context
         .with_thread_default(|| {
             let slot: Rc<RefCell<Option<DropVolumes>>> = Rc::new(RefCell::new(None));
@@ -394,7 +395,7 @@ fn cancelled_pending_lookup_never_reports() {
     let root = tempfile::tempdir().expect("tempdir");
     let dest = Location::uri(gio::File::for_path(root.path()).uri().to_string());
     let query = DropVolumeQuery::new(&dest, &[Location::local(root.path())]);
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     let reported = context
         .with_thread_default(|| {
             let reported = Rc::new(std::cell::Cell::new(false));

@@ -13,7 +13,7 @@ use super::{
 use crate::{
     adapters::gio_file_for_location,
     model::{ActionInput, FileEntry, Location, SortDirection, SortKey},
-    services::{ActionCatalog, ActionHandle, ArchiveFormat, InvocationSource},
+    services::{ActionCatalog, ActionHandle, ArchiveFormat, InvocationSource, TypedPath},
 };
 
 pub(crate) use super::transfer::ConflictFocus;
@@ -30,6 +30,7 @@ pub(crate) struct NumberedActions {
     pub(crate) actions: Vec<Rc<ActionHandle>>,
     paths: Vec<PathBuf>,
     parent: Option<PathBuf>,
+    source: InvocationSource,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -62,6 +63,7 @@ pub(crate) enum CreateRefusal {
     Invalid(&'static str),
     Exists(String),
     Unstorable(String),
+    NotAFolder(String),
 }
 
 pub(crate) struct TypedEntry {
@@ -235,13 +237,46 @@ pub(crate) fn can_rename(entry: &FileEntry) -> bool {
 pub(crate) struct TypedRename {
     pub(crate) entry: FileEntry,
     pub(crate) name: String,
+    /// Set when the name moves the item out of its folder.
+    path: Option<TypedPath>,
 }
 
 impl TypedRename {
+    /// Every typed name, with whether it names a folder.
+    pub(crate) fn components(&self) -> Vec<(&str, bool)> {
+        let Some(path) = &self.path else {
+            return vec![(self.name.as_str(), false)];
+        };
+        path.folders
+            .iter()
+            .map(|folder| (folder.as_str(), true))
+            .chain([(path.name.as_str(), path.folder)])
+            .collect()
+    }
+
+    /// The folder the typed names are relative to.
+    pub(crate) fn start_folder(&self) -> Option<Location> {
+        let parent = self.entry.location.parent()?;
+        match &self.path {
+            Some(path) => path.start(&parent),
+            None => Some(parent),
+        }
+    }
+
     pub(crate) fn native_paths(&self) -> Option<(PathBuf, PathBuf)> {
         let current = self.entry.location.native_path()?;
-        let wanted = current.parent()?.join(&self.name);
+        let wanted = self.components().into_iter().fold(
+            self.start_folder()?.native_path()?.to_path_buf(),
+            |path, (name, _)| path.join(name),
+        );
         Some((current.to_path_buf(), wanted))
+    }
+
+    pub(crate) fn folders(&self) -> Vec<String> {
+        self.path
+            .as_ref()
+            .map(|path| path.folders.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -254,26 +289,107 @@ impl BrowserView {
         if !can_rename(&entry) {
             return Err(CreateRefusal::Unsupported);
         }
-        crate::services::validate_basename(text).map_err(CreateRefusal::Invalid)?;
-        if entry.display_name == text || entry.native_name == std::ffi::OsStr::new(text) {
+        let (name, path) = if let Some(parent) = entry
+            .location
+            .native_path()
+            .and_then(|_| entry.location.parent())
+        {
+            let path = TypedPath::parse(text, entry.is_directory(), false)
+                .map_err(CreateRefusal::Invalid)?
+                .within(&parent);
+            if path.is_rename_of(entry.is_directory()) {
+                (path.name, None)
+            } else {
+                (text.to_owned(), Some(path))
+            }
+        } else {
+            crate::services::validate_basename(text).map_err(CreateRefusal::Invalid)?;
+            (text.to_owned(), None)
+        };
+        if path.is_none()
+            && (entry.display_name == name || entry.native_name == std::ffi::OsStr::new(&name))
+        {
             return Ok(None);
         }
-        Ok(Some(TypedRename {
-            entry,
-            name: text.to_owned(),
-        }))
+        Ok(Some(TypedRename { entry, name, path }))
     }
 
     pub fn start_typed_rename(&self, rename: TypedRename) {
-        if let Some(request) = self.state.browser.rename(rename.entry, rename.name) {
-            self.state
-                .keyboard_refocus
-                .set(Some(KeyboardRefocus::Rename(request)));
+        let start = rename.start_folder();
+        let old_location = rename.entry.location.clone();
+        // `Some(None)`: the item moves to another folder, and its result is
+        // deliberately not followed to its new path.
+        let (started, follow) = match rename.path {
+            Some(path) => {
+                let replacement =
+                    start.and_then(|start| start.child(std::ffi::OsStr::new(path.first())));
+                let started = self.state.browser.place_entry(rename.entry, path, false);
+                self.state.typed_placement.replace(started.zip(replacement));
+                (started, Some(None))
+            }
+            None => {
+                let new_location =
+                    start.and_then(|start| start.child(std::ffi::OsStr::new(&rename.name)));
+                let started = self.state.browser.rename(rename.entry, rename.name);
+                (started, new_location.map(Some))
+            }
+        };
+        let Some(request) = started else {
+            return;
+        };
+        self.state
+            .keyboard_refocus
+            .set(Some(KeyboardRefocus::Rename(request)));
+        if let Some(new_location) = follow {
+            self.follow_typed_rename(request, old_location, new_location);
         }
+    }
+
+    /// The prompt renames or moves the focused filter result as readily as a listing
+    /// entry. Registering after the operation starts relies on providers reporting
+    /// its end asynchronously.
+    fn follow_typed_rename(
+        &self,
+        request: crate::services::OperationRequestId,
+        old_location: crate::model::Location,
+        new_location: Option<crate::model::Location>,
+    ) {
+        self.state
+            .follow_renamed_result(&old_location, new_location.as_ref());
+        self.state.typed_rename.replace(Some(TypedRenameFollow {
+            request,
+            old_location,
+            new_location,
+        }));
     }
 }
 
+/// The filter-result follow a running typed rename registered, so its own
+/// failure undoes it and no other rename's.
+pub(super) struct TypedRenameFollow {
+    request: crate::services::OperationRequestId,
+    old_location: crate::model::Location,
+    /// `None` when the typed path moves the item to another folder.
+    new_location: Option<crate::model::Location>,
+}
+
 impl super::ViewState {
+    /// Ends the typed rename `request`; one that did not complete drops its
+    /// filter-result follow.
+    pub(super) fn end_typed_rename(
+        &self,
+        request: crate::services::OperationRequestId,
+        completed: bool,
+    ) {
+        let ended = self
+            .typed_rename
+            .borrow_mut()
+            .take_if(|follow| follow.request == request);
+        if let Some(follow) = ended.filter(|_| !completed) {
+            self.forget_renamed_result(&follow.old_location, follow.new_location.as_ref());
+        }
+    }
+
     pub(super) fn finish_keyboard_refocus(
         self: &Rc<Self>,
         finished: KeyboardRefocus,
@@ -325,6 +441,26 @@ impl super::ViewState {
 }
 
 impl BrowserView {
+    pub fn change_focused_name_comparison(&self, toggle_sensitive: bool, natural: bool) {
+        if let Some(depth) = self.focused_listing_depth() {
+            let mut comparison = self
+                .state
+                .browser
+                .requested_column_preferences(depth)
+                .unwrap_or_default()
+                .name_comparison;
+            if toggle_sensitive {
+                comparison.case_sensitive = !comparison.case_sensitive;
+            } else {
+                comparison.natural = natural;
+            }
+            self.state.browser.set_name_comparison(depth, comparison);
+            self.state
+                .keyboard_refocus
+                .set(Some(KeyboardRefocus::Sort(depth)));
+        }
+    }
+
     pub fn sort_focused_pane(&self, key: SortKey, direction: SortDirection) {
         if let Some(depth) = self.focused_listing_depth() {
             self.state.browser.set_sort(depth, key, direction);
@@ -357,8 +493,13 @@ impl BrowserView {
         self.state.refocus_cursor();
     }
 
-    pub(crate) fn numbered_actions(&self) -> NumberedActions {
-        self.actions_for_targets(ActionCatalog::numbered)
+    /// The first ten actions for the targets, or with `Background` for the
+    /// keyboard-focused folder as its background menu offers them.
+    pub(crate) fn numbered_actions(&self, source: InvocationSource) -> NumberedActions {
+        match source {
+            InvocationSource::Selection => self.actions_for_targets(ActionCatalog::numbered),
+            InvocationSource::Background => self.actions_for_folder(),
+        }
     }
 
     /// The targets and the action at `index` in Settings → Actions' order,
@@ -374,16 +515,40 @@ impl BrowserView {
         Some((numbered, action))
     }
 
+    fn focused_folder(&self) -> Option<Location> {
+        self.focused_listing_depth()
+            .and_then(|depth| self.state.browser.location_at(depth))
+    }
+
+    fn actions_for_folder(&self) -> NumberedActions {
+        let folder = self.focused_folder();
+        let parent = folder
+            .as_ref()
+            .and_then(|location| location.native_path().map(PathBuf::from));
+        let actions = folder
+            .as_ref()
+            .and_then(crate::ui::actions::folder_input)
+            .map_or_else(Vec::new, |input| {
+                crate::ui::actions::shared().catalog().numbered(&[input])
+            });
+        NumberedActions {
+            targets: folder.into_iter().collect(),
+            actions,
+            paths: parent.iter().cloned().collect(),
+            parent,
+            source: InvocationSource::Background,
+        }
+    }
+
     fn actions_for_targets(
         &self,
         choose: impl FnOnce(&ActionCatalog, &[ActionInput]) -> Vec<Rc<ActionHandle>>,
     ) -> NumberedActions {
+        let parent = self
+            .focused_folder()
+            .and_then(|location| location.native_path().map(PathBuf::from));
         let entries = self.command_targets();
         let targets = entries.iter().map(|entry| entry.location.clone()).collect();
-        let parent = self
-            .focused_listing_depth()
-            .and_then(|depth| self.state.browser.location_at(depth))
-            .and_then(|location| location.native_path().map(PathBuf::from));
         let (inputs, paths) = match (
             crate::ui::actions::inputs_for_entries(&entries),
             crate::ui::actions::native_paths(&entries),
@@ -401,6 +566,7 @@ impl BrowserView {
             actions,
             paths,
             parent,
+            source: InvocationSource::Selection,
         }
     }
 
@@ -414,7 +580,7 @@ impl BrowserView {
             action,
             numbered.paths,
             parent,
-            InvocationSource::Selection,
+            numbered.source,
             Some(Rc::new(move || {
                 if let Some(browser) = browser.upgrade() {
                     browser.focus_active();

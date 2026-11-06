@@ -27,9 +27,11 @@ use crate::{
 
 mod collection;
 mod presentation;
+mod renamed;
 use collection::{
     CollectionBehavior, ResultCollection, ResultKind, build_collection, collection_entry,
 };
+pub(in crate::ui) use renamed::{RenamedResult, Settled};
 
 pub(crate) const SEARCH_RESULTS_LABEL: &str = "Search results";
 pub(super) type SearchSelectionChanged = Rc<dyn Fn(Vec<FileEntry>)>;
@@ -306,6 +308,23 @@ impl InlineSearch {
             .collect()
     }
 
+    /// Keeps the selection and focus on the result at `from` once the results list it
+    /// as `to`.
+    pub(in crate::ui) fn follow_rename(&self, from: &Path, to: Option<&Path>) {
+        let Some(state) = self.showing_results() else {
+            return;
+        };
+        if state.collection.positions.borrow().contains_key(from) {
+            state.collection.renamed.expect(from, to);
+        }
+    }
+
+    pub(in crate::ui) fn forget_rename(&self, from: &Path, to: Option<&Path>) {
+        if let Some(state) = self.state.as_ref() {
+            state.collection.renamed.clear_if(from, to);
+        }
+    }
+
     pub(in crate::ui) fn refresh_result_highlights(&self, find: Option<&str>) {
         if let Some(state) = self.state.as_ref() {
             state.collection.highlights.borrow_mut().find = find.map(str::to_owned);
@@ -402,7 +421,7 @@ impl InlineSearch {
         }
     }
 
-    pub fn prune_missing(&self) {
+    pub fn prune_missing(&self, browser: &Rc<Browser>) {
         let Some(state) = self.state.as_ref() else {
             return;
         };
@@ -416,24 +435,26 @@ impl InlineSearch {
             .map(|item| item.path)
             .collect();
         let weak = Rc::downgrade(state);
+        let browser = Rc::downgrade(browser);
         state.session.prune_missing(paths, move |gone| {
-            let Some(state) = weak.upgrade() else {
+            let (Some(state), Some(browser)) = (weak.upgrade(), browser.upgrade()) else {
                 return;
             };
-            let pruned: Vec<_> = state
-                .collection
-                .items()
-                .into_iter()
-                .filter(|item| !gone.contains(&item.path))
-                .collect();
-            if pruned.len() != state.collection.sorted.n_items() as usize {
-                if pruned.is_empty() {
-                    state.status.set_text(&crate::i18n::tr("No matching files"));
-                    state.set_empty_state(true);
-                    state.status.set_visible(true);
-                }
-                update_results(&state, pruned, state.recursive.get(), true);
+            let items = state.collection.items();
+            if !items.iter().any(|item| gone.contains(&item.path)) {
+                return;
             }
+            let show_hidden = browser.preferences().show_hidden;
+            let pruned = state.collection.renamed.prune(items, &gone, |item| {
+                (show_hidden || !item.name.starts_with('.'))
+                    && browser.allows_entry(&super::browser::search_result_entry(item))
+            });
+            if pruned.is_empty() {
+                state.status.set_text(&crate::i18n::tr("No matching files"));
+                state.set_empty_state(true);
+                state.status.set_visible(true);
+            }
+            update_results(&state, pruned, state.recursive.get(), true);
         });
     }
 
@@ -506,6 +527,11 @@ impl InlineSearch {
     pub(in crate::ui) fn awaiting_results(&self) -> bool {
         self.showing_results()
             .is_some_and(|state| state.session.awaiting_results())
+    }
+
+    pub(in crate::ui) fn has_pending_results(&self) -> bool {
+        self.showing_results()
+            .is_some_and(|state| state.session.has_pending_results())
     }
 
     pub(in crate::ui) fn results_view(&self) -> Option<gtk::Widget> {

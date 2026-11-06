@@ -13,7 +13,9 @@ use std::{
 use gio::prelude::*;
 
 use super::{network_error::NetworkError, package_manager::PackageManager};
-use crate::sandbox::{self, Cancellation, MediaPreviewBackend, ParseOperation};
+use crate::sandbox::{
+    self, Cancellation, MediaPreviewBackend, ParseOperation, browser::WorkerSupport,
+};
 
 #[cfg(test)]
 mod tests;
@@ -117,6 +119,7 @@ pub(crate) enum Finding {
     SandboxFailed,
     WorkersWork,
     LandlockUnavailable,
+    NamespacesRestricted,
     WorkersFailed,
     SampleProcessed,
     SampleFailed,
@@ -364,7 +367,7 @@ fn preview_checks(sender: &Sender<Check>) {
                 Path::new(&sandbox::runtime::current().prlimit),
                 || render_one_shot(&samples.image),
             ));
-            send(workers(sandbox::browser::workers_supported(), || {
+            send(workers(sandbox::browser::worker_support, || {
                 render_pooled(&samples.image, ParseOperation::ThumbnailImage)
             }));
             send(sample_check(CheckId::PdfThumbnails, || {
@@ -473,14 +476,29 @@ fn preview_sandbox(
     }
 }
 
-fn workers(supported: bool, render: impl FnOnce() -> Result<(), String>) -> Check {
+// The render itself may be the first to discover restricted namespaces.
+fn workers(
+    support: impl Fn() -> WorkerSupport,
+    render: impl FnOnce() -> Result<(), String>,
+) -> Check {
     let id = CheckId::Workers;
-    if !supported {
-        return Check::warning(id, Finding::LandlockUnavailable);
+    if let Some(finding) = one_shot_reason(support()) {
+        return Check::warning(id, finding);
     }
     match render() {
-        Ok(()) => Check::passed(id, Finding::WorkersWork),
+        Ok(()) => match one_shot_reason(support()) {
+            Some(finding) => Check::warning(id, finding),
+            None => Check::passed(id, Finding::WorkersWork),
+        },
         Err(error) => Check::problem(id, Finding::WorkersFailed).with_detail(error),
+    }
+}
+
+fn one_shot_reason(support: WorkerSupport) -> Option<Finding> {
+    match support {
+        WorkerSupport::Available => None,
+        WorkerSupport::LandlockUnavailable => Some(Finding::LandlockUnavailable),
+        WorkerSupport::NamespacesRestricted => Some(Finding::NamespacesRestricted),
     }
 }
 

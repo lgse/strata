@@ -10,7 +10,10 @@ use std::{
 use gtk::{glib, prelude::*};
 
 use super::{UdiskieIntegrationStatus, settings_row};
-use crate::portal_setup::{FileManagerStatus, PortalStatus, udiskie::UdiskieStatus};
+use crate::portal_setup::{
+    FileManagerStatus, PortalStatus,
+    udiskie::{UdiskieChange, UdiskieStatus},
+};
 use crate::test_support::{gtk_test, gtk_test_with_env};
 use crate::ui::desktop_integration::SETUP_RUNNING;
 use crate::ui::portal_preferences::SettingsIntegrationStatus;
@@ -145,6 +148,37 @@ fn actions_follow_status_and_hide_unknown_indicator() {
 }
 
 #[test]
+fn settings_keep_the_request_to_restart_udiskie_when_strata_could_not() {
+    gtk_test(
+        "ui::udiskie_preferences::tests::settings_keep_the_request_to_restart_udiskie_when_strata_could_not",
+        || {
+            crate::ui::prepare_portal_ui();
+            let row = gtk::Box::new(gtk::Orientation::Vertical, 2);
+            let summary = summary_on(&row);
+            let message = summary.message.upgrade().expect("integration message");
+            let warning = crate::i18n::tr(
+                "Saved the udiskie configuration. Restart udiskie or log out for it to take effect.",
+            );
+            for restart_needed in [true, false] {
+                summary.message("", false);
+                summary.finish_apply(Ok(Ok(UdiskieChange::for_test(restart_needed))));
+                wait_until(|| !summary.busy.get(), "the status reload after the change");
+                summary.show_result(Ok(UdiskieStatus {
+                    available: true,
+                    configured: true,
+                    has_installation: true,
+                }));
+                assert_eq!(message.is_visible(), restart_needed, "a later poll");
+                if restart_needed {
+                    assert_eq!(message.text(), warning);
+                    assert!(!message.has_css_class("error"));
+                }
+            }
+        },
+    );
+}
+
+#[test]
 fn shared_busy_flag_blocks_portal_and_udiskie() {
     gtk_test(
         "ui::udiskie_preferences::tests::shared_busy_flag_blocks_portal_and_udiskie",
@@ -228,6 +262,51 @@ fn settings_row_open_does_not_write_config() {
                 !state.exists(),
                 "constructing the row should not write {state:?}"
             );
+        },
+    );
+}
+
+#[test]
+fn settings_row_polls_only_while_its_settings_layer_is_shown() {
+    let bin = tempfile::tempdir().expect("isolated PATH");
+    gtk_test_with_env(
+        "ui::udiskie_preferences::tests::settings_row_polls_only_while_its_settings_layer_is_shown",
+        [("PATH", bin.path())],
+        || {
+            crate::ui::prepare_portal_ui();
+            seed_omarchy();
+            let bin = PathBuf::from(std::env::var_os("PATH").expect("isolated PATH"));
+            let row = settings_row();
+            let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            layer.add_css_class("settings-backdrop");
+            layer.append(&row);
+            layer.set_visible(false);
+            let overlay = gtk::Overlay::new();
+            overlay.add_overlay(&layer);
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+            wait_until(
+                || has_action_label(&row, "Use Strata"),
+                "construction reload to finish",
+            );
+
+            write_udiskie_stub(&bin);
+            let context = glib::MainContext::default();
+            let keep_waking =
+                glib::timeout_add_local(Duration::from_millis(10), || glib::ControlFlow::Continue);
+            let past_a_poll = Instant::now() + Duration::from_millis(2500);
+            while Instant::now() < past_a_poll {
+                context.iteration(true);
+            }
+            keep_waking.remove();
+            assert!(
+                !row.get_visible(),
+                "closed Settings should not poll for availability"
+            );
+
+            layer.set_visible(true);
+            wait_until(|| row.get_visible(), "open Settings to poll again");
+            window.destroy();
         },
     );
 }

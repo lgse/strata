@@ -237,7 +237,7 @@ module explicitly. Re-exports retain the shared entry points used by alternate m
 | Inline rename and new-entry workflows | `inline_edit.rs` |
 | Location editing, breadcrumbs and mount authentication | `location.rs` |
 | Selection-aware menus and restricted chooser menus | `context_menu.rs`, `chooser_context.rs` |
-| Clipboard/cut intent and drag data | `clipboard.rs` |
+| Clipboard/cut intent and drag data; the file-manager clipboard formats | `clipboard.rs`, `clipboard/formats.rs` |
 | Transfers, destination search and archive dialogs | `transfer.rs`, `destination.rs`, `archive.rs` |
 | Progress and Trash confirmation/cancellation | `progress.rs`, `trash.rs` |
 | Properties, permissions and item customization | `properties.rs`, `customization.rs` |
@@ -311,7 +311,10 @@ Deleting Trash streams its own batches, independently of any incomplete measurem
 and GIO URI conversion lives in `adapters/gio_location.rs`, shared by files, operations, preview and
 browser presentation. It preserves native bytes, keeps GLib's normalized percent-encoding (so names
 that are not valid UTF-8 and encoded slashes survive), and sanitizes credentials on inbound GIO
-locations.
+locations. `Location::display_name` names headings, breadcrumbs, tab labels and the window title.
+GVfs reports "/" as the leaf name of a mount root, even an SMB share's, so such a root is named
+from its URI: the percent-decoded last path segment, or the host at a server root. Only the shown
+name is decoded; the URI used for I/O is unchanged.
 
 Local archive operations live under `adapters/local_operations/archive/`:
 
@@ -425,19 +428,30 @@ navigate safely. Sorting, metadata scheduling, and cancellation remain in the br
 controller; event routing does not change those policies.
 
 A folder's own directory monitor reports its deletion, its rename, and its move alike, as
-the removal of the folder itself. A column whose parent column is its parent folder leaves
-that report to the parent column's monitor, which sees the departure as a change to one of
-its entries; any other column, including the depth-0 folder, is checked in
+the removal of the folder itself. Inotify follows the folder rather than its path, so it
+reports nothing when an ancestor is renamed or moved and goes on to report later changes
+under the old path; the local adapter therefore looks the folder up at its path, on its
+mount's lane, after each batch of changes, and reports its removal when the path holds no
+folder or one that the identity recorded by the load that asked for the monitor proves to
+be another. On mounts that renumber folders nothing proves that, so there a folder put
+back at the old path keeps receiving the moved folder's changes until the folder is opened
+again, since a reload keeps the column's monitor.
+A column whose parent column is its parent folder leaves that report to the parent
+column's monitor, which sees the departure as a change to one of its entries, and checks
+only that the first column of that chain is still where it was, since no open monitor sees
+a rename above it; any other column, including the depth-0 folder, is checked in
 `directory_changes.rs`. A folder that validates again (deleted and recreated) reloads in
-place, which renews its monitor. A missing depth-0 folder is looked up in its parent by
-the identity its load's change stamp recorded off the main thread (an `ItemIdentity`),
-compared by the mount's [identity rule](filesystem-compatibility.md#identity): a birth time
-keeps a new folder that reuses the inode from passing for a rename, and on mounts that
-renumber folders without reporting their birth times (sshfs, exFAT) nothing proves a
-folder, so it counts as departed. Found there
-(`find_by_identity`), the folder was renamed in place: the search indexes are rebased and
-the open columns relocate (`ColumnsRelocated`), as for an in-app rename. Not found, with a
-parent that cannot be listed, or before its identity is known, it departed: the nearest
+place, which renews its monitor. A missing depth-0 folder is looked up by the identity its
+load's change stamp recorded off the main thread (an `ItemIdentity`), compared by the
+mount's [identity rule](filesystem-compatibility.md#identity): a birth time keeps a new
+folder that reuses the inode from passing for a rename, and on mounts that renumber folders
+without reporting their birth times (sshfs, exFAT) nothing proves a folder, so it counts as
+departed. The lookup (`find_by_identity`) searches the nearest existing ancestor: its
+folders when the parent remains, else the same path below each of its folders, which finds
+a folder whose ancestor was renamed in place. Found there, the folder was renamed in place,
+itself or with that ancestor: the search indexes are rebased and the open columns relocate
+(`ColumnsRelocated`), as for an in-app rename. Not found, with an ancestor that cannot be
+listed, or before its identity is known, it departed: the nearest
 existing ancestor that the source allows is restored without a history entry, or the
 folder shows its read error when there is none. Backends without identities treat every
 rename as a departure. A folder or ancestor that cannot be reached (unmounted, offline, or

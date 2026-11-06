@@ -11,6 +11,7 @@ use std::{
 use gtk::{glib, prelude::*};
 use tempfile::tempdir;
 
+use crate::test_support::PrivateContext;
 use crate::{adapters::LocalFileSource, app::Browser, model::Location};
 
 use super::{
@@ -26,7 +27,7 @@ fn suggest_completions(
 ) -> Vec<CompletionCandidate> {
     match plan_completions(input, current_dir, home, show_hidden) {
         Plan::Ready(candidates) => candidates,
-        Plan::List(listing) => glib::MainContext::new().block_on(listing.candidates()),
+        Plan::List(listing) => PrivateContext::new().block_on(listing.candidates()),
     }
 }
 

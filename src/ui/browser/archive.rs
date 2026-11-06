@@ -65,7 +65,7 @@ async fn archive_name_taken(destination: &Location, archive_name: &str) -> bool 
         probes::presence(&[archive], &gio::Cancellable::new())
             .await
             .as_slice(),
-        [Presence::Present]
+        [Presence::Present { .. }]
     )
 }
 

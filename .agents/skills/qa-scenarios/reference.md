@@ -108,7 +108,7 @@ the main context drains. Input is real XTEST.
 | Step | Meaning |
 | --- | --- |
 | `{"key":"ctrl+x","repeat":2}` | Taps a chord (`ctrl`, `shift`, `alt`, `altgr` + a GDK key name such as `Return`, `F2`, `period`, `Page_Down`); the key comes up 20 ms after it went down. |
-| `{"type":"nested-notes"}` | One key tap per character. |
+| `{"type":"nested-notes"}` | One key tap per character. A character the layout lacks (`é`, `名`) is typed on an empty keycode lent that keysym for the tap and then restored, as xdotool does; X11 only. |
 | `{"key_down":"ctrl"}`, `{"key_up":"Escape"}` | One modifier or key down or up, no tap, no pause. |
 | `{"click":TARGET,"button":1,"count":1,"mods":["shift"],"at":[4,"50%"]}` | Moves to the target and clicks. `button` 3 is a right-click, `count` 2 a double-click. `"release_mods_first":true` lifts the modifiers between press and release. `"left_bound":"browser"` keeps the aim right of a remembered box's left edge. |
 | `{"select":{"entry":"readme.md","dir":"$root"}}` | Clicks the entry, and again after 4 s if it is still not selected. |
@@ -129,6 +129,7 @@ the main context drains. Input is real XTEST.
 | `{"reveal_control":{"role":"spin button","name":"Text size in pixels"}}` | Scrolls a settings page's own pane until the control is wholly shown, then settles it. |
 | `{"adopt":"PNG conversion test","timeout_ms":20000,"message":"..."}` | Portal runs: waits for a showing window with this title and drives it from then on (snapshot, targets, input log). |
 | `{"clipboard_set":"text"}`, `{"clipboard":"999","message":"..."}` | Owns the clipboard with the text from a second display connection; reads the clipboard and fails unless it matches, exactly or as `{"starts_with":...,"contains":...,"longer_than":5}`. |
+| `{"clipboard_set":{"offers":[{"mime":"x-special/gnome-copied-files","text":"cut\nfile://$fixture_quoted/a.txt"}]}}`, `{"clipboard":"1","mime":"application/x-kde-cutselection"}` | Owns the clipboard with raw offers under their MIME types, the way a file manager fills it; reads one MIME type's bytes as text instead of the clipboard text. |
 | `{"sleep":600}` | Waits; the main loop keeps running. Never use it to wait for state. |
 
 A click holds the button 100 ms; a double click's two clicks are 90 ms apart,
@@ -196,6 +197,7 @@ These run in the runner (`drive` in `tests/qa/drive.rs`), between process comman
 | `{"portal_response":{"done":true,"status":0,"names":[...],"paths":[...],"keep":"output","png":{...},"discard":true},"timeout_ms":20000,"message":"..."}` | Waits for the answer and checks its status, chosen names (a set) or paths (in order); `keep` notes the first path, `png` checks it as the `fs` `png` check does, `discard` removes its download directory. |
 | `{"http":"<base64>","as":"url"}`, `{"http_requests":1,"message":"..."}` | Serves the bytes as `image/png` to every GET on 127.0.0.1 until the final state is read, its URL noted; asserts how many requests came. |
 | `{"foreign":{"paths":["$fixture/a"],"move_only":true},"as":"foreign","message":"..."}` | Starts a separate GTK drag source offering the paths (needs `session_bus`) and keeps its button's box as a `kept` target. |
+| `{"foreign":{"offers":[{"mime":"text/plain;charset=utf-8","path":"$environment/text"}]},"as":"foreign"}` | The drag source also, or instead, offers each file's bytes as they are under its MIME type, as a browser offers images, text, and addresses. |
 | `{"foreign_label":"Foreign drag finished","message":"..."}`, `{"foreign_stop":true}` | Waits for the drag source to show a label; stops it. |
 | `{"zipcrypto":{"path":"password.zip","password":"zipsecret","member":"some.txt","contents":"...","deflated":true},"as":"collision"}` | Writes a ZipCrypto archive with a random header and notes the first numeric password below 4096 that also passes the header check. `contents` may be `{"repeat":"text","count":64}`. |
 
@@ -270,7 +272,13 @@ origin (which covers popovers), looked up for up to 15 s, and the pointer aims
 only once its box comes through a painted frame unchanged: a row a listing has
 just added or replaced can report a box before its first allocation lands. A
 lookup that breaks, such as an unrealized surface, is an error, never
-`absent`.
+`absent`. When a scroller clips the aimed point (a row in a Columns pane the
+strip scrolled away, a crumb past either end of the trail, a row below a list's
+viewport), `click`, `move`, and `select` first turn the wheel over that
+scroller, with Shift for a horizontal one, until the point shows; an aim kept
+inside a `left_bound` box is not moved. That wheel is real input, so the app's
+scroll handlers run first: a pending new-entry editor is cancelled before the
+click lands.
 
 | Target | Finds |
 | --- | --- |

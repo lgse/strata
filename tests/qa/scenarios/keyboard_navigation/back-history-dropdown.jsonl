@@ -1,0 +1,42 @@
+{"scenario":"back-history-dropdown","modes":["icons","list"]}
+{"wait":{"entries":{"contains":["documents","pictures"]},"dir":"$root"},"message":"the fixture listed"}
+{"expect":{"absent":{"role":"button","name_matches":"^Back","states":["sensitive"]}},"message":"Back is disabled before any navigation"}
+{"click":{"entry":"documents"},"count":2}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"key":"alt+Up"}
+{"wait":{"directory":"$root"},"message":"the browser to be working in '$root'"}
+{"settle":{"pane":"$root"}}
+{"click":{"entry":"pictures"},"count":2}
+{"wait":{"directory":"pictures"},"message":"the browser to be working in 'pictures'"}
+{"settle":{"pane":"pictures"}}
+{"drag":{"from":{"role":"button","name_matches":"^Back"},"to":{"role":"button","name_matches":"^Back"}},"release":false}
+{"wait":{"present":{"role":"menu item","name":"documents"}},"message":"holding Back to list the back history"}
+{"drag":{"from":{"role":"button","name_matches":"^Back"},"to":{"role":"button","name_matches":"^Back"}},"release":true}
+{"expect":{"panes":["pictures"]},"message":"releasing a held Back must not go back"}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"the history menu to close"}
+{"keys_until":{"focused_widget_is":{"role":"button","name_matches":"^Back"}},"keys":["shift+Tab"],"times":20,"check_first":true,"exhausted":"Shift+Tab never focused Back"}
+{"key":"shift+F10"}
+{"wait":{"present":{"role":"menu item","name":"documents","description":"$fixture/documents"}},"message":"Shift+F10 on Back to list the back history, not the pane's context menu"}
+{"expect":{"panes":["pictures"]},"message":"Shift+F10 on Back must not go back"}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"the history menu to close"}
+{"keys_until":{"focused_widget_is":{"role":"button","name_matches":"^Back"}},"keys":["shift+Tab"],"times":20,"check_first":true,"exhausted":"Shift+Tab never returned focus to Back"}
+{"key":"Menu"}
+{"wait":{"present":{"role":"menu item","name":"documents","description":"$fixture/documents"}},"message":"Menu on Back to list the back history, not the pane's context menu"}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"the history menu to close"}
+{"click":{"role":"button","name_matches":"^Back"},"button":3}
+{"wait":{"present":{"role":"menu item","name":"documents"}},"message":"right-clicking Back to list the back history"}
+{"expect":{"panes":["pictures"]},"message":"a right-click on Back must not go back"}
+{"expect":{"present":{"role":"menu item","name":"documents","description":"$fixture/documents"}},"message":"the entry shows the folder's path"}
+{"settle":{"role":"menu item","name":"documents"}}
+{"click":{"role":"menu item","name":"documents"}}
+{"wait":{"directory":"documents"},"message":"choosing 'documents' from the history to jump back two steps"}
+{"settle":{"pane":"documents"}}
+{"key":"alt+Right"}
+{"wait":{"directory":"$root"},"message":"forward to replay the skipped visit to '$root'"}
+{"settle":{"pane":"$root"}}
+{"key":"alt+Right"}
+{"wait":{"directory":"pictures"},"message":"forward to return to 'pictures'"}

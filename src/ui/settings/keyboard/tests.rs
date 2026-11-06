@@ -349,7 +349,8 @@ fn search_finds_rows_by_action_and_key() {
                 Rc::new(|_| {}),
                 super::super::install_guard(),
                 Rc::new(|_| {}),
-            );
+            )
+            .widget;
             layer.set_visible(true);
             let layer: gtk::Widget = layer.upcast();
             let entry = descendants(&layer)
@@ -479,11 +480,19 @@ fn tables_list_only_what_their_map_can_run() {
             assert!(!has(Map::Default, YANK), "a 10xer verb");
             assert!(!has(Map::Default, GO_HOME), "a chord step");
             assert!(
+                !has(Map::Default, ACTIONS_FOLDER),
+                "an Action step only the 10xer panel runs"
+            );
+            assert!(
                 has(Map::Default, SORT_BY_NAME) && has(Map::Default, SEARCH_SUBFOLDERS),
                 "the direct stage runs them"
             );
             assert!(!has(Map::Tenxer, FILTER_SLASH), "a default-map key");
-            assert!(has(Map::Tenxer, FIND) && has(Map::Tenxer, GO_HOME));
+            assert!(
+                has(Map::Tenxer, FIND)
+                    && has(Map::Tenxer, GO_HOME)
+                    && has(Map::Tenxer, ACTIONS_FOLDER)
+            );
             assert!(has(Map::Tenxer, DUPLICATE), "the direct stage runs it");
         },
     );

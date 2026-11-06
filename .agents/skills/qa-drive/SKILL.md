@@ -60,7 +60,8 @@ and wait for it.
   `archive/`, `documents/{notes.txt,report.md,spreadsheet.csv}`,
   `pictures/{diagram.txt,photo.txt}`, `readme.md`, `todo.txt`, `.hidden.txt`.
 - `--pref KEY=VALUE` overrides a seeded preference; the value is JSON, or
-  else a string (`--pref text_size=large`, `--pref list_file_clicks=1`).
+  else a string (`--pref text_size=large`, `--pref list_file_clicks=1`,
+  `--pref 'keymap={"default":{"rename":["<Control>e"]}}'`).
 - The fixture directory is `/tmp/strata-qa-fixture-XXXXXX`. Its name is the
   root pane's name and the first `directory`. Get it with
   `./scripts/qa-drive.sh exec pwd`.
@@ -125,7 +126,7 @@ pane while it was open, and Escape gave focus back to `plan.txt` in `notes`.
 | --- | --- |
 | `send JSON...` | Sends each command in order and prints one reply line each. Exit 0 when a reply came back, whatever `ok` says; 1 when the app exited (with its log tail) or no reply came in 90 s (or the command's `timeout_ms` + 30 s), in which case that reply is skipped if it comes later; 2 for text that is not JSON. |
 | `screenshot NAME.png` | Captures the whole Xvfb screen to `target/qa-drive/NAME.png`. |
-| `restart [--pref K=V]... [--env N=V]...` | Closes the app's stdin, waits up to 10 s for it to quit, then signals its group; rewrites those keys in its saved `settings.toml`; relaunches on the same fixture and HOME and prints the launch reply. |
+| `restart [--pref K=V]... [--env N=V]...` | Closes the app's stdin, waits up to 10 s for it to quit, then signals its group; replaces those keys whole (arrays and tables too) in its saved `settings.toml`; relaunches on the same fixture and HOME and prints the launch reply. A value TOML cannot hold is refused before the app quits. |
 | `exec 'SHELL'` | Runs in the fixture directory with `$FIXTURE`, the session's `HOME`, `XDG_*_HOME`, `XDG_RUNTIME_DIR`, `DISPLAY`, and `DBUS_SESSION_BUS_ADDRESS`, so `gio` and similar tools see the session. |
 | `log` | The application's log without colour codes. |
 | `stop` | Quits the app and removes the container. Safe to repeat. |
@@ -179,7 +180,7 @@ Input:
 | `{"wheel":TARGET,"clicks":3,"direction":"down"}` | Scroll. |
 | `{"drag":{"from":TARGET,"to":TARGET}}` | Drag and drop; `"mods":["ctrl"]`, `"release":false`. |
 | `{"key":"ctrl+period"}`, `{"key":"Down","repeat":2}` | Tap a chord. Keys are X keysym names (`Return`, `Escape`, `F2`, `Delete`, `Tab`, `period`) or one character, at US key positions; modifiers are `ctrl`, `shift`, `alt`, `altgr`. |
-| `{"type":"notes"}` | Type text, one key per character. |
+| `{"type":"notes"}` | Type text, one key per character; characters the layout lacks (`é`, `名`) work too. |
 | `{"key_down":"ctrl"}`, `{"key_up":"ctrl"}`, `{"button_down":1}`, `{"button_up":1}` | Hold and release. |
 | `{"activate":TARGET}` | The widget's default action, without the pointer. |
 | `{"resize":{"width":420,"height":300}}` | Resize the main window. |
@@ -254,6 +255,8 @@ are what `src/ui/accessibility.rs` sets, as a screen reader would hear them.
   selection takes.
 - Aim with targets, never screen coordinates. `"at"` offsets from a target's
   top-left corner (`[4,"50%"]`, `["end-6","50%"]`).
+  A target a scroller clips (a scrolled-away Columns pane or crumb) is
+  wheeled into view before the click.
 - Use `activate` when you need the action without pointer side effects; use
   `click` when the pointer path is what you changed.
 

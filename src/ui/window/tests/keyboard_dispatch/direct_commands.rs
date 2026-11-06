@@ -18,7 +18,7 @@ struct Seen {
     modal: bool,
     selected: Vec<usize>,
     focused: String,
-    sort: (SortKey, SortDirection),
+    sort: crate::model::SortOptions,
     clipboard: Option<String>,
     names: Vec<String>,
     children: usize,
@@ -153,6 +153,42 @@ const DEFAULT_ROWS: &[Row] = &[
     row(
         SORT_BY_TYPE,
         &[SORT, Binding::plain(Key::e)],
+        "a.txt",
+        Effect::Sort,
+    ),
+    row(
+        SORT_BY_EXTENSION,
+        &[SORT, Binding::plain(Key::x)],
+        "a.txt",
+        Effect::Sort,
+    ),
+    row(
+        SORT_BY_CREATED,
+        &[SORT, Binding::plain(Key::b)],
+        "a.txt",
+        Effect::Sort,
+    ),
+    row(
+        SORT_BY_UNSORTED,
+        &[SORT, Binding::plain(Key::u)],
+        "a.txt",
+        Effect::Sort,
+    ),
+    row(
+        SORT_BY_NATURAL,
+        &[SORT, Binding::plain(Key::n)],
+        "a.txt",
+        Effect::Sort,
+    ),
+    row(
+        SORT_BY_ALPHABETICAL,
+        &[SORT, Binding::plain(Key::l)],
+        "a.txt",
+        Effect::Sort,
+    ),
+    row(
+        SORT_BY_CASE_SENSITIVE,
+        &[SORT, Binding::plain(Key::c)],
         "a.txt",
         Effect::Sort,
     ),
@@ -292,7 +328,10 @@ impl Direct {
             modal: modal_visible(&fixture.overlay),
             selected: fixture.selected(),
             focused: focused_name(&browser),
-            sort: browser.column_preferences(0).expect("column").sort(),
+            sort: browser
+                .column_preferences(0)
+                .expect("column")
+                .sort_options(),
             clipboard: gtk::gdk::Display::default()
                 .expect("display")
                 .clipboard()
@@ -337,6 +376,14 @@ impl Direct {
             _ => (SortKey::Name, SortDirection::Ascending),
         };
         browser.set_sort(0, sort.0, sort.1);
+        pump(50);
+        browser.set_name_comparison(
+            0,
+            crate::model::NameComparison {
+                natural: row.command != SORT_BY_NATURAL,
+                case_sensitive: false,
+            },
+        );
         gtk::gdk::Display::default()
             .expect("display")
             .clipboard()

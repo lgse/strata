@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::*;
+use crate::test_support::PrivateContext;
 use std::cell::RefCell;
 
 #[test]
@@ -16,7 +17,7 @@ fn progress_is_cumulative_across_nested_branches_and_reported_in_batches() {
     std::os::unix::fs::symlink(root.path(), root.path().join("loop")).expect("symlink");
     let updates = Rc::new(RefCell::new(Vec::new()));
     let observed = updates.clone();
-    let summary = glib::MainContext::new()
+    let summary = PrivateContext::new()
         .block_on(summarize_directory_with_progress(
             &gio::File::for_path(root.path()),
             move |total| observed.borrow_mut().push(total),
@@ -62,7 +63,7 @@ fn zero_byte_entries_still_report_count_progress() {
         }
         let updates = Rc::new(RefCell::new(Vec::new()));
         let observed = updates.clone();
-        let summary = glib::MainContext::new()
+        let summary = PrivateContext::new()
             .block_on(summarize_directory_with_progress(
                 &gio::File::for_path(root.path()),
                 move |total| observed.borrow_mut().push(total),
@@ -106,7 +107,7 @@ fn truncated_measurements_finish_at_the_last_reported_size() {
     }
     let last_size = Rc::new(Cell::new(DirectorySummary::default()));
     let observed = last_size.clone();
-    let summary = glib::MainContext::new()
+    let summary = PrivateContext::new()
         .block_on(summarize_directory_with_budget(
             &gio::File::for_path(root.path()),
             0,
@@ -133,7 +134,7 @@ fn an_enumeration_failure_preserves_bytes_already_reported() {
     for index in 0..200 {
         std::fs::write(root.path().join(index.to_string()), b"abc").expect("file");
     }
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     let file = gio::File::for_path(root.path());
     let enumerator = context
         .block_on(enumerate_children(&file))
@@ -179,7 +180,7 @@ fn aborting_measurement_stops_progress_callbacks() {
     for index in 0..total_files {
         std::fs::write(root.path().join(index.to_string()), b"abc").expect("file");
     }
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     context
         .with_thread_default(|| {
             let updates = Rc::new(RefCell::new(Vec::new()));

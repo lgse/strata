@@ -11,6 +11,7 @@ use rustix::io::Errno;
 use super::fs_quirks::{Call, NameOpens, Op, Racer, Support, TmpfileLink, evict};
 use super::*;
 use crate::adapters::volume::{XattrNamespace, mount_capabilities};
+use crate::test_support::PrivateContext;
 
 struct Mounts {
     _root: tempfile::TempDir,
@@ -402,7 +403,7 @@ fn a_mount_found_unable_to_link_tmpfiles_stays_so_while_another_copy_opens_one()
     let alongside = |name: &str| -> Racer {
         let (source, target) = (source.clone(), folder.path().join(name));
         Box::new(move || {
-            glib::MainContext::new()
+            PrivateContext::new()
                 .block_on(copy_new_recursively(
                     gio::File::for_path(&source),
                     gio::File::for_path(&target),

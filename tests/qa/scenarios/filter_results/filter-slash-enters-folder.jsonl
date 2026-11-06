@@ -1,0 +1,17 @@
+{"scenario":"filter-slash-enters-folder","modes":["columns","icons","list"],"layout":"us","tree":{"Documents":{"Projects":{"plan.txt":"plan\n"},"notes.txt":"notes\n"},"archive":{"old.txt":"old\n"},"todo.txt":"todo\n"},"variants":[{"id":"folder","prefs":{"filter_include_subfolders":false}},{"id":"subfolders","prefs":{"filter_include_subfolders":true}}]}
+{"wait":{"entries":{"contains":["Documents","archive","todo.txt"]},"dir":"$root"},"message":"the fixture listed"}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"the filter field to take focus"}
+{"type":"doc"}
+{"wait":{"matches":{"contains":["Documents"]}},"message":"'doc' to match the Documents folder"}
+{"key":"ctrl+a"}
+{"wait":{"field":{"text":"doc","selection":[0,3],"focused":true}},"message":"Ctrl+A to select the query that / replaces"}
+{"key":"slash"}
+{"wait":{"directory":"Documents"},"message":"/ to enter the first match, Documents"}
+{"wait":{"field":{"text":"","focused":true}},"message":"the filter to stay focused with an empty query in Documents"}
+{"layout":"de"}
+{"type":"proj"}
+{"wait":{"matches":{"contains":["Projects"]}},"message":"'proj' to match the Projects folder"}
+{"key":"shift+7"}
+{"wait":{"directory":"Projects"},"message":"Shift+7, / on the German layout, to enter Projects"}
+{"wait":{"field":{"text":"","focused":true}},"message":"the filter to stay focused with an empty query in Projects"}

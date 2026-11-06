@@ -1,0 +1,30 @@
+{"scenario":"dismissed-delete-confirmation-keeps-result-focus","modes":["columns","icons","list"],"layout":"us","mutation":"filter-result-dialog-focus","known_bug":null,"tree":{"a1.txt":"a1\n","a2.txt":"a2\n","a3.txt":"a3\n","a4.txt":"a4\n","b.md":"b\n"}}
+{"wait":{"entries":["a1.txt","a2.txt","a3.txt","a4.txt","b.md"],"dir":"$root"},"message":"the five fixture files listed"}
+{"select":{"entry":"a1.txt","dir":"$root"}}
+{"wait":{"focused":"a1.txt"},"message":"keyboard focus to reach 'a1.txt'"}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"Ctrl+F to focus the filter field"}
+{"type":"a"}
+{"wait":{"matches":{"set":["a1.txt","a2.txt","a3.txt","a4.txt"]}},"message":"the filter 'a' to hide 'b.md'"}
+{"wait":{"present":{"result":"a3.txt"}},"message":"the 'a3.txt' result"}
+{"click":{"result":"a3.txt"}}
+{"wait":{"all":[{"state":{"target":{"result":"a3.txt"},"focused":true,"selected":true}},{"state":{"target":{"result":"a1.txt"},"selected":false}}]},"message":"a click to focus and select only the result 'a3.txt'"}
+{"key":"shift+Delete"}
+{"wait":{"dialog":"Permanently delete 1 item?"},"message":"Shift+Delete to ask before deleting 'a3.txt'"}
+{"key":"Escape"}
+{"wait":{"dialog":null},"message":"Escape to dismiss the delete confirmation"}
+{"wait":{"state":{"target":{"result":"a3.txt"},"focused":true,"selected":true}},"message":"focus to return to the result 'a3.txt' after Escape dismissed the confirmation"}
+{"note":"matches","from":"a3.txt","as":"from_a3"}
+{"slice":"from_a3","pick":1,"as":"next"}
+{"key":"Down","modes":["columns","list"]}
+{"key":"Right","modes":["icons"]}
+{"wait":{"all":[{"state":{"target":{"result":"$next"},"focused":true,"selected":true}},{"state":{"target":{"result":"a3.txt"},"selected":false}}]},"message":"the next key to move focus and selection from 'a3.txt' to the next result '$next'"}
+{"key":"Up","modes":["columns","list"]}
+{"key":"Left","modes":["icons"]}
+{"wait":{"state":{"target":{"result":"a3.txt"},"focused":true,"selected":true}},"message":"the previous key to move focus and selection back to 'a3.txt'"}
+{"key":"shift+Delete"}
+{"wait":{"dialog":"Permanently delete 1 item?"},"message":"Shift+Delete to ask again before deleting 'a3.txt'"}
+{"click":{"window":true},"at":[5,100]}
+{"wait":{"dialog":null},"message":"a backdrop click to dismiss the delete confirmation"}
+{"wait":{"state":{"target":{"result":"a3.txt"},"focused":true,"selected":true}},"message":"focus to return to the result 'a3.txt' after a backdrop click dismissed the confirmation"}
+{"fs":{"path":"a3.txt","text":"a3\n"},"timeout_ms":0,"message":"dismissing the confirmation must keep 'a3.txt'"}

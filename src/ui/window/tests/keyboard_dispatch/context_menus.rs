@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::test_support::widgets::BackHistoryKey;
 
 /// Hyper, Meta and Caps Lock are not shortcut modifiers.
 const OPENS: [(Key, ModifierType); 8] = [
@@ -99,6 +100,35 @@ fn sidebar_context_shortcuts_open_place_trash_and_device_menus() {
                         fixture.press(key, modifiers);
                         assert!(!popover.is_visible(), "{modifiers:?}+{key:?}");
                     }
+                }
+            }
+        },
+    );
+}
+
+#[test]
+fn context_menu_keys_on_back_list_the_back_history() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::context_menus::context_menu_keys_on_back_list_the_back_history",
+        || {
+            let fixture = KeyboardFixture::new();
+            let browser = fixture.view.browser();
+            let folder = Location::local(fixture._directory.path().join("alpha"));
+            std::fs::create_dir(fixture._directory.path().join("alpha")).expect("folder");
+            browser.navigate(folder.clone());
+            wait_until(|| browser.active_location().as_ref() == Some(&folder));
+            wait_loaded(&browser, 0);
+            for mode in [BrowserMode::Icons, BrowserMode::List] {
+                fixture.view.set_view_mode(mode);
+                for (key, modifiers) in &OPENS[..2] {
+                    BackHistoryKey {
+                        window: fixture.window.upcast_ref(),
+                        browser: &browser,
+                        case: &format!("{mode:?} {modifiers:?}+{key:?}"),
+                        key: *key,
+                        modifiers: *modifiers,
+                    }
+                    .assert_lists_history(|key, modifiers| fixture.press(key, modifiers));
                 }
             }
         },

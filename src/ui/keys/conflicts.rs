@@ -174,13 +174,9 @@ pub(crate) fn check(
     if no_path(command, map) {
         return vec![Finding::new(Kind::NoPath, candidate)];
     }
-    let shipped = command.defaults(map).contains(&candidate);
-    let mut findings = Vec::new();
-    let mut add = |kind| {
-        let finding = Finding::new(kind, candidate);
-        if !findings.contains(&finding) {
-            findings.push(finding);
-        }
+    let mut findings = Findings {
+        binding: candidate,
+        found: Vec::new(),
     };
     let mine = Side {
         command,
@@ -189,53 +185,93 @@ pub(crate) fn check(
         map,
     };
     if never_matches(mine) {
-        add(Kind::NeverMatches);
+        findings.add(Kind::NeverMatches);
     }
-    compare_with_table(keymap, mine, &mut add);
+    compare_with_table(keymap, mine, &mut findings);
     if let Some(fixed) = fixed_key(mine) {
-        add(Kind::FixedKey(fixed));
+        findings.add(Kind::FixedKey(fixed));
     }
-    let scope = match mine.place {
-        Place::Top(scope) => scope,
+    match mine.place {
+        Place::Top(scope) => top_level_findings(mine, scope, policy, &mut findings),
         Place::Step(Group::Sort) => {
             if let Some(kind) = sort_step(candidate) {
-                add(kind);
+                findings.add(kind);
             }
-            return findings;
         }
-        Place::Step(_) | Place::Inert => return findings,
-    };
-    let in_list_views = matches!(scope, Scope::Window | Scope::Chooser);
-    let in_text_fields = acts_in_text_fields(command, map);
-    // Focused fields keep plain printable keys from structural aliases and
-    // from keys a user adds; shipped keys of other commands still act there.
-    if candidate.is_typed() && in_text_fields && (mine.is_alias() || !shipped) {
-        add(Kind::TextFieldLimit(FieldLimit::Typing));
-    } else if mine.is_alias() && TEXT_FIELD_KEYS.iter().any(|key| overlaps(*key, candidate)) {
-        add(Kind::TextFieldLimit(FieldLimit::FieldKey));
+        Place::Step(_) | Place::Inert => {}
     }
-    // Added plain printable keys yield to type-to-search on every surface.
-    if map == Map::Default
-        && policy.type_to_search
-        && candidate.is_typed()
-        && (!shipped
-            || (scope == Scope::Window && command != FILTER_SLASH && candidate.key() != Key::space))
-    {
-        add(Kind::TypeToSearchShadowed);
+    findings.found
+}
+
+/// One candidate's findings, each kind once.
+struct Findings {
+    binding: Binding,
+    found: Vec<Finding>,
+}
+
+impl Findings {
+    fn add(&mut self, kind: Kind) {
+        let finding = Finding::new(kind, self.binding);
+        if !self.found.contains(&finding) {
+            self.found.push(finding);
+        }
+    }
+}
+
+/// The findings only a top-level command's surface gives.
+fn top_level_findings(mine: Side, scope: Scope, policy: Policy, findings: &mut Findings) {
+    let candidate = mine.binding;
+    let shipped = mine.command.defaults(mine.map).contains(&candidate);
+    let in_list_views = matches!(scope, Scope::Window | Scope::Chooser);
+    let in_text_fields = acts_in_text_fields(mine.command, mine.map);
+    if let Some(limit) = text_field_limit(mine, in_text_fields, shipped) {
+        findings.add(Kind::TextFieldLimit(limit));
+    }
+    if type_to_search_shadows(mine, scope, policy, shipped) {
+        findings.add(Kind::TypeToSearchShadowed);
     }
     if in_list_views && GTK_OWNED.iter().any(|key| overlaps(*key, candidate)) {
-        add(Kind::ReservedByGtk);
+        findings.add(Kind::ReservedByGtk);
     }
-    if in_text_fields
-        && (IM_SWITCH_KEYS.iter().any(|key| overlaps(*key, candidate))
-            || (shipped && starts_a_syllable(candidate)))
-    {
-        add(Kind::InputMethodKey);
+    if in_text_fields && needs_input_method(candidate, shipped) {
+        findings.add(Kind::InputMethodKey);
     }
     if in_list_views && is_mnemonic(candidate) {
-        add(Kind::ChooserMnemonic);
+        findings.add(Kind::ChooserMnemonic);
     }
-    findings
+}
+
+/// Focused fields keep plain printable keys from structural aliases and from
+/// keys a user adds; shipped keys of other commands still act there.
+fn text_field_limit(mine: Side, in_text_fields: bool, shipped: bool) -> Option<FieldLimit> {
+    let typed_in_fields = mine.binding.is_typed() && in_text_fields;
+    let added = mine.is_alias() || !shipped;
+    if typed_in_fields && added {
+        Some(FieldLimit::Typing)
+    } else if mine.is_alias()
+        && TEXT_FIELD_KEYS
+            .iter()
+            .any(|key| overlaps(*key, mine.binding))
+    {
+        Some(FieldLimit::FieldKey)
+    } else {
+        None
+    }
+}
+
+/// Added plain printable keys yield to type-to-search on every surface.
+fn type_to_search_shadows(mine: Side, scope: Scope, policy: Policy, shipped: bool) -> bool {
+    let searching = mine.map == Map::Default && policy.type_to_search;
+    if !searching || !mine.binding.is_typed() {
+        return false;
+    }
+    let listing_key = mine.command != FILTER_SLASH && mine.binding.key() != Key::space;
+    !shipped || (scope == Scope::Window && listing_key)
+}
+
+fn needs_input_method(candidate: Binding, shipped: bool) -> bool {
+    let switches = IM_SWITCH_KEYS.iter().any(|key| overlaps(*key, candidate));
+    switches || (shipped && starts_a_syllable(candidate))
 }
 
 /// Every finding for every binding of `map`'s table.
@@ -693,31 +729,39 @@ impl Side {
 
     /// The binding with the modifiers some surface also accepts held.
     fn widened(self) -> Binding {
-        let tolerated = if self.command.canonical().is_some() {
-            // `ESCAPE_ANY` reads physical Escape with any modifiers.
-            if (self.is_alias() && !self.binding.is_typed())
-                || (self.command == ESCAPE && self.binding.key() == Key::Escape)
-            {
-                SHORTCUT_MODIFIERS
-            } else {
-                Modifiers::empty()
-            }
+        let tolerated = if self.command.canonical().is_none() {
+            self.tolerated_by_surfaces()
+        } else if self.tolerates_any_modifiers() {
+            SHORTCUT_MODIFIERS
         } else {
-            TOLERATED
-                .iter()
-                .filter(|(command, _, tables)| *command == self.command && tables.include(self.map))
-                .fold(Modifiers::empty(), |held, (_, modifiers, _)| {
-                    held.union(*modifiers)
-                })
+            Modifiers::empty()
         };
         self.binding
             .ignoring(tolerated.difference(self.binding.modifiers()))
+    }
+
+    /// Whether a structural command's matcher reads this binding with any
+    /// modifiers held.
+    fn tolerates_any_modifiers(self) -> bool {
+        let untyped_alias = self.is_alias() && !self.binding.is_typed();
+        // `ESCAPE_ANY` reads physical Escape with any modifiers.
+        let physical_escape = self.command == ESCAPE && self.binding.key() == Key::Escape;
+        untyped_alias || physical_escape
+    }
+
+    fn tolerated_by_surfaces(self) -> Modifiers {
+        TOLERATED
+            .iter()
+            .filter(|(command, _, tables)| *command == self.command && tables.include(self.map))
+            .fold(Modifiers::empty(), |held, (_, modifiers, _)| {
+                held.union(*modifiers)
+            })
     }
 }
 
 /// Entries that cannot fire in the map, such as a saved key for a command the
 /// map has no path to, hold nothing.
-fn compare_with_table(keymap: &Keymap, mine: Side, add: &mut impl FnMut(Kind)) {
+fn compare_with_table(keymap: &Keymap, mine: Side, findings: &mut Findings) {
     for other in registry().filter(|other| *other != mine.command && !no_path(*other, mine.map)) {
         let place = Place::of(other, mine.map);
         for binding in entry(keymap, mine.map, other) {
@@ -731,7 +775,7 @@ fn compare_with_table(keymap: &Keymap, mine: Side, add: &mut impl FnMut(Kind)) {
                 continue;
             }
             if let Some(kind) = conflict(mine, theirs) {
-                add(kind);
+                findings.add(kind);
             }
         }
     }
@@ -741,8 +785,10 @@ fn compare_with_table(keymap: &Keymap, mine: Side, add: &mut impl FnMut(Kind)) {
 /// matches `escape`.
 fn entry(keymap: &Keymap, map: Map, command: Command) -> Vec<Binding> {
     let mut bindings = keymap.bindings(map, command).to_vec();
-    if command == alias::FALLBACK
-        && let Some(canonical) = command.canonical()
+    if command != alias::FALLBACK {
+        return bindings;
+    }
+    if let Some(canonical) = command.canonical()
         && !bindings.contains(&canonical)
     {
         bindings.push(canonical);
@@ -752,51 +798,86 @@ fn entry(keymap: &Keymap, map: Map, command: Command) -> Vec<Binding> {
 
 fn conflict(mine: Side, theirs: Side) -> Option<Kind> {
     let exact = overlaps(mine.binding, theirs.binding);
-    let widened = exact || overlaps(mine.widened(), theirs.widened());
-    if !widened {
+    if !exact && !overlaps(mine.widened(), theirs.widened()) {
         return None;
     }
+    let clash = Clash {
+        mine,
+        theirs,
+        exact,
+    };
     let other = theirs.command;
     match (mine.place, theirs.place) {
         (Place::Inert, _) | (_, Place::Inert) => None,
-        (Place::Step(group), Place::Step(theirs)) => (group == theirs).then_some(if exact {
-            Kind::Duplicate(other)
-        } else {
-            Kind::ContextOverlap(other)
-        }),
+        (Place::Step(group), Place::Step(theirs)) => {
+            (group == theirs).then_some(clash.duplicate_or_overlap())
+        }
         (Place::Step(group), Place::Top(_)) => step_against(exact, group, other, other),
         (Place::Top(_), Place::Step(group)) => step_against(exact, group, mine.command, other),
-        (Place::Top(_), Place::Top(_))
-            if exact
-                && (media_reads_first(mine, theirs.command)
-                    || media_reads_first(theirs, mine.command)) =>
-        {
-            Some(Kind::Duplicate(other))
+        (Place::Top(scope), Place::Top(theirs_scope)) => clash.top_level(scope, theirs_scope),
+    }
+}
+
+/// Two bindings one press can match, `exact` when they match as bound rather
+/// than only with tolerated modifiers.
+#[derive(Clone, Copy)]
+struct Clash {
+    mine: Side,
+    theirs: Side,
+    exact: bool,
+}
+
+impl Clash {
+    fn duplicate_or_overlap(self) -> Kind {
+        if self.exact {
+            Kind::Duplicate(self.theirs.command)
+        } else {
+            Kind::ContextOverlap(self.theirs.command)
         }
-        (Place::Top(scope), Place::Top(theirs_scope)) => {
-            let map = mine.map;
-            let same_surface = scope == theirs_scope;
-            let shared = same_surface
-                || also_on(mine.command, theirs_scope, map)
-                || also_on(other, scope, map)
-                || zoom_and_text_size(mine.command, other);
-            if exact
-                && !same_surface
-                && (runs_first(mine.command, other, map) || runs_first(other, mine.command, map))
-            {
-                Some(Kind::Duplicate(other))
-            } else if !shared && !mine.is_alias() && !theirs.is_alias() {
-                None
-            } else if !exact || !same_surface || known_overlap(mine.command, other) {
-                Some(Kind::ContextOverlap(other))
-            } else if let (CommandKind::Trigger(group), false) =
-                (other.kind(), is_trigger(mine.command))
-            {
-                Some(Kind::ShadowsChordGroup(group))
-            } else {
-                Some(Kind::Duplicate(other))
-            }
+    }
+
+    /// Two top-level commands, on the surfaces `scope` and `theirs_scope`.
+    fn top_level(self, scope: Scope, theirs_scope: Scope) -> Option<Kind> {
+        let (command, other) = (self.mine.command, self.theirs.command);
+        if self.exact && self.media_reads_first() {
+            return Some(Kind::Duplicate(other));
         }
+        let same_surface = scope == theirs_scope;
+        let across_surfaces = self.exact && !same_surface;
+        if across_surfaces && self.either_runs_first() {
+            return Some(Kind::Duplicate(other));
+        }
+        let aliased = self.mine.is_alias() || self.theirs.is_alias();
+        if !self.shared(scope, theirs_scope) && !aliased {
+            return None;
+        }
+        let same_key_here = self.exact && same_surface;
+        if !same_key_here || known_overlap(command, other) {
+            return Some(Kind::ContextOverlap(other));
+        }
+        Some(match (other.kind(), is_trigger(command)) {
+            (CommandKind::Trigger(group), false) => Kind::ShadowsChordGroup(group),
+            _ => Kind::Duplicate(other),
+        })
+    }
+
+    fn media_reads_first(self) -> bool {
+        media_reads_first(self.mine, self.theirs.command)
+            || media_reads_first(self.theirs, self.mine.command)
+    }
+
+    fn either_runs_first(self) -> bool {
+        let (command, other, map) = (self.mine.command, self.theirs.command, self.mine.map);
+        runs_first(command, other, map) || runs_first(other, command, map)
+    }
+
+    /// Whether either command also reads keys on the other's surface.
+    fn shared(self, scope: Scope, theirs_scope: Scope) -> bool {
+        let (command, other, map) = (self.mine.command, self.theirs.command, self.mine.map);
+        scope == theirs_scope
+            || also_on(command, theirs_scope, map)
+            || also_on(other, scope, map)
+            || zoom_and_text_size(command, other)
     }
 }
 
@@ -824,19 +905,40 @@ fn reads_before_steps(command: Command) -> bool {
 
 /// Whether `first` takes the key before `second`'s surface sees it.
 fn runs_first(first: Command, second: Command, map: Map) -> bool {
-    let reference = Place::of(second, map) == Place::Top(Scope::Reference);
-    (EVERY_SURFACE.contains(&first) && second != PDF_ZOOM_RESET)
-        || (TAB_STRIP.contains(&first) && under_tab_strip(Place::of(second, map)))
-        // The reference toggles, and Escape closes it, before its own keys and
-        // a media preview's.
-        || (first == REFERENCE && (reference || MEDIA.contains(&second)))
-        || (first == ESCAPE && reference)
-        || (second == CHOOSE_FOLDER
-            && (listed(CHOOSER_FIRST, first, map)
-                || (map == Map::Tenxer
-                    && Place::of(first, map) == Place::Top(Scope::Window)
-                    && (!TENXER_PASSES.contains(&first) || CHOOSER_REFUSES.contains(&first))
-                    && !chooser_declines(first))))
+    let second_place = Place::of(second, map);
+    reads_on_every_surface(first, second, second_place)
+        || reference_reads_first(first, second, second_place)
+        || (second == CHOOSE_FOLDER && chooser_reads_first(first, map))
+}
+
+/// Text size and the tab strip read before the surfaces under them.
+fn reads_on_every_surface(first: Command, second: Command, second_place: Place) -> bool {
+    let text_size = EVERY_SURFACE.contains(&first) && second != PDF_ZOOM_RESET;
+    let tab_strip = TAB_STRIP.contains(&first) && under_tab_strip(second_place);
+    text_size || tab_strip
+}
+
+/// The reference toggles, and Escape closes it, before its own keys and a
+/// media preview's.
+fn reference_reads_first(first: Command, second: Command, second_place: Place) -> bool {
+    let reference = second_place == Place::Top(Scope::Reference);
+    if first == REFERENCE {
+        reference || MEDIA.contains(&second)
+    } else {
+        first == ESCAPE && reference
+    }
+}
+
+/// Whether `first` takes the key before the file chooser's folder accept.
+fn chooser_reads_first(first: Command, map: Map) -> bool {
+    listed(CHOOSER_FIRST, first, map) || (map == Map::Tenxer && tenxer_claims_in_chooser(first))
+}
+
+/// Whether the 10xer stage claims a window command's key in a chooser.
+fn tenxer_claims_in_chooser(command: Command) -> bool {
+    let window_command = Place::of(command, Map::Tenxer) == Place::Top(Scope::Window);
+    let claimed = !TENXER_PASSES.contains(&command) || CHOOSER_REFUSES.contains(&command);
+    window_command && claimed && !chooser_declines(command)
 }
 
 /// Whether `command`, outside `scope`, also reads keys there.
@@ -908,35 +1010,39 @@ fn never_matches(side: Side) -> bool {
 /// roles share a surface with the command. Only the key as bound counts: a
 /// variant a surface tolerates loses to the fixed role, which keeps working.
 fn fixed_key(side: Side) -> Option<Fixed> {
-    let binding = side.binding;
-    if under_tab_strip(side.place) && in_digits(binding, TAB_NUMBERS) {
+    if under_tab_strip(side.place) && in_digits(side.binding, TAB_NUMBERS) {
         return Some(Fixed::Digits(TAB_NUMBERS));
     }
     match side.place {
-        Place::Step(group) => {
-            let digits = match group {
-                Group::Go => PIN_NUMBERS,
-                Group::Actions => ACTIONS_NUMBERS,
-                Group::Tabs => TAB_CHORD_NUMBERS,
-                Group::CopyAs | Group::Sort | Group::BookmarkSet | Group::BookmarkGo => {
-                    return None;
-                }
-            };
-            in_digits(binding, digits).then_some(Fixed::Digits(digits))
-        }
-        Place::Top(scope) => {
-            if scope != Scope::TrashDialog && overlaps(binding, BACKSPACE_HELD) {
-                Some(Fixed::Backspace)
-            } else if scope == Scope::Window && side.map == Map::Tenxer && overlaps(binding, SPACE)
-            {
-                Some(Fixed::SelectionToggle)
-            } else if MEDIA.contains(&side.command) && media_key_first(side) {
-                Some(Fixed::MediaKeys)
-            } else {
-                None
-            }
-        }
+        Place::Step(group) => step_digits(group)
+            .filter(|digits| in_digits(side.binding, *digits))
+            .map(Fixed::Digits),
+        Place::Top(scope) => fixed_top_level_key(side, scope),
         Place::Inert => None,
+    }
+}
+
+/// The digit range an armed chord reads besides its steps.
+fn step_digits(group: Group) -> Option<Digits> {
+    match group {
+        Group::Go => Some(PIN_NUMBERS),
+        Group::Actions => Some(ACTIONS_NUMBERS),
+        Group::Tabs => Some(TAB_CHORD_NUMBERS),
+        Group::CopyAs | Group::Sort | Group::BookmarkSet | Group::BookmarkGo => None,
+    }
+}
+
+fn fixed_top_level_key(side: Side, scope: Scope) -> Option<Fixed> {
+    let binding = side.binding;
+    let tenxer_listing = scope == Scope::Window && side.map == Map::Tenxer;
+    if scope != Scope::TrashDialog && overlaps(binding, BACKSPACE_HELD) {
+        Some(Fixed::Backspace)
+    } else if tenxer_listing && overlaps(binding, SPACE) {
+        Some(Fixed::SelectionToggle)
+    } else if MEDIA.contains(&side.command) && media_key_first(side) {
+        Some(Fixed::MediaKeys)
+    } else {
+        None
     }
 }
 

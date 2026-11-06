@@ -182,7 +182,10 @@ impl PreviewFind {
         self.target.borrow_mut().take();
         self.matches.borrow_mut().clear();
         self.widget.set_visible(false);
-        self.entry.set_text("");
+        // A disposed entry has no delegate left to edit.
+        if self.entry.delegate().is_some() {
+            self.entry.set_text("");
+        }
     }
 }
 

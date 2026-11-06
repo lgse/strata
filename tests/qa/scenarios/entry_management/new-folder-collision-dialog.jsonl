@@ -23,6 +23,6 @@
 {"wait":{"any":[{"focused_pane":true},{"focused":true}]},"message":"focus returns to the listing"}
 {"fs":{"path":".","unchanged":"original"},"timeout_ms":0}
 {"fs":{"path":"todo.txt","text":"todo\n"},"timeout_ms":0}
+{"expect":{"panes":["$root","new folder"]},"message":"the kept folder's column to stay open"}
 {"select":{"entry":"readme.md","dir":"$root"}}
 {"wait":{"selected":["readme.md"],"dir":"$root"},"message":"the selection to become ['readme.md']"}
-{"expect":{"panes":["$root","new folder"]}}
