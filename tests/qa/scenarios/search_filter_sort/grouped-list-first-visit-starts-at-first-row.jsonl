@@ -1,5 +1,5 @@
-{"scenario":"grouped-list-first-visit-starts-at-first-row","modes":["list"],"prefs":{"group_by_type":true,"show_hidden":false},"layout":"us","mutation":"grouped-first-row","known_bug":null,"tree":{"grouped":{"alpha.txt":"alpha\n","beta.csv":"beta\n","gamma.md":"# gamma\n"},"large":{"a{000..299}.txt":"a\n","b{000..299}.csv":"b\n"}},"quality":{"impact":2,"coverage":4,"criticality":3,"diagnostic":4,"score":35,"note":"Grouped List first visit starts on the first row shown by Ctrl+L and by double-click on a chunked listing; revisit restores; unit test pins only the model pick"}}
-{"wait":{"entries":["grouped","large"],"dir":"$root"},"message":"the fixture folders are listed"}
+{"scenario":"grouped-list-first-visit-starts-at-first-row","modes":["list"],"prefs":{"group_by_type":true,"show_hidden":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"grouped":{"alpha.txt":"alpha\n","beta.csv":"beta\n","gamma.md":"# gamma\n"},"large":{"a{000..299}.txt":"a\n","b{000..299}.csv":"b\n"},"typed_large":{"a{000..299}.txt":"a\n","b{000..299}.csv":"b\n"}},"quality":{"impact":2,"coverage":4,"criticality":3,"diagnostic":3,"score":30,"note":"Grouped List first visit starts on the first row shown and stays at the top by Ctrl+L and double-click, small and chunked; revisit restores; model pick unit-tested"}}
+{"wait":{"entries":["grouped","large","typed_large"],"dir":"$root"},"message":"the fixture folders are listed"}
 {"key":"ctrl+l"}
 {"wait":{"field":{}},"message":"the location editor to take focus"}
 {"remember":{"field":true},"as":"location"}
@@ -33,3 +33,17 @@
 {"wait":{"directory":"large"},"message":"a double-click to open 'large'"}
 {"wait":{"focused":"b000.csv"},"message":"a pointer first visit to a large grouped folder to focus the first row shown, after its rows arrived in name order"}
 {"expect":{"selected":[],"dir":"large"},"message":"a pointer first visit to select nothing"}
+{"expect":[{"visible":{"contains":["b000.csv"]},"dir":"large"},{"compare":{"left":{"of":{"role":"row header","name":"CSV document"},"get":"y"},"op":">=","right":{"of":{"viewport":null},"get":"y"}}}],"timeout_ms":3000,"message":"a pointer first visit to keep the list at its top, heading included"}
+{"key":"alt+Up"}
+{"wait":{"directory":"$root"},"message":"Alt+Up to return to the fixture root a third time"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location editor to take focus for the large folder"}
+{"remember":{"field":true},"as":"location_large"}
+{"key":"ctrl+a"}
+{"type":"$fixture/typed_large"}
+{"wait":{"field":{"of":"location_large","text":"$fixture/typed_large"}},"message":"the typed path of the large folder"}
+{"key":"Return"}
+{"wait":{"directory":"typed_large"},"message":"the typed path to open 'typed_large'"}
+{"wait":{"selected":["b000.csv"],"dir":"typed_large"},"message":"a typed first visit to a large grouped folder to select the first row shown"}
+{"wait":{"focused":"b000.csv"},"message":"keyboard focus to start on the first row shown of the large folder"}
+{"expect":[{"visible":{"contains":["b000.csv"]},"dir":"typed_large"},{"compare":{"left":{"of":{"role":"row header","name":"CSV document"},"get":"y"},"op":">=","right":{"of":{"viewport":null},"get":"y"}}}],"timeout_ms":3000,"message":"a typed first visit to keep the list at its top, heading included, not scrolled to the middle"}
