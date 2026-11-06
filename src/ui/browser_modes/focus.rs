@@ -235,6 +235,17 @@ impl ModeViews {
     }
 
     pub fn focus_visible_pane(&self, depth: usize) {
+        self.focus_pane(depth, false);
+    }
+
+    /// Focuses the first row shown of a pane that has no cursor. GTK's own focus row
+    /// follows its item, which a grouped listing publishing in chunks moves away
+    /// from the top.
+    pub(super) fn focus_first_row(&self, depth: usize) {
+        self.focus_pane(depth, true);
+    }
+
+    fn focus_pane(&self, depth: usize, first_row: bool) {
         if self.rename_is_active() || !focus_navigation::browser_can_take_focus(&self.stack) {
             return;
         }
@@ -253,7 +264,11 @@ impl ModeViews {
             .browser
             .focused_item()
             .filter(|(focused_depth, _, _)| *focused_depth == depth);
-        let target = cursor_target(pane, focused.as_ref());
+        let target = if first_row {
+            first_row_target(pane)
+        } else {
+            cursor_target(pane, focused.as_ref())
+        };
         let generation = self.cursor_focus_generation.get();
         let had_live_focus = target
             .view
@@ -328,6 +343,16 @@ fn cursor_target(pane: &Pane, focused: Option<&FocusedItem>) -> CursorTarget {
                 position: Some(position),
             },
         )
+}
+
+fn first_row_target(pane: &Pane) -> CursorTarget {
+    let view = pane.focus_view();
+    let position = pane
+        .item_sections()
+        .into_iter()
+        .any(|section| section.view == view && section.view_model.n_items() > 0)
+        .then_some(0);
+    CursorTarget { view, position }
 }
 
 /// Re-asserts the cursor focus once pending input and layout have settled.

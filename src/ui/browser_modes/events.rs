@@ -46,7 +46,9 @@ impl ModeViews {
             BrowserEvent::ColumnsRelocated { from_depth } => self.on_columns_relocated(*from_depth),
             BrowserEvent::ColumnAdded { depth, .. } => {
                 if self.browser.active_depth() == Some(*depth) {
+                    self.pane_navigation.borrow_mut().arrive();
                     self.rebuild_active_mode();
+                    self.pane_navigation.borrow_mut().arrived();
                 }
             }
             _ => return false,
@@ -261,10 +263,7 @@ impl ModeViews {
         if self.mode != BrowserMode::List {
             return;
         }
-        let Some(snapshot) = self.browser.column_snapshot(depth) else {
-            return;
-        };
-        let grouped = self.grouping_for_snapshot(depth, &snapshot);
+        let grouped = self.browser.shows_type_groups(depth);
         let stale = self
             .list_pane
             .as_ref()
@@ -296,6 +295,10 @@ impl ModeViews {
         self.update_panes(depth, |pane| {
             pane.finish_loading(truncated, defer_empty, &positions)
         });
+        let first_visit = self
+            .pane_navigation
+            .borrow_mut()
+            .take_untouched_first_visit(depth);
         // After the rows are back, so focus parked on the pane surface counts.
         let restored = self.mode_pane(depth).and_then(|pane| {
             let allowed = self.restore_focus_allowed(pane, depth);
@@ -303,9 +306,27 @@ impl ModeViews {
                 .borrow_mut()
                 .restore(pane, &self.browser, self.mode, allowed)
         });
-        if restored.is_none() && restore_cursor {
+        if restored.is_some() {
+            return;
+        }
+        if first_visit && self.grouped_focus_drifted(depth) {
+            self.focus_first_row(depth);
+        } else if restore_cursor {
             self.focus_visible_pane(depth);
         }
+    }
+
+    /// Rows publish in listing order, so a group that sorts first can arrive above the
+    /// row GTK focused when the first rows came in. Without a cursor to hold, as after
+    /// a pointer opened the folder, focus goes back to the first row shown.
+    fn grouped_focus_drifted(&self, depth: usize) -> bool {
+        let has_cursor = self
+            .browser
+            .focused_item()
+            .is_some_and(|(focused_depth, _, _)| focused_depth == depth);
+        !has_cursor
+            && self.mode_pane(depth).is_some_and(|pane| pane.group_by_type)
+            && self.listing_holds_focus(depth)
     }
 
     fn restore_focus_allowed(&self, pane: &Pane, depth: usize) -> RestoreFocus {

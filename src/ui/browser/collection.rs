@@ -215,6 +215,13 @@ pub(super) fn apply_collection_scroll(
     if let Ok(list) = view.clone().downcast::<gtk::ListView>() {
         if position < list.model().map_or(0, |model| model.n_items()) {
             list.scroll_to(position, flags, None);
+            // GTK scrolls to the row; the first section's heading sits above it.
+            if let Some(adjustment) = list
+                .vadjustment()
+                .filter(|_| position == 0 && list.header_factory().is_some())
+            {
+                adjustment.set_value(adjustment.lower());
+            }
         }
         return;
     }
