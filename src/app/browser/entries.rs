@@ -59,7 +59,6 @@ impl Browser {
         self.state.borrow_mut().set_type_grouping(grouped);
     }
 
-    /// The listing at `depth` shows file-type groups.
     pub fn shows_type_groups(&self, depth: usize) -> bool {
         self.state.borrow().shows_type_groups(depth)
     }

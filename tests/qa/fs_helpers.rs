@@ -405,7 +405,6 @@ const ISOBMFF_BRANDS: &[(&str, &[&[u8; 4]])] = &[
 
 const MAX_FTYP_PAYLOAD_BYTES: u64 = 4096;
 
-/// The major and compatible brands of the file's leading `ftyp` box.
 fn ftyp_brands(path: &Path) -> Result<Vec<[u8; 4]>, String> {
     let mut file = File::open(path).map_err(|error| error.to_string())?;
     let length = file.metadata().map_err(|error| error.to_string())?.len();

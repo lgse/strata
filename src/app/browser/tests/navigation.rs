@@ -730,7 +730,6 @@ struct FolderTree {
     /// While set, listings wait for `release` instead of answering at once.
     held: Cell<bool>,
     pending: RefCell<Vec<(DirectoryRequest, DirectoryEmit)>>,
-    /// While set, validations wait for `answer_validation`.
     hold_validation: Cell<bool>,
     validations: RefCell<Vec<Validation>>,
 }
@@ -1177,7 +1176,6 @@ fn a_remote_reload_announces_the_neighbour_cursor_of_an_inactive_column() {
     );
 }
 
-/// What another view left selected in the folder Columns returns to.
 #[derive(Clone, Copy)]
 enum LeftSelection<'a> {
     /// The cursor the folder's load placed on its first folder, `art`.
@@ -1186,7 +1184,6 @@ enum LeftSelection<'a> {
     Names(&'a [&'a str]),
 }
 
-/// One selection left by another view, and the columns Columns should keep for it.
 struct ReturningSelection<'a> {
     case: &'a str,
     selected: LeftSelection<'a>,

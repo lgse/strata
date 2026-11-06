@@ -190,7 +190,6 @@ fn preferred_location_falls_back_to_the_first_visible_entry() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-/// How a first visit asks for its automatic cursor.
 #[derive(Clone, Copy, Debug)]
 enum AutomaticCursor {
     FirstEntry,
@@ -364,7 +363,6 @@ fn grouped_batches_pick_the_first_row_once_complete() {
     assert_eq!(fill_and_focus(&state, 0), landed_on(&state, "c"));
 }
 
-/// How a key moves from a listing with no cursor.
 #[derive(Clone, Copy, Debug)]
 enum Move {
     Step,

@@ -282,7 +282,6 @@ impl ColumnState {
         self.load_cursor = Some(location);
     }
 
-    /// The automatic cursor of a first visit, on the first row the view shows.
     pub(super) fn select_first_displayed_entry(&mut self) {
         self.pending_selection.clear();
         if let Some(position) = self.first_displayed_entry() {
