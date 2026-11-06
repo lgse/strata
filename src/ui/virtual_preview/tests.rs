@@ -21,7 +21,6 @@ use crate::{
     test_support::{gtk_test, wait_for_paint},
 };
 
-/// Runs ready main-context work, then waits for the list's next painted frame.
 fn paint_frame(list: &gtk::ListView) {
     let context = gtk::glib::MainContext::default();
     while context.pending() {
@@ -34,7 +33,6 @@ fn paint_frame(list: &gtk::ListView) {
     );
 }
 
-/// Mapped rows in document order with their list geometry and materialization.
 fn mapped_rows(list: &gtk::ListView, state: &VirtualPreviewState) -> Vec<(usize, i32, i32, bool)> {
     let mut rows = state
         .bound
@@ -79,7 +77,6 @@ fn settle_layout(list: &gtk::ListView, state: &VirtualPreviewState, scroll: &gtk
     panic!("the document layout did not settle: {previous:?}");
 }
 
-/// Paints frames until `reached` holds, failing after `frames` frames.
 fn paint_until(list: &gtk::ListView, frames: usize, reached: impl Fn() -> bool) -> bool {
     for _ in 0..frames {
         if reached() {

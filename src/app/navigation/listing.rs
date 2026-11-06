@@ -250,10 +250,14 @@ impl ColumnState {
         self.restore_pending_selection();
         self.resolve_preferred_on_load();
         self.resolve_open_child_on_load();
-        // A grouped listing's first row is known only once every batch is in.
-        if self.select_first_on_load && !self.entries.is_empty() && !self.shows_type_groups() {
+        if self.picks_first_row_from_batches() {
             self.select_first_displayed_entry();
         }
+    }
+
+    /// A grouped listing's first row is known only once every batch is in.
+    fn picks_first_row_from_batches(&self) -> bool {
+        self.select_first_on_load && !self.entries.is_empty() && !self.shows_type_groups()
     }
 
     /// Nothing selected or revealed the cursor in a listing that has entries.
@@ -282,7 +286,6 @@ impl ColumnState {
         self.load_cursor = Some(location);
     }
 
-    /// The automatic cursor of a first visit, on the first row the view shows.
     pub(super) fn select_first_displayed_entry(&mut self) {
         self.pending_selection.clear();
         if let Some(position) = self.first_displayed_entry() {
@@ -339,8 +342,8 @@ impl ColumnState {
     pub(super) fn complete_load_selection(&mut self) -> bool {
         let before = self.selected;
         self.open_child_on_load = None;
-        let preferred = self.preferred_on_load.take().is_some();
-        if (preferred || self.select_first_on_load) && self.awaits_fallback_cursor() {
+        let wants_first_row = self.preferred_on_load.take().is_some() || self.select_first_on_load;
+        if wants_first_row && self.awaits_fallback_cursor() {
             self.select_first_displayed_entry();
         }
         if let Some(previous) = self.reload_cursor.take()
