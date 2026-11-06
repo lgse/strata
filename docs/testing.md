@@ -144,12 +144,12 @@ generated passwd/group files provide the invoking UID/GID to D-Bus, so one
 published environment works across local user IDs without rebuilding it or
 mounting the host's account database.
 The image includes bubblewrap for sandboxed thumbnail decoding, FFmpeg/ffprobe,
-GTK's GStreamer media backend with the base/good/libav plugins, libheif so
-ImageMagick and the GDK Pixbuf/glycin loaders read and write real AVIF and HEIC
-files, and strace for the opt-in [main-thread I/O audit](#main-thread-io-audit).
+GTK's GStreamer media backend with the base/good/libav plugins, libheif, so
+ImageMagick writes real AVIF and HEIC files and glycin's `glycin-heif` loader can
+decode them, and strace for the opt-in [main-thread I/O audit](#main-thread-io-audit).
 A QA `magick` fixture step fails when an `.avif`, `.heic`, or `.heif` output lacks
-the matching ISO BMFF brand, because ImageMagick silently writes the input format
-when an encoder is missing. Rust media
+the matching ISO BMFF major or compatible brand, because ImageMagick silently
+writes the input format when an encoder is missing. Rust media
 regressions exercise actual normalization, playback, and long-source duration
 limits rather than skipping when optional host tools are missing. These packages
 come from the dated Arch snapshot. The accessibility patch is test-only and does
