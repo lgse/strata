@@ -57,8 +57,8 @@ fn mapped_rows(list: &gtk::ListView, state: &VirtualPreviewState) -> Vec<(usize,
 /// Paints frames until rows stop moving. A row is first painted at GTK's
 /// estimated text height and grows once its text layout is validated, which a
 /// loaded machine defers by frames; sampling before then reads a transient layout.
+/// Each frame first runs all ready work, so two equal painted frames are settled.
 fn settle_layout(list: &gtk::ListView, state: &VirtualPreviewState, scroll: &gtk::ScrolledWindow) {
-    let context = gtk::glib::MainContext::default();
     let layout = || {
         let adjustment = scroll.vadjustment();
         (
@@ -71,7 +71,7 @@ fn settle_layout(list: &gtk::ListView, state: &VirtualPreviewState, scroll: &gtk
     for _ in 0..600 {
         paint_frame(list);
         let current = layout();
-        if !context.pending() && previous.as_ref() == Some(&current) {
+        if previous.as_ref() == Some(&current) {
             return;
         }
         previous = Some(current);
