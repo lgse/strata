@@ -116,7 +116,9 @@ fn letter_bookmarks_ignore_remote_uri_targets() {
     gio::Vfs::default().register_uri_scheme(
         "strata-test-fuse",
         Some(Box::new(|_, _| {
-            Some(gio::File::for_path("/run/user/1000/gvfs/sftp:host=example.test"))
+            Some(gio::File::for_path(
+                "/run/user/1000/gvfs/sftp:host=example.test",
+            ))
         })),
         None,
     );
