@@ -104,7 +104,8 @@ fn tenxer_slash_enters_the_highlighted_remote_folder(mode: BrowserMode) {
     browser.navigate(Location::uri(SHARE));
     wait_loaded(&browser, 0);
     focus_files(&fixture);
-    // The first move off a load's cursor focuses the listing, so it comes first.
+    // Works around a focus bug: after a load, the first Down from the prompt
+    // moves focus into the listing (ModeViews::update_selection).
     assert!(fixture.press(Key::End, none));
     assert!(fixture.press(Key::Home, none));
     assert!(fixture.press(Key::f, none));
