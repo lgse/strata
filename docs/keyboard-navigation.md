@@ -123,8 +123,9 @@ listing, as on a first visit.
 
 In Columns, Back, Forward, Up and breadcrumbs that return to an ancestor of the
 current directory select the folder you came from, with the cursor on it, and leave
-its column closed. When that folder is gone or hidden, the first visible entry is
-selected instead; hidden files stay hidden. Icons and List do the same when they
+its column closed. When that folder is gone or hidden, the first row shown is
+selected instead (in a List grouped by file type, the first item of the first
+group); hidden files stay hidden. Icons and List do the same when they
 have no remembered position for the ancestor. After Back, Left into an ancestor
 column puts the cursor on the folder it has open, or on it once the column finishes
 loading, so F2, Delete and copy act on that folder; if the folder is gone by then,

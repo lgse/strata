@@ -144,9 +144,10 @@ generated passwd/group files provide the invoking UID/GID to D-Bus, so one
 published environment works across local user IDs without rebuilding it or
 mounting the host's account database.
 The image includes bubblewrap for sandboxed thumbnail decoding, FFmpeg/ffprobe,
-GTK's GStreamer media backend with the base/good/libav plugins, libheif, so
+GTK's GStreamer media backend with the base/good/libav plugins, and strace for the
+opt-in [main-thread I/O audit](#main-thread-io-audit). It also includes libheif, so
 ImageMagick writes real AVIF and HEIC files and glycin's `glycin-heif` loader can
-decode them, and strace for the opt-in [main-thread I/O audit](#main-thread-io-audit).
+decode them.
 A QA `magick` fixture step fails when an `.avif`, `.heic`, or `.heif` output lacks
 the matching ISO BMFF major or compatible brand, because ImageMagick silently
 writes the input format when an encoder is missing. Rust media
