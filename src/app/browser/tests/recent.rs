@@ -10,6 +10,7 @@ fn recent_entry(name: &str, kind: EntryKind, recent: i64, modified: i64) -> File
         kind,
         recent_unix_seconds: MetadataValue::Known(recent),
         modified_unix_seconds: MetadataValue::Known(modified),
+        created_unix_seconds: MetadataValue::Unknown,
         ..batch_entry(name)
     }
 }

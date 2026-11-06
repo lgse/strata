@@ -392,8 +392,26 @@ fn placed(action: &mut MenuAction, root: bool, send_to_available: bool) {
     }
 }
 
-/// GTK section titles cannot hold an image, so a provider icon replaces the
-/// title with a custom heading row styled like one.
+thread_local! {
+    static HEADING_SLOTS: Cell<u64> = const { Cell::new(0) };
+}
+
+/// GTK never forgets a custom slot ID, even after removing the slot and
+/// freeing its key, so each heading takes an ID no earlier slot had.
+fn heading_slot_id(provider_id: &str) -> String {
+    let serial = HEADING_SLOTS.with(|serial| {
+        serial.set(serial.get() + 1);
+        serial.get()
+    });
+    format!("provider-heading-{provider_id}-{serial}")
+}
+
+/// A rendered menu names the provider with a custom heading row styled like a
+/// section title. A GTK section title stays outside the widget tree until GTK's
+/// idle separator sync, and whenever its section is empty, yet labels the
+/// section, so an AT-SPI client reading the section's relations realizes the
+/// detached title and GTK fails a critical once the title joins the tree
+/// (#2011). The row also has room for the icon.
 fn insert_section(
     model: &gio::Menu,
     index: usize,
@@ -408,13 +426,13 @@ fn insert_section(
             provider.heading_icon.clone(),
         )
     });
-    if let (Some(icon), Some(popover)) = (icon, popover) {
-        let custom = format!("provider-heading-{id}");
+    if let Some(popover) = popover {
+        let custom = heading_slot_id(&id);
         let item = gio::MenuItem::new(None, None);
         item.set_attribute_value("custom", Some(&custom.to_variant()));
         section.model.insert_item(0, &item);
         model.insert_section(index as i32, None, &section.model);
-        if popover.add_child(&heading(&icon, &name), &custom) {
+        if popover.add_child(&heading(icon.as_ref(), &name), &custom) {
             section.heading = true;
             return;
         }
@@ -455,16 +473,21 @@ fn set_provider_icon(item: &gio::MenuItem, provider: usize) {
     }
 }
 
-fn heading(icon: &gtk::gdk::Texture, name: &str) -> gtk::Widget {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    row.add_css_class("provider-heading");
-    let image = gtk::Image::from_paintable(Some(icon));
-    image.set_pixel_size(14);
-    image.set_accessible_role(gtk::AccessibleRole::Presentation);
-    row.append(&image);
+fn heading(icon: Option<&gtk::gdk::Texture>, name: &str) -> gtk::Widget {
     let label = gtk::Label::new(Some(name));
     label.add_css_class("separator");
     label.set_xalign(0.0);
+    let Some(icon) = icon else {
+        return label.upcast();
+    };
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    row.add_css_class("provider-heading");
+    let image = gtk::Image::builder()
+        .paintable(icon)
+        .pixel_size(14)
+        .accessible_role(gtk::AccessibleRole::Presentation)
+        .build();
+    row.append(&image);
     row.append(&label);
     row.upcast()
 }

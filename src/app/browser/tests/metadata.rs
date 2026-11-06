@@ -207,6 +207,7 @@ fn navigation_cancels_an_awaiting_sort_without_stale_commit() {
             location: Location::local("/fixture/alpha"),
             size: MetadataValue::Known(1),
             modified_unix_seconds: MetadataValue::Known(7),
+            created_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
@@ -303,6 +304,7 @@ fn viewport_flush_never_disturbs_an_active_sort() {
             location: Location::local("/fixture/alpha"),
             size: MetadataValue::Known(30),
             modified_unix_seconds: MetadataValue::Known(7),
+            created_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
@@ -325,6 +327,7 @@ fn viewport_flush_never_disturbs_an_active_sort() {
                 location: Location::local("/fixture/alpha"),
                 size: MetadataValue::Known(30),
                 modified_unix_seconds: MetadataValue::Known(7),
+                created_unix_seconds: MetadataValue::Unknown,
                 mode: MetadataValue::Unknown,
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
@@ -335,6 +338,7 @@ fn viewport_flush_never_disturbs_an_active_sort() {
                 location: Location::local("/fixture/beta"),
                 size: MetadataValue::Known(10),
                 modified_unix_seconds: MetadataValue::Known(7),
+                created_unix_seconds: MetadataValue::Unknown,
                 mode: MetadataValue::Unknown,
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
@@ -451,6 +455,7 @@ fn newly_visible_rows_do_not_discard_late_dimensions_for_the_focused_file() {
         location: Location::local("/fixture/alpha"),
         size: MetadataValue::Known(2048),
         modified_unix_seconds: MetadataValue::Known(7),
+        created_unix_seconds: MetadataValue::Unknown,
         mode: MetadataValue::Unknown,
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
@@ -647,6 +652,7 @@ fn shifted_viewport_rows_go_stale_without_repaint() {
             location: Location::local("/fixture/beta"),
             size: MetadataValue::Known(10),
             modified_unix_seconds: MetadataValue::Known(7),
+            created_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
@@ -740,6 +746,7 @@ fn modified_sort_fills_directory_mtimes() {
                 location: Location::local("/fixture/sub"),
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Known(200),
+                created_unix_seconds: MetadataValue::Unknown,
                 mode: MetadataValue::Unknown,
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
@@ -750,6 +757,7 @@ fn modified_sort_fills_directory_mtimes() {
                 location: Location::local("/fixture/b.txt"),
                 size: MetadataValue::Known(10),
                 modified_unix_seconds: MetadataValue::Known(100),
+                created_unix_seconds: MetadataValue::Unknown,
                 mode: MetadataValue::Unknown,
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
@@ -771,4 +779,108 @@ fn modified_sort_fills_directory_mtimes() {
         .expect("the directory row should still be listed");
     assert_eq!(sub.modified_unix_seconds, MetadataValue::Known(200));
     assert_eq!(sub.size, MetadataValue::Unknown);
+}
+
+#[test]
+fn name_options_preserve_a_pending_created_sort() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    for during_fill in [false, true] {
+        let (browser, events, source) = scripted_browser(ScriptedSource::scripted(
+            vec!["alpha", "beta"],
+            vec![FillAnswer::Never, FillAnswer::Never],
+        ));
+        browser.navigate(Location::local("/fixture"));
+        browser.set_sort_key(0, SortKey::Created);
+        if during_fill {
+            pump_until(|| source.fill_calls.borrow().len() == 1);
+        }
+        let mut comparison = browser
+            .requested_column_preferences(0)
+            .expect("pending sort")
+            .name_comparison;
+        comparison.case_sensitive = true;
+        browser.set_name_comparison(0, comparison);
+        comparison = browser
+            .requested_column_preferences(0)
+            .expect("pending comparison")
+            .name_comparison;
+        comparison.natural = false;
+        browser.set_name_comparison(0, comparison);
+        let expected_fills = if during_fill { 2 } else { 1 };
+        pump_until(|| {
+            source.fill_calls.borrow().len() == expected_fills
+                || finish_count(&events) == start_count(&events)
+        });
+        assert_eq!(
+            source.fill_calls.borrow().len(),
+            expected_fills,
+            "Created must still request metadata"
+        );
+        let calls = source.fill_calls.borrow();
+        let call = calls.last().expect("pending metadata");
+        let id = call.id;
+        let emit = call.emit.clone();
+        drop(calls);
+        complete_creation_sort_fill(id, &emit);
+        pump_until(|| {
+            browser
+                .column_preferences(0)
+                .is_some_and(|prefs| prefs.sort_key == SortKey::Created)
+        });
+        let prefs = browser.column_preferences(0).expect("column");
+        assert_eq!(prefs.name_comparison, comparison);
+        assert_eq!(column_names(&browser, 0), ["beta", "alpha"]);
+    }
+}
+
+fn complete_creation_sort_fill(id: RequestId, emit: &DirectoryEmit) {
+    emit(DirectoryEvent::MetadataFilled {
+        request_id: id,
+        updates: [("alpha", 20), ("beta", 10)]
+            .into_iter()
+            .map(|(name, created)| MetadataUpdate {
+                location: Location::local(format!("/fixture/{name}")),
+                size: MetadataValue::Known(1),
+                modified_unix_seconds: MetadataValue::Known(1),
+                created_unix_seconds: MetadataValue::Known(created),
+                mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
+            })
+            .collect(),
+    });
+    emit(DirectoryEvent::MetadataFinished {
+        request_id: id,
+        outcome: MetadataOutcome::Complete,
+    });
+}
+
+#[test]
+fn restoring_default_sort_supersedes_an_awaiting_created_sort() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let (browser, events, source) = scripted_browser(ScriptedSource::scripted(
+        vec!["alpha", "beta"],
+        vec![FillAnswer::Never],
+    ));
+    browser.navigate(Location::local("/fixture"));
+    browser.set_sort_key(0, SortKey::Created);
+    pump_until(|| source.fill_calls.borrow().len() == 1);
+    let old = source.fill_calls.borrow();
+    let id = old[0].id;
+    let emit = old[0].emit.clone();
+    drop(old);
+    browser.restore_default_sort(0, ViewPreferences::default().sort_options());
+    pump_until(|| finish_count(&events) >= 2);
+    complete_creation_sort_fill(id, &emit);
+    assert_eq!(
+        browser.column_preferences(0).expect("column").sort_key,
+        SortKey::Name
+    );
+    assert_eq!(column_names(&browser, 0), ["alpha", "beta"]);
 }

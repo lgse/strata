@@ -75,11 +75,13 @@ use persistence::{
     SettingKey, parse_preferences, read_loaded_preferences, read_state_file, record_changes,
     settings_path,
 };
-pub(in crate::ui) use stored::{SEARCH_ENTRY_LIMIT_CHOICES, SEARCH_TIME_LIMIT_CHOICES};
+pub(in crate::ui) use stored::{
+    MAX_PREVIEW_VIDEO_START, SEARCH_ENTRY_LIMIT_CHOICES, SEARCH_TIME_LIMIT_CHOICES,
+};
 use stored::{
     browser_mode_from_stored, configured_hardware_acceleration, configured_video_preview_backend,
-    normalized_search_limit, normalized_volume, sort_preferences, store_density, store_sort,
-    stored_browser_mode, stored_density,
+    normalized_search_limit, normalized_video_start, normalized_volume, sort_preferences,
+    store_density, store_sort, stored_browser_mode, stored_density,
 };
 pub use text_size::TextSize;
 
@@ -247,18 +249,24 @@ pub(in crate::ui) struct Preferences {
     sort_key: String,
     #[serde(default = "default_sort_direction")]
     sort_direction: String,
+    #[serde(default = "defaults::default_natural_sort")]
+    natural_sort: bool,
+    #[serde(default)]
+    case_sensitive_sort: bool,
     #[serde(default = "default_enabled")]
     check_for_updates: bool,
     #[serde(default)]
     preview_muted: bool,
     #[serde(default = "default_full_volume")]
     preview_volume: f64,
-    #[serde(default)]
+    #[serde(default = "default_enabled")]
     preview_text_wrap: bool,
     #[serde(default)]
     unit_system: UnitSystem,
     #[serde(default)]
     preview_autoplay: bool,
+    #[serde(default)]
+    preview_video_start: u32,
     #[serde(default = "default_enabled")]
     watch_network_folders: bool,
     #[serde(default = "crate::sandbox::browser::default_worker_limit")]

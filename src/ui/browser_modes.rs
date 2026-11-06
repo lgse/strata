@@ -38,6 +38,7 @@ mod drag_drop;
 mod events;
 mod filter;
 mod filter_session;
+mod first_visit;
 mod focus;
 mod grouped_model;
 mod icons_card;
@@ -335,7 +336,7 @@ impl ModeViews {
 
     pub fn prune_stale_search_results(&self) {
         if let Some(pane) = self.single_pane() {
-            pane.search.prune_missing();
+            pane.search.prune_missing(&self.browser);
         }
     }
 

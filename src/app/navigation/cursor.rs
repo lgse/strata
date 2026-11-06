@@ -9,15 +9,15 @@ use super::{
 };
 
 impl ColumnState {
-    fn shows(&self, entry: &FileEntry) -> bool {
+    pub(super) fn shows(&self, entry: &FileEntry) -> bool {
         self.preferences.show_hidden || !entry.is_hidden
     }
 
-    fn first_visible(&self) -> Option<usize> {
+    pub(super) fn first_visible(&self) -> Option<usize> {
         self.entries.iter().position(|entry| self.shows(entry))
     }
 
-    fn last_visible(&self) -> Option<usize> {
+    pub(super) fn last_visible(&self) -> Option<usize> {
         self.entries.iter().rposition(|entry| self.shows(entry))
     }
 
@@ -32,8 +32,8 @@ impl ColumnState {
     /// visible entry lies that way.
     fn stepped_cursor(&self, direction: i32) -> Option<usize> {
         match (self.selected, direction.cmp(&0)) {
-            (None, Ordering::Less) => self.last_visible(),
-            (None, _) => self.first_visible(),
+            (None, Ordering::Less) => self.last_displayed_entry(),
+            (None, _) => self.first_displayed_entry(),
             (Some(current), Ordering::Less) => Some(self.step_back(current)),
             (Some(current), Ordering::Greater) => Some(self.step_forward(current)),
             (Some(current), Ordering::Equal) => match self.shows(&self.entries[current]) {
@@ -81,14 +81,12 @@ impl NavigationState {
         let show_hidden = column.preferences.show_hidden;
         let is_visible = |entry: &FileEntry| show_hidden || !entry.is_hidden;
 
-        let first_visible = column.entries.iter().position(is_visible)?;
-        let last_visible = column.entries.iter().rposition(is_visible)?;
-
-        let current = column.selected.unwrap_or(if direction < 0 {
-            last_visible
-        } else {
-            first_visible
-        });
+        let current = match column.selected {
+            _ if column.first_visible().is_none() => return None,
+            Some(current) => current,
+            None if direction < 0 => column.last_displayed_entry()?,
+            None => column.first_displayed_entry()?,
+        };
 
         // Escape clears filled selection without dropping the cursor or leftover
         // range anchor. Start a new range from that cursor instead of stepping.
@@ -185,7 +183,7 @@ impl NavigationState {
             return None;
         }
         let position = column.stepped_cursor(direction)?;
-        focus_only(column, position);
+        place_committed_cursor(column, position);
         self.active_column = Some(depth);
         Some((depth, position))
     }
@@ -202,7 +200,7 @@ impl NavigationState {
         let (depth, _, position) = self.page_target(direction, page, order)?;
         let column = self.columns.get_mut(depth)?;
         self.visual = None;
-        focus_only(column, position);
+        place_committed_cursor(column, position);
         self.active_column = Some(depth);
         Some((depth, position))
     }
@@ -304,9 +302,28 @@ impl NavigationState {
         self.active_column = Some(depth);
     }
 
+    /// A parent restored by Back has no cursor yet; it takes the folder it has
+    /// open, as descending into that folder would have left it. A parent still
+    /// loading takes it once listed, unless a cursor was placed meanwhile.
     pub fn focus_parent(&mut self) -> Option<(usize, Option<usize>)> {
         let depth = self.active_column?;
         let parent_depth = depth.checked_sub(1)?;
+        let open_child = self.active_child_position(parent_depth);
+        let open_folder = self.columns[depth].location.clone();
+        let column = &mut self.columns[parent_depth];
+        if column.selected.is_none() {
+            match open_child {
+                Some(position) if column.shows(&column.entries[position]) => {
+                    place_committed_cursor(column, position);
+                }
+                None if column.load_state == LoadState::Loading
+                    && column.preferred_on_load.is_none() =>
+                {
+                    column.open_child_on_load = Some(open_folder);
+                }
+                _ => {}
+            }
+        }
         self.activate_pane(parent_depth);
         Some((parent_depth, self.columns[parent_depth].selected))
     }
@@ -322,10 +339,7 @@ impl NavigationState {
         });
         if column.selected.is_none() {
             if let Some(position) = position {
-                let location = column.entries[position].location.clone();
-                adopt_selected_locations(column, HashSet::from([location.clone()]), true);
-                column.selected = Some(position);
-                column.selection_anchor = Some(location);
+                place_committed_cursor(column, position);
             } else if column.load_state == LoadState::Loading {
                 column.select_first_on_load = true;
             }
@@ -361,7 +375,8 @@ impl NavigationState {
     }
 }
 
-pub(super) fn focus_only(column: &mut ColumnState, position: usize) {
+/// Cursor, single selection and anchor on `position`, as a user's own choice.
+pub(super) fn place_committed_cursor(column: &mut ColumnState, position: usize) {
     let location = column.entries[position].location.clone();
     adopt_selected_locations(column, HashSet::from([location.clone()]), true);
     column.selected = Some(position);

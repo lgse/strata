@@ -88,6 +88,20 @@ impl NavigationState {
         Some(target)
     }
 
+    /// The path from `depth` on, recorded as a navigation so Back returns to
+    /// the whole strip. None for the first column or past the last.
+    pub fn go_to_column(&mut self, depth: usize) -> Option<NavigationPath> {
+        if depth == 0 {
+            return None;
+        }
+        let locations = self.current_path()?.locations.get(depth..)?.to_vec();
+        if locations.is_empty() {
+            return None;
+        }
+        self.record_navigation();
+        Some(NavigationPath::from_locations(locations))
+    }
+
     pub fn restore(
         &mut self,
         path: NavigationPath,
@@ -123,8 +137,10 @@ impl NavigationState {
                 request_id,
                 select_first_on_load: false,
                 preferred_on_load: None,
+                open_child_on_load: None,
                 reload_cursor: None,
                 load_cursor: None,
+                type_grouping: self.type_grouping,
             })
             .collect();
         self.active_column = self.columns.len().checked_sub(1);
@@ -204,8 +220,10 @@ impl NavigationState {
             request_id,
             select_first_on_load: false,
             preferred_on_load: None,
+            open_child_on_load: None,
             reload_cursor: None,
             load_cursor: None,
+            type_grouping: self.type_grouping,
         });
     }
 }

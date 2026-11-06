@@ -78,13 +78,13 @@ fn heading_label(level: u8, markup: &str) -> gtk::Label {
     let label = release_notes_label();
     label.add_css_class("release-notes-heading");
     label.add_css_class(&format!("level-{level}"));
-    label.set_markup(markup);
+    crate::ui::accessibility::set_link_markup(&label, markup);
     label
 }
 
 fn paragraph_label(markup: &str) -> gtk::Label {
     let label = release_notes_label();
-    label.set_markup(markup);
+    crate::ui::accessibility::set_link_markup(&label, markup);
     label
 }
 
@@ -109,7 +109,7 @@ fn list_item_row(marker: &str, depth: usize, markup: &str) -> gtk::Box {
     bullet.add_css_class("release-notes-bullet");
     bullet.set_valign(gtk::Align::Start);
     let copy = release_notes_label();
-    copy.set_markup(markup);
+    crate::ui::accessibility::set_link_markup(&copy, markup);
     row.append(&bullet);
     row.append(&copy);
     row
@@ -126,14 +126,14 @@ fn list_child_label(
         services::DocumentListChildKind::Heading(level) => {
             copy.add_css_class("release-notes-heading");
             copy.add_css_class(&format!("level-{level}"));
-            copy.set_markup(markup);
+            crate::ui::accessibility::set_link_markup(&copy, markup);
         }
         services::DocumentListChildKind::Code(_) => {
             copy.add_css_class("release-notes-code");
             copy.set_markup(&format!("<tt>{markup}</tt>"));
         }
         services::DocumentListChildKind::Paragraph | services::DocumentListChildKind::Quote => {
-            copy.set_markup(markup);
+            crate::ui::accessibility::set_link_markup(&copy, markup);
         }
     }
     copy
@@ -272,7 +272,7 @@ pub(super) fn load_current_release_notes(card: &ReleaseNotesCard) {
                 set_release_notes_message(
                     &card.notes,
                     &crate::i18n::tr(
-                        "Release notes are unavailable because this version’s tag was not found.",
+                        "Release notes are unavailable because this version's tag was not found.",
                     ),
                 );
                 card.fallback.set_uri(&url);
@@ -281,10 +281,10 @@ pub(super) fn load_current_release_notes(card: &ReleaseNotesCard) {
             }
             Ok(ReleaseNotes::Failed { message, url }) => {
                 card.summary
-                    .set_text(&crate::i18n::tr("Couldn’t load release notes"));
+                    .set_text(&crate::i18n::tr("Couldn't load release notes"));
                 set_release_notes_message(
                     &card.notes,
-                    &rust_i18n::t!("Couldn’t load release notes: %{message}", message = message),
+                    &rust_i18n::t!("Couldn't load release notes: %{message}", message = message),
                 );
                 card.fallback.set_uri(&url);
                 card.fallback.set_visible(true);
@@ -293,11 +293,11 @@ pub(super) fn load_current_release_notes(card: &ReleaseNotesCard) {
             Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
             Err(TryRecvError::Disconnected) => {
                 card.summary
-                    .set_text(&crate::i18n::tr("Couldn’t load release notes"));
+                    .set_text(&crate::i18n::tr("Couldn't load release notes"));
                 set_release_notes_message(
                     &card.notes,
                     &crate::i18n::tr(
-                        "Couldn’t load release notes because the request ended unexpectedly.",
+                        "Couldn't load release notes because the request ended unexpectedly.",
                     ),
                 );
                 glib::ControlFlow::Break

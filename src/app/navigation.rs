@@ -33,9 +33,10 @@ mod monitored;
 mod ordering;
 mod preferences;
 mod selection;
+mod type_groups;
 mod visual;
 
-use cursor::{place_cursor, visible_positions};
+use cursor::{place_committed_cursor, place_cursor, visible_positions};
 use fill::{adopt_selected_locations, adopt_selected_positions};
 use location_set::LocationSet;
 #[cfg(test)]
@@ -43,6 +44,7 @@ use monitored::insert_monitored_entry;
 pub(crate) use ordering::{compare_display_names, sort_entries};
 use ordering::{compare_entries, merge_entries};
 use selection::SelectedLocations;
+pub(crate) use type_groups::compare_type_groups;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LoadState {
@@ -112,11 +114,16 @@ pub struct ColumnState {
     /// Soft load target: selected if it arrives, otherwise the first visible entry
     /// once the listing is complete. Never reveals hidden files or reports failure.
     preferred_on_load: Option<Location>,
+    /// The folder this column has open, for a cursor Left asked for before the
+    /// listing arrived: committed if it lists visibly, otherwise nothing is selected.
+    open_child_on_load: Option<Location>,
     /// Cursor position before a reload; the cursor moves to its neighbour when the
     /// entry is gone.
     reload_cursor: Option<usize>,
     // Auto-selection must not redirect paste into the first folder.
     load_cursor: Option<Location>,
+    /// See `NavigationState::set_type_grouping`.
+    type_grouping: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -163,6 +170,7 @@ pub struct NavigationState {
     selectionless_removals: HashSet<Location>,
     preserve_fill_on_removal: bool,
     visual: Option<VisualRange>,
+    type_grouping: bool,
 }
 
 /// A walked range over one pane in displayed order. The fill is recomputed from
@@ -342,6 +350,21 @@ impl NavigationState {
         let entry = column.entries.get(position)?.clone();
         Some((depth, position, entry))
     }
+
+    /// The folder the active column lists, as its parent column's entry, when the
+    /// active column is the deepest one. An ancestor column with its own child open
+    /// never stands for the folder its parent has open.
+    pub fn entered_folder(&self) -> Option<(usize, usize, FileEntry)> {
+        let depth = self.active_column?;
+        if depth + 1 != self.columns.len() {
+            return None;
+        }
+        let parent_depth = depth.checked_sub(1)?;
+        let position = self.active_child_position(parent_depth)?;
+        let entry = self.entry_at(parent_depth, position)?;
+        Some((parent_depth, position, entry))
+    }
+
     pub fn loading_column(&self, request_id: RequestId) -> Option<(usize, usize)> {
         self.columns.iter().enumerate().find_map(|(depth, column)| {
             (column.request_id == request_id).then_some((depth, column.entries.len()))

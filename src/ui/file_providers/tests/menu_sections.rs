@@ -230,45 +230,169 @@ fn descendant_with_class(root: &gtk::Widget, class: &str) -> Option<gtk::Widget>
     found
 }
 
+fn heading_label(popover: &gtk::PopoverMenu, with_icon: bool) -> gtk::Label {
+    if !with_icon {
+        return descendant_with_class(popover.upcast_ref(), "separator")
+            .and_downcast::<gtk::Label>()
+            .expect("provider heading label");
+    }
+    let heading = descendant_with_class(popover.upcast_ref(), "provider-heading")
+        .expect("provider heading row");
+    let image = heading.first_child().expect("heading icon");
+    assert!(image.downcast_ref::<gtk::Image>().is_some());
+    image
+        .next_sibling()
+        .and_downcast::<gtk::Label>()
+        .expect("heading label")
+}
+
+struct RenderedMenu {
+    model: gio::Menu,
+    popover: gtk::PopoverMenu,
+    group: gio::SimpleActionGroup,
+}
+
+impl RenderedMenu {
+    fn new() -> Self {
+        let model = gio::Menu::new();
+        let popover = gtk::PopoverMenu::from_model(Some(&model));
+        let group = gio::SimpleActionGroup::new();
+        popover.insert_action_group("provider", Some(&group));
+        Self {
+            model,
+            popover,
+            group,
+        }
+    }
+
+    fn renderer(&self, epoch: u64) -> menus::Renderer {
+        menus::Renderer::new(
+            (self.model.clone(), None),
+            self.group.clone(),
+            glib::WeakRef::new(),
+            self.popover.downgrade(),
+            (vec!["/file".into()], false),
+            Rc::new(Cell::new(epoch)),
+            epoch,
+        )
+    }
+}
+
+fn heading_labels(root: &gtk::Widget, name: &str) -> usize {
+    let own = root
+        .downcast_ref::<gtk::Label>()
+        .is_some_and(|label| label.has_css_class("separator") && label.label() == name);
+    usize::from(own)
+        + std::iter::successors(root.first_child(), gtk::Widget::next_sibling)
+            .map(|child| heading_labels(&child, name))
+            .sum::<usize>()
+}
+
+static HEADING_SLOT_FAULTS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// Records GTK's complaints about a reused custom slot ID or a role set on a
+/// realized accessible, and writes every message as usual. Install it once,
+/// in an isolated GTK test's own process.
+fn record_heading_slot_faults() {
+    glib::log_set_writer_func(|level, fields| {
+        let field = |key: &str| {
+            fields
+                .iter()
+                .find(|field| field.key() == key)
+                .and_then(glib::LogField::value_str)
+                .unwrap_or_default()
+                .to_owned()
+        };
+        let message = field("MESSAGE");
+        let relevant = message.contains("Duplicate custom ID")
+            || message.contains("gtk_at_context_set_accessible_role");
+        if field("GLIB_DOMAIN") == "Gtk"
+            && matches!(level, glib::LogLevel::Warning | glib::LogLevel::Critical)
+            && relevant
+        {
+            HEADING_SLOT_FAULTS
+                .lock()
+                .expect("heading slot faults")
+                .push(message);
+        }
+        glib::log_writer_default(level, fields)
+    });
+}
+
 #[test]
-fn provider_icon_heading_keeps_the_name_and_action_positions() {
+fn reopened_menu_renders_a_fresh_provider_heading_row() {
     crate::test_support::gtk_test(
-        "ui::file_providers::tests::menu_sections::provider_icon_heading_keeps_the_name_and_action_positions",
+        "ui::file_providers::tests::menu_sections::reopened_menu_renders_a_fresh_provider_heading_row",
+        || {
+            record_heading_slot_faults();
+            install_hub();
+            let menu = RenderedMenu::new();
+            for open in 1..=3 {
+                // Each rebuild clears the model the popover keeps rendering.
+                menu.model.remove_all();
+                let mut renderer = menu.renderer(open);
+                renderer.update(vec![(0, action("keep", "Keep offline", None))]);
+                assert_eq!(
+                    string_attribute(menu.model.upcast_ref(), 0, "label"),
+                    None,
+                    "no GTK section title on open {open}"
+                );
+                assert_eq!(
+                    heading_labels(menu.popover.upcast_ref(), "Example Cloud"),
+                    1,
+                    "one heading row on open {open}"
+                );
+            }
+            assert_eq!(
+                *HEADING_SLOT_FAULTS.lock().expect("heading slot faults"),
+                Vec::<String>::new(),
+                "GTK slot warnings across reopened menus"
+            );
+            clear_hub();
+        },
+    );
+}
+
+#[test]
+fn provider_heading_row_keeps_the_name_and_action_positions() {
+    crate::test_support::gtk_test(
+        "ui::file_providers::tests::menu_sections::provider_heading_row_keeps_the_name_and_action_positions",
         || {
             install_hub();
-            with_hub(|hub| hub.providers[0].heading_icon = Some(black_pixel().upcast()));
-            let model = gio::Menu::new();
-            let popover = gtk::PopoverMenu::from_model(Some(&model));
-            let group = gio::SimpleActionGroup::new();
-            popover.insert_action_group("provider", Some(&group));
-            let mut renderer = menus::Renderer::new(
-                (model.clone(), None),
-                group.clone(),
-                glib::WeakRef::new(),
-                popover.downgrade(),
-                (vec!["/file".into()], false),
-                Rc::new(Cell::new(1)),
-                1,
-            );
-            renderer.update(vec![
-                (0, action("keep", "Keep offline", None)),
-                (0, action("share", "Share", None)),
-            ]);
-            let section = model.item_link(0, "section").expect("provider section");
-            assert_eq!(labels(&section), ["Keep offline", "Share"]);
-            renderer.update(vec![
-                (0, action("share", "Share", None)),
-                (0, action("link", "Copy link", None)),
-            ]);
-            assert_eq!(labels(&section), ["Share", "Copy link"]);
-            assert!(group.lookup_action("action-0-keep").is_none());
+            for with_icon in [true, false] {
+                with_hub(|hub| {
+                    hub.providers[0].heading_icon = with_icon.then(|| black_pixel().upcast());
+                });
+                let menu = RenderedMenu::new();
+                let mut renderer = menu.renderer(1);
+                renderer.update(vec![
+                    (0, action("keep", "Keep offline", None)),
+                    (0, action("share", "Share", None)),
+                ]);
+                let section = menu
+                    .model
+                    .item_link(0, "section")
+                    .expect("provider section");
+                assert_eq!(labels(&section), ["Keep offline", "Share"]);
+                renderer.update(vec![
+                    (0, action("share", "Share", None)),
+                    (0, action("link", "Copy link", None)),
+                ]);
+                assert_eq!(labels(&section), ["Share", "Copy link"]);
+                assert!(menu.group.lookup_action("action-0-keep").is_none());
 
-            let heading = descendant_with_class(popover.upcast_ref(), "provider-heading")
-                .expect("provider heading row");
-            let image = heading.first_child().expect("heading icon");
-            assert!(image.downcast_ref::<gtk::Image>().is_some());
-            let label = image.next_sibling().and_downcast::<gtk::Label>();
-            assert_eq!(label.expect("heading label").label(), "Example Cloud");
+                // GTK can hold a section title outside the widget tree (#2011).
+                assert_eq!(
+                    string_attribute(menu.model.upcast_ref(), 0, "label"),
+                    None,
+                    "no GTK section title (icon: {with_icon})"
+                );
+                assert_eq!(
+                    heading_label(&menu.popover, with_icon).label(),
+                    "Example Cloud",
+                    "heading (icon: {with_icon})"
+                );
+            }
         },
     );
 }

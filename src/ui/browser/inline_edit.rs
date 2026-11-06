@@ -90,13 +90,24 @@ impl super::BrowserView {
     }
 }
 
-fn names_entry(
-    entry: &FileEntry,
+/// The native paths of a rename, `to` being `None` for a move to another folder.
+fn native_rename<'a>(
+    old_location: &'a Location,
+    new_location: Option<&'a Location>,
+) -> Option<(&'a std::path::Path, Option<&'a std::path::Path>)> {
+    let to = match new_location {
+        Some(location) => Some(location.native_path()?),
+        None => None,
+    };
+    Some((old_location.native_path()?, to))
+}
+
+fn names_location(
+    location: &Location,
     old_location: &Location,
     new_location: Option<&Location>,
 ) -> bool {
-    entry.location == *old_location
-        || new_location.is_some_and(|location| location == &entry.location)
+    location == old_location || new_location.is_some_and(|new_location| new_location == location)
 }
 
 pub(in crate::ui) fn queue_rename(
@@ -132,13 +143,11 @@ impl ViewState {
                     else {
                         return false;
                     };
-                    let Some(position) = column.map.source_position(item.position()) else {
+                    let Some(location) = self.column_row_location(depth, column, item.position())
+                    else {
                         return true;
                     };
-                    let Some(entry) = self.browser.entry_at(depth, position) else {
-                        return true;
-                    };
-                    if names_entry(&entry, old_location, new_location)
+                    if names_location(&location, old_location, new_location)
                         && let Some(label) = bound.rename_label.upgrade()
                     {
                         labels.push(label.upcast());
@@ -153,6 +162,25 @@ impl ViewState {
                 .rename_label_widgets(old_location, new_location),
         );
         labels
+    }
+
+    /// The item a Columns row at `position` shows. Filter results replace the
+    /// listing's rows, so there a row's position indexes the results, not the directory.
+    fn column_row_location(
+        &self,
+        depth: usize,
+        column: &super::columns::ColumnView,
+        position: u32,
+    ) -> Option<Location> {
+        if column.recursive_search_active.get() {
+            return column
+                .search_results
+                .borrow()
+                .get(position as usize)
+                .map(|result| Location::local(&result.path));
+        }
+        let position = column.map.source_position(position)?;
+        Some(self.browser.entry_at(depth, position)?.location)
     }
 
     fn update_rename_labels(
@@ -482,13 +510,16 @@ impl ViewState {
             .browser
             .rename_item()
             .map(|(depth, position, _)| (depth, position));
+        let generation = self.rename_generation.get();
         self.submit_rename(&field);
+        self.note_rename_advanced(generation);
         // The committed row must not pull the cursor back once its rename lands.
         self.yield_rename_reveal();
         self.browser.move_selection(direction);
         if let Some((depth, position, entry)) = self.browser.rename_item()
             && before != Some((depth, position))
         {
+            self.mirror_rename_target();
             self.rename_when_shown(depth, position, entry);
         }
         true
@@ -539,6 +570,7 @@ impl ViewState {
                     .and_then(|start| start.child(std::ffi::OsStr::new(&first)));
                 let generation =
                     self.start_pending_rename(&entry, first.clone(), Some(replacement));
+                self.follow_pending_rename();
                 // A row leaving for a folder above keeps its name until it goes.
                 if path.up == 0 {
                     self.update_rename_labels(&entry.location, None, &first);
@@ -558,8 +590,56 @@ impl ViewState {
             return;
         }
         let generation = self.start_pending_rename(&entry, name.clone(), None);
+        self.follow_pending_rename();
         self.update_rename_labels(&entry.location, None, &name);
-        self.queue_pending_rename(generation, move |browser| browser.rename(entry, name));
+        self.queue_pending_rename(generation, move |browser| {
+            if new_item {
+                browser.name_new_item(entry, name)
+            } else {
+                browser.rename(entry, name)
+            }
+        });
+    }
+
+    /// Filter results keep their selection and focus by path. Tells those listing
+    /// `old_location` that it becomes `new_location`, which they list only once their
+    /// search index catches up, or with `None` that it moves to another folder.
+    pub(super) fn follow_renamed_result(
+        &self,
+        old_location: &Location,
+        new_location: Option<&Location>,
+    ) {
+        let Some((from, to)) = native_rename(old_location, new_location) else {
+            return;
+        };
+        for column in self.columns.borrow().iter() {
+            let listed = || {
+                column
+                    .search_results
+                    .borrow()
+                    .iter()
+                    .any(|result| result.path == from)
+            };
+            if column.recursive_search_active.get() && listed() {
+                column.renamed_result.expect(from, to);
+            }
+        }
+        self.mode_views.borrow().follow_renamed_result(from, to);
+    }
+
+    /// Undoes [`Self::follow_renamed_result`] for this rename only.
+    pub(super) fn forget_renamed_result(
+        &self,
+        old_location: &Location,
+        new_location: Option<&Location>,
+    ) {
+        let Some((from, to)) = native_rename(old_location, new_location) else {
+            return;
+        };
+        for column in self.columns.borrow().iter() {
+            column.renamed_result.clear_if(from, to);
+        }
+        self.mode_views.borrow().forget_renamed_result(from, to);
     }
 
     pub(in crate::ui) fn submit_mode_rename(self: &Rc<Self>, field: &gtk::Entry) {

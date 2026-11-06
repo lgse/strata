@@ -49,6 +49,23 @@ The operations are individually scoped and document:
 
 If a maintained safe API gains this capability, this exception should be removed.
 
+### Command-line errors for the invoking process
+
+Location: `src/main.rs::print_command_line_error`
+
+Reason: when Strata is already running, the primary instance handles the
+command line, so `eprintln!` would write a usage error to the primary's log
+while the invoking command exits silently. GIO forwards
+`g_application_command_line_printerr` to the caller's stderr, but gio-rs binds
+only `printerr_literal`, which needs GLib 2.80, above the 2.72 Strata supports.
+
+The call passes a fixed `"%s"` format and exactly one NUL-terminated argument,
+so message text is never read as a format. The command line, the format literal
+and the message `CString` all outlive the call, and GLib copies the text before
+it returns. A message containing an interior NUL cannot become a `CString` and
+is dropped rather than truncated. Remove this exception when Strata requires
+GLib 2.80.
+
 ### Verified Trash result
 
 Location: `src/adapters/local_operations/environment.rs::System::trash`

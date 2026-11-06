@@ -295,6 +295,7 @@ cursor or **v** then motion → **y** / **x** → **h** / **l** / **g h** / **g 
 | **R** | Restore the selection (or the focused item) from Trash, with confirmation |
 | **c c** / **c n** | Copy path / name |
 | **; 1**–**; 9** / **; 0** | Run the first 10 matching custom actions |
+| **; . 1**–**; . 9** / **; . 0** | Run the first 10 custom actions for the keyboard-focused folder |
 | **; t** | Open a terminal in the keyboard-focused folder |
 | **; c** | Compress the selection (or the focused item) |
 | **; e** / **; E** | Extract the archive here / to a folder typed in the footer |
@@ -314,9 +315,17 @@ and targets again: if the targets changed since **;**, it flashes
 neither runs anything. A confirming action asks first, and a run shows in Jobs
 like one started from the context menu. See [custom actions](custom-actions.md).
 
+**; .** switches the panel to the actions for the keyboard-focused folder, the
+pane holding the cursor, as its background menu offers them: the folder is the
+only input and `{parent}`, whatever the cursor or selection is on, and the run's
+source is `background`. The pill reads **; .-**, and **1**–**9** / **0** pick
+from the same slots and order, so **; . 1** runs the first folder action even
+in an empty folder. Non-local places list `No matching actions`. If the focused
+folder changes before the digit, it flashes `Folder changed` and runs nothing.
+
 **; t** opens a terminal in the keyboard-focused folder, the pane holding the
-cursor, whatever the cursor or selection is on. The panel lists it, then
-**; c**, **; e**, and **; E**, after the actions. In Trash and other non-local places it flashes
+cursor, whatever the cursor or selection is on. After the actions, the panel
+lists **; .**, this command, **; c**, **; e**, and **; E**. In Trash and other non-local places it flashes
 `Can’t open a terminal here`. **Ctrl+Alt+T** in regular mode keeps its own rule and prefers a
 single selected folder.
 
@@ -713,9 +722,16 @@ The request takes the fill, or the cursor item when nothing is filled; the
 automatic first-row selection never counts. A Save request always saves in the
 current folder, and moving the cursor changes neither the name nor the
 destination. While the name or location field has focus, every key but **F1**,
-**Ctrl+Shift+M**, and **Esc** is typed; **Ctrl+A** selects the text. Every
-request starts with focus in the files. **Tab** goes from the files to the
-header, from the header to the Save name, and from the name back to the files.
+**Ctrl+Shift+M**, and **Esc** is typed, except that **Tab** and **Shift+Tab**
+leave the name field; **Ctrl+A** selects the text. Every request starts with
+focus in the files. **Tab** goes from the files to the header, from the header
+to the name field, then through the request's options (file type, choices the
+application offers, and **Open files read-only**) and back to the files. With
+no options, **Tab** from the name field returns straight to the files. A
+request without a name field, such as a folder chooser, goes from the header
+straight to its options.
+**Shift+Tab** steps back through the options to the name field, and from the
+name field returns to the files.
 Saving over an existing file asks first with Cancel focused. Beside Cancel and
 Save, a Save request shows hints for **Enter**, plus **r** and **o** when it
 saves one named file.

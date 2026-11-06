@@ -78,6 +78,8 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
     saved.remove("folder_peeking");
     saved.remove("columns_show_sizes");
     saved.remove("language");
+    saved.remove("preview_video_start");
+    saved.remove("preview_text_wrap");
     let restored: Preferences = saved.try_into().expect("backward-compatible preferences");
     assert_eq!(
         restored,
@@ -94,8 +96,34 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
             file_icon_colors: FileIconColors::Brand,
             folder_peeking: false,
             columns_show_sizes: true,
+            preview_video_start: 0,
+            preview_text_wrap: true,
             ..non_default_preferences()
         }
+    );
+}
+
+#[test]
+fn blank_interface_fonts_load_as_the_default_font() {
+    gtk_test(
+        "ui::preferences::tests::preferences::loading::blank_interface_fonts_load_as_the_default_font",
+        || {
+            for (stored, expected) in [
+                ("", None),
+                ("   ", None),
+                ("  Fixture Sans ", Some("Fixture Sans")),
+            ] {
+                assert_recovered_preferences_survive_save(
+                    |saved| {
+                        saved.insert("interface_font".into(), stored.into());
+                    },
+                    Preferences {
+                        interface_font: expected.map(str::to_owned),
+                        ..non_default_preferences()
+                    },
+                );
+            }
+        },
     );
 }
 
@@ -165,6 +193,38 @@ fn unlisted_search_limits_round_up_on_load_and_set() {
                     time_budget: None,
                     max_entries: None,
                 }
+            );
+        },
+    );
+}
+
+#[test]
+fn video_starts_past_the_maximum_clamp_on_load_and_set() {
+    gtk_test(
+        "ui::preferences::tests::preferences::loading::video_starts_past_the_maximum_clamp_on_load_and_set",
+        || {
+            for stored in [100, 5_000] {
+                assert_recovered_preferences_survive_save(
+                    |saved| {
+                        saved.insert("preview_video_start".into(), i64::from(stored).into());
+                    },
+                    Preferences {
+                        preview_video_start: 99,
+                        ..non_default_preferences()
+                    },
+                );
+            }
+
+            seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
+            manager.set_preview_video_start(u32::MAX);
+            assert_eq!(manager.preview_video_start(), 99);
+            crate::storage::writer::settle();
+            assert_eq!(
+                read_preferences()
+                    .expect("saved preferences")
+                    .preview_video_start,
+                99
             );
         },
     );
@@ -259,6 +319,7 @@ fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
                 kind: EntryKind::File,
                 size: MetadataValue::Known(4),
                 modified_unix_seconds: MetadataValue::Known(seconds),
+                created_unix_seconds: MetadataValue::Unknown,
                 mode: MetadataValue::Known(0o100644),
                 recent_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,

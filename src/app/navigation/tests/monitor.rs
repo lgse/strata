@@ -25,6 +25,7 @@ fn png_with_details(path: &str, name: &str) -> FileEntry {
     FileEntry {
         size: MetadataValue::Known(100),
         modified_unix_seconds: MetadataValue::Known(10),
+        created_unix_seconds: MetadataValue::Unknown,
         ..named_entry(path, name)
     }
 }

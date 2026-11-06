@@ -19,6 +19,7 @@ mod conflicts;
 mod destination_reloads;
 mod drops;
 mod plain_transfers;
+mod replay_kinds;
 mod send_to;
 mod undo;
 
@@ -161,6 +162,7 @@ fn transfer_entry(path: &Path) -> FileEntry {
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        created_unix_seconds: crate::model::MetadataValue::Unknown,
         recent_unix_seconds: crate::model::MetadataValue::Unknown,
         mode: crate::model::MetadataValue::Unknown,
         image_dimensions: crate::model::MetadataValue::Unknown,

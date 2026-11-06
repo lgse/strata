@@ -256,7 +256,8 @@ window's direct stage (`window/keyboard/direct.rs`) gives some of them one,
 listed in `keys::DIRECT_IN_DEFAULT` and `keys::DIRECT_IN_TENXER`: in the
 default map Open with, Move to, Copy to, Restore, invert selection, search
 subfolders, the visited and recent folder jumps, half-page paging, and the Sort,
-Copy and Action chord steps, which there are plain keys with no trigger; in
+Copy and Action chord steps, which there are plain keys with no trigger, but not
+`actions.folder`, which only switches the 10xer **;** panel; in
 10xer duplicate, pin, jump to folder and arrow scope. A key a user binds to
 one of them runs the handler the other map's key runs, with the same prompt,
 dialog or action, on the active map's targets: 10xer duplicate acts on the
@@ -659,3 +660,12 @@ AZERTY, German QWERTZ, Caps Lock, and Hanyu Pinyin. With Hanyu Pinyin, GTK's
 own input method composes the AltGr tone keys in text fields, which stands in
 for a pinyin input method's composition. See
 [testing](testing.md).
+
+### Additional 10xer sort choices
+
+The sort chord adds Extension, Created and Unsorted, plus Natural, Alphabetical
+and case-sensitive name comparison. Their commands are `sort.extension`,
+`sort.created`, `sort.unsorted`, `sort.natural`, `sort.alphabetical` and
+`sort.case_sensitive`. Settings and F1 show their bindings from the key catalog;
+they can also be rebound in the default map. Reversing direction has no effect
+on Unsorted.

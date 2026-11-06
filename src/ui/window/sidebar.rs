@@ -153,7 +153,7 @@ pub(in crate::ui) fn build_sidebar(
     state.sync_active_place();
     let release_watch = {
         let weak = Rc::downgrade(&state);
-        super::device_release::watch_sidebars(move || {
+        super::device_release::watch_sidebars(Some(&state.browser), move || {
             if let Some(state) = weak.upgrade() {
                 state.rebuild();
             }
@@ -167,7 +167,7 @@ pub(in crate::ui) fn build_sidebar(
         update_label: shell.update_label,
         update_version: shell.update_version,
         handlers: RefCell::new(handlers),
-        mount_handler: RefCell::new(Some(mount_handler)),
+        mount_handler: RefCell::new(mount_handler),
         recent_setting_handler: RefCell::new(recent_setting_handler),
         release_watch,
         bookmark_watch: RefCell::new(Some(bookmark_watch)),
@@ -249,12 +249,14 @@ impl SidebarShell {
     }
 }
 
+pub(super) const UPDATE_TEXT_SHOWN: &str = "text";
+pub(super) const UPDATE_TEXT_HIDDEN: &str = "hidden";
+
 fn update_notice() -> (gtk::Box, gtk::Button, gtk::Label, gtk::Label) {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let dot = gtk::Label::new(Some("●"));
     dot.add_css_class("sidebar-update-dot");
     let text = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    text.set_hexpand(true);
     text.set_valign(gtk::Align::Center);
     let label = gtk::Label::new(None);
     label.add_css_class("sidebar-update-label");
@@ -268,12 +270,24 @@ fn update_notice() -> (gtk::Box, gtk::Button, gtk::Label, gtk::Label) {
         text.append(line);
     }
     crate::ui::controls::keep_words_whole(&label);
-    content.append(&dot);
-    content.append(&text);
+    // The hidden page keeps the text's height while the rail drops its width,
+    // so the notice stays put when the sidebar toggles.
+    let text_slot = gtk::Stack::builder()
+        .hhomogeneous(false)
+        .vhomogeneous(true)
+        .hexpand(true)
+        .build();
+    text_slot.add_named(&text, Some(UPDATE_TEXT_SHOWN));
+    text_slot.add_named(
+        &gtk::Box::new(gtk::Orientation::Horizontal, 0),
+        Some(UPDATE_TEXT_HIDDEN),
+    );
     content.append(&crate::assets::primary_icon(
         crate::assets::icons::DOWNLOADS,
         17,
     ));
+    content.append(&text_slot);
+    content.append(&dot);
     let notice = gtk::Button::builder().child(&content).build();
     notice.add_css_class("sidebar-update");
     notice.set_cursor_from_name(Some("pointer"));
@@ -448,7 +462,13 @@ pub(super) enum PlaceNavigation {
 
 fn connect_device_changes(
     state: &Rc<SidebarState>,
-) -> (Vec<glib::SignalHandlerId>, glib::SignalHandlerId) {
+) -> (Vec<glib::SignalHandlerId>, Option<glib::SignalHandlerId>) {
+    // Tests share the host's mount table, which other processes change at any
+    // moment (each container start does); a rebuild then replaces the rows a
+    // test holds. Tests build device rows directly instead.
+    if cfg!(test) {
+        return (Vec::new(), None);
+    }
     let monitor = &state.volume_monitor;
     let handlers = vec![
         monitor.connect_mount_added(rebuild_on_change(state)),
@@ -467,7 +487,7 @@ fn connect_device_changes(
             state.queue_rebuild();
         }
     });
-    (handlers, mount_handler)
+    (handlers, Some(mount_handler))
 }
 
 fn rebuild_on_change<T: 'static>(

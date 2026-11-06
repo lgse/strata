@@ -7,7 +7,9 @@ use crate::{
     services::RequestId,
 };
 
-use super::{ColumnState, EntryInsertion, LoadState, NavigationState, merge_entries};
+use super::{
+    ColumnState, EntryInsertion, LoadState, NavigationState, merge_entries, place_committed_cursor,
+};
 
 impl NavigationState {
     pub fn select_first_on_load(&mut self, depth: usize) {
@@ -194,6 +196,7 @@ impl NavigationState {
             return false;
         };
         column.pending_selection.clear();
+        column.open_child_on_load = None;
         column.truncated = truncated;
         column.settle_listed_state();
         true
@@ -246,8 +249,10 @@ impl ColumnState {
         self.resolve_pending_reveal();
         self.restore_pending_selection();
         self.resolve_preferred_on_load();
-        if self.select_first_on_load && !self.entries.is_empty() {
-            self.select_first_visible_entry();
+        self.resolve_open_child_on_load();
+        // A grouped listing's first row is known only once every batch is in.
+        if self.select_first_on_load && !self.entries.is_empty() && !self.shows_type_groups() {
+            self.select_first_displayed_entry();
         }
     }
 
@@ -261,6 +266,7 @@ impl ColumnState {
         self.pending_reveal.clear();
         self.selection_from_reveal = false;
         self.preferred_on_load = None;
+        self.open_child_on_load = None;
         self.reload_cursor = None;
     }
 
@@ -276,14 +282,10 @@ impl ColumnState {
         self.load_cursor = Some(location);
     }
 
-    pub(super) fn select_first_visible_entry(&mut self) {
+    /// The automatic cursor of a first visit, on the first row the view shows.
+    pub(super) fn select_first_displayed_entry(&mut self) {
         self.pending_selection.clear();
-        let show_hidden = self.preferences.show_hidden;
-        if let Some(position) = self
-            .entries
-            .iter()
-            .position(|entry| show_hidden || !entry.is_hidden)
-        {
+        if let Some(position) = self.first_displayed_entry() {
             self.select_loaded_entry(position);
         }
     }
@@ -310,13 +312,36 @@ impl ColumnState {
         self.select_loaded_entry(position);
     }
 
-    /// Fallbacks that need the complete listing: the first visible entry for a preferred
-    /// entry that never arrived, and a cursor-only neighbour for a reloaded cursor whose
-    /// entry is gone. Returns whether the cursor moved.
+    /// Unlike the preferred entry, the open folder has no fallback: a cursor on
+    /// another entry would make file commands act on it.
+    fn resolve_open_child_on_load(&mut self) {
+        if !self.pending_reveal.is_empty() || self.selected.is_some() {
+            return;
+        }
+        let Some(open_child) = self.open_child_on_load.as_ref() else {
+            return;
+        };
+        let Some(position) = self
+            .entries
+            .iter()
+            .position(|entry| entry.location == *open_child && self.shows(entry))
+        else {
+            return;
+        };
+        self.pending_selection.clear();
+        self.select_first_on_load = false;
+        place_committed_cursor(self, position);
+    }
+
+    /// Picks that need the complete listing: the first row shown for a grouped first
+    /// visit or a preferred entry that never arrived, and a cursor-only neighbour for a
+    /// reloaded cursor whose entry is gone. Returns whether the cursor moved.
     pub(super) fn complete_load_selection(&mut self) -> bool {
         let before = self.selected;
-        if self.preferred_on_load.take().is_some() && self.awaits_fallback_cursor() {
-            self.select_first_visible_entry();
+        self.open_child_on_load = None;
+        let preferred = self.preferred_on_load.take().is_some();
+        if (preferred || self.select_first_on_load) && self.awaits_fallback_cursor() {
+            self.select_first_displayed_entry();
         }
         if let Some(previous) = self.reload_cursor.take()
             && self.awaits_fallback_cursor()
@@ -356,6 +381,7 @@ impl ColumnState {
         self.load_cursor = None;
         self.selection_from_reveal = true;
         self.preferred_on_load = None;
+        self.open_child_on_load = None;
         self.reload_cursor = None;
     }
 

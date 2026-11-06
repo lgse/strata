@@ -58,6 +58,12 @@ catalog! {
         SORT_BY_MODIFIED: Command "sort.modified" step(Sort) = Binding::plain(Key::m);
         SORT_BY_SIZE: Command "sort.size" step(Sort) = Binding::plain(Key::s);
         SORT_BY_TYPE: Command "sort.type" step(Sort) = Binding::plain(Key::e);
+        SORT_BY_EXTENSION: Command "sort.extension" step(Sort) = Binding::plain(Key::x);
+        SORT_BY_CREATED: Command "sort.created" step(Sort) = Binding::plain(Key::b);
+        SORT_BY_UNSORTED: Command "sort.unsorted" step(Sort) = Binding::plain(Key::u);
+        SORT_BY_NATURAL: Command "sort.natural" step(Sort) = Binding::plain(Key::n);
+        SORT_BY_ALPHABETICAL: Command "sort.alphabetical" step(Sort) = Binding::plain(Key::l);
+        SORT_BY_CASE_SENSITIVE: Command "sort.case_sensitive" step(Sort) = Binding::plain(Key::c);
 
         COPY_AS: Command "copy_as" trigger(CopyAs) = Binding::plain(Key::c);
         COPY_AS_PATH: Command "copy_as.path" step(CopyAs) = Binding::plain(Key::c);
@@ -68,7 +74,10 @@ catalog! {
         ACTIONS_COMPRESS: Command "actions.compress" step(Actions) = Binding::plain(Key::c);
         ACTIONS_EXTRACT: Command "actions.extract" step(Actions) = Binding::plain(Key::e);
         ACTIONS_EXTRACT_TO: Command "actions.extract_to" step(Actions) = Binding::shift(Key::e);
+        ACTIONS_FOLDER: Command "actions.folder" step(Actions) = Binding::plain(Key::period);
         ACTIONS_NUMBERS: Digits = Digits::after(ACTIONS.shown(), 9, true);
+        ACTIONS_FOLDER_NUMBERS: Digits =
+            Digits::after_chord(ACTIONS.shown(), ACTIONS_FOLDER.shown(), 9, true);
 
         TAB_CHORD: Command "tabs" trigger(Tabs) = Binding::plain(Key::t);
         TAB_CHORD_NEW: Command "tabs.new" step(Tabs) = Binding::plain(Key::n);

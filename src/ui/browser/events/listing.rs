@@ -139,11 +139,11 @@ impl ViewState {
         } else {
             self.truncate(len);
         }
-        self.sync_active_location();
+        self.sync_displayed_location();
     }
 
     pub(super) fn on_column_added(self: &Rc<Self>, depth: usize, location: &Location) {
-        self.set_location(location);
+        self.sync_displayed_location();
         if self.mode_views.borrow().mode() == BrowserMode::Columns {
             self.append_column(depth, location);
         }
@@ -160,12 +160,7 @@ impl ViewState {
         if self.mode_views.borrow().mode() == BrowserMode::Columns {
             self.rebuild_relocated_columns(from_depth);
         }
-        if let Some(location) = (0..)
-            .map_while(|depth| self.browser.location_at(depth))
-            .last()
-        {
-            self.set_location(&location);
-        }
+        self.sync_displayed_location();
     }
 
     fn rebuild_relocated_columns(self: &Rc<Self>, from_depth: usize) {

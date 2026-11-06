@@ -4,6 +4,13 @@ use gtk::prelude::*;
 
 use crate::services::{DocumentListChildKind, DocumentSpanStyle, DocumentUnit, DocumentUnitKind};
 
+/// The left and right margin of rendered document text views.
+pub(super) const DOCUMENT_MARGIN: i32 = 16;
+const CODE_INSET: i32 = 10;
+/// Keeps the first code line clear of the copy button, which `.preview-code-copy`
+/// places 24px from the right edge with a 27px content box, 3px padding and a 1px border.
+const CODE_COPY_BUTTON_SPACE: i32 = 24 + 27 + 2 * 3 + 2 + CODE_INSET;
+
 pub(super) fn apply_document_unit_tags(buffer: &gtk::TextBuffer, unit: &DocumentUnit) {
     let start = buffer.start_iter();
     let end = buffer.end_iter();
@@ -48,13 +55,20 @@ pub(super) fn apply_document_unit_tags(buffer: &gtk::TextBuffer, unit: &Document
         DocumentUnitKind::Code { list_depth, .. } => {
             apply("document-code");
             if let Some(depth) = list_depth {
-                apply(&format!("document-list-child-{}", depth.min(&32)));
+                apply(&format!("document-code-list-{}", depth.min(&32)));
             }
             if unit.first && buffer.char_count() > 0 {
                 buffer.apply_tag(
                     &document_tag(buffer, "document-code-start"),
                     &start,
                     &buffer.iter_at_offset(1),
+                );
+                let mut first_line_end = start;
+                first_line_end.forward_to_line_end();
+                buffer.apply_tag(
+                    &document_tag(buffer, "document-code-copy-space"),
+                    &start,
+                    &first_line_end,
                 );
             }
             if unit.last && buffer.char_count() > 0 {
@@ -131,17 +145,22 @@ pub(super) fn ensure_document_text_tags(buffer: &gtk::TextBuffer) {
         .line_height(1.2)
         .background_full_height(true)
         .build());
+    // Code keeps the view's wrap mode, so wrapped lines need margins rather
+    // than a first-line indent to stay inside the code panel.
     add(gtk::TextTag::builder()
         .name("document-code")
         .family("monospace")
-        .indent(10)
-        .right_margin(10)
+        .left_margin(DOCUMENT_MARGIN + CODE_INSET)
+        .right_margin(DOCUMENT_MARGIN + CODE_INSET)
         .line_height(1.15)
-        .wrap_mode(gtk::WrapMode::None)
         .build());
     add(gtk::TextTag::builder()
         .name("document-code-start")
         .pixels_above_lines(super::super::document_view::CODE_TOP_SPACE)
+        .build());
+    add(gtk::TextTag::builder()
+        .name("document-code-copy-space")
+        .right_margin(CODE_COPY_BUTTON_SPACE)
         .build());
     add(gtk::TextTag::builder()
         .name("document-code-end")
@@ -157,6 +176,10 @@ pub(super) fn ensure_document_text_tags(buffer: &gtk::TextBuffer) {
         add(gtk::TextTag::builder()
             .name(format!("document-list-child-{depth}"))
             .left_margin(20 + depth * 18)
+            .build());
+        add(gtk::TextTag::builder()
+            .name(format!("document-code-list-{depth}"))
+            .left_margin(20 + depth * 18 + CODE_INSET)
             .build());
     }
     add(gtk::TextTag::builder().name("document-dim").build());

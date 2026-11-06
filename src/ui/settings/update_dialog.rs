@@ -322,7 +322,7 @@ fn append_dialog_body(
     if release.kind != BuildKind::Stable || offer == UpdateOffer::Chosen {
         body.append(&update_dialog_details(release));
     }
-    let notes_heading = gtk::Label::new(Some(&crate::i18n::tr("What’s new")));
+    let notes_heading = gtk::Label::new(Some(&crate::i18n::tr("What's new")));
     notes_heading.add_css_class("release-notes-title");
     notes_heading.set_xalign(0.0);
     let notes_scroll = release_notes_scroller(release);
@@ -590,7 +590,7 @@ impl DialogCore {
         match message {
             Some(message) => {
                 self.view.status.set_text(&rust_i18n::t!(
-                    "Couldn’t install update: %{message}",
+                    "Couldn't install update: %{message}",
                     message = crate::services::error_detail(message)
                 ));
                 self.view.progress.add_css_class("error");
@@ -598,7 +598,7 @@ impl DialogCore {
             None => self
                 .view
                 .status
-                .set_text(&crate::i18n::tr("Couldn’t install update")),
+                .set_text(&crate::i18n::tr("Couldn't install update")),
         }
     }
 }

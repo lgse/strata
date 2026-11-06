@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::rc::Rc;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 #[derive(Clone, Default)]
 pub(super) struct MenuDispatch;
@@ -10,7 +10,36 @@ impl MenuDispatch {
         gtk::glib::idle_add_local_once(command);
     }
 }
-use gtk::{gio, prelude::*};
+use gtk::{gdk, gio, glib, prelude::*};
+
+const ENCODED_ICON_LIMIT: usize = 512;
+
+thread_local! {
+    static ENCODED_ICONS: RefCell<HashMap<usize, (glib::WeakRef<gdk::Texture>, gio::BytesIcon)>> =
+        RefCell::new(HashMap::new());
+}
+
+/// A menu item serializes a texture icon by encoding it as PNG. Option icons
+/// come from the shared asset cache, so each texture is encoded once and
+/// handed to every column's menu and every refresh as the same bytes.
+fn encoded_icon(texture: &gdk::Texture) -> gio::BytesIcon {
+    ENCODED_ICONS.with(|icons| {
+        let mut icons = icons.borrow_mut();
+        let key = texture.as_ptr() as usize;
+        if let Some((_, icon)) = icons
+            .get(&key)
+            .filter(|(cached, _)| cached.upgrade().as_ref() == Some(texture))
+        {
+            return icon.clone();
+        }
+        if icons.len() >= ENCODED_ICON_LIMIT {
+            icons.retain(|_, (cached, _)| cached.upgrade().is_some());
+        }
+        let icon = gio::BytesIcon::new(&texture.save_to_png_bytes());
+        icons.insert(key, (texture.downgrade(), icon.clone()));
+        icon
+    })
+}
 
 pub(super) struct CommandMenus {
     pub before: Vec<gio::Menu>,
@@ -359,9 +388,9 @@ fn update_item(item: &gio::MenuItem, button: &gtk::Button) {
             if let Some(label) = child.downcast_ref::<gtk::Label>() {
                 labels.push(label.text().to_string());
             } else if let Some(image) = child.downcast_ref::<gtk::Image>()
-                && let Some(texture) = image.paintable().and_downcast::<gtk::gdk::Texture>()
+                && let Some(texture) = image.paintable().and_downcast::<gdk::Texture>()
             {
-                item.set_icon(&texture);
+                item.set_icon(&encoded_icon(&texture));
                 item.set_attribute_value(
                     "x-strata-icon-size",
                     Some(&image.pixel_size().to_variant()),

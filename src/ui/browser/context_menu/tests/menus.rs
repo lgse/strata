@@ -47,6 +47,7 @@ impl FileSource for MenuSource {
                     },
                     size: MetadataValue::Known(5),
                     modified_unix_seconds: MetadataValue::Known(0),
+                    created_unix_seconds: MetadataValue::Unknown,
                     mode: MetadataValue::Known(
                         if matches!(name, "run-me" | "folder" | "photos.zip") {
                             0o755
@@ -311,13 +312,13 @@ fn context_hints_follow_the_active_map() {
                 ("Move to Trash", "d"),
                 ("Permanently delete", "D"),
                 ("Copy path", "Copy name"),
+                ("New Folder", "Ctrl+Shift+N"),
             ] {
                 assert_eq!(after(label), Some(hint), "{hints:?}");
             }
-            assert!(
-                !hints.iter().any(|hint| hint.starts_with("Ctrl+")),
-                "{hints:?}"
-            );
+            let other_ctrl_hint =
+                |hint: &String| hint.starts_with("Ctrl+") && hint != "Ctrl+Shift+N";
+            assert!(!hints.iter().any(other_ctrl_hint), "{hints:?}");
             assert!(
                 hints.iter().any(|hint| hint == "i"),
                 "the menu shows Strata's label, not GTK's rendering of the accelerator: {hints:?}"
@@ -448,9 +449,9 @@ fn archive_extraction_actions_follow_build_support() {
 }
 
 #[test]
-fn remove_from_recent_is_gated_on_the_recent_location() {
+fn item_menu_rows_follow_the_location() {
     crate::test_support::gtk_test(
-        "ui::browser::context_menu::tests::menus::remove_from_recent_is_gated_on_the_recent_location",
+        "ui::browser::context_menu::tests::menus::item_menu_rows_follow_the_location",
         || {
             let fixture = tempfile::tempdir().expect("menu fixture");
             let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
@@ -461,31 +462,28 @@ fn remove_from_recent_is_gated_on_the_recent_location() {
                 .build();
             window.present();
 
-            view.browser().navigate(Location::local(fixture.path()));
-            wait_until(|| label(&view.widget(), "notes.txt").is_some());
-            let menu = open_menu(&view, Some("notes.txt"));
-            assert!(
-                !label_texts(&menu)
-                    .iter()
-                    .any(|text| text == "Remove from Recent"),
-                "{:?}",
-                label_texts(&menu)
-            );
-            menu.popdown();
-            wait_until(|| !menu.is_mapped());
-
-            view.browser().navigate(Location::uri("recent:///"));
-            wait_until(|| label(&view.widget(), "notes.txt").is_some());
-            let menu = open_menu(&view, Some("notes.txt"));
-            let labels = label_texts(&menu);
-            assert!(
-                labels.iter().any(|text| text == "Remove from Recent"),
-                "{labels:?}"
-            );
-            assert!(labels.iter().any(|text| text == "Open"), "{labels:?}");
-            assert!(labels.iter().any(|text| text == "Copy"), "{labels:?}");
-            menu.popdown();
-            wait_until(|| !menu.is_mapped());
+            for (location, can_create, in_recent) in [
+                (Location::local(fixture.path()), true, false),
+                (Location::uri("recent:///"), false, true),
+                (Location::uri("trash:///"), false, false),
+                (Location::local(fixture.path()), true, false),
+            ] {
+                view.browser().navigate(location.clone());
+                wait_until(|| label(&view.widget(), "notes.txt").is_some());
+                let menu = open_menu(&view, Some("notes.txt"));
+                let labels = label_texts(&menu);
+                let has = |row: &str| labels.iter().any(|text| text == row);
+                assert_eq!(has("New Folder"), can_create, "{location:?}: {labels:?}");
+                assert_eq!(has("New File"), can_create, "{location:?}: {labels:?}");
+                assert_eq!(
+                    has("Remove from Recent"),
+                    in_recent,
+                    "{location:?}: {labels:?}"
+                );
+                assert!(has("Open") && has("Copy"), "{location:?}: {labels:?}");
+                menu.popdown();
+                wait_until(|| !menu.is_mapped());
+            }
 
             view.browser().clear_observer();
             window.destroy();

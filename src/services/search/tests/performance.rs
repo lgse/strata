@@ -28,7 +28,7 @@ fn ranked_fixture_in(root: &Path, count: usize) -> Vec<SearchItem> {
 }
 
 #[test]
-fn heap_and_parallel_scoring_match_a_full_stable_sort() {
+fn heap_and_parallel_scoring_match_a_full_sort_by_score_then_name() {
     let items = ranked_fixture(50_003);
     let fuzzy = SearchScorer::Name(fuzzy_score_normalized);
     let filter = SearchScorer::Name(crate::services::search::filter_score_normalized);
@@ -61,7 +61,12 @@ fn heap_and_parallel_scoring_match_a_full_stable_sort() {
             .iter()
             .filter_map(|item| prepared.score(item).map(|score| (score, item.clone())))
             .collect();
-        expected.sort_by_key(|candidate| std::cmp::Reverse(candidate.0));
+        expected.sort_by(|(left_score, left), (right_score, right)| {
+            right_score.cmp(left_score).then_with(|| {
+                (left.search_name(), &left.search_path)
+                    .cmp(&(right.search_name(), &right.search_path))
+            })
+        });
         expected.truncate(RESULT_LIMIT);
         assert_eq!(
             score_index(&items, query, scorer.clone()),

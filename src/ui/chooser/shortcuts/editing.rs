@@ -4,6 +4,7 @@ use super::*;
 
 impl ChooserShortcuts {
     /// In 10xer mode a focused name or location field types every key but these.
+    /// Tab and Shift+Tab leave the name for the options or the files, never Cancel.
     pub(super) fn tenxer_text_keeps_key(
         &self,
         context: &KeyContext<'_>,
@@ -17,7 +18,8 @@ impl ChooserShortcuts {
             ESCAPE_ANY,
             TENXER_MODE.into(),
         ]);
-        (typing && !reaches_chooser).then_some(glib::Propagation::Proceed)
+        let name_tab = context.name_has_focus() && context.tab().is_some();
+        (typing && !reaches_chooser && !name_tab).then_some(glib::Propagation::Proceed)
     }
 
     pub(super) fn reset_pdf_zoom(&self, context: &KeyContext<'_>) -> Option<glib::Propagation> {
@@ -66,6 +68,19 @@ impl ChooserShortcuts {
             .and_then(|focused| focused.ancestor(gtk::Popover::static_type()))
             .is_some_and(|popover| popover.has_css_class("folder-context-popover"))
             .then_some(glib::Propagation::Proceed)
+    }
+
+    /// A focused Back button lists its history for the context-menu key itself.
+    pub(super) fn back_history_keeps_key(
+        &self,
+        context: &KeyContext<'_>,
+    ) -> Option<glib::Propagation> {
+        (context.press.is(CONTEXT_MENU)
+            && context
+                .focused
+                .as_ref()
+                .is_some_and(crate::ui::browser::lists_back_history))
+        .then_some(glib::Propagation::Proceed)
     }
 
     pub(super) fn context_menu(&self, context: &KeyContext<'_>) -> Option<glib::Propagation> {

@@ -67,10 +67,10 @@ impl NavigationState {
 
     pub(super) fn initial_preferences(&self, location: &Location) -> ViewPreferences {
         let mut preferences = self.preferences;
-        if let FolderSort::Saved(sort_key, sort_direction) =
+        if let FolderSort::Saved(sort_key, sort_direction, comparison) =
             self.resolve_folder_sort(location, true)
         {
-            preferences.set_sort((sort_key, sort_direction));
+            preferences.set_sort_options((sort_key, sort_direction, comparison));
         }
         preferences_for_location(preferences, location)
     }
@@ -85,10 +85,10 @@ impl NavigationState {
         }
         preferences.folders_first = self.preferences.folders_first;
         match self.folder_sort(&column.location) {
-            FolderSort::Saved(sort_key, sort_direction) => {
-                preferences.set_sort((sort_key, sort_direction));
+            FolderSort::Saved(sort_key, sort_direction, comparison) => {
+                preferences.set_sort_options((sort_key, sort_direction, comparison));
             }
-            FolderSort::Default => preferences.set_sort(self.preferences.sort()),
+            FolderSort::Default => preferences.set_sort_options(self.preferences.sort_options()),
             FolderSort::Unremembered => {}
         }
         Some(preferences)

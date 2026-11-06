@@ -191,6 +191,50 @@ fn merge_is_only_offered_for_copying_a_folder_onto_a_folder() {
 }
 
 #[test]
+fn a_file_meeting_a_folder_is_never_offered_replace_even_through_apply_to_all() {
+    crate::test_support::gtk_test(
+        "ui::browser::transfer::tests::conflicts::a_file_meeting_a_folder_is_never_offered_replace_even_through_apply_to_all",
+        || {
+            let collision = collision(
+                &[("b.txt", b"new b"), ("data", b"file")],
+                &[("b.txt", b"old b"), ("data/kept.txt", b"kept")],
+            );
+            let destination = &collision.destination;
+            let (view, overlay, window) = conflict_view();
+
+            collision.paste(&view, &["b.txt", "data"], false);
+            assert_conflict_dialog(&overlay);
+            check_button_with_label(&overlay, "Apply to All").set_active(true);
+            click_button(&overlay, "Replace");
+
+            wait_until(
+                || {
+                    visible_texts(&overlay).iter().any(|text| text == "data")
+                        && !has_visible_button(&overlay, "Replace")
+                },
+                "the file meeting a folder to keep its own prompt, without Replace",
+            );
+            assert!(
+                has_visible_button(&overlay, "Keep Both"),
+                "the file can still be kept beside the folder"
+            );
+            click_button(&overlay, "Skip");
+
+            wait_until(
+                || holds(&destination.join("b.txt"), b"new b"),
+                "Apply to All to replace the file that met a file",
+            );
+            assert_eq!(
+                std::fs::read(destination.join("data/kept.txt")).expect("folder contents"),
+                b"kept",
+                "the folder the file met stays"
+            );
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn skipping_the_only_collision_still_transfers_accepted_items() {
     crate::test_support::gtk_test(
         "ui::browser::transfer::tests::conflicts::skipping_the_only_collision_still_transfers_accepted_items",
@@ -353,7 +397,7 @@ fn a_conflict_prompt_says_which_name_the_item_takes_and_what_a_merge_overwrites(
                     name: OsString::from(target),
                     cause: (source != target).then_some(RenameCause::Invalid),
                 }),
-                mergeable: true,
+                kinds: crate::adapters::TransferTargetCollision::between(true, true),
                 fixes_inside,
             },
             &destination,

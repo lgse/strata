@@ -53,6 +53,17 @@ impl Browser {
         self.state.borrow().column_preferences(depth)
     }
 
+    /// The presentation groups listings by file type, which orders the rows it shows
+    /// and so where a load's automatic cursor lands.
+    pub fn set_type_grouping(&self, grouped: bool) {
+        self.state.borrow_mut().set_type_grouping(grouped);
+    }
+
+    /// The listing at `depth` shows file-type groups.
+    pub fn shows_type_groups(&self, depth: usize) -> bool {
+        self.state.borrow().shows_type_groups(depth)
+    }
+
     pub(crate) fn column_request_id(&self, depth: usize) -> Option<RequestId> {
         self.state.borrow().request_id_for_depth(depth)
     }
@@ -90,13 +101,7 @@ impl Browser {
 
     pub fn rename_item(&self) -> Option<(usize, usize, FileEntry)> {
         let state = self.state.borrow();
-        if let Some(focused) = state.focused_entry() {
-            return Some(focused);
-        }
-        let depth = state.active_depth()?.checked_sub(1)?;
-        let position = state.active_child_position(depth)?;
-        let entry = state.entry_at(depth, position)?;
-        Some((depth, position, entry))
+        state.focused_entry().or_else(|| state.entered_folder())
     }
 
     pub fn focused_entry(&self) -> Option<FileEntry> {
@@ -167,14 +172,11 @@ impl Browser {
         if !selected.is_empty() {
             return selected;
         }
-
-        let Some(parent_depth) = state.active_depth().and_then(|depth| depth.checked_sub(1)) else {
-            return Vec::new();
-        };
-        let Some(position) = state.active_child_position(parent_depth) else {
-            return Vec::new();
-        };
-        state.entry_at(parent_depth, position).into_iter().collect()
+        state
+            .entered_folder()
+            .map(|(_, _, entry)| entry)
+            .into_iter()
+            .collect()
     }
 
     pub fn entries_named(&self, names: &HashSet<String>) -> Vec<FileEntry> {

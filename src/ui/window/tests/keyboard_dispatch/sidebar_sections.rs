@@ -215,9 +215,9 @@ fn saved_collapsed_state_applies_on_rebuild_and_syncs_two_sidebars() {
 }
 
 #[test]
-fn the_icon_rail_shows_collapsed_sections() {
+fn the_icon_rail_keeps_collapsed_sections_and_folds_them_from_the_chevron() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::sidebar_sections::the_icon_rail_shows_collapsed_sections",
+        "ui::window::tests::keyboard_dispatch::sidebar_sections::the_icon_rail_keeps_collapsed_sections_and_folds_them_from_the_chevron",
         || {
             seed_bookmarks(&["Pins One", "Pins Two"]);
             let fixture = KeyboardFixture::new();
@@ -230,17 +230,31 @@ fn the_icon_rail_shows_collapsed_sections() {
             }
 
             state.set_rail(true);
-            assert!(!section_toggle(state).is_visible());
+            let toggle = section_toggle(state);
+            assert!(toggle.is_visible());
+            assert_eq!(toggle.tooltip_text().as_deref(), Some("PINNED"));
+            assert!(!badge(&toggle).is_visible());
+            for row in pinned_rows(state) {
+                assert!(!row.is_mapped(), "the rail keeps the section collapsed");
+            }
+
+            toggle.emit_clicked();
+            assert!(!preferences.sidebar_pinned_collapsed());
             for row in pinned_rows(state) {
                 wait_until(|| row.is_mapped());
             }
-
-            state.set_rail(false);
-            assert!(section_toggle(state).is_visible());
+            toggle.emit_clicked();
             assert!(preferences.sidebar_pinned_collapsed());
             for row in pinned_rows(state) {
                 wait_until(|| !row.is_mapped());
             }
+
+            state.set_rail(false);
+            let toggle = section_toggle(state);
+            assert!(toggle.is_visible());
+            assert_eq!(toggle.tooltip_text(), None);
+            assert!(badge(&toggle).is_visible());
+            assert!(preferences.sidebar_pinned_collapsed());
         },
     );
 }

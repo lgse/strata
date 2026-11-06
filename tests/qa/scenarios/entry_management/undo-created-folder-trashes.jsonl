@@ -1,9 +1,17 @@
-{"scenario":"undo-created-folder-trashes","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.5},"quality":{"impact":3,"coverage":3,"criticality":2,"diagnostic":4,"score":23,"note":"Keyboard create-folder then Ctrl+Z through the GUI; undo logic pinned by a_created_folder_can_be_undone_by_trashing_it"}}
+{"scenario":"undo-created-folder-trashes","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"default-name","vars":{"name":"new folder"}},{"id":"typed-name","vars":{"name":"plans"}}],"cost":{"columns-default-name":0.5,"columns-typed-name":0.5},"quality":{"impact":3,"coverage":3,"criticality":2,"diagnostic":4,"score":23,"note":"Keyboard create-folder, kept or typed name, then one Ctrl+Z through the GUI; undo logic pinned by a_created_folder_can_be_undone_by_trashing_it and naming_a_created_file_makes_one_undo_trash_it_under_its_new_name"}}
 {"key":"ctrl+shift+n"}
 {"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"name","variants":["typed-name"]}
+{"type":"$name","variants":["typed-name"]}
+{"wait":{"field":{"of":"name","text":"$name"}},"message":"the name to be typed","variants":["typed-name"]}
 {"key":"Return"}
-{"fs":{"path":"new folder","is":"dir"},"message":"the folder to be created"}
+{"fs":{"path":"$name","is":"dir"},"message":"the folder '$name' to be created"}
+{"fs":{"path":"new folder","exists":false},"timeout_ms":0,"variants":["typed-name"]}
 {"wait":{"editable_fields":0},"message":"the name prompt to close"}
+{"wait":{"selected":["$name"],"dir":"$root"},"message":"'$name' to be selected once named","variants":["typed-name"]}
+{"wait":{"focused":"$name"},"message":"the committed name's cursor","variants":["typed-name"]}
+{"settle":{"entry":"$name","dir":"$root"},"variants":["typed-name"]}
 {"key":"ctrl+z"}
-{"fs":{"path":"new folder","exists":false},"message":"create undo to trash the folder"}
+{"fs":{"path":"$name","exists":false},"message":"one create undo to trash '$name'"}
+{"fs":{"path":"new folder","exists":false},"timeout_ms":0,"message":"the undo to leave no folder under the default name"}
 {"fs":{"path":"$data/Trash/files","empty":false},"message":"the folder to land in Trash"}

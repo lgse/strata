@@ -306,6 +306,48 @@ fn close_column_skips_exit_animation_when_animations_disabled() {
 }
 
 #[test]
+fn closing_columns_cancels_only_a_rename_inside_them() {
+    crate::test_support::gtk_test(
+        "ui::browser::columns::tests::closing_columns_cancels_only_a_rename_inside_them",
+        || {
+            let fixture = Columns::new(2, 900);
+            let view = &fixture.view;
+            let browser = view.browser();
+            let rename_in = |depth: usize, name: &str| {
+                assert!(browser.select_entries_by_name_at(depth, &[name.to_owned()]));
+                pump_until(
+                    || view.rename_is_active() || view.begin_rename(),
+                    "the rename editor to open",
+                );
+                let field = view.active_rename_field().expect("rename field");
+                assert_eq!(field.text().as_str(), name);
+                assert!(field.is_ancestor(&fixture.shell(depth)), "{name}");
+            };
+
+            rename_in(1, "note.txt");
+            browser.close_column(1);
+            assert!(
+                !view.rename_is_active(),
+                "closing the column holding the rename ends it"
+            );
+
+            let child = browser
+                .location_at(0)
+                .and_then(|root| root.child(std::ffi::OsStr::new("level-0")));
+            browser.show_child(0, child.expect("child location"));
+            pump_until(|| column_loaded(view, 1), "child column load");
+            rename_in(0, "level-0");
+            browser.close_column(1);
+            assert!(
+                view.rename_is_active(),
+                "closing a column to the right keeps the rename in the parent column"
+            );
+            assert!(view.cancel_rename());
+        },
+    );
+}
+
+#[test]
 fn a_finished_edge_drag_resizes_every_open_column() {
     crate::test_support::gtk_test(
         "ui::browser::columns::tests::a_finished_edge_drag_resizes_every_open_column",
@@ -357,17 +399,19 @@ fn double_clicking_an_edge_autofits_the_column_and_saves_its_width() {
                 let edge = shell_edge(&fixture.scroller(), &shell);
                 gesture.emit_by_name::<()>("drag-begin", &[&edge.0, &edge.1]);
                 gesture.emit_by_name::<()>("drag-begin", &[&edge.0, &edge.1]);
-                if animated {
-                    pump_for(COLUMN_TRANSITION + Duration::from_millis(60));
-                }
-                let fitted = shell.width_request();
-                assert_ne!(fitted, before, "the column fits its content");
                 let scale = PreferenceManager::shared().interface_scale();
-                assert_eq!(
-                    PreferenceManager::shared().browser_column_width(),
-                    Some(((f64::from(fitted) / scale).round() as i32).max(COLUMN_WIDTH)),
-                    "the saved width is the one the column ends at"
+                let shown = || {
+                    Some(
+                        ((f64::from(shell.width_request()) / scale).round() as i32)
+                            .max(COLUMN_WIDTH),
+                    )
+                };
+                // Animation ticks wait for frames, which a loaded machine draws late.
+                pump_until(
+                    || PreferenceManager::shared().browser_column_width() == shown(),
+                    "the column to end at the saved width",
                 );
+                assert_ne!(shell.width_request(), before, "the column fits its content");
             }
         },
     );

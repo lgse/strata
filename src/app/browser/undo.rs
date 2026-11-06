@@ -270,8 +270,8 @@ pub(super) fn push_pending_undo(entry: UndoEntry) {
     });
 }
 
-/// Naming a new item with a path moves or replaces the item its creation
-/// recorded, so undoing that creation removes what the naming made instead.
+/// Naming a new item moves or replaces the item its creation recorded, so
+/// undoing that creation removes what the naming made instead.
 pub(super) fn retarget_created_undo(created: &Location, placed: Location) {
     let retargeted = PENDING_UNDO.with(|pending| {
         let mut pending = pending.borrow_mut();

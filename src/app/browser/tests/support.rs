@@ -92,14 +92,61 @@ impl FolderIdentities {
         }
     }
 
-    pub(super) fn find(&self, parent: &Location, identity: ItemIdentity) -> Option<Location> {
+    /// Like the local adapter, searches the nearest ancestor of `departed` that is not
+    /// `missing` for the folder, renamed itself or moved with an ancestor renamed there.
+    pub(super) fn find(
+        &self,
+        departed: &Location,
+        identity: ItemIdentity,
+        missing: impl Fn(&Location) -> bool,
+    ) -> Option<Location> {
+        let mut renamed = departed.clone();
+        let mut below = Vec::new();
+        let searched = loop {
+            let parent = renamed.parent()?;
+            if !missing(&parent) {
+                break parent;
+            }
+            below.push(renamed.file_name()?);
+            renamed = parent;
+        };
+        let moved_with_a_renamed_entry = |location: &Location| {
+            below
+                .iter()
+                .try_fold(location.clone(), |folder, name| {
+                    (folder.file_name().as_ref() == Some(name))
+                        .then(|| folder.parent())
+                        .flatten()
+                })
+                .and_then(|renamed| renamed.parent())
+                .is_some_and(|parent| parent == searched)
+        };
         self.0
             .borrow()
             .iter()
             .find(|(location, candidate)| {
-                identity.same(candidate) && location.parent().as_ref() == Some(parent)
+                identity.same(candidate) && moved_with_a_renamed_entry(location)
             })
             .map(|(location, _)| location.clone())
+    }
+
+    /// Renames the folder at `from`, carrying along every identified folder inside it, and
+    /// returns the old locations of those folders.
+    pub(super) fn rename_tree(&self, from: &Location, to: &Location) -> Vec<Location> {
+        let mut identities = self.0.borrow_mut();
+        let moved = identities
+            .keys()
+            .filter(|location| location.is_within(from))
+            .cloned()
+            .collect::<Vec<_>>();
+        for location in &moved {
+            let identity = identities.remove(location).expect("an identified folder");
+            let relocated = location
+                .rebase(from, to)
+                .expect("a folder inside the renamed one");
+            identities.insert(relocated, identity);
+        }
+        moved
     }
 }
 pub(super) fn fixture_entry(path: &str) -> FileEntry {
@@ -121,6 +168,7 @@ pub(super) fn entry_at(location: Location, kind: EntryKind) -> FileEntry {
         kind,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
@@ -140,6 +188,7 @@ pub(super) fn batch_entry(name: &str) -> FileEntry {
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         mode: MetadataValue::Unknown,
         recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
@@ -264,6 +313,7 @@ pub(super) fn staged_entry(
         kind,
         size,
         modified_unix_seconds: MetadataValue::Known(modified),
+        created_unix_seconds: MetadataValue::Unknown,
         ..batch_entry(name)
     }
 }

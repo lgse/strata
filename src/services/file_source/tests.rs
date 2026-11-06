@@ -31,6 +31,7 @@ fn io_errors_without_a_stable_kind_or_known_reason_get_catalog_text() {
         (libc::ENXIO, "The device is not available"),
         (libc::ENOTCONN, "The location is no longer connected"),
         (libc::ETXTBSY, "The file is running and cannot be changed"),
+        (libc::EXDEV, "The destination is on a different file system"),
         (libc::EPROTO, "An unexpected system error occurred"),
     ] {
         let error = std::io::Error::from_raw_os_error(errno);

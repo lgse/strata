@@ -2,7 +2,7 @@
 
 use super::open_with::prepare_folder_open_with;
 use super::options::{context_menu_option, context_menu_toggle_option};
-use super::{actions, bind_column_context_owner, focus_context_column};
+use super::{actions, bind_column_context_owner, focus_context_column, schedule_new_entry};
 use crate::adapters::gio_file_for_location;
 use crate::assets::icons;
 use crate::model::Location;
@@ -165,21 +165,11 @@ impl FolderMenu {
     }
 
     fn connect_new_entries(&self, new_folder: &gtk::Button, new_file: &gtk::Button) {
-        let menu = self.clone();
-        let schedule_new_entry = Rc::new(move |is_directory| {
-            menu.popdown();
-            let weak = menu.state.clone();
-            let folder = menu.location.clone();
-            let depth = menu.depth;
-            glib::idle_add_local_once(move || {
-                if let Some(state) = weak.upgrade() {
-                    state.begin_new_entry(depth, folder, is_directory);
-                }
+        for (button, is_directory) in [(new_folder, true), (new_file, false)] {
+            self.on_click(button, move |state, menu| {
+                schedule_new_entry(state, menu.depth, menu.location.clone(), is_directory);
             });
-        });
-        let schedule_new_folder = schedule_new_entry.clone();
-        new_folder.connect_clicked(move |_| schedule_new_folder(true));
-        new_file.connect_clicked(move |_| schedule_new_entry(false));
+        }
     }
 
     fn connect(&self, options: &FolderMenuOptions, history: &RecentApps) {

@@ -144,8 +144,13 @@ generated passwd/group files provide the invoking UID/GID to D-Bus, so one
 published environment works across local user IDs without rebuilding it or
 mounting the host's account database.
 The image includes bubblewrap for sandboxed thumbnail decoding, FFmpeg/ffprobe,
-GTK's GStreamer media backend with the base/good/libav plugins, and strace for
-the opt-in [main-thread I/O audit](#main-thread-io-audit). Rust media
+GTK's GStreamer media backend with the base/good/libav plugins, and strace for the
+opt-in [main-thread I/O audit](#main-thread-io-audit). It also includes libheif, so
+ImageMagick writes real AVIF and HEIC files and glycin's `glycin-heif` loader can
+decode them.
+A QA `magick` fixture step fails when an `.avif`, `.heic`, or `.heif` output lacks
+the matching ISO BMFF major or compatible brand, because ImageMagick silently
+writes the input format when an encoder is missing. Rust media
 regressions exercise actual normalization, playback, and long-source duration
 limits rather than skipping when optional host tools are missing. These packages
 come from the dated Arch snapshot. The accessibility patch is test-only and does
@@ -314,6 +319,24 @@ disables accessibility bridging for Rust tests. A startup failure aborts; it
 never falls back to the real display or an inherited session bus. Its private
 display, buses, and throwaway HOME come from `scripts/headless/`, which
 `scripts/benchmark-scroll.py` uses as well.
+
+### Private main contexts in Rust tests
+
+A Rust test that drives async code on its own GLib main context creates it with
+`test_support::PrivateContext`, never `glib::MainContext::new()` or
+`glib::MainContext::with_flags()` (Clippy rejects both).
+`<glib::MainContext as Default>::default()` also calls `new()`, but Clippy
+cannot catch it by path, so don't use it for a test's context either. A GIO call
+started on the context keeps it alive from its `GTask`, so a GIO pool thread can
+drop the last reference after the test has finished. Finalizing the context
+there would drop any local task or callback still attached to it on the wrong
+thread and abort the whole test process. `PrivateContext` destroys every source
+left on the context when it is dropped, on the thread that created them,
+repeating until no source is left. A source attached after that, such as the
+completion of a GIO call still in flight, is leaked on purpose: it keeps its
+task and the context alive, so nothing on the context is ever finalized on
+another thread. Tests that drive the process-wide default context instead hold
+`test_support::ASYNC_MAIN_CONTEXT_DEFAULT`.
 
 ### Native debugging dependencies
 
@@ -620,9 +643,11 @@ of the address that cannot connect. `exec` runs a shell command in the
 fixture with the session's HOME, XDG directories, display, runtime directory,
 and bus. `restart` closes the application's stdin, signals its group if it
 has not quit within ten seconds (the runner's `EXIT_TIMEOUT` and
-`TERMINATE_GRACE`), rewrites the given
-preferences in its saved `settings.toml`, and launches it again on the same
-fixture and HOME. Every exchange is appended to
+`TERMINATE_GRACE`), merges the given
+preferences into its saved `settings.toml` (each key replaced whole, tables
+included), and launches it again on the same fixture and HOME. A value
+`settings.toml` cannot hold is refused before the application quits, and a
+saved file that no longer parses is left unchanged and relaunched. Every exchange is appended to
 `target/qa-drive/transcript.jsonl` in the artifacts' transcript format, and the
 input log, build log, screenshots, and (after `stop`) application log land in
 `target/qa-drive/`, which `start` empties. There is one session per checkout,
@@ -681,7 +706,8 @@ long-name editor staying in the viewport, a live click-mode preference, cut
 deferring its move to the paste, Return in the location editor, Keep Both
 selecting the numbered copy, Enter, click-away and Escape in the inline
 editor, a new entry colliding with an existing name, the rename error dialog,
-Delete moving to the trash, and Shift+click ranges. Each patch belongs to
+Delete moving to the trash, focus returning to a Columns filter result after a
+dismissed delete confirmation, and Shift+click ranges. Each patch belongs to
 exactly one scenario.
 
 The chosen scenarios first run once on the unmodified tree, and every run of a
@@ -723,14 +749,15 @@ These expose an app race: Ctrl+D, Ctrl+V, or F2 within 75 ms of the arrow key
 that moved the cursor onto a folder leaves a stale mirrored column, and a paste
 then leaves the pasted file neither selected nor focused.
 
-- `rename-and-undo-restores`: settles the renamed row before Ctrl+Z. The
-  directory monitor can list the new name, and the listing select and focus
-  it, before the rename's own completion publishes its undo and ends the
-  operation; a Ctrl+Z in between is dropped. The app shows nothing a run can
-  read to tell that the undo is ready (Undo has no menu item or action
-  state), so the wait is the settle. Under the same parallel load, 3 of 60
-  runs without it lost the Ctrl+Z and none of 60 with it did (6 of 116 and 0
-  of 84 over every probe).
+- `rename-and-undo-restores`, and `undo-created-folder-trashes`
+  (typed-name) for the name a new folder takes: settles the renamed row
+  before Ctrl+Z. The directory monitor can list the new name, and the
+  listing select and focus it, before the rename's own completion publishes
+  its undo and ends the operation; a Ctrl+Z in between is dropped. The app
+  shows nothing a run can read to tell that the undo is ready (Undo has no
+  menu item or action state), so the wait is the settle. Under the same
+  parallel load, 3 of 60 `rename-and-undo-restores` runs without it lost the
+  Ctrl+Z and none of 60 with it did (6 of 116 and 0 of 84 over every probe).
 - `new-folder-with-selection-groups` (Columns): waits for the renamed
   `grouped` row to count its two items before clicking it. The row first
   shows the optimistic rename, and a click on it before the listing catches

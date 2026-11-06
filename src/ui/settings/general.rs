@@ -27,13 +27,7 @@ pub(super) fn general_page(
 ) -> (gtk::Widget, Vec<gtk::Box>, Vec<ResponsiveActivationRow>) {
     let preferences = page_content();
 
-    append_language_option(&preferences, &manager);
-    let units = super::unit_system_control(&manager);
-    preferences.append(&super::control_row(
-        "Units",
-        "For things like distances, heights and volumes.",
-        &units,
-    ));
+    append_language_and_units_options(&preferences, &manager);
     append_browsing_options(&preferences, &manager);
     append_sidebar_options(&preferences, &manager);
 
@@ -128,8 +122,18 @@ pub(super) fn general_page(
     )
 }
 
-fn append_language_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
-    let group = super::settings_group(content, "LANGUAGE");
+fn append_language_and_units_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
+    let group = super::settings_group(content, "LANGUAGE & UNITS");
+    append_language_option(&group, manager);
+    let units = super::unit_system_control(manager);
+    group.append(&super::control_row(
+        "Units",
+        "For things like distances, heights and volumes.",
+        &units,
+    ));
+}
+
+fn append_language_option(group: &gtk::Box, manager: &Rc<PreferenceManager>) {
     let choice = super::bindings::choice_menu(
         manager,
         "Language",
@@ -307,6 +311,11 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
             read: PreferenceManager::preview_autoplay,
             write: PreferenceManager::set_preview_autoplay,
         },
+    ] {
+        append_preference_switch(&browsing, manager, switch);
+    }
+    append_video_start_option(&browsing, manager);
+    for switch in [
         PreferenceSwitch {
             title: "Render documents by default",
             description: "Open Markdown and HTML previews in the rendered view instead of source.",
@@ -393,6 +402,9 @@ fn append_folder_view_options(content: &gtk::Box, manager: &Rc<PreferenceManager
             ("Size", SortKey::Size),
             ("Modified", SortKey::Modified),
             ("Type", SortKey::Type),
+            ("Extension", SortKey::Extension),
+            ("Created", SortKey::Created),
+            ("Unsorted", SortKey::Unsorted),
         ],
         |manager| manager.default_sort().0,
         |manager, sort_key| manager.set_default_sort(sort_key, manager.default_sort().1),
@@ -408,6 +420,11 @@ fn append_folder_view_options(content: &gtk::Box, manager: &Rc<PreferenceManager
         |manager, sort_direction| {
             manager.set_default_sort(manager.default_sort().0, sort_direction)
         },
+    );
+    manager.bind_preference(
+        &sort_direction,
+        |manager| manager.default_sort().0,
+        |control, key| control.set_sensitive(key != SortKey::Unsorted),
     );
     let sort_controls = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     sort_controls.append(&sort_key);
@@ -434,6 +451,28 @@ fn append_folder_view_options(content: &gtk::Box, manager: &Rc<PreferenceManager
         "Return every folder to the default sort and thumbnail size.",
         &forget,
     ));
+}
+
+fn append_video_start_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
+    let control = number_stepper(0, crate::ui::preferences::MAX_PREVIEW_VIDEO_START, 5);
+    crate::ui::accessibility::set_label(&control, &crate::i18n::tr("Video preview start"));
+    bind_number(
+        manager,
+        &control,
+        |manager| f64::from(manager.preview_video_start()),
+        |manager, value| manager.set_preview_video_start(value as u32),
+    );
+    control.set_halign(gtk::Align::Start);
+    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    controls.set_valign(gtk::Align::Center);
+    controls.append(&control);
+    let row = super::control_row(
+        "Video preview start",
+        "Percent of a video's length to open it at; 0 starts at the beginning. A video you already previewed resumes where you left it.",
+        &controls,
+    );
+    row.add_css_class("settings-text-size-row");
+    content.append(&row);
 }
 
 fn append_search_limit_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) {

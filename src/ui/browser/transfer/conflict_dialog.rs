@@ -25,12 +25,13 @@ pub(super) enum ConflictChoice {
 
 #[derive(Clone, Copy, Default)]
 pub(super) struct ConflictActions {
+    pub(super) replace: bool,
     pub(super) keep_both: bool,
     pub(super) merge: bool,
     pub(super) focus: ConflictFocus,
 }
 
-/// What one conflict prompt shows besides Replace and Cancel.
+/// What one conflict prompt shows besides Cancel.
 pub(super) struct ConflictPrompt<'a> {
     pub(super) name: &'a str,
     pub(super) explanation: &'a str,
@@ -84,6 +85,7 @@ impl ConflictDialog {
         layout.actions.insert_child_after(&keep_both, Some(&skip));
         let merge = secondary_action("Merge", prompt.actions.merge);
         layout.actions.insert_child_after(&merge, Some(&keep_both));
+        layout.confirm.set_visible(prompt.actions.replace);
         for button in [&layout.cancel, &skip, &keep_both, &merge, &layout.confirm] {
             wrap_button_label(button);
         }
@@ -111,6 +113,19 @@ impl ConflictDialog {
                 modal.dismiss();
                 chosen(choice, apply_all.is_active());
             });
+        }
+    }
+
+    /// A prompt without Replace starts on Keep Both, or on Cancel, which never changes history,
+    /// when it offers neither.
+    fn initial_focus(&self, actions: ConflictActions) -> &gtk::Button {
+        let keep_both_first = actions.focus == ConflictFocus::KeepBoth || !actions.replace;
+        if keep_both_first && actions.keep_both {
+            &self.keep_both
+        } else if actions.replace {
+            &self.layout.confirm
+        } else {
+            &self.layout.cancel
         }
     }
 
@@ -173,11 +188,6 @@ impl ViewState {
         modal.dismiss_on_click(&dialog.layout.close);
         dialog.connect_choices(&modal, &on_choice);
         dialog.install_keys(&modal);
-        let actions = prompt.actions;
-        if actions.focus == ConflictFocus::KeepBoth && actions.keep_both {
-            focus_button(&dialog.keep_both);
-        } else {
-            focus_button(&dialog.layout.confirm);
-        }
+        focus_button(dialog.initial_focus(prompt.actions));
     }
 }

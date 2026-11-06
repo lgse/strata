@@ -9,6 +9,4 @@ pub use browser::{
     SelectionUpdate, VisibleDepths, VisualKind,
 };
 pub(crate) use browser::{folder_destination_texts, trash_destination_texts};
-pub(crate) use navigation::{
-    EntryInsertion, EntrySplice, FolderSortResolver, compare_display_names,
-};
+pub(crate) use navigation::{EntryInsertion, EntrySplice, FolderSortResolver, compare_type_groups};

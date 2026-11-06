@@ -78,6 +78,7 @@ impl ScriptedSource {
             },
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Unknown,
+            created_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
             recent_unix_seconds: MetadataValue::Unknown,
             is_hidden: name.starts_with('.'),
@@ -106,6 +107,7 @@ impl ScriptedSource {
                     location: locate(name),
                     size: MetadataValue::Known(*size),
                     modified_unix_seconds: MetadataValue::Known(7),
+                    created_unix_seconds: MetadataValue::Unknown,
                     mode: MetadataValue::Unknown,
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
@@ -147,11 +149,12 @@ impl ScriptedSource {
 impl FileSource for ScriptedSource {
     fn find_by_identity(
         &self,
-        parent: Location,
+        departed: Location,
         identity: ItemIdentity,
         emit: Rc<dyn Fn(Option<Location>)>,
     ) -> LoadHandle {
-        emit(self.identities.find(&parent, identity));
+        let missing = |location: &Location| self.missing.borrow().contains(location);
+        emit(self.identities.find(&departed, identity, missing));
         LoadHandle::new(|| {})
     }
 

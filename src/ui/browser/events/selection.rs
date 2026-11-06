@@ -3,6 +3,7 @@
 //! Selection and cursor events, and the child column that mirrors the focused folder.
 
 use crate::app::SelectionUpdate;
+use crate::model::FileEntry;
 use crate::ui::browser::ViewState;
 use crate::ui::browser::columns::{
     ColumnView, restore_column_cursor, scroll_column_to, select_all_in_column,
@@ -152,14 +153,17 @@ impl ViewState {
         position: Option<usize>,
         force: bool,
     ) {
-        if let Some(source) = self.pending_mirror.borrow_mut().take() {
-            source.remove();
-        }
         let Some(position) = position else {
             return;
         };
+        // A suppressed echo of the cursor, such as the listing retaking focus,
+        // must not cancel the keyboard move it follows; the mirror checks the
+        // cursor again when it runs.
         if self.child_mirror_blocked(force) {
             return;
+        }
+        if let Some(source) = self.pending_mirror.borrow_mut().take() {
+            source.remove();
         }
         let weak = Rc::downgrade(self);
         let source = glib::timeout_add_local_once(FOCUS_PREVIEW_DELAY, move || {
@@ -197,6 +201,22 @@ impl ViewState {
             || self.child_mirror_blocked(force)
     }
 
+    /// Tab carries a rename to the cursor's item, whose open editor would block the
+    /// delayed mirror, so the child column follows it at once. The item is being
+    /// renamed, not browsed, so no preview opens.
+    pub(in crate::ui::browser) fn mirror_rename_target(self: &Rc<Self>) {
+        if let Some(source) = self.pending_mirror.borrow_mut().take() {
+            source.remove();
+        }
+        let Some((depth, _, entry)) = self.browser.focused_item() else {
+            return;
+        };
+        if self.child_mirror_blocked_at(depth, true) {
+            return;
+        }
+        self.mirror_entry(depth, entry, false);
+    }
+
     pub(in crate::ui::browser) fn apply_child_mirror(
         self: &Rc<Self>,
         depth: usize,
@@ -212,12 +232,17 @@ impl ViewState {
         if (focused_depth, focused_position) != (depth, position) {
             return;
         }
+        self.mirror_entry(depth, entry, true);
+    }
+
+    fn mirror_entry(&self, depth: usize, entry: FileEntry, preview: bool) {
         if entry.is_directory() {
             self.browser.show_child(depth, entry.location);
             return;
         }
         self.browser.close_column(depth + 1);
-        if self.single_click_previews.get()
+        if preview
+            && self.single_click_previews.get()
             && let Some(entry) = preview_target(Some(entry))
         {
             self.browser.request_automatic_preview(entry);

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::test_support::PrivateContext;
 
 #[test]
 fn completed_gio_result_wins_a_cancellation_race() {
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     let cancellable = gio::Cancellable::new();
     let cancel_after_result = cancellable.clone();
     let file = gio::File::for_path("/fixture");

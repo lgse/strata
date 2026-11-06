@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::test_support::PrivateContext;
 
 #[test]
 fn measurement_counts_nested_entries_without_following_symlinks() {
@@ -17,7 +18,7 @@ fn measurement_counts_nested_entries_without_following_symlinks() {
     std::os::unix::fs::symlink(outside.path(), root.path().join("link")).expect("symlink");
     std::fs::create_dir_all(root.path().join(".hidden/visible")).expect("hidden subtree");
     std::fs::write(root.path().join(".hidden/visible/file"), b"1234").expect("hidden subtree file");
-    let summary = glib::MainContext::new()
+    let summary = PrivateContext::new()
         .block_on(summarize_directory(&gio::File::for_path(root.path())))
         .expect("summary");
     assert_eq!(summary.item_count, 10);
@@ -30,7 +31,7 @@ fn measurement_counts_nested_entries_without_following_symlinks() {
 #[test]
 fn missing_root_is_an_error_and_empty_root_is_exact() {
     let root = tempfile::tempdir().expect("fixture");
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     assert!(
         context
             .block_on(summarize_directory(&gio::File::for_path(

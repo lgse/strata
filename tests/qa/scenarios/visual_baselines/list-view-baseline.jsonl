@@ -2,4 +2,9 @@
 {"move":{"point":[{"extent":{"window":true},"plus":-4},{"extent":{"window":true},"plus":-4}]}}
 {"wait":{"entries":["documents","pictures","readme.md","todo.txt"]},"message":"the fixture listing to be complete"}
 {"settle":{"pane":null}}
+{"wait":{"present":{"role":"label","name":"todo.txt"}},"message":"the file rows to be rendered before the baseline capture"}
+{"key":"Down"}
+{"wait":{"selected":["pictures"]},"message":"the rendered list to respond to keyboard selection"}
+{"key":"Up"}
+{"wait":{"selected":["documents"]},"samples":3,"message":"the baseline selection to return to documents"}
 {"baseline":"list-view"}

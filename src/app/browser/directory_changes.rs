@@ -39,6 +39,10 @@ pub(super) enum DepartureEvidence {
     /// Reloading it failed, which also covers a removal report that a monitor burst or a
     /// reload superseded. The read error stays unless the folder is confirmed gone.
     FailedLoad,
+    /// A deeper column reported its own removal. The open columns' monitors report every
+    /// rename between them, so unless that column was removed, an ancestor of this folder
+    /// was: a folder that remains is left as it is.
+    DeeperRemovalReport,
 }
 
 pub(super) struct DepartureProbe {
@@ -55,6 +59,18 @@ fn departure_confirmed(error: &LocationValidationError) -> bool {
             | LocationValidationError::NotDirectory
             | LocationValidationError::Refused(_)
     )
+}
+
+/// The folder whose rename took `departed` to `found`: itself, or the ancestor it moved with.
+fn renamed_folder(departed: &Location, found: &Location) -> (Location, Location) {
+    let (mut from, mut to) = (departed.clone(), found.clone());
+    while from.file_name() == to.file_name()
+        && let (Some(from_parent), Some(to_parent)) = (from.parent(), to.parent())
+        && from_parent != to_parent
+    {
+        (from, to) = (from_parent, to_parent);
+    }
+    (from, to)
 }
 
 pub(super) fn removed_location(change: &DirectoryChange) -> Option<&Location> {
@@ -77,7 +93,9 @@ impl Browser {
             return;
         }
         if removed_location(&change) == Some(watched) {
-            if !self.parent_column_watches(depth, watched) {
+            if self.parent_column_watches(depth, watched) {
+                self.check_watching_columns_remain(depth);
+            } else {
                 self.handle_root_departure(depth, watched, change);
             }
             return;
@@ -121,6 +139,25 @@ impl Browser {
         depth.checked_sub(1).is_some_and(|parent| {
             self.column_has_monitor(parent) && self.location_at(parent) == watched.parent()
         })
+    }
+
+    /// Checks that the first column of the chain that ends at `depth`, each column watched
+    /// by its parent column, is still where it was: no open monitor reports a rename above it.
+    fn check_watching_columns_remain(self: &Rc<Self>, depth: usize) {
+        if self.departure_check_pending() || self.file_operation_defers_changes() {
+            return;
+        }
+        let first = (1..=depth)
+            .rev()
+            .take_while(|&depth| {
+                self.location_at(depth)
+                    .is_some_and(|location| self.parent_column_watches(depth, &location))
+            })
+            .last()
+            .map_or(depth, |watched| watched - 1);
+        if let Some(location) = self.location_at(first) {
+            self.check_departed_directory(first, location, DepartureEvidence::DeeperRemovalReport);
+        }
     }
 
     /// Reacts to the open folder at `depth` reporting its own removal, which is all its
@@ -247,7 +284,7 @@ impl Browser {
             .flatten()
             .filter(|(location, _)| *location == departed)
             .map(|(_, identity)| identity);
-        let (Some(identity), Some(parent)) = (identity, departed.parent()) else {
+        let Some(identity) = identity else {
             self.leave_departed_directory(generation, depth, departed, evidence);
             return;
         };
@@ -265,13 +302,16 @@ impl Browser {
             }
             match found.filter(|found| *found != probed && browser.source.allows_navigation(found))
             {
-                Some(renamed) => browser.follow_renamed_location(&probed, &renamed),
+                Some(found) => {
+                    let (from, to) = renamed_folder(&probed, &found);
+                    browser.follow_renamed_location(&from, &to)
+                }
                 None => {
                     browser.leave_departed_directory(generation, depth, probed.clone(), evidence)
                 }
             }
         });
-        let probe = self.source.find_by_identity(parent, identity, emit);
+        let probe = self.source.find_by_identity(departed, identity, emit);
         self.keep_departure_probe(generation, &answered, probe);
     }
 
@@ -301,7 +341,7 @@ impl Browser {
     ) {
         let Some(ancestor) = ancestors.pop_front() else {
             // Nothing the source allows exists above it: show the folder's read error.
-            if evidence == DepartureEvidence::RemovalReport {
+            if evidence != DepartureEvidence::FailedLoad {
                 self.refresh_column(0);
             }
             return;

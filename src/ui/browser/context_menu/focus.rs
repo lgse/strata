@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::model::FileEntry;
+use crate::model::{FileEntry, Location};
 use crate::ui::browser::ViewState;
 use crate::ui::browser_modes::BrowserMode;
 use gtk::glib;
@@ -85,6 +85,20 @@ fn restore_context_focus(state: &ViewState, depth: usize) {
     {
         focus.grab_focus();
     }
+}
+
+pub(super) fn schedule_new_entry(
+    state: &Rc<ViewState>,
+    depth: usize,
+    location: Location,
+    is_directory: bool,
+) {
+    let weak = Rc::downgrade(state);
+    glib::idle_add_local_once(move || {
+        if let Some(state) = weak.upgrade() {
+            state.begin_new_entry(depth, location, is_directory);
+        }
+    });
 }
 
 pub(in crate::ui::browser) fn context_search_active(state: &ViewState, depth: usize) -> bool {

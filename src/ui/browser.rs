@@ -83,6 +83,8 @@ mod view_state;
 #[cfg(test)]
 pub(super) use crate::ui::browser::clipboard::clipboard_mark;
 pub(in crate::ui) use crate::ui::browser::clipboard::drag_preview_icon;
+#[cfg(feature = "qa")]
+pub(crate) use crate::ui::browser::clipboard::formats::read_mime_bytes;
 pub(super) use crate::ui::browser::clipboard::{
     ClipboardMark, ClipboardMarks, file_drag_content, mark_in, set_mark_result_style,
 };
@@ -109,8 +111,8 @@ pub(super) use crate::ui::browser::desktop::{launch_terminal, open_location_at};
 #[cfg(test)]
 pub(in crate::ui) use crate::ui::browser::entry::catppuccin;
 pub(super) use crate::ui::browser::entry::{
-    FOLDER_TYPE_GROUP, OTHER_TYPE_GROUP, entry_filter, entry_icon, entry_model_value,
-    format_file_size, icon_for_name, metadata_needs_fill, model_type_group,
+    entry_filter, entry_icon, entry_model_value, format_file_size, icon_for_name,
+    metadata_needs_fill, model_type_group,
 };
 pub(crate) use crate::ui::browser::file_commands::{
     ConflictFocus, CreateRefusal, PinChange, TargetCommand, Yank, can_rename,
@@ -122,7 +124,8 @@ pub(in crate::ui) use crate::ui::browser::listing_filter::{
 pub(in crate::ui) use crate::ui::browser::location::ConnectOutcome;
 pub(super) use crate::ui::browser::pane_header::{
     attach_back_history, column_sort_direction_toggle, column_sort_menu, empty_trash_button,
-    leftovers_button, pane_new_folder_button, pane_refresh_button, sync_column_sort_direction,
+    leftovers_button, list_sort_menu, lists_back_history, pane_new_folder_button,
+    pane_refresh_button, sync_column_sort_direction, sync_list_sort_menu,
 };
 pub(super) use crate::ui::browser::paths::is_trash_root;
 pub use crate::ui::browser::peek::PeekBehavior;
@@ -262,6 +265,7 @@ pub(super) struct ViewState {
     rename_generation: Cell<u64>,
     rename_reveal_generation: Cell<u64>,
     keyboard_refocus: Cell<Option<file_commands::KeyboardRefocus>>,
+    typed_rename: RefCell<Option<file_commands::TypedRenameFollow>>,
     pending_click_rename: RefCell<Option<glib::SourceId>>,
     click_rename_generation: Cell<u64>,
     pending_new_entry: RefCell<Option<Rc<PendingEntryRename>>>,

@@ -4,7 +4,7 @@ use std::{cell::RefCell, sync::mpsc};
 
 use super::super::release_picker::{ReleasePicker, ReleaseSource, release_picker};
 use super::super::*;
-use super::{FakeInstaller, page_text, wait_until};
+use super::{FakeInstaller, descendants, page_text, wait_until};
 use crate::{services::ReleaseChoice, test_support::gtk_test};
 
 type Lists = Rc<RefCell<Vec<(Channel, mpsc::Sender<Result<Vec<ReleaseChoice>, String>>)>>>;
@@ -76,32 +76,54 @@ fn choice(version: &str, kind: BuildKind) -> ReleaseChoice {
     }
 }
 
-fn open_picker(releases: &FakeReleases) -> (gtk::Window, ReleasePicker) {
-    let picker = release_picker(
+fn new_picker(releases: &FakeReleases) -> ReleasePicker {
+    release_picker(
         &PreferenceManager::shared(),
         install_guard(),
         releases.source(),
-    );
-    let overlay = gtk::Overlay::new();
-    overlay.set_child(Some(&BlurBin::new(&picker.row)));
-    let window = gtk::Window::builder()
+    )
+}
+
+fn picker_window(overlay: &gtk::Overlay) -> gtk::Window {
+    gtk::Window::builder()
         .default_width(1200)
         .default_height(900)
-        .child(&overlay)
-        .build();
+        .child(overlay)
+        .build()
+}
+
+fn open_picker(releases: &FakeReleases) -> (gtk::Window, ReleasePicker) {
+    let picker = new_picker(releases);
+    let overlay = gtk::Overlay::new();
+    overlay.set_child(Some(&BlurBin::new(&picker.row)));
+    let window = picker_window(&overlay);
     window.present();
     wait_until("the picker to be mapped", || picker.button.is_mapped());
     (window, picker)
 }
 
-fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
-    let mut found = vec![widget.clone()];
-    let mut child = widget.first_child();
-    while let Some(widget) = child {
-        child = widget.next_sibling();
-        found.extend(descendants(&widget));
-    }
-    found
+/// The picker inside a Settings-like layer, whose focus trap takes focus when a
+/// control inside drops it.
+fn open_picker_in_settings(releases: &FakeReleases) -> (gtk::Window, ReleasePicker) {
+    let picker = new_picker(releases);
+    let settings = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    settings.add_css_class("app-modal-layer");
+    settings.set_focusable(true);
+    settings.append(&picker.row);
+    settings.set_visible(false);
+    let overlay = gtk::Overlay::new();
+    overlay.set_child(Some(&BlurBin::new(&gtk::Box::new(
+        gtk::Orientation::Vertical,
+        0,
+    ))));
+    overlay.add_overlay(&settings);
+    let window = picker_window(&overlay);
+    crate::ui::window::install_modal_focus_trap(&window);
+    crate::ui::modal::remember_persistent_modal_focus(settings.upcast_ref());
+    window.present();
+    settings.set_visible(true);
+    wait_until("the picker to be mapped", || picker.button.is_mapped());
+    (window, picker)
 }
 
 fn options(picker: &ReleasePicker) -> Vec<gtk::Button> {
@@ -233,6 +255,39 @@ fn choosing_an_older_release_confirms_it_then_installs_exactly_that_release() {
             wait_until("the installed status", || {
                 page_text(window.upcast_ref()).contains("Release installed — restart to apply")
             });
+        },
+    );
+}
+
+#[test]
+fn cancelling_the_chosen_release_returns_focus_to_the_picker() {
+    gtk_test(
+        "ui::settings::tests::release_picker::cancelling_the_chosen_release_returns_focus_to_the_picker",
+        || {
+            PreferenceManager::shared().set_release_channel(Channel::Stable);
+            let releases = FakeReleases::default();
+            let (window, picker) = open_picker_in_settings(&releases);
+            picker.button.popup();
+            releases.answer(Ok(vec![choice("0.4.0", BuildKind::Stable)]));
+            wait_until("the release options", || options(&picker).len() == 1);
+            assert!(picker.button.grab_focus());
+
+            option(&picker, "0.4.0").emit_clicked();
+            wait_until("the confirmation dialog", || {
+                button_labelled(&window, "Install release").is_some()
+            });
+            button_labelled(&window, "Cancel")
+                .expect("the dialog's Cancel")
+                .emit_clicked();
+            wait_until("the dialog to close", || {
+                button_labelled(&window, "Install release").is_none()
+            });
+
+            let focus = gtk::prelude::RootExt::focus(&window).expect("a focused widget");
+            assert!(
+                focus == picker.button || focus.is_ancestor(&picker.button),
+                "focus is on {focus:?}, not the picker"
+            );
         },
     );
 }

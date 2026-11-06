@@ -75,12 +75,12 @@ fn wait_modified_past(probe: &Path, than: &Path) -> std::io::Result<()> {
     }
 }
 
-fn found_by_identity(parent: &Path, identity: ItemIdentity) -> Option<Location> {
+fn found_by_identity(departed: &Path, identity: ItemIdentity) -> Option<Location> {
     let _serial = serial();
     let found = Rc::new(RefCell::new(None));
     let slot = found.clone();
     let _find = LocalFileSource.find_by_identity(
-        Location::local(parent),
+        Location::local(departed),
         identity,
         Rc::new(move |location| {
             slot.replace(Some(location));
@@ -316,8 +316,87 @@ fn a_renamed_folder_is_followed_where_its_mount_proves_it_is_the_same() -> Resul
         }
 
         assert_eq!(
-            found_by_identity(&parent, identity),
+            found_by_identity(&old, identity),
             followed.then(|| Location::local(&new)),
+            "{row}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn a_folder_is_found_where_a_renamed_ancestor_took_it() -> Result<(), Box<dyn Error>> {
+    type Change = fn(&Path) -> std::io::Result<()>;
+    // Each row changes a tree holding the open folder `a/b/c` and `a/elsewhere`.
+    let rows: [(&str, Change, Option<&str>); 4] = [
+        (
+            "parent renamed",
+            |root| fs::rename(root.join("a/b"), root.join("a/b2")),
+            Some("a/b2/c"),
+        ),
+        (
+            "grandparent renamed",
+            |root| fs::rename(root.join("a"), root.join("a2")),
+            Some("a2/b/c"),
+        ),
+        (
+            "parent moved into another folder",
+            |root| fs::rename(root.join("a/b"), root.join("a/elsewhere/b")),
+            None,
+        ),
+        (
+            "parent deleted",
+            |root| fs::remove_dir_all(root.join("a/b")),
+            None,
+        ),
+    ];
+    for (row, change, found) in rows {
+        let root = tempfile::tempdir()?;
+        let open = root.path().join("a/b/c");
+        fs::create_dir_all(&open)?;
+        fs::create_dir_all(root.path().join("a/elsewhere"))?;
+        let identity = folder_identity(&open)?;
+        change(root.path())?;
+
+        assert_eq!(
+            found_by_identity(&open, identity),
+            found.map(|found| Location::local(root.path().join(found))),
+            "{row}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn a_renamed_folder_is_never_searched_for_on_another_mount() -> Result<(), Box<dyn Error>> {
+    // The open folder `a/b/c/d` after `a/b` became `a/b2`, with a mount at each row's path.
+    let rows = [
+        ("no mount", None, true),
+        ("the renamed folder is a mount point", Some("a/b2"), false),
+        (
+            "a folder below the renamed one is a mount point",
+            Some("a/b2/c"),
+            false,
+        ),
+        ("the searched folder is a mount point", Some("a"), true),
+    ];
+    for (row, mounted, found) in rows {
+        let root = tempfile::tempdir()?;
+        let root = fs::canonicalize(root.path())?;
+        let open = root.join("a/b/c/d");
+        fs::create_dir_all(&open)?;
+        let identity = folder_identity(&open)?;
+        fs::rename(root.join("a/b"), root.join("a/b2"))?;
+        let mounts = MountTable::parse(mounted.map_or_else(String::new, |mounted| {
+            format!(
+                "36 35 98:0 / {} rw - ext4 /dev/sdb1 rw\n",
+                root.join(mounted).display()
+            )
+        }));
+
+        assert_eq!(
+            native_relocated_folder(&open, identity, &mounts, &Progress::unlaned()),
+            found.then(|| root.join("a/b2/c/d")),
             "{row}"
         );
     }

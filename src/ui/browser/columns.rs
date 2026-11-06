@@ -41,6 +41,9 @@ pub(super) enum PendingActivationKind {
     /// A filtered file whose single click previews instead of launching.
     RecursivePreview,
     Mapped,
+    /// A plain click on a file that neither opens nor previews still ends the open
+    /// path at it, as moving the cursor onto the file does.
+    CloseDeeper,
 }
 
 struct PendingPointerActivation {
@@ -107,6 +110,7 @@ pub(super) struct ColumnView {
     query_binding: Rc<RefCell<Option<super::collection::FilterQueryBinding>>>,
     pub(super) search_model: gtk::StringList,
     pub(super) recursive_search_active: Rc<Cell<bool>>,
+    pub(super) renamed_result: crate::ui::inline_search::RenamedResult,
     hits: Rc<RefCell<ColumnHits>>,
 }
 
@@ -138,6 +142,16 @@ impl ColumnView {
                 && row.is_ancestor(&self.list))
             .then(|| (row, bound.clone()))
         })
+    }
+
+    fn result_lists(&self) -> search::ResultLists {
+        search::ResultLists {
+            model: self.search_model.clone(),
+            results: self.search_results.clone(),
+            selection: self.selection.clone(),
+            syncing: self.syncing_selection.clone(),
+            renamed: self.renamed_result.clone(),
+        }
     }
 
     pub(super) fn refresh_name_highlights(&self, find: Option<&str>) {
@@ -257,22 +271,43 @@ pub(super) fn refresh_source_filter(column: &ColumnView, browser: &crate::app::B
         .filter(|item| browser.allows_entry(&super::search_result_entry(item)))
         .cloned()
         .collect();
-    let changed = search::update_results(
-        &column.search_model,
-        &column.search_results,
-        &column.selection,
-        &column.syncing_selection,
-        items,
-        true,
-    );
+    let update = column.result_lists().update(items, true);
+    if let Some(position) = update.renamed {
+        focus_renamed_result(&column.list, position);
+    }
     column
         .search_session
         .query(column.filter_entry.text().trim());
-    changed
+    update.selection_changed
+}
+
+impl ViewState {
+    pub(super) fn focus_renamed_column_result(&self, depth: usize, position: u32) {
+        let list = self
+            .columns
+            .borrow()
+            .get(depth)
+            .map(|column| column.list.clone());
+        if let Some(list) = list {
+            focus_renamed_result(&list, position);
+        }
+    }
+}
+
+/// Moves the cursor onto a renamed result while the column's results hold focus,
+/// or while focus sits on a row the update removed.
+fn focus_renamed_result(list: &gtk::ListView, position: u32) {
+    let focused = list.root().and_then(|root| root.focus());
+    if focused.as_ref().is_none_or(|focused| {
+        focused.root().is_none() || focused == list || focused.is_ancestor(list)
+    }) {
+        list.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
+    }
 }
 
 pub(super) fn prune_missing_search_results(
     column: &ColumnView,
+    browser: &Rc<crate::app::Browser>,
     selection_changed: impl Fn() + 'static,
 ) {
     if !column.search_session.is_active() {
@@ -284,21 +319,29 @@ pub(super) fn prune_missing_search_results(
         .iter()
         .map(|item| item.path.clone())
         .collect();
-    let model = column.search_model.clone();
-    let results = column.search_results.clone();
-    let selection = column.selection.clone();
-    let syncing = column.syncing_selection.clone();
+    let lists = column.result_lists();
+    let list = column.list.downgrade();
+    let show_hidden = column.show_hidden.clone();
+    let browser = Rc::downgrade(browser);
     column.search_session.prune_missing(paths, move |gone| {
-        let items: Vec<_> = results
-            .borrow()
-            .iter()
-            .filter(|item| !gone.contains(&item.path))
-            .cloned()
-            .collect();
-        if items.len() == results.borrow().len() {
+        let Some(browser) = browser.upgrade() else {
+            return;
+        };
+        let items = lists.results.borrow().clone();
+        if !items.iter().any(|item| gone.contains(&item.path)) {
             return;
         }
-        if search::update_results(&model, &results, &selection, &syncing, items, true) {
+        let items = lists.renamed.prune(items, &gone, |item| {
+            (show_hidden.get() || !item.name.starts_with('.'))
+                && browser.allows_entry(&super::search_result_entry(item))
+        });
+        let update = lists.update(items, true);
+        if let Some(position) = update.renamed
+            && let Some(list) = list.upgrade()
+        {
+            focus_renamed_result(&list, position);
+        }
+        if update.selection_changed {
             selection_changed();
         }
     });

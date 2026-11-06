@@ -105,7 +105,7 @@ impl Dispatcher {
             }
         } else if !(self.complete_sort(press)
             || self.complete_copy(press)
-            || self.complete_folder_action(press))
+            || self.complete_lettered_action(press))
         {
             return None;
         }

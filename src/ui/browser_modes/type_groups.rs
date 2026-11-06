@@ -8,26 +8,10 @@ use std::{cell::Cell, rc::Rc};
 use gtk::{glib, prelude::*};
 
 use crate::{
-    app::Browser,
-    model::{SortDirection, SortKey, ViewPreferences},
-    ui::browser::{FOLDER_TYPE_GROUP, OTHER_TYPE_GROUP, model_type_group},
+    app::{Browser, compare_type_groups},
+    model::ViewPreferences,
+    ui::browser::model_type_group,
 };
-
-fn compare_type_groups(left: &str, right: &str) -> std::cmp::Ordering {
-    fn rank(label: &str) -> u8 {
-        match label {
-            "" => 0,
-            FOLDER_TYPE_GROUP => 1,
-            OTHER_TYPE_GROUP => 3,
-            _ => 2,
-        }
-    }
-    rank(left).cmp(&rank(right)).then_with(|| {
-        left.chars()
-            .flat_map(char::to_lowercase)
-            .cmp(right.chars().flat_map(char::to_lowercase))
-    })
-}
 
 fn model_value(item: &glib::Object) -> String {
     item.downcast_ref::<gtk::StringObject>()
@@ -58,7 +42,7 @@ impl TypeGroupSorter {
             let preferences = preferences();
             seen.set(preferences);
             let (left, right) = (model_string(left), model_string(right));
-            compare_type_groups_for_preferences(
+            compare_type_groups(
                 model_type_group(left.as_deref().unwrap_or("")),
                 model_type_group(right.as_deref().unwrap_or("")),
                 preferences.unwrap_or_default(),
@@ -90,32 +74,6 @@ pub(super) fn pane_type_group_sorter(browser: &Rc<Browser>, depth: usize) -> Typ
             .upgrade()
             .and_then(|browser| browser.column_preferences(depth))
     })
-}
-
-fn compare_type_groups_for_preferences(
-    left: &str,
-    right: &str,
-    preferences: ViewPreferences,
-) -> std::cmp::Ordering {
-    if preferences.sort_key != SortKey::Type {
-        return compare_type_groups(left, right);
-    }
-    if left.is_empty() || right.is_empty() {
-        return left.cmp(right);
-    }
-    if preferences.folders_first {
-        let folders = (right == FOLDER_TYPE_GROUP).cmp(&(left == FOLDER_TYPE_GROUP));
-        if folders != std::cmp::Ordering::Equal {
-            return folders;
-        }
-    }
-    let order = (left == OTHER_TYPE_GROUP)
-        .cmp(&(right == OTHER_TYPE_GROUP))
-        .then_with(|| crate::app::compare_display_names(left, right));
-    match preferences.sort_direction {
-        SortDirection::Ascending => order,
-        SortDirection::Descending => order.reverse(),
-    }
 }
 
 fn type_group_heading(label: &str) -> gtk::Label {

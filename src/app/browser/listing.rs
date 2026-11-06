@@ -9,7 +9,10 @@ use std::{
 
 use crate::{
     model::{FileEntry, Location, SortKey},
-    services::{DirectoryRequest, DirectoryStamp, LoadHandle, RequestId, StampAnswer, Watching},
+    services::{
+        DirectoryRequest, DirectoryStamp, LoadHandle, RequestId, StampAnswer, WatchRequest,
+        Watching,
+    },
 };
 
 use super::{
@@ -91,6 +94,12 @@ impl Browser {
             location: location.clone(),
         };
         let baseline = baseline.cloned();
+        // Hidden entries remain in the model so revealing them never needs a rescan.
+        let request = WatchRequest {
+            location,
+            include_hidden: true,
+            began_on: baseline.as_ref().and_then(|baseline| baseline.identity),
+        };
         let report = Rc::new(move |watching| {
             let browser = weak.upgrade();
             match (watching, &browser, &baseline) {
@@ -104,8 +113,7 @@ impl Browser {
                 browser.reschedule_freshness();
             }
         });
-        // Hidden entries remain in the model so revealing them never needs a rescan.
-        let watch = self.source.start_watch(location, true, notify, report);
+        let watch = self.source.start_watch(request, notify, report);
         if let Some(monitor) = self
             .monitors
             .borrow_mut()
@@ -255,7 +263,10 @@ impl Browser {
             .column_preferences(depth)
             .map(|preferences| preferences.sort_key)
             .unwrap_or_else(|| self.preferences.get().sort_key);
-        let include_metadata = matches!(sort_key, SortKey::Size | SortKey::Modified);
+        let include_metadata = matches!(
+            sort_key,
+            SortKey::Size | SortKey::Modified | SortKey::Created
+        );
         let (max_entries, time_budget) = if location.is_camera_photo_root() {
             (usize::MAX, Duration::MAX)
         } else {

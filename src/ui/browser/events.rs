@@ -27,6 +27,11 @@ impl ViewState {
         if self.dispatch(event) {
             self.finish_handling(event);
         }
+        if let BrowserEvent::SortingFinished { depth } | BrowserEvent::ColumnReloaded { depth } =
+            event
+        {
+            crate::ui::browser::pane_header::sync_open_sort_menus(&self.browser, *depth);
+        }
     }
 
     /// Routes one event to its handler; false when the event needs no shared follow-up.
@@ -152,11 +157,11 @@ impl ViewState {
                 location,
                 sort_key,
                 sort_direction,
+                name_comparison,
             } => {
-                crate::ui::preferences::PreferenceManager::shared().set_folder_sort(
+                crate::ui::preferences::PreferenceManager::shared().set_folder_sort_options(
                     location,
-                    *sort_key,
-                    *sort_direction,
+                    (*sort_key, *sort_direction, *name_comparison),
                 );
             }
             BrowserEvent::ItemRelocated { from, to, merged } => {
@@ -320,6 +325,7 @@ impl ViewState {
 
     fn on_rename_completed(self: &Rc<Self>, request_id: crate::services::OperationRequestId) {
         self.complete_pending_rename(request_id);
+        self.end_typed_rename(request_id, true);
         self.complete_typed_placement(request_id);
         if let Some(recovered) = self.take_recovered_item() {
             self.rename_created_entry(&recovered);
@@ -333,6 +339,7 @@ impl ViewState {
 
     fn on_rename_abandoned(&self, request_id: crate::services::OperationRequestId) {
         self.abandon_pending_rename(request_id);
+        self.end_typed_rename(request_id, false);
         if self.take_recovered_item().is_some() {
             self.cancel_new_entry();
         }
@@ -348,6 +355,7 @@ impl ViewState {
             self.cancel_new_entry();
         }
         if let Some(request_id) = request_id {
+            self.end_typed_rename(request_id, false);
             self.finish_keyboard_refocus(
                 super::file_commands::KeyboardRefocus::Rename(request_id),
                 false,

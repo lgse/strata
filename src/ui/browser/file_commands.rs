@@ -30,6 +30,7 @@ pub(crate) struct NumberedActions {
     pub(crate) actions: Vec<Rc<ActionHandle>>,
     paths: Vec<PathBuf>,
     parent: Option<PathBuf>,
+    source: InvocationSource,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -315,25 +316,80 @@ impl BrowserView {
 
     pub fn start_typed_rename(&self, rename: TypedRename) {
         let start = rename.start_folder();
-        let started = match rename.path {
+        let old_location = rename.entry.location.clone();
+        // `Some(None)`: the item moves to another folder, and its result is
+        // deliberately not followed to its new path.
+        let (started, follow) = match rename.path {
             Some(path) => {
                 let replacement =
                     start.and_then(|start| start.child(std::ffi::OsStr::new(path.first())));
                 let started = self.state.browser.place_entry(rename.entry, path, false);
                 self.state.typed_placement.replace(started.zip(replacement));
-                started
+                (started, Some(None))
             }
-            None => self.state.browser.rename(rename.entry, rename.name),
+            None => {
+                let new_location =
+                    start.and_then(|start| start.child(std::ffi::OsStr::new(&rename.name)));
+                let started = self.state.browser.rename(rename.entry, rename.name);
+                (started, new_location.map(Some))
+            }
         };
-        if let Some(request) = started {
-            self.state
-                .keyboard_refocus
-                .set(Some(KeyboardRefocus::Rename(request)));
+        let Some(request) = started else {
+            return;
+        };
+        self.state
+            .keyboard_refocus
+            .set(Some(KeyboardRefocus::Rename(request)));
+        if let Some(new_location) = follow {
+            self.follow_typed_rename(request, old_location, new_location);
         }
+    }
+
+    /// The prompt renames or moves the focused filter result as readily as a listing
+    /// entry. Registering after the operation starts relies on providers reporting
+    /// its end asynchronously.
+    fn follow_typed_rename(
+        &self,
+        request: crate::services::OperationRequestId,
+        old_location: crate::model::Location,
+        new_location: Option<crate::model::Location>,
+    ) {
+        self.state
+            .follow_renamed_result(&old_location, new_location.as_ref());
+        self.state.typed_rename.replace(Some(TypedRenameFollow {
+            request,
+            old_location,
+            new_location,
+        }));
     }
 }
 
+/// The filter-result follow a running typed rename registered, so its own
+/// failure undoes it and no other rename's.
+pub(super) struct TypedRenameFollow {
+    request: crate::services::OperationRequestId,
+    old_location: crate::model::Location,
+    /// `None` when the typed path moves the item to another folder.
+    new_location: Option<crate::model::Location>,
+}
+
 impl super::ViewState {
+    /// Ends the typed rename `request`; one that did not complete drops its
+    /// filter-result follow.
+    pub(super) fn end_typed_rename(
+        &self,
+        request: crate::services::OperationRequestId,
+        completed: bool,
+    ) {
+        let ended = self
+            .typed_rename
+            .borrow_mut()
+            .take_if(|follow| follow.request == request);
+        if let Some(follow) = ended.filter(|_| !completed) {
+            self.forget_renamed_result(&follow.old_location, follow.new_location.as_ref());
+        }
+    }
+
     pub(super) fn finish_keyboard_refocus(
         self: &Rc<Self>,
         finished: KeyboardRefocus,
@@ -385,6 +441,26 @@ impl super::ViewState {
 }
 
 impl BrowserView {
+    pub fn change_focused_name_comparison(&self, toggle_sensitive: bool, natural: bool) {
+        if let Some(depth) = self.focused_listing_depth() {
+            let mut comparison = self
+                .state
+                .browser
+                .requested_column_preferences(depth)
+                .unwrap_or_default()
+                .name_comparison;
+            if toggle_sensitive {
+                comparison.case_sensitive = !comparison.case_sensitive;
+            } else {
+                comparison.natural = natural;
+            }
+            self.state.browser.set_name_comparison(depth, comparison);
+            self.state
+                .keyboard_refocus
+                .set(Some(KeyboardRefocus::Sort(depth)));
+        }
+    }
+
     pub fn sort_focused_pane(&self, key: SortKey, direction: SortDirection) {
         if let Some(depth) = self.focused_listing_depth() {
             self.state.browser.set_sort(depth, key, direction);
@@ -411,8 +487,13 @@ impl BrowserView {
         self.state.refocus_cursor();
     }
 
-    pub(crate) fn numbered_actions(&self) -> NumberedActions {
-        self.actions_for_targets(ActionCatalog::numbered)
+    /// The first ten actions for the targets, or with `Background` for the
+    /// keyboard-focused folder as its background menu offers them.
+    pub(crate) fn numbered_actions(&self, source: InvocationSource) -> NumberedActions {
+        match source {
+            InvocationSource::Selection => self.actions_for_targets(ActionCatalog::numbered),
+            InvocationSource::Background => self.actions_for_folder(),
+        }
     }
 
     /// The targets and the action at `index` in Settings → Actions' order,
@@ -428,16 +509,40 @@ impl BrowserView {
         Some((numbered, action))
     }
 
+    fn focused_folder(&self) -> Option<Location> {
+        self.focused_listing_depth()
+            .and_then(|depth| self.state.browser.location_at(depth))
+    }
+
+    fn actions_for_folder(&self) -> NumberedActions {
+        let folder = self.focused_folder();
+        let parent = folder
+            .as_ref()
+            .and_then(|location| location.native_path().map(PathBuf::from));
+        let actions = folder
+            .as_ref()
+            .and_then(crate::ui::actions::folder_input)
+            .map_or_else(Vec::new, |input| {
+                crate::ui::actions::shared().catalog().numbered(&[input])
+            });
+        NumberedActions {
+            targets: folder.into_iter().collect(),
+            actions,
+            paths: parent.iter().cloned().collect(),
+            parent,
+            source: InvocationSource::Background,
+        }
+    }
+
     fn actions_for_targets(
         &self,
         choose: impl FnOnce(&ActionCatalog, &[ActionInput]) -> Vec<Rc<ActionHandle>>,
     ) -> NumberedActions {
+        let parent = self
+            .focused_folder()
+            .and_then(|location| location.native_path().map(PathBuf::from));
         let entries = self.command_targets();
         let targets = entries.iter().map(|entry| entry.location.clone()).collect();
-        let parent = self
-            .focused_listing_depth()
-            .and_then(|depth| self.state.browser.location_at(depth))
-            .and_then(|location| location.native_path().map(PathBuf::from));
         let (inputs, paths) = match (
             crate::ui::actions::inputs_for_entries(&entries),
             crate::ui::actions::native_paths(&entries),
@@ -455,6 +560,7 @@ impl BrowserView {
             actions,
             paths,
             parent,
+            source: InvocationSource::Selection,
         }
     }
 
@@ -468,7 +574,7 @@ impl BrowserView {
             action,
             numbered.paths,
             parent,
-            InvocationSource::Selection,
+            numbered.source,
             Some(Rc::new(move || {
                 if let Some(browser) = browser.upgrade() {
                     browser.focus_active();

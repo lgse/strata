@@ -12,6 +12,7 @@ fn selected_entry(path: &str) -> FileEntry {
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        created_unix_seconds: crate::model::MetadataValue::Unknown,
         mode: crate::model::MetadataValue::Unknown,
         recent_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,

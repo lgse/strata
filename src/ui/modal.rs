@@ -7,6 +7,7 @@ use gtk::prelude::*;
 use std::rc::Rc;
 use std::time::Duration;
 
+mod fade;
 mod focus;
 pub(super) mod layout;
 mod messages;
@@ -14,8 +15,9 @@ mod messages;
 #[cfg(test)]
 mod tests;
 
-pub(in crate::ui) use focus::is_closing_layer;
+pub(in crate::ui) use fade::{fade_in, fade_out};
 use focus::track_removed_layer;
+pub(in crate::ui) use focus::{focus_modal_layer, is_closing_layer};
 pub(super) use focus::{
     remember_modal_focus, remember_modal_focus_for_listing, set_modal_focus_restore,
 };

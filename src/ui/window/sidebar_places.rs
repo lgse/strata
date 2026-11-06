@@ -165,6 +165,7 @@ impl SidebarState {
             Vec::new()
         };
         self.empty_pinned_section.replace(section);
+        self.sync_empty_pinned_section();
     }
 
     /// Pins the sidebar lists, with their index in the saved pins.
@@ -202,7 +203,6 @@ impl SidebarState {
             None => self.widget.first_child(),
         };
         std::iter::successors(first, gtk::Widget::next_sibling)
-            .inspect(|widget| widget.set_visible(self.file_drag_over.get()))
             .map(|widget| widget.downgrade())
             .collect()
     }
@@ -211,6 +211,12 @@ impl SidebarState {
     /// shows just while files are dragged over the sidebar.
     pub(in crate::ui) fn set_file_drag_over(&self, over: bool) {
         self.file_drag_over.set(over);
+        self.sync_empty_pinned_section();
+    }
+
+    /// Applies the drag state to the empty section's widgets.
+    pub(super) fn sync_empty_pinned_section(&self) {
+        let over = self.file_drag_over.get();
         for widget in self.empty_pinned_section.borrow().iter() {
             if let Some(widget) = widget.upgrade() {
                 widget.set_visible(over);

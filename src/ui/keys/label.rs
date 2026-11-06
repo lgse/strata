@@ -98,7 +98,12 @@ impl Keys {
             Self::Any(shown) | Self::Chord(shown) => {
                 shown.iter().filter_map(|shown| shown.command()).collect()
             }
-            Self::Digits(digits) => digits.prefix.and_then(Shown::command).into_iter().collect(),
+            Self::Digits(digits) => digits
+                .prefix
+                .into_iter()
+                .chain(digits.then)
+                .filter_map(Shown::command)
+                .collect(),
             Self::Mixed(keys) => keys.iter().flat_map(Self::commands).collect(),
         }
     }
@@ -109,18 +114,21 @@ impl Keys {
             Self::Any(shown) | Self::Chord(shown) => expanded(shown, map),
             Self::Digits(digits) => digits
                 .prefix
-                .map(|prefix| prefix.bindings(map))
-                .unwrap_or_default(),
+                .into_iter()
+                .chain(digits.then)
+                .flat_map(|prefix| prefix.bindings(map))
+                .collect(),
             Self::Mixed(keys) => keys.iter().flat_map(|keys| keys.resolved(map)).collect(),
         }
     }
 }
 
 /// Digit-row keys 1 to `last`, and 0 when `zero`, with shared modifiers or
-/// after a chord prefix.
+/// after a chord prefix, and its second key `then` when the digits follow two.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Digits {
     prefix: Option<Shown>,
+    then: Option<Shown>,
     modifiers: Modifiers,
     ignored: Modifiers,
     last: u8,
@@ -131,6 +139,7 @@ impl Digits {
     pub(crate) const fn new(modifiers: Modifiers, last: u8, zero: bool) -> Self {
         Self {
             prefix: None,
+            then: None,
             modifiers,
             ignored: Modifiers::empty(),
             last,
@@ -143,6 +152,7 @@ impl Digits {
     pub(crate) const fn after(prefix: Shown, last: u8, zero: bool) -> Self {
         Self {
             prefix: Some(prefix),
+            then: None,
             modifiers: Modifiers::empty(),
             ignored: Modifiers::SHIFT_MASK,
             last,
@@ -150,9 +160,22 @@ impl Digits {
         }
     }
 
+    /// The digit step of a two-key chord, such as **; . 1**.
+    pub(crate) const fn after_chord(prefix: Shown, then: Shown, last: u8, zero: bool) -> Self {
+        Self {
+            then: Some(then),
+            ..Self::after(prefix, last, zero)
+        }
+    }
+
     #[cfg(test)]
     pub(crate) const fn prefix(self) -> Option<Shown> {
         self.prefix
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn then(self) -> Option<Shown> {
+        self.then
     }
 
     pub(crate) const fn modifiers(self) -> Modifiers {
@@ -168,6 +191,7 @@ impl Digits {
     pub(crate) const fn step(self) -> Self {
         Self {
             prefix: None,
+            then: None,
             modifiers: Modifiers::empty(),
             ..self
         }
@@ -243,7 +267,7 @@ pub(crate) fn digit_label(digits: Digits, digit: u8) -> String {
     let locale = rust_i18n::locale();
     let digit = digit.to_string();
     match digits.prefix {
-        Some(prefix) => primary_label(&locale, prefix, Map::active())
+        Some(_) => prefix_label(&locale, &digits, Map::active())
             .map(|prefix| format!("{prefix} {digit}"))
             .unwrap_or_default(),
         None => with_modifiers(&locale, digits.modifiers, &digit),
@@ -310,8 +334,8 @@ fn alternatives(locale: &str, bindings: &[Binding]) -> String {
 fn digits_label(locale: &str, digits: &Digits, map: Map) -> Option<String> {
     let range = format!("1\u{2013}{}", digits.last);
     Some(match digits.prefix {
-        Some(prefix) => {
-            let prefix = primary_label(locale, prefix, map)?;
+        Some(_) => {
+            let prefix = prefix_label(locale, digits, map)?;
             if digits.zero {
                 format!("{prefix} {range} / {prefix} 0")
             } else {
@@ -326,6 +350,15 @@ fn digits_label(locale: &str, digits: &Digits, map: Map) -> Option<String> {
             };
             with_modifiers(locale, digits.modifiers, &keys)
         }
+    })
+}
+
+/// The chord keys before the digits, or `None` when one of them is unbound.
+fn prefix_label(locale: &str, digits: &Digits, map: Map) -> Option<String> {
+    let prefix = primary_label(locale, digits.prefix?, map)?;
+    Some(match digits.then {
+        Some(then) => format!("{prefix} {}", primary_label(locale, then, map)?),
+        None => prefix,
     })
 }
 

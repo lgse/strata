@@ -65,6 +65,7 @@ pub(crate) fn parse_command(line: &str) -> Result<Command, String> {
             let fields: ClipboardFields = serde_json::from_value(fields).map_err(invalid)?;
             Ok(Command::Clipboard {
                 text: fields.clipboard,
+                mime: fields.mime,
                 message: fields.message,
             })
         }

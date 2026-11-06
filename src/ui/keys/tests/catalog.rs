@@ -78,6 +78,15 @@ fn shows(keys: &Keys, wanted: &Wanted, map: Map) -> bool {
     match (keys, wanted) {
         (Keys::Mixed(alternatives), _) => alternatives.iter().any(|keys| shows(keys, wanted, map)),
         (Keys::Digits(digits), Wanted::Digits(wanted)) => digits == wanted,
+        // The digits after a two-key chord show its second key too: ; . 1–9.
+        (Keys::Digits(digits), Wanted::Keys(bindings, Some(first))) => {
+            digits.prefix().as_ref().and_then(primary) == Some(*first)
+                && digits
+                    .then()
+                    .as_ref()
+                    .and_then(primary)
+                    .is_some_and(|then| bindings.contains(&then))
+        }
         (Keys::Chord(steps), Wanted::Keys(bindings, Some(first))) => {
             let steps: Vec<Option<Binding>> = steps.iter().map(primary).collect();
             bindings.iter().any(|binding| {
@@ -127,7 +136,7 @@ fn keymap_with_custom_actions_bound() -> Keymap {
 
 fn assert_each_listed_constant_has_a_row(listed: &[Listed], map: Map) {
     let tenxer = map == Map::Tenxer;
-    let rows = crate::ui::shortcut_reference::reference_rows(tenxer);
+    let rows = crate::ui::shortcut_reference::tests::reference_rows(tenxer);
     let wanted: Vec<(&Listed, Wanted)> = listed
         .iter()
         .filter(|constant| constant.maps.include(tenxer))
