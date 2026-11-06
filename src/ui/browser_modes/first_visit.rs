@@ -6,7 +6,6 @@ use std::{cell::Cell, rc::Rc};
 
 use gtk::{gdk, glib, prelude::*};
 
-/// Pointer, scroll, touch or key input: what a user does to move through a pane.
 pub(super) fn is_user_input(event: &gdk::Event) -> bool {
     matches!(
         event.event_type(),

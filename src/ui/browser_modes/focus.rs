@@ -264,11 +264,7 @@ impl ModeViews {
             .browser
             .focused_item()
             .filter(|(focused_depth, _, _)| *focused_depth == depth);
-        let target = if first_row {
-            first_row_target(pane)
-        } else {
-            cursor_target(pane, focused.as_ref())
-        };
+        let target = focus_target(pane, focused.as_ref(), first_row);
         let generation = self.cursor_focus_generation.get();
         let had_live_focus = target
             .view
@@ -343,6 +339,14 @@ fn cursor_target(pane: &Pane, focused: Option<&FocusedItem>) -> CursorTarget {
                 position: Some(position),
             },
         )
+}
+
+fn focus_target(pane: &Pane, focused: Option<&FocusedItem>, first_row: bool) -> CursorTarget {
+    if first_row {
+        first_row_target(pane)
+    } else {
+        cursor_target(pane, focused)
+    }
 }
 
 fn first_row_target(pane: &Pane) -> CursorTarget {
