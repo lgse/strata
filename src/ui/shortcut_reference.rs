@@ -1221,7 +1221,11 @@ fn tenxer_mode_rows(
 
 const DEFAULT_TOOLS: &[Shortcut] = &[
     row(One(FILTER.shown()), "Filter the current pane"),
-    FILTER_DESCEND_ROW,
+    within(
+        "%{keys} in a filter",
+        One(FILTER_DESCEND.shown()),
+        "Enter the first matching folder",
+    ),
     row(One(SEARCH.shown()), "Open global search"),
     row(One(JUMP_TO_FOLDER.shown()), "Jump to a recent folder"),
     row(
@@ -1268,12 +1272,6 @@ const DEFAULT_TOOLS: &[Shortcut] = &[
     row(One(REFERENCE.shown()), "Show or hide this reference"),
 ];
 
-const FILTER_DESCEND_ROW: Shortcut = within(
-    "%{keys} in a filter",
-    One(FILTER_DESCEND.shown()),
-    "Enter the first matching folder",
-);
-
 const SELECT_TAB: Shortcut = row(
     Keys::Digits(TAB_NUMBERS),
     "Select a tab (hold %{keys} for numbers)",
@@ -1309,7 +1307,11 @@ const TENXER_FIND: &[Shortcut] = &[
         "Dismiss the find highlights",
     ),
     row(One(FILTER.shown()), "Filter this listing"),
-    FILTER_DESCEND_ROW,
+    within(
+        "%{keys} in a filter",
+        One(FILTER_DESCEND.shown()),
+        "Enter the highlighted or first matching folder",
+    ),
     within(
         "%{keys} after a filter",
         One(ESCAPE.shown()),

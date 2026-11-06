@@ -1020,6 +1020,7 @@
   "“%{program}” was not found on your PATH": "“%{program}” was not found on your PATH",
   "Enable %{name}": "Enable %{name}",
   "Enter the first matching folder": "Enter the first matching folder",
+  "Enter the highlighted or first matching folder": "Enter the highlighted or first matching folder",
   "Action chord": "Action chord",
   "Go chord": "Go chord",
   "Sort chord": "Sort chord",

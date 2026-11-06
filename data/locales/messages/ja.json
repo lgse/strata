@@ -1020,6 +1020,7 @@
   "“%{program}” was not found on your PATH": "PATH に「%{program}」が見つかりません",
   "Enable %{name}": "%{name} を有効にする",
   "Enter the first matching folder": "最初に一致したフォルダーに入る",
+  "Enter the highlighted or first matching folder": "強調表示されたフォルダー、または最初に一致したフォルダーに入る",
   "Action chord": "アクションのキーシーケンス",
   "Go chord": "移動のキーシーケンス",
   "Sort chord": "並べ替えのキーシーケンス",

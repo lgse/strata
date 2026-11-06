@@ -35,6 +35,8 @@ pub(super) struct FilterDescent {
     navigation: u64,
     query: String,
     input: Option<FilterEntry>,
+    /// The 10xer prompt's Up and Down moved the result cursor since its query changed.
+    at_cursor: bool,
 }
 
 struct FilterEntry {
@@ -95,7 +97,11 @@ pub(super) fn finish_filter_descent(
     if pending.borrow().is_none() {
         return;
     }
-    let Some(entry) = view.first_settled_filter_match() else {
+    let at_cursor = pending
+        .borrow()
+        .as_ref()
+        .is_some_and(|pending| pending.at_cursor);
+    let Some(entry) = view.settled_filter_match(at_cursor) else {
         return;
     };
     let footer = pending
@@ -160,6 +166,7 @@ impl Dispatcher {
         self.filter_descent.replace(Some(FilterDescent {
             navigation: self.view.browser().navigation_generation(),
             query,
+            at_cursor: input.is_none() && self.filter_cursor_moved.get(),
             input,
         }));
         finish_filter_descent(&self.view, &self.shortcuts, &self.filter_descent);
@@ -282,6 +289,9 @@ impl Dispatcher {
         } else if let Some(delta) = step {
             if !kind.is_some_and(Prompt::holds_targets) {
                 self.view.step_cursor_unfocused(delta);
+                if kind == Some(Prompt::Filter) {
+                    self.filter_cursor_moved.set(true);
+                }
             }
         } else {
             return Propagation::Proceed;

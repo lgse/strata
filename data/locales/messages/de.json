@@ -1020,6 +1020,7 @@
   "“%{program}” was not found on your PATH": "„%{program}“ wurde in Ihrem PATH nicht gefunden",
   "Enable %{name}": "%{name} aktivieren",
   "Enter the first matching folder": "Ersten passenden Ordner öffnen",
+  "Enter the highlighted or first matching folder": "Markierten oder ersten passenden Ordner öffnen",
   "Action chord": "Aktions-Tastenkombination",
   "Go chord": "Gehe-zu-Tastenkombination",
   "Sort chord": "Sortier-Tastenkombination",

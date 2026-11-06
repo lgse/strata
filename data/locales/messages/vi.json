@@ -1020,6 +1020,7 @@
   "“%{program}” was not found on your PATH": "Không tìm thấy “%{program}” trong PATH",
   "Enable %{name}": "Bật %{name}",
   "Enter the first matching folder": "Vào thư mục khớp đầu tiên",
+  "Enter the highlighted or first matching folder": "Vào thư mục đang tô sáng hoặc thư mục khớp đầu tiên",
   "Action chord": "Tổ hợp phím hành động",
   "Go chord": "Tổ hợp phím đi tới",
   "Sort chord": "Tổ hợp phím sắp xếp",

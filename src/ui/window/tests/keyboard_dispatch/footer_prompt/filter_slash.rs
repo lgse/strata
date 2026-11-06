@@ -100,25 +100,48 @@ fn tenxer_filter_slash_descends_and_keeps_filtering() {
             enable_tenxer(&fixture);
             let browser = fixture.view.browser();
             let none = ModifierType::empty();
+            #[derive(Debug, PartialEq)]
+            enum Cursor {
+                Untouched,
+                Stepped,
+                SteppedThenEdited,
+            }
             for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
                 fixture.view.set_view_mode(mode);
-                for query in ["Documents-a", "doc", "dcm"] {
+                for (query, cursor) in [
+                    ("Documents-a", Cursor::Untouched),
+                    ("doc", Cursor::Untouched),
+                    ("dcm", Cursor::Stepped),
+                    ("doc", Cursor::SteppedThenEdited),
+                ] {
                     browser.navigate(Location::local(root));
                     wait_loaded(&browser, 0);
                     focus_files(&fixture);
                     assert!(fixture.press(Key::f, none));
                     fixture.shortcuts.prompt().set_text(query);
-                    let first = if query == "Documents-a" {
+                    let entered = if query == "Documents-a" {
                         "Documents-a".to_owned()
                     } else {
                         wait_results(&fixture, &["Documents-a", "Documents-b"]);
                         let order = fixture.view.filter_result_names();
-                        assert!(fixture.press(Key::Down, none));
-                        assert!(fixture.press(Key::Down, none));
-                        assert_eq!(selected_result_names(&fixture), [order[1].clone()]);
-                        order[0].clone()
+                        if cursor != Cursor::Untouched {
+                            assert!(fixture.press(Key::Down, none));
+                            assert!(fixture.press(Key::Down, none));
+                            assert_eq!(selected_result_names(&fixture), [order[1].clone()]);
+                        }
+                        if cursor == Cursor::SteppedThenEdited {
+                            fixture.shortcuts.prompt().set_text("do");
+                            wait_results(&fixture, &["Documents-a", "Documents-b"]);
+                        }
+                        let order = fixture.view.filter_result_names();
+                        if cursor == Cursor::Stepped {
+                            order[1].clone()
+                        } else {
+                            order[0].clone()
+                        }
                     };
-                    let destination = root.join(first);
+                    let query = format!("{query} {cursor:?}");
+                    let destination = root.join(entered);
                     type_slash(&fixture);
                     wait_until_or(
                         || browser.active_location() == Some(Location::local(&destination)),

@@ -1020,6 +1020,7 @@
   "Update %{name}": "更新 %{name}",
   "Enable %{name}": "啟用 %{name}",
   "Enter the first matching folder": "進入第一個符合的資料夾",
+  "Enter the highlighted or first matching folder": "進入標示的或第一個符合的資料夾",
   "Action chord": "動作和弦",
   "Go chord": "前往和弦",
   "Sort chord": "排序和弦",

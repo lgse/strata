@@ -591,12 +591,16 @@ impl BrowserView {
         self.focus_filter_results(&target);
     }
 
-    /// `None` while the current query or its folder is loading; otherwise its first
-    /// displayed match.
-    pub(in crate::ui) fn first_settled_filter_match(&self) -> Option<Option<FileEntry>> {
+    /// The entry under the result cursor when `at_cursor` and the cursor rests on
+    /// one; otherwise `None` while the current query or its folder is loading,
+    /// and then its first displayed match.
+    pub(in crate::ui) fn settled_filter_match(&self, at_cursor: bool) -> Option<Option<FileEntry>> {
         let Some(target) = self.filter_target() else {
             return Some(None);
         };
+        if at_cursor && let Some(entry) = cursor_result(&target) {
+            return Some(Some(entry));
+        }
         target.settle();
         if matches!(&target, Target::Pane { .. }) && !target.has_query_binding() {
             self.state.mode_views.borrow().settle_in_place_filter();
@@ -825,6 +829,16 @@ impl BrowserView {
             .borrow_mut()
             .push(handler);
     }
+}
+
+/// The result under the cursor that Up and Down move. The 10xer prompt shows its
+/// matches as result rows with or without **Include subfolders**.
+fn cursor_result(target: &Target) -> Option<FileEntry> {
+    let cursor = usize::try_from(target.hits()?.cursor?).ok()?;
+    target
+        .results()?
+        .get(cursor)
+        .map(super::collection::search_result_entry)
 }
 
 /// Offers a `/` committed into `entry` to `descend`, which keeps it out of the

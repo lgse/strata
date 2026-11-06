@@ -1020,6 +1020,7 @@
   "“%{program}” was not found on your PATH": "A(z) „%{program}” nem található a PATH útvonalon",
   "Enable %{name}": "%{name} engedélyezése",
   "Enter the first matching folder": "Belépés az első egyező mappába",
+  "Enter the highlighted or first matching folder": "Belépés a kiemelt vagy az első egyező mappába",
   "Action chord": "Művelet-akkord",
   "Go chord": "Ugrás-akkord",
   "Sort chord": "Rendezés-akkord",

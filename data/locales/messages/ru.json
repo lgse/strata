@@ -1020,6 +1020,7 @@
   "“%{program}” was not found on your PATH": "«%{program}» не найден в PATH",
   "Enable %{name}": "Включить %{name}",
   "Enter the first matching folder": "Войти в первую подходящую папку",
+  "Enter the highlighted or first matching folder": "Войти в выделенную или первую подходящую папку",
   "Action chord": "Комбинация действий",
   "Go chord": "Комбинация перехода",
   "Sort chord": "Комбинация сортировки",

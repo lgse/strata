@@ -1020,6 +1020,7 @@
   "“%{program}” was not found on your PATH": "« %{program} » est introuvable dans votre PATH",
   "Enable %{name}": "Activer %{name}",
   "Enter the first matching folder": "Entrer dans le premier dossier correspondant",
+  "Enter the highlighted or first matching folder": "Entrer dans le dossier surligné ou le premier correspondant",
   "Action chord": "Combinaison Actions",
   "Go chord": "Combinaison Aller",
   "Sort chord": "Combinaison Trier",

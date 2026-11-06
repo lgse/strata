@@ -225,6 +225,9 @@ struct Dispatcher {
     shortcuts: ShortcutFooter,
     history: Rc<NavigationHistory>,
     filter_descent: Rc<RefCell<Option<prompts::FilterDescent>>>,
+    /// Up or Down moved the 10xer filter's result cursor since its query changed;
+    /// **/** then enters the highlighted result.
+    filter_cursor_moved: Rc<Cell<bool>>,
     rename_target: Rc<RefCell<Option<crate::model::FileEntry>>>,
     /// Only the latest typed name submitted may act after its check.
     typed_name_revision: Rc<Cell<u64>>,
@@ -285,6 +288,7 @@ impl Dispatcher {
             shortcuts: parts.shortcuts,
             history: parts.history,
             filter_descent: Rc::default(),
+            filter_cursor_moved: Rc::default(),
             rename_target: Rc::default(),
             typed_name_revision: Rc::default(),
             destination_targets: Rc::default(),
@@ -319,8 +323,10 @@ impl Dispatcher {
         let destination_targets = dispatcher.destination_targets.clone();
         let destinations = dispatcher.destinations.clone();
         let filter_descent = dispatcher.filter_descent.clone();
+        let filter_cursor_moved = dispatcher.filter_cursor_moved.clone();
         dispatcher.shortcuts.connect_prompt_reset(move || {
             filter_descent.take();
+            filter_cursor_moved.set(false);
             typed_name_revision.set(typed_name_revision.get().wrapping_add(1));
             drop(rename_target.take());
             drop(destination_targets.take());

@@ -39,10 +39,12 @@ pub(super) fn release_preview_keys_on_mode_exit(
 pub(super) fn bind_footer_filter(dispatcher: &Dispatcher) {
     let view = dispatcher.view.downgrade();
     let descent = dispatcher.filter_descent.clone();
+    let cursor_moved = dispatcher.filter_cursor_moved.clone();
     dispatcher
         .shortcuts
         .connect_prompt_changed(move |kind, text| {
             descent.take();
+            cursor_moved.set(false);
             let Some(view) = view.upgrade() else {
                 return;
             };
