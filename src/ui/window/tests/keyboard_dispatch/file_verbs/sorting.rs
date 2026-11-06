@@ -61,6 +61,12 @@ fn sort_chord_lists_its_keys(fixture: &KeyboardFixture) {
             ("m", "Modified"),
             ("s", "Size"),
             ("e", "Type"),
+            ("x", "Extension"),
+            ("b", "Created"),
+            ("u", "Unsorted"),
+            ("n", "Natural"),
+            ("l", "Alphabetical"),
+            ("c", "Case-sensitive names"),
             ("Shift", "Reverse"),
         ]
         .map(|(key, action)| (key.to_owned(), action.to_owned()))
@@ -70,7 +76,7 @@ fn sort_chord_lists_its_keys(fixture: &KeyboardFixture) {
 
 fn saved_sort(folder: &Location) -> (SortKey, SortDirection) {
     match PreferenceManager::shared().resolve_folder_sort(folder, false) {
-        crate::model::FolderSort::Saved(sort_key, sort_direction) => (sort_key, sort_direction),
+        crate::model::FolderSort::Saved(sort_key, sort_direction, _) => (sort_key, sort_direction),
         _ => PreferenceManager::shared().default_sort(),
     }
 }
@@ -159,7 +165,7 @@ fn sorts_are_remembered_for_the_folder(fixture: &KeyboardFixture, outer: (SortKe
 
 fn unknown_sort_keys_keep_the_order(fixture: &KeyboardFixture) {
     let browser = fixture.view.browser();
-    for key in [Key::n, Key::t] {
+    for key in [Key::q, Key::t] {
         sort(fixture, key, false);
         assert_eq!(feedback(fixture), "Unknown chord", "{key:?}");
         assert_eq!(fixture.shortcuts.armed_chord(), None);

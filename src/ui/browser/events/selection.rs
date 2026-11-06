@@ -153,14 +153,17 @@ impl ViewState {
         position: Option<usize>,
         force: bool,
     ) {
-        if let Some(source) = self.pending_mirror.borrow_mut().take() {
-            source.remove();
-        }
         let Some(position) = position else {
             return;
         };
+        // A suppressed echo of the cursor, such as the listing retaking focus,
+        // must not cancel the keyboard move it follows; the mirror checks the
+        // cursor again when it runs.
         if self.child_mirror_blocked(force) {
             return;
+        }
+        if let Some(source) = self.pending_mirror.borrow_mut().take() {
+            source.remove();
         }
         let weak = Rc::downgrade(self);
         let source = glib::timeout_add_local_once(FOCUS_PREVIEW_DELAY, move || {

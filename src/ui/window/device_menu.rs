@@ -167,10 +167,17 @@ impl DeviceMenu {
         let option = sidebar_context_option(icon, label, danger);
         self.menu.append(&option);
         let popover = self.popover.downgrade();
-        let view = self.view.clone();
-        let parent = self.row.clone().upcast::<gtk::Widget>();
+        let view = self.view.downgrade();
+        // The option sits in a popover under the row, so a strong row or view
+        // here would keep both alive after the sidebar is rebuilt or the tab closes.
+        let parent = self.row.downgrade();
         option.connect_clicked(move |_| {
-            drive_dialogs::open_from_sidebar(&view, popover.upgrade().as_ref(), || show(&parent));
+            let (Some(view), Some(parent)) = (view.upgrade(), parent.upgrade()) else {
+                return;
+            };
+            drive_dialogs::open_from_sidebar(&view, popover.upgrade().as_ref(), || {
+                show(parent.upcast_ref())
+            });
         });
     }
 

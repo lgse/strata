@@ -214,15 +214,12 @@ impl SidebarState {
         self.sync_empty_pinned_section();
     }
 
-    /// Applies the drag state to the empty section's widgets; also re-run
-    /// after the rail sync, which shows every heading.
+    /// Applies the drag state to the empty section's widgets.
     pub(super) fn sync_empty_pinned_section(&self) {
         let over = self.file_drag_over.get();
-        let rail = self.rail.get();
         for widget in self.empty_pinned_section.borrow().iter() {
             if let Some(widget) = widget.upgrade() {
-                let heading = widget.has_css_class("sidebar-heading-toggle");
-                widget.set_visible(over && !(rail && heading));
+                widget.set_visible(over);
             }
         }
     }

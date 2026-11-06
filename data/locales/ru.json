@@ -520,7 +520,7 @@
   "Keep notification": "Не закрывать уведомление",
   "Keep the close button in the top bar. Hide it when the window manager already closes windows.": "Оставляет кнопку закрытия на верхней панели. Скройте её, если окна уже закрываются средствами оконного менеджера.",
   "Keyboard shortcuts": "Комбинации клавиш",
-  "LANGUAGE": "ЯЗЫК",
+  "LANGUAGE & UNITS": "ЯЗЫК И ЕДИНИЦЫ ИЗМЕРЕНИЯ",
   "LINKS": "ССЫЛКИ",
   "LOCATION": "РАСПОЛОЖЕНИЕ",
   "LaTeX equation": "Формула LaTeX",
@@ -553,7 +553,7 @@
   "MODIFIED": "ИЗМЕНЁН",
   "MOTION": "АНИМАЦИЯ",
   "Make this the default size": "Сделать размером по умолчанию",
-  "Make this the default sort": "Сделать сортировкой по умолчанию",
+  "Make default": "Сделать по умолчанию",
   "Maximize window": "Развернуть окно",
   "Maximum items": "Максимум элементов",
   "Measuring Trash…": "Вычисление размера корзины…",
@@ -1535,5 +1535,14 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} фут.",
   "%{elevation} m": "%{elevation} м",
   "%{elevation} ft": "%{elevation} фут.",
-  "No action": "Нет действия"
+  "No action": "Нет действия",
+  "Natural": "Естественный",
+  "Alphabetical": "Алфавитный",
+  "NAME ORDER": "ПОРЯДОК ИМЁН",
+  "Case-sensitive names": "Учитывать регистр имён",
+  "Extension": "Расширение",
+  "Unsorted": "Без сортировки",
+  "Sort: %{field} %{direction}": "Сортировка: %{field} %{direction}",
+  "%{field} · %{order}": "%{field} · %{order}",
+  "%{field} · case-sensitive": "%{field} · с учётом регистра"
 }

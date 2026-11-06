@@ -520,7 +520,7 @@
   "Keep notification": "保留通知",
   "Keep the close button in the top bar. Hide it when the window manager already closes windows.": "在顶栏中显示关闭按钮。如果窗口管理器已能关闭窗口，可将其隐藏。",
   "Keyboard shortcuts": "键盘快捷键",
-  "LANGUAGE": "语言",
+  "LANGUAGE & UNITS": "语言和单位",
   "LINKS": "链接",
   "LOCATION": "位置",
   "LaTeX equation": "LaTeX 公式",
@@ -553,7 +553,7 @@
   "MODIFIED": "修改时间",
   "MOTION": "动画",
   "Make this the default size": "设为默认大小",
-  "Make this the default sort": "设为默认排序",
+  "Make default": "设为默认",
   "Maximize window": "最大化窗口",
   "Maximum items": "最多项目数",
   "Measuring Trash…": "正在计算回收站大小…",
@@ -1535,5 +1535,14 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} 英尺",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} 英尺",
-  "No action": "无操作"
+  "No action": "无操作",
+  "Natural": "自然排序",
+  "Alphabetical": "字典序",
+  "NAME ORDER": "名称顺序",
+  "Case-sensitive names": "名称区分大小写",
+  "Extension": "扩展名",
+  "Unsorted": "不排序",
+  "Sort: %{field} %{direction}": "排序：%{field} %{direction}",
+  "%{field} · %{order}": "%{field} · %{order}",
+  "%{field} · case-sensitive": "%{field} · 区分大小写"
 }

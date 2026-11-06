@@ -271,8 +271,12 @@ impl Browser {
             let Some(preferences) = state.column_preferences(depth) else {
                 return;
             };
-            let needs = matches!(preferences.sort_key, SortKey::Size | SortKey::Modified)
-                && state.column_unknown_metadata(depth).is_some();
+            let needs = matches!(
+                preferences.sort_key,
+                SortKey::Size | SortKey::Modified | SortKey::Created
+            ) && state
+                .column_unknown_sort_metadata(depth, preferences.sort_key)
+                .is_some();
             (needs, preferences)
         };
         if !needs {
@@ -282,7 +286,7 @@ impl Browser {
         let targets = self
             .state
             .borrow()
-            .column_unknown_metadata(depth)
+            .column_unknown_sort_metadata(depth, preferences.sort_key)
             .unwrap_or_default();
         let pass = SortPass {
             depth,

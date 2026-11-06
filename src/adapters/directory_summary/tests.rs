@@ -4,6 +4,7 @@ mod bounds;
 mod progress;
 
 use super::*;
+use crate::test_support::PrivateContext;
 use gtk::{gio, glib};
 use std::cell::Cell;
 use std::rc::Rc;
@@ -32,7 +33,7 @@ fn directory_summary_reports_truncated_once_the_time_budget_is_exceeded() {
     std::fs::write(root.join("sub").join("file.txt"), b"content")
         .expect("the directory fixture file should be written");
 
-    let summary = glib::MainContext::new().block_on(summarize_directory_with_budget(
+    let summary = PrivateContext::new().block_on(summarize_directory_with_budget(
         &gio::File::for_path(&root),
         MAX_DEPTH,
         Duration::from_nanos(1),
@@ -57,7 +58,7 @@ fn directory_summary_does_not_descend_past_the_depth_budget() {
     std::fs::write(root.join("sub/nested/deep.txt"), b"content")
         .expect("the directory fixture file should be written");
 
-    let summary = glib::MainContext::new().block_on(summarize_directory_with_budget(
+    let summary = PrivateContext::new().block_on(summarize_directory_with_budget(
         &gio::File::for_path(&root),
         1,
         TIME_BUDGET,
@@ -92,7 +93,7 @@ fn directory_summary_treats_an_inaccessible_subdirectory_as_truncated_not_fatal(
         .expect("the fixture directory's permissions should be restrictable");
     let running_as_root = std::fs::read_dir(root.join("blocked")).is_ok();
 
-    let summary = glib::MainContext::new().block_on(summarize_directory_with_budget(
+    let summary = PrivateContext::new().block_on(summarize_directory_with_budget(
         &gio::File::for_path(&root),
         1,
         TIME_BUDGET,
@@ -127,7 +128,7 @@ fn directory_summary_treats_a_directory_removed_before_measurement_as_truncated_
     // `summarize_directory_with_budget` would, then remove it from under that handle. This models a
     // directory that changes or disappears between being observed and being measured.
     let file = gio::File::for_path(&vanishing);
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     let info = context
         .block_on(file.query_info_future(
             DIRECTORY_ATTRIBUTES,
@@ -177,7 +178,7 @@ fn aborting_a_directory_measurement_stops_it_mid_flight() {
 
     // `spawn_local` and manual `iteration()` polling (unlike `block_on`) require this thread to
     // own the context, hence the explicit acquire via `with_thread_default` below.
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     let (progress_before_abort, progress_after_abort) = context
         .with_thread_default(|| {
             let info = context
@@ -242,7 +243,7 @@ fn directory_summary_stops_enumerating_the_root_once_the_measurement_budget_is_r
             .expect("the directory fixture file should be written");
     }
 
-    let summary = glib::MainContext::new()
+    let summary = PrivateContext::new()
         .block_on(summarize_directory_with_budget(
             &gio::File::for_path(&root),
             MAX_DEPTH,
@@ -275,7 +276,7 @@ fn directory_summary_does_not_stop_enumerating_siblings_after_one_branch_is_dept
         .expect("the directory fixture should be created");
     }
 
-    let summary = glib::MainContext::new().block_on(summarize_directory_with_budget(
+    let summary = PrivateContext::new().block_on(summarize_directory_with_budget(
         &gio::File::for_path(&root),
         1,
         TIME_BUDGET,
@@ -316,7 +317,7 @@ fn measure_entry_reads_no_unset_optional_attributes() {
         let info = gio::FileInfo::new();
         info.set_name("entry");
         info.set_file_type(file_type);
-        glib::MainContext::new()
+        PrivateContext::new()
             .block_on(measure_entry(
                 gio::File::for_path(&root),
                 info,
@@ -384,7 +385,7 @@ fn a_file_operation_ends_the_measurement_of_a_folder_it_changes_as_incomplete() 
             }),
         };
 
-        let summary = glib::MainContext::new()
+        let summary = PrivateContext::new()
             .block_on(super::summarize_directory_with_budget(
                 &gio::File::for_path(&root),
                 MAX_DEPTH,

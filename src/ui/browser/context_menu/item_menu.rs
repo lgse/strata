@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::item_options::{DeleteOptions, ItemMenuOptions, OpenInRow};
+use super::item_options::{CreationOptions, DeleteOptions, ItemMenuOptions, OpenInRow};
 use super::open_with::{
     OpenWithButtons, OpenWithLookup, OpenWithSelection, prepare_open_with,
     set_open_with_explanation,
@@ -10,7 +10,7 @@ use super::{
     ResolvedContextTrigger, actions, bind_column_context_owner, context_entries,
     context_filter_or_search_active, context_search_active, current_context_position,
     focus_context_entry, install_secondary_release_retarget, move_to_trash_is_visible,
-    permanently_delete_is_visible, preview_context_entry, rename_context_entry,
+    permanently_delete_is_visible, preview_context_entry, rename_context_entry, schedule_new_entry,
     selected_items_summary,
 };
 use crate::adapters::gio_file_for_location;
@@ -275,6 +275,17 @@ impl ItemMenu {
         });
     }
 
+    fn connect_creation_rows(&self, creation: &CreationOptions) {
+        let depth = self.depth;
+        for (button, is_directory) in [(&creation.new_folder, true), (&creation.new_file, false)] {
+            self.on_entry(button, move |state, _, _| {
+                if let Some(location) = state.browser.location_at(depth) {
+                    schedule_new_entry(state, depth, location, is_directory);
+                }
+            });
+        }
+    }
+
     fn connect_selection_rows(&self, options: &ItemMenuOptions) {
         let (single_open, multiple_open) = (&options.single_open, &options.multiple_open);
         let (single, multiple) = (&options.single, &options.multiple);
@@ -439,16 +450,20 @@ impl MenuTarget<'_> {
             .all(|entry| can_remove_location(&entry.location))
     }
 
-    fn groupable(&self, removable: bool) -> bool {
-        let real_folder = || {
-            self.state
+    /// Whether the pane lists a real folder that new items can appear in.
+    fn can_create_in_pane(&self) -> bool {
+        !context_search_active(self.state, self.depth)
+            && self
+                .state
                 .browser
                 .location_at(self.depth)
                 .is_some_and(|location| {
                     !is_trash_location(&location) && !location.is_recent_location()
                 })
-        };
-        removable && !context_search_active(self.state, self.depth) && real_folder()
+    }
+
+    fn groupable(&self, removable: bool) -> bool {
+        removable && self.can_create_in_pane()
     }
 
     fn shows_file_location(&self, in_trash: bool) -> bool {
@@ -627,6 +642,9 @@ impl ItemMenuOptions {
                 && target.entries.len() == 1
                 && crate::ui::browser::desktop::entry_is_regular_executable(target.entry),
         );
+        self.creation
+            .container
+            .set_visible(target.can_create_in_pane());
         self.refresh_open_with(target, lookup);
         let removable = target.removable();
         self.refresh_restore(target);
@@ -756,6 +774,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let lookup = OpenWithLookup::default();
     let closed_lookup = lookup.clone();
     popover.connect_closed(move |_| closed_lookup.invalidate());
+    menu.connect_creation_rows(&options.creation);
     menu.connect_open_rows(&options, &lookup);
     menu.connect_item_rows(&options);
     menu.connect_selection_rows(&options);

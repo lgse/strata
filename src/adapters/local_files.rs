@@ -65,9 +65,10 @@ use remote::*;
 use stamps::*;
 
 const LIST_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::target-uri,access::can-trash,access::can-delete";
-const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,standard::target-uri,time::modified,unix::mode,access::can-trash,access::can-delete";
+const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,standard::target-uri,time::created,time::modified,unix::mode,access::can-trash,access::can-delete";
 const RECENT_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::target-uri,recent::modified";
-const METADATA_ATTRIBUTES: &str = "standard::type,standard::size,time::modified,unix::mode";
+const METADATA_ATTRIBUTES: &str =
+    "standard::type,standard::size,time::created,time::modified,unix::mode";
 const STAMP_ATTRIBUTES: &str =
     "standard::type,time::modified,time::modified-usec,time::changed,time::changed-usec";
 
@@ -271,6 +272,14 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
         kind,
         size,
         modified_unix_seconds,
+        created_unix_seconds: match info.creation_date_time() {
+            Some(created) => MetadataValue::Known(created.to_unix()),
+            // Listings that read times request both, so only birth time is unsupported.
+            None if info.has_attribute(gio::FILE_ATTRIBUTE_TIME_MODIFIED) => {
+                MetadataValue::Unavailable
+            }
+            None => MetadataValue::Unknown,
+        },
         recent_unix_seconds: MetadataValue::Unknown,
         mode: info_mode(&info),
         image_dimensions: MetadataValue::Unknown,
@@ -350,6 +359,7 @@ fn fill_native_entry_metadata(entry: &mut FileEntry) -> std::io::Result<()> {
         Err(error) => {
             entry.size = MetadataValue::Unknown;
             entry.modified_unix_seconds = MetadataValue::Unknown;
+            entry.created_unix_seconds = MetadataValue::Unknown;
             entry.mode = MetadataValue::Unknown;
             entry.listable = MetadataValue::Unknown;
             return Err(error);
@@ -367,6 +377,12 @@ fn fill_native_entry_metadata(entry: &mut FileEntry) -> std::io::Result<()> {
         .and_then(unix_seconds)
         .map(MetadataValue::Known)
         .unwrap_or(MetadataValue::Unavailable);
+    entry.created_unix_seconds = metadata
+        .created()
+        .ok()
+        .and_then(unix_seconds)
+        .map(MetadataValue::Known)
+        .unwrap_or(MetadataValue::Unavailable);
     entry.mode = MetadataValue::Known(metadata.mode());
     Ok(())
 }
@@ -379,6 +395,10 @@ fn fill_followed_metadata(entry: &mut FileEntry, target: &FolderStamp) {
         MetadataValue::Known(target.size)
     };
     entry.modified_unix_seconds = MetadataValue::Known(target.modified.0);
+    entry.created_unix_seconds = target
+        .birth
+        .map(|time| MetadataValue::Known(time.0))
+        .unwrap_or(MetadataValue::Unavailable);
     entry.mode = MetadataValue::Known(target.mode);
     if let Some(path) = entry.location.native_path() {
         entry.listable = folder_listable(path, directory);

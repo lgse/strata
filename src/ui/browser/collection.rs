@@ -215,6 +215,13 @@ pub(super) fn apply_collection_scroll(
     if let Ok(list) = view.clone().downcast::<gtk::ListView>() {
         if position < list.model().map_or(0, |model| model.n_items()) {
             list.scroll_to(position, flags, None);
+            // GTK scrolls to the row; the first section's heading sits above it.
+            if let Some(adjustment) = list
+                .vadjustment()
+                .filter(|_| position == 0 && list.header_factory().is_some())
+            {
+                adjustment.set_value(adjustment.lower());
+            }
         }
         return;
     }
@@ -738,6 +745,7 @@ pub(crate) fn search_result_entry(item: &crate::services::SearchItem) -> crate::
         kind: item.kind,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: item.mode.clone(),

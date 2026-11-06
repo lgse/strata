@@ -64,6 +64,7 @@ fn assert_type_order(folders_first: bool, ascending: [&str; 8], descending: [&st
         (SortDirection::Descending, descending),
     ] {
         let preferences = ViewPreferences {
+            name_comparison: crate::model::NameComparison::default(),
             folders_first,
             sort_key: SortKey::Type,
             sort_direction,
@@ -116,6 +117,7 @@ fn metadata_shape(index: usize, name: &str) -> FileEntry {
             1 => MetadataValue::Unavailable,
             _ => MetadataValue::Known(10),
         },
+        created_unix_seconds: modified.clone(),
         recent_unix_seconds: modified.clone(),
         modified_unix_seconds: modified,
         ..file_entry(&format!("/fixture/{index}/{name}"), name)
@@ -129,16 +131,36 @@ fn every_sort_preference() -> Vec<ViewPreferences> {
         SortKey::Type,
         SortKey::Size,
         SortKey::Modified,
+        SortKey::Extension,
+        SortKey::Created,
+        SortKey::Unsorted,
         SortKey::Recency,
         SortKey::DeviceOrder,
     ] {
         for sort_direction in [SortDirection::Ascending, SortDirection::Descending] {
-            preferences.extend([false, true].map(|folders_first| ViewPreferences {
-                sort_key,
-                sort_direction,
-                folders_first,
-                ..ViewPreferences::default()
-            }));
+            for name_comparison in [
+                crate::model::NameComparison::default(),
+                crate::model::NameComparison {
+                    natural: false,
+                    case_sensitive: false,
+                },
+                crate::model::NameComparison {
+                    natural: true,
+                    case_sensitive: true,
+                },
+                crate::model::NameComparison {
+                    natural: false,
+                    case_sensitive: true,
+                },
+            ] {
+                preferences.extend([false, true].map(|folders_first| ViewPreferences {
+                    sort_key,
+                    sort_direction,
+                    folders_first,
+                    name_comparison,
+                    ..ViewPreferences::default()
+                }));
+            }
         }
     }
     preferences
@@ -285,6 +307,7 @@ fn recency_sort_uses_existing_metadata_availability_order() {
             left,
             right,
             ViewPreferences {
+                name_comparison: crate::model::NameComparison::default(),
                 sort_key: SortKey::Recency,
                 sort_direction: SortDirection::Descending,
                 folders_first: false,
@@ -371,5 +394,162 @@ fn keyed_sort_and_batch_merge_match_monitor_order() {
             expected,
             "{preferences:?}"
         );
+    }
+}
+
+#[test]
+fn configured_name_comparison_orders_numbers_case_and_unicode() {
+    use crate::model::NameComparison;
+    for (comparison, input, expected) in [
+        (
+            NameComparison::default(),
+            vec!["file10", "File2", "file1"],
+            vec!["file1", "File2", "file10"],
+        ),
+        (
+            NameComparison {
+                natural: false,
+                case_sensitive: false,
+            },
+            vec!["file2", "file10", "file1"],
+            vec!["file1", "file10", "file2"],
+        ),
+        (
+            NameComparison {
+                natural: true,
+                case_sensitive: true,
+            },
+            vec!["a2", "Z10", "a10", "Z2"],
+            vec!["Z2", "Z10", "a2", "a10"],
+        ),
+        (
+            NameComparison {
+                natural: false,
+                case_sensitive: false,
+            },
+            vec!["über2", "ÜBER10"],
+            vec!["ÜBER10", "über2"],
+        ),
+    ] {
+        let entries = input
+            .iter()
+            .map(|name| typed_entry(name, EntryKind::File))
+            .collect();
+        let prefs = ViewPreferences {
+            name_comparison: comparison,
+            ..ViewPreferences::default()
+        };
+        assert_eq!(names(&super::super::sort_entries(entries, prefs)), expected);
+    }
+}
+
+#[test]
+fn extension_sort_uses_final_suffix_and_name_comparison_for_ties() {
+    let entries = [
+        "z.rs",
+        "file2.md",
+        "file10.md",
+        "archive.tar.gz",
+        ".gitignore",
+        "readme",
+    ]
+    .map(|name| typed_entry(name, EntryKind::File))
+    .to_vec();
+    let prefs = ViewPreferences {
+        sort_key: SortKey::Extension,
+        ..ViewPreferences::default()
+    };
+    assert_eq!(
+        names(&super::super::sort_entries(entries.clone(), prefs)),
+        [
+            ".gitignore",
+            "readme",
+            "archive.tar.gz",
+            "file2.md",
+            "file10.md",
+            "z.rs"
+        ]
+    );
+    let alphabetical = ViewPreferences {
+        name_comparison: crate::model::NameComparison {
+            natural: false,
+            case_sensitive: false,
+        },
+        ..prefs
+    };
+    assert_eq!(
+        names(&super::super::sort_entries(entries, alphabetical)),
+        [
+            ".gitignore",
+            "readme",
+            "archive.tar.gz",
+            "file10.md",
+            "file2.md",
+            "z.rs"
+        ]
+    );
+}
+
+#[test]
+fn created_sort_keeps_missing_times_last_in_both_directions() {
+    let entries = [
+        ("unknown", MetadataValue::Unknown),
+        ("new", MetadataValue::Known(20)),
+        ("unavailable", MetadataValue::Unavailable),
+        ("old", MetadataValue::Known(10)),
+    ]
+    .into_iter()
+    .map(|(name, created)| FileEntry {
+        created_unix_seconds: created,
+        ..typed_entry(name, EntryKind::File)
+    })
+    .collect::<Vec<_>>();
+    for (sort_direction, expected) in [
+        (
+            SortDirection::Ascending,
+            ["old", "new", "unknown", "unavailable"],
+        ),
+        (
+            SortDirection::Descending,
+            ["new", "old", "unknown", "unavailable"],
+        ),
+    ] {
+        let prefs = ViewPreferences {
+            sort_key: SortKey::Created,
+            sort_direction,
+            ..ViewPreferences::default()
+        };
+        assert_eq!(
+            names(&super::super::sort_entries(entries.clone(), prefs)),
+            expected
+        );
+    }
+}
+
+#[test]
+fn unsorted_preserves_discovery_within_groups_across_batches_and_monitoring() {
+    let entries = vec![
+        typed_entry("z.txt", EntryKind::File),
+        typed_entry("z-dir", EntryKind::Directory),
+        typed_entry("a.txt", EntryKind::File),
+        typed_entry("a-dir", EntryKind::Directory),
+        typed_entry("last.txt", EntryKind::File),
+    ];
+    for (folders_first, expected) in [
+        (false, vec!["z.txt", "z-dir", "a.txt", "a-dir", "last.txt"]),
+        (true, vec!["z-dir", "a-dir", "z.txt", "a.txt", "last.txt"]),
+    ] {
+        let prefs = ViewPreferences {
+            sort_key: SortKey::Unsorted,
+            folders_first,
+            sort_direction: SortDirection::Descending,
+            ..ViewPreferences::default()
+        };
+        assert_eq!(
+            names(&super::super::sort_entries(entries.clone(), prefs)),
+            expected
+        );
+        assert_eq!(names(&merged_in_batches(&entries, prefs)), expected);
+        assert_eq!(names(&inserted_one_by_one(&entries, prefs)), expected);
     }
 }

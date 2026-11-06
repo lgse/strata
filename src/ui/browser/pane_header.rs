@@ -1,21 +1,22 @@
 // SPDX-License-Identifier: MIT
 
-use crate::app::Browser;
-use crate::model::{FolderSort, SortDirection, SortKey};
-use crate::ui::browser::ViewState;
-use crate::ui::controls::{
-    DefaultActions, check_menu_option, menu_action_with_detail, menu_option,
+mod sort_menu;
+pub(in crate::ui) use sort_menu::{
+    column_sort_menu, list_sort_menu, sync_list_sort_menu, sync_open_sort_menus,
 };
+
+use crate::app::Browser;
+use crate::model::{SortDirection, SortKey};
+use crate::ui::browser::ViewState;
+use crate::ui::controls::menu_action_with_detail;
 use crate::ui::focus_navigation::vim_focus_direction;
 use crate::ui::keys::{
     self,
     bindings::{BACKSPACE, CONTEXT_MENU},
 };
-use crate::ui::preferences::PreferenceManager;
 use gtk::gdk::ModifierType as Modifiers;
 use gtk::glib;
 use gtk::prelude::*;
-use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 pub(in crate::ui) fn pane_new_folder_button(
@@ -100,6 +101,8 @@ fn install_menu_keys(popover: &gtk::Popover) {
 
 /// Roughly eight two-line entries; longer histories scroll.
 const HISTORY_MENU_MAX_HEIGHT: i32 = 400;
+/// Entries listed in the history menu; older ones stay reachable with Back.
+const HISTORY_MENU_MAX_ENTRIES: usize = 50;
 
 /// Marks the popover [`attach_back_history`] parents to the Back button.
 const BACK_HISTORY_POPOVER: &str = "back-history-popover";
@@ -126,8 +129,7 @@ pub(in crate::ui) fn attach_back_history(browser: &Rc<Browser>, back: &gtk::Butt
         "Right-click, hold, or press %{keys} to list the back history",
         keys::Keys::One(CONTEXT_MENU.shown()),
     );
-    let locations = browser.back_locations();
-    if locations.is_empty() {
+    if !browser.can_go_back() {
         return;
     }
     let content = crate::ui::accessibility::menu_box();
@@ -145,32 +147,6 @@ pub(in crate::ui) fn attach_back_history(browser: &Rc<Browser>, back: &gtk::Butt
     popover.add_css_class("column-popover");
     popover.add_css_class(BACK_HISTORY_POPOVER);
     crate::ui::scrolling::popover::dismiss_on_outside_scroll(&popover);
-    let popover_weak = popover.downgrade();
-    let home = glib::home_dir();
-    for (index, location) in locations.iter().enumerate() {
-        let path = location
-            .native_path()
-            .map(crate::ui::settings::abbreviate_home)
-            .unwrap_or_else(|| location.display_path());
-        let name = if location.native_path() == Some(home.as_path()) {
-            "~".to_owned()
-        } else {
-            location.display_name()
-        };
-        let option = menu_action_with_detail(&name, &path);
-        crate::ui::accessibility::describe_menu_item(&option, &name, &path);
-        let weak_browser = Rc::downgrade(browser);
-        let popover_weak = popover_weak.clone();
-        option.connect_clicked(move |_| {
-            if let Some(popover) = popover_weak.upgrade() {
-                popover.popdown();
-            }
-            if let Some(browser) = weak_browser.upgrade() {
-                browser.back_to(index + 1);
-            }
-        });
-        content.append(&option);
-    }
     let viewport = gtk::Viewport::builder()
         .child(&content)
         .scroll_to_focus(true)
@@ -190,12 +166,20 @@ pub(in crate::ui) fn attach_back_history(browser: &Rc<Browser>, back: &gtk::Butt
     let attached = popover.clone();
     back.connect_destroy(move |_| attached.unparent());
 
+    // The rows are built when the menu opens: the pane is rebuilt on every
+    // navigation, and a long history is listed only when asked for.
     let popup = {
         let popover = popover.downgrade();
+        let content = content.downgrade();
+        let browser = Rc::downgrade(browser);
         move || {
-            if let Some(popover) = popover.upgrade() {
-                popover.popup();
-            }
+            let (Some(popover), Some(content), Some(browser)) =
+                (popover.upgrade(), content.upgrade(), browser.upgrade())
+            else {
+                return;
+            };
+            fill_back_history(&content, &browser, &popover);
+            popover.popup();
         }
     };
     let secondary = gtk::GestureClick::builder()
@@ -227,182 +211,40 @@ pub(in crate::ui) fn attach_back_history(browser: &Rc<Browser>, back: &gtk::Butt
     back.add_controller(key);
 }
 
-pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gtk::MenuButton {
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    content.add_css_class("column-menu");
-    let heading = gtk::Label::new(Some(&crate::i18n::tr("SORT BY")));
-    heading.set_xalign(0.0);
-    heading.add_css_class("menu-heading");
-    content.append(&heading);
-
-    let preferences = browser.column_preferences(depth).unwrap_or_default();
-    let selected_checks: Rc<RefCell<Vec<(SortKey, gtk::Image)>>> =
-        Rc::new(RefCell::new(Vec::new()));
-    let popover = gtk::Popover::builder()
-        .has_arrow(false)
-        .halign(gtk::Align::End)
-        .position(gtk::PositionType::Bottom)
-        .build();
-    popover.add_css_class("column-popover");
-    crate::ui::scrolling::popover::dismiss_on_outside_scroll(&popover);
-    let popover_weak = popover.downgrade();
-    let location = browser.location_at(depth);
-    let camera_photos = location
-        .as_ref()
-        .is_some_and(|location| location.is_camera_photo_root());
-    let recent = location.is_some_and(|location| location.is_recent_root());
-    for (label, key) in [
-        ("Device order", SortKey::DeviceOrder),
-        ("Recency", SortKey::Recency),
-        ("Name", SortKey::Name),
-        ("Size", SortKey::Size),
-        ("Modified", SortKey::Modified),
-        ("Type", SortKey::Type),
-    ] {
-        if (key == SortKey::DeviceOrder && !camera_photos) || (key == SortKey::Recency && !recent) {
-            continue;
-        }
-        let (option, check) = menu_option(&crate::i18n::tr(label), preferences.sort_key == key);
-        if key == SortKey::DeviceOrder {
-            crate::ui::accessibility::set_description(
-                &option,
-                Some(&crate::i18n::tr(
-                    "Append photos as the device lists them; not necessarily chronological. Selecting this reloads the library.",
-                )),
-            );
-        }
-        selected_checks.borrow_mut().push((key, check));
-        let checks = selected_checks.clone();
+fn fill_back_history(content: &gtk::Box, browser: &Rc<Browser>, popover: &gtk::Popover) {
+    while let Some(row) = content.last_child().filter(|row| !row.is::<gtk::Label>()) {
+        content.remove(&row);
+    }
+    let home = glib::home_dir();
+    for (index, location) in browser
+        .back_locations()
+        .iter()
+        .take(HISTORY_MENU_MAX_ENTRIES)
+        .enumerate()
+    {
+        let path = location
+            .native_path()
+            .map(crate::ui::settings::abbreviate_home)
+            .unwrap_or_else(|| location.display_path());
+        let name = if location.native_path() == Some(home.as_path()) {
+            "~".to_owned()
+        } else {
+            location.display_name()
+        };
+        let option = menu_action_with_detail(&name, &path);
+        crate::ui::accessibility::describe_menu_item(&option, &name, &path);
         let weak_browser = Rc::downgrade(browser);
-        let popover_weak = popover_weak.clone();
+        let popover = popover.downgrade();
         option.connect_clicked(move |_| {
-            for (check_key, check) in checks.borrow().iter() {
-                check.set_visible(*check_key == key);
+            if let Some(popover) = popover.upgrade() {
+                popover.popdown();
             }
             if let Some(browser) = weak_browser.upgrade() {
-                browser.set_sort_key(depth, key);
-            }
-            if let Some(popover) = popover_weak.upgrade() {
-                popover.popdown();
+                browser.back_to(index + 1);
             }
         });
         content.append(&option);
     }
-
-    let folders_state = if !recent {
-        content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-        let (folders_first, folders_check) =
-            check_menu_option(&crate::i18n::tr("Folders first"), preferences.folders_first);
-        let folders_enabled = Rc::new(Cell::new(preferences.folders_first));
-        let weak_browser = Rc::downgrade(browser);
-        let folders_enabled_for_click = folders_enabled.clone();
-        let folders_check_for_click = folders_check.clone();
-        let popover_weak = popover_weak.clone();
-        folders_first.connect_clicked(move |_| {
-            let enabled = !folders_enabled_for_click.get();
-            folders_enabled_for_click.set(enabled);
-            folders_check_for_click.set_visible(enabled);
-            if let Some(browser) = weak_browser.upgrade() {
-                browser.set_folders_first(depth, enabled);
-            }
-            if let Some(popover) = popover_weak.upgrade() {
-                popover.popdown();
-            }
-        });
-        content.append(&folders_first);
-        Some((folders_enabled, folders_check))
-    } else {
-        None
-    };
-    let folder_actions = folder_sort_actions(browser, depth, &popover);
-    content.append(folder_actions.widget());
-
-    popover.set_child(Some(&content));
-    install_menu_keys(&popover);
-    let weak_browser = Rc::downgrade(browser);
-    let checks = selected_checks.clone();
-    popover.connect_map(move |_| {
-        let Some(browser) = weak_browser.upgrade() else {
-            return;
-        };
-        let Some(preferences) = browser.column_preferences(depth) else {
-            return;
-        };
-        for (key, check) in checks.borrow().iter() {
-            check.set_visible(*key == preferences.sort_key);
-        }
-        if let Some((folders_enabled, folders_check)) = folders_state.as_ref() {
-            folders_enabled.set(preferences.folders_first);
-            folders_check.set_visible(preferences.folders_first);
-        }
-        sync_folder_sort_actions(&folder_actions, &browser, depth);
-    });
-    let button = gtk::MenuButton::builder()
-        .tooltip_text(crate::i18n::tr("Choose sort field"))
-        .popover(&popover)
-        .build();
-    crate::ui::accessibility::set_label(&button, &crate::i18n::tr("Choose sort field"));
-    button.set_child(Some(&crate::assets::chrome_icon(
-        crate::assets::icons::SETTINGS_2,
-    )));
-    crate::ui::controls::pane_header_action(&button);
-    crate::ui::tenxer_mode::hide_while_enabled(&button);
-    button
-}
-
-fn folder_sort_actions(
-    browser: &Rc<Browser>,
-    depth: usize,
-    popover: &gtk::Popover,
-) -> DefaultActions {
-    let weak_browser = Rc::downgrade(browser);
-    let make_default = move || {
-        if let Some(preferences) = weak_browser
-            .upgrade()
-            .and_then(|browser| browser.column_preferences(depth))
-        {
-            PreferenceManager::shared()
-                .set_default_sort(preferences.sort_key, preferences.sort_direction);
-        }
-    };
-    let weak_browser = Rc::downgrade(browser);
-    let reset = move || {
-        if let Some(location) = weak_browser
-            .upgrade()
-            .and_then(|browser| browser.location_at(depth))
-        {
-            PreferenceManager::shared().reset_folder_sort(&location);
-        }
-    };
-    let actions = DefaultActions::new(
-        popover,
-        (
-            &crate::i18n::tr("Make this the default sort"),
-            &crate::i18n::tr("Reset to default sort"),
-        ),
-        make_default,
-        reset,
-    );
-    actions
-        .widget()
-        .prepend(&gtk::Separator::new(gtk::Orientation::Horizontal));
-    sync_folder_sort_actions(&actions, browser, depth);
-    actions
-}
-
-fn sync_folder_sort_actions(actions: &DefaultActions, browser: &Browser, depth: usize) {
-    let (differs, saved) = match browser.folder_sort_at(depth) {
-        FolderSort::Unremembered => (false, false),
-        folder_sort => (
-            browser
-                .column_preferences(depth)
-                .is_some_and(|preferences| {
-                    preferences.sort() != PreferenceManager::shared().default_sort()
-                }),
-            matches!(folder_sort, FolderSort::Saved(..)),
-        ),
-    };
-    actions.set_visible(differs, saved);
 }
 
 pub(in crate::ui) fn column_sort_direction_toggle(
@@ -467,7 +309,10 @@ fn sync_sort_direction_toggle(
     icon: &gtk::Image,
     preferences: crate::model::ViewPreferences,
 ) {
-    let device_order = preferences.sort_key == SortKey::DeviceOrder;
+    let device_order = matches!(
+        preferences.sort_key,
+        SortKey::DeviceOrder | SortKey::Unsorted
+    );
     button.set_sensitive(!device_order);
     let descending = preferences.sort_direction == SortDirection::Descending;
     crate::assets::set_primary_icon(
@@ -478,7 +323,9 @@ fn sync_sort_direction_toggle(
             crate::assets::icons::ARROW_UP_NARROW_WIDE
         },
     );
-    let hint = crate::i18n::tr(if device_order {
+    let hint = crate::i18n::tr(if preferences.sort_key == SortKey::Unsorted {
+        "Unsorted"
+    } else if device_order {
         "Device order follows discovery; choose a sort field to reverse its direction"
     } else if descending {
         "Descending — click to reverse"

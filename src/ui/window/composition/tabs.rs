@@ -142,7 +142,8 @@ impl TabWindow {
         window.connect_unrealize(move |window| {
             PreferenceManager::shared().release_bindings_within(window);
             for tab in retained.tabs.take() {
-                tab.content.dispose();
+                retained.stack.remove(&tab.content.overlay);
+                tab.content.destroy();
             }
             for name in [
                 "search",
@@ -413,8 +414,8 @@ impl TabWindow {
             self.select(next);
         }
         self.tabs.borrow_mut().retain(|tab| tab.id != id);
-        tab.content.dispose();
         self.stack.remove(&tab.content.overlay);
+        tab.content.destroy();
         self.strip.remove(id);
         self.refresh_chrome();
         self.persist_session();

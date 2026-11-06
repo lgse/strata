@@ -42,6 +42,7 @@ fn bare_entry(path: PathBuf, native_name: OsString, kind: EntryKind, is_hidden: 
         kind,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         recent_unix_seconds: MetadataValue::Unknown,
         mode: MetadataValue::Unknown,
         image_dimensions: MetadataValue::Unknown,

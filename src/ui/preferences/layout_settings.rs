@@ -146,7 +146,7 @@ impl PreferenceManager {
         let mut stored = self.preferences.borrow_mut();
         stored.show_hidden = preferences.show_hidden;
         stored.folders_first = preferences.folders_first;
-        store_sort(&mut stored, preferences.sort());
+        store_sort(&mut stored, preferences.sort_options());
         drop(stored);
         self.save_preferences();
     }

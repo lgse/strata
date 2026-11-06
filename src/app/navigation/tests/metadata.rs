@@ -29,6 +29,7 @@ fn unknown_update(path: &str) -> MetadataUpdate {
         location: location(path),
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         mode: MetadataValue::Unknown,
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
@@ -41,6 +42,7 @@ fn metadata_update(path: &str, size: u64, modified: i64) -> MetadataUpdate {
     MetadataUpdate {
         size: MetadataValue::Known(size),
         modified_unix_seconds: MetadataValue::Known(modified),
+        created_unix_seconds: MetadataValue::Unknown,
         ..unknown_update(path)
     }
 }
@@ -184,6 +186,7 @@ fn fill_updates_never_clobber_known_fields() {
         RequestId(1),
         vec![MetadataUpdate {
             modified_unix_seconds: MetadataValue::Known(300),
+            created_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Known(0o100640),
             image_dimensions: MetadataValue::Known((1920, 1080)),
             child_count: MetadataValue::Known(4),
@@ -204,6 +207,7 @@ fn gap_targets_cover_directory_mtimes_but_never_directory_sizes() {
     let complete_file = FileEntry {
         size: MetadataValue::Known(5),
         modified_unix_seconds: MetadataValue::Known(60),
+        created_unix_seconds: MetadataValue::Unknown,
         ..file_entry("/fixture/done", "done")
     };
     let half_file = FileEntry {
@@ -216,12 +220,14 @@ fn gap_targets_cover_directory_mtimes_but_never_directory_sizes() {
     );
 
     assert_eq!(
-        state.column_unknown_metadata(0).map(|targets| {
-            targets
-                .into_iter()
-                .map(|(position, location)| (position, location.display_path()))
-                .collect::<Vec<_>>()
-        }),
+        state
+            .column_unknown_sort_metadata(0, crate::model::SortKey::Modified)
+            .map(|targets| {
+                targets
+                    .into_iter()
+                    .map(|(position, location)| (position, location.display_path()))
+                    .collect::<Vec<_>>()
+            }),
         Some(vec![
             (0, "/fixture/sub".to_owned()),
             (2, "/fixture/half".to_owned()),
@@ -250,4 +256,31 @@ fn column_entry_counts_breakdown_and_hidden() {
 
     state.set_show_hidden(true);
     assert_eq!(state.column_entry_counts(0), counts(4, 3, 1));
+}
+
+#[test]
+fn creation_sort_requests_birth_times_without_refilling_complete_size_metadata() {
+    let entries = vec![
+        FileEntry {
+            size: MetadataValue::Known(5),
+            modified_unix_seconds: MetadataValue::Known(60),
+            created_unix_seconds: MetadataValue::Unknown,
+            ..file_entry("/fixture/missing-birth", "missing-birth")
+        },
+        FileEntry {
+            created_unix_seconds: MetadataValue::Unavailable,
+            ..file_entry("/fixture/no-birth", "no-birth")
+        },
+    ];
+    let state = loaded("/fixture", entries);
+    let created = state
+        .column_unknown_sort_metadata(0, crate::model::SortKey::Created)
+        .expect("missing creation time");
+    assert_eq!(created.len(), 1);
+    assert_eq!(created[0].1, location("/fixture/missing-birth"));
+    let modified = state
+        .column_unknown_sort_metadata(0, crate::model::SortKey::Modified)
+        .expect("missing modification time");
+    assert_eq!(modified.len(), 1);
+    assert_eq!(modified[0].1, location("/fixture/no-birth"));
 }

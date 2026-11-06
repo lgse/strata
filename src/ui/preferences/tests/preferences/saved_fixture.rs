@@ -207,6 +207,10 @@ fn assert_saved_views_and_updates(manager: &PreferenceManager) {
     assert_eq!(
         manager.sort_preferences(),
         ViewPreferences {
+            name_comparison: crate::model::NameComparison {
+                natural: false,
+                case_sensitive: true
+            },
             show_hidden: true,
             folders_first: false,
             sort_key: SortKey::Size,
@@ -233,7 +237,7 @@ fn assert_saved_previews(manager: &PreferenceManager) {
             manager.unit_system(),
             manager.preview_autoplay(),
         ),
-        (true, 0.35, true, UnitSystem::Imperial, true),
+        (true, 0.35, false, UnitSystem::Imperial, true),
         "(muted, volume, text wrap, units, autoplay)"
     );
     assert_eq!(

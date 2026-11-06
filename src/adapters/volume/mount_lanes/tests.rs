@@ -15,6 +15,7 @@ use gtk::{gio, glib};
 use super::{
     Class, Job, LaneKey, Lanes, Progress, Responsiveness, Run, STALLED_AFTER, Target, Unanswered,
 };
+use crate::test_support::PrivateContext;
 use crate::{
     adapters::volume::{MountTable, mount_watch},
     test_support::Gate,
@@ -434,7 +435,7 @@ fn a_gvfs_call_dropped_while_it_waits_leaves_its_backend_answering() {
             (Responsiveness::Stalled, false),
         ),
     ] {
-        glib::MainContext::new().block_on(async {
+        PrivateContext::new().block_on(async {
             let call = async {
                 glib::timeout_future(answers_after).await;
                 Err::<(), _>(glib::Error::new(gio::IOErrorEnum::TimedOut, "no answer"))
@@ -469,7 +470,7 @@ fn checked(path: &Path, answer: u32, work: impl FnOnce(&Progress) + Send + 'stat
 }
 
 fn within<T>(answer: impl Future<Output = T>) -> Option<T> {
-    glib::MainContext::new()
+    PrivateContext::new()
         .block_on(glib::future_with_timeout(Duration::from_secs(5), answer))
         .ok()
 }

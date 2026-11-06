@@ -10,8 +10,8 @@
 {"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
 {"note":"entries","dir":"$root","as":"before"}
 {"key":","}
-{"key":"n"}
-{"wait":{"present":{"role":"label","name":"Unknown chord"}},"message":", n to cancel"}
+{"key":"q"}
+{"wait":{"present":{"role":"label","name":"Unknown chord"}},"message":", q to cancel"}
 {"expect":{"entries":"$before","dir":"$root"}}
 {"expect":{"not":{"field":{}}}}
 {"key":","}

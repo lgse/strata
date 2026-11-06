@@ -8,6 +8,8 @@
 {"expect":{"present":{"search_result":"nested-notes.txt"}}}
 {"click":{"search_result":"nested-notes.txt"},"button":3}
 {"wait":{"menu_items":{}},"message":"the pointer-selected search result menu"}
+{"expect":{"absent":{"menu_item":"New Folder"}},"message":"plain creation to stay hidden on a search result"}
+{"expect":{"absent":{"menu_item":"New File"}},"message":"plain creation to stay hidden on a search result"}
 {"key":"Escape"}
 {"wait":{"state":{"target":{"search_result":"nested-notes.txt"},"selected":true}},"message":"pointer-selected search result"}
 {"key":"space"}
