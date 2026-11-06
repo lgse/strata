@@ -566,6 +566,14 @@ fn visible_menu(widget: &gtk::Widget) -> Option<gtk::PopoverMenu> {
     children(widget).find_map(|child| visible_menu(&child))
 }
 
+/// The Arabic layout types ظ on the US slash key; it is typed, never a descent.
+fn press_arabic_zah(fixture: &KeyboardFixture) -> bool {
+    fixture.keys.emit_by_name::<bool>(
+        "key-pressed",
+        &[&Key::Arabic_zah, &61u32, &ModifierType::empty()],
+    )
+}
+
 fn focused_entry(window: &gtk::ApplicationWindow) -> gtk::Entry {
     let focused = gtk::prelude::RootExt::focus(window).expect("focus");
     focused

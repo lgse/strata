@@ -57,6 +57,131 @@ impl FileSource for RemoteFolders {
 }
 
 #[test]
+fn normal_filter_slash_rejects_files_and_cancels_on_edit_focus_loss_and_escape() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::filter_focus::filter_slash::normal_filter_slash_rejects_files_and_cancels_on_edit_focus_loss_and_escape",
+        || {
+            let fixture = KeyboardFixture::new();
+            let root = fixture._directory.path();
+            for folder in ["Documents", "reports"] {
+                std::fs::create_dir(root.join(folder)).expect("fixture folder");
+            }
+            std::fs::write(root.join("report"), b"file").expect("fixture file");
+            PreferenceManager::shared().set_filter_include_subfolders(true);
+            let browser = fixture.view.browser();
+            let none = ModifierType::empty();
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                fixture.view.set_view_mode(mode);
+                fixture.view.refresh();
+                wait_loaded(&browser, 0);
+                focus_files(&fixture);
+                assert!(fixture.press(Key::f, ModifierType::CONTROL_MASK));
+                let entry = focused_entry(&fixture.window);
+                for query in ["", "no-such-match", "report"] {
+                    entry.set_text(query);
+                    let generation = browser.navigation_generation();
+                    assert!(fixture.press(Key::slash, none));
+                    pump(150);
+                    assert_eq!(
+                        browser.navigation_generation(),
+                        generation,
+                        "{mode:?} {query}"
+                    );
+                    assert_eq!(entry.text(), query);
+                    assert!(fixture.view.filter_has_focus());
+                }
+                entry.set_text("Documents");
+                let generation = browser.navigation_generation();
+                assert!(!press_arabic_zah(&fixture), "{mode:?}: ظ reaches the field");
+                pump(150);
+                assert_eq!(browser.navigation_generation(), generation, "{mode:?}");
+                assert!(fixture.view.filter_has_focus());
+                entry.set_text("doc");
+                assert!(fixture.press(Key::slash, none));
+                entry.set_text("report");
+                pump(150);
+                assert_eq!(browser.active_location(), Some(Location::local(root)));
+                entry.set_text("doc");
+                assert!(fixture.press(Key::slash, none));
+                fixture.sidebar_toggle.grab_focus();
+                assert!(fixture.view.show_filter());
+                pump(150);
+                assert_eq!(
+                    browser.active_location(),
+                    Some(Location::local(root)),
+                    "{mode:?}: returning focus resumed cancelled navigation"
+                );
+                assert_eq!(entry.text(), "doc");
+                entry.set_text("Documents");
+                assert!(fixture.press(Key::slash, none));
+                assert!(fixture.press(Key::Escape, none));
+                pump(150);
+                assert_eq!(browser.active_location(), Some(Location::local(root)));
+                assert!(!fixture.view.filter_has_focus());
+            }
+        },
+    );
+}
+
+#[test]
+fn normal_filter_slash_descends_and_keeps_filtering() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::filter_focus::filter_slash::normal_filter_slash_descends_and_keeps_filtering",
+        || {
+            let fixture = KeyboardFixture::new();
+            let root = fixture._directory.path();
+            for folder in ["Documents/Projects", "nested/Archive"] {
+                std::fs::create_dir_all(root.join(folder)).expect("fixture folder");
+            }
+            let browser = fixture.view.browser();
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                fixture.view.set_view_mode(mode);
+                for recursive in [false, true] {
+                    PreferenceManager::shared().set_filter_include_subfolders(recursive);
+                    browser.navigate(Location::local(root));
+                    fixture.view.refresh();
+                    wait_loaded(&browser, 0);
+                    focus_files(&fixture);
+                    assert!(fixture.press(Key::f, ModifierType::CONTROL_MASK));
+                    let entry = focused_entry(&fixture.window);
+                    entry.set_text("doc");
+                    assert!(fixture.press(Key::slash, ModifierType::empty()));
+                    wait_until(|| {
+                        browser.active_location() == Some(Location::local(root.join("Documents")))
+                            && fixture.view.filter_has_focus()
+                    });
+                    let entry = focused_entry(&fixture.window);
+                    assert_eq!(entry.text(), "");
+                    entry.set_text("proj");
+                    assert!(fixture.press(Key::slash, ModifierType::empty()));
+                    wait_until(|| {
+                        browser.active_location()
+                            == Some(Location::local(root.join("Documents/Projects")))
+                            && fixture.view.filter_has_focus()
+                    });
+                    assert_eq!(focused_entry(&fixture.window).text(), "");
+                    assert!(fixture.press(Key::Escape, ModifierType::empty()));
+                    if recursive {
+                        browser.navigate(Location::local(root));
+                        wait_loaded(&browser, 0);
+                        focus_files(&fixture);
+                        assert!(fixture.press(Key::f, ModifierType::CONTROL_MASK));
+                        focused_entry(&fixture.window).set_text("arc");
+                        assert!(fixture.press(Key::slash, ModifierType::empty()));
+                        wait_until(|| {
+                            browser.active_location()
+                                == Some(Location::local(root.join("nested/Archive")))
+                                && fixture.view.filter_has_focus()
+                        });
+                        assert!(fixture.press(Key::Escape, ModifierType::empty()));
+                    }
+                }
+            }
+        },
+    );
+}
+
+#[test]
 fn normal_filter_slash_enters_a_remote_folder_from_in_place_results() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::filter_focus::filter_slash::normal_filter_slash_enters_a_remote_folder_from_in_place_results",
