@@ -293,6 +293,10 @@ impl ModeViews {
         self.update_panes(depth, |pane| {
             pane.finish_loading(truncated, defer_empty, &positions)
         });
+        let first_visit = self
+            .pane_navigation
+            .borrow_mut()
+            .take_untouched_first_visit();
         // After the rows are back, so focus parked on the pane surface counts.
         let restored = self.mode_pane(depth).and_then(|pane| {
             let allowed = self.restore_focus_allowed(pane, depth);
@@ -300,7 +304,12 @@ impl ModeViews {
                 .borrow_mut()
                 .restore(pane, &self.browser, self.mode, allowed)
         });
-        if restored.is_none() && (restore_cursor || self.grouped_focus_drifted(depth)) {
+        if restored.is_some() {
+            return;
+        }
+        if first_visit && self.grouped_focus_drifted(depth) {
+            self.focus_first_row(depth);
+        } else if restore_cursor {
             self.focus_visible_pane(depth);
         }
     }

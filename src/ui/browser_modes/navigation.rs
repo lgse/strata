@@ -2,6 +2,7 @@
 
 use std::collections::VecDeque;
 
+use super::first_visit::FirstVisit;
 use super::*;
 use crate::ui::keys::{self, SHORTCUT_MODIFIERS, bindings::FOCUS_NEXT};
 
@@ -108,6 +109,8 @@ pub(super) struct PaneNavigation {
     applied: Rc<Cell<bool>>,
     input: Option<(glib::WeakRef<gtk::Widget>, gtk::EventControllerLegacy)>,
     leaving_with_focus: bool,
+    /// A visit with no saved position to restore, until the pane's load finishes.
+    first_visit: Option<FirstVisit>,
 }
 
 impl PaneNavigation {
@@ -119,6 +122,14 @@ impl PaneNavigation {
         self.restoring.set(false);
         self.pending = None;
         self.applying = None;
+        self.first_visit = None;
+    }
+
+    /// Ends the first visit, if any, reporting whether no input reached its pane.
+    pub(super) fn take_untouched_first_visit(&mut self) -> bool {
+        self.first_visit
+            .take()
+            .is_some_and(|visit| visit.untouched())
     }
 
     pub(super) fn is_settling(&self) -> bool {
@@ -169,6 +180,8 @@ impl PaneNavigation {
         mode: BrowserMode,
         focus: FocusOwner,
     ) {
+        // A reload restores its own viewport, never the first row.
+        self.first_visit = None;
         // During a burst of reloads the first capture wins.
         if self.is_restoring() {
             if self.pending.is_some() {
@@ -221,6 +234,10 @@ impl PaneNavigation {
         if self.pending.is_some() {
             self.arm_input_cancel(pane, false);
         }
+        self.first_visit = self
+            .pending
+            .is_none()
+            .then(|| FirstVisit::watch(&pane.shell));
     }
 
     /// The pane's own filter dismissed the field that a pending reload would hand focus
