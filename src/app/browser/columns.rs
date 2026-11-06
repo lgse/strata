@@ -222,7 +222,11 @@ impl Browser {
     /// Columns shown again after another view: the active column's child column
     /// follows its selection. Closes a child the selection no longer holds and
     /// returns the lone selected folder that should open in its place.
-    pub fn close_unselected_child(self: &Rc<Self>) -> Option<(usize, Location)> {
+    pub fn follow_selection_on_return(self: &Rc<Self>) -> Option<(usize, Location)> {
+        // Closing or opening a column would drop a navigation still validating.
+        if self.pending_navigation_generation().is_some() {
+            return None;
+        }
         let depth = self.active_depth()?;
         let (open_child, selected, load_cursor) = {
             let state = self.state.borrow();

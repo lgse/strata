@@ -76,13 +76,14 @@ impl BrowserView {
 
     /// Rebuilds Columns with the active column's child following the selection
     /// the other view left: no child for an empty selection, and a newly
-    /// selected folder opens as the child.
+    /// selected folder opens as the child while Columns mirrors selection.
     fn rebuild_columns_view(&self, filter: &ActivePaneFilter, searching: bool) {
-        let selected_child = self.state.browser.close_unselected_child();
+        let selected_child = self.state.browser.follow_selection_on_return();
         self.state.rebuild_columns_from(0);
         self.state.restore_active_column_filter(filter);
         // Opening a column ends a listing search, which the switch carries over.
-        if !searching && let Some((depth, location)) = selected_child {
+        let opens = !searching && self.state.columns_mirror_selection.get();
+        if opens && let Some((depth, location)) = selected_child {
             self.state.browser.show_child(depth, location);
         }
     }
