@@ -251,7 +251,7 @@ impl ColumnState {
         self.resolve_preferred_on_load();
         self.resolve_open_child_on_load();
         if self.select_first_on_load && !self.entries.is_empty() {
-            self.select_first_visible_entry();
+            self.select_first_displayed_entry();
         }
     }
 
@@ -281,14 +281,10 @@ impl ColumnState {
         self.load_cursor = Some(location);
     }
 
-    pub(super) fn select_first_visible_entry(&mut self) {
+    /// The automatic cursor of a first visit, on the first row the view shows.
+    pub(super) fn select_first_displayed_entry(&mut self) {
         self.pending_selection.clear();
-        let show_hidden = self.preferences.show_hidden;
-        if let Some(position) = self
-            .entries
-            .iter()
-            .position(|entry| show_hidden || !entry.is_hidden)
-        {
+        if let Some(position) = self.first_displayed_entry() {
             self.select_loaded_entry(position);
         }
     }
@@ -343,7 +339,7 @@ impl ColumnState {
         let before = self.selected;
         self.open_child_on_load = None;
         if self.preferred_on_load.take().is_some() && self.awaits_fallback_cursor() {
-            self.select_first_visible_entry();
+            self.select_first_displayed_entry();
         }
         if let Some(previous) = self.reload_cursor.take()
             && self.awaits_fallback_cursor()

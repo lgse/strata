@@ -126,6 +126,7 @@ impl NavigationState {
                 open_child_on_load: None,
                 reload_cursor: None,
                 load_cursor: None,
+                type_grouping: self.type_grouping,
             })
             .collect();
         self.active_column = self.columns.len().checked_sub(1);
@@ -208,6 +209,7 @@ impl NavigationState {
             open_child_on_load: None,
             reload_cursor: None,
             load_cursor: None,
+            type_grouping: self.type_grouping,
         });
     }
 }

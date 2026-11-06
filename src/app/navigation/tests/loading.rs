@@ -189,3 +189,108 @@ fn preferred_location_falls_back_to_the_first_visible_entry() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// How a first visit asks for its automatic cursor.
+#[derive(Clone, Copy, Debug)]
+enum AutomaticCursor {
+    FirstEntry,
+    MissingPreferred,
+}
+
+struct FirstRowCase {
+    case: &'static str,
+    root: Location,
+    grouped: bool,
+    preferences: ViewPreferences,
+    intent: AutomaticCursor,
+    expected: &'static str,
+}
+
+/// An Other-type file, a hidden folder, then two folders, in listing order.
+fn mixed_types_listing() -> Vec<FileEntry> {
+    let other = |name: &str| FileEntry {
+        kind: EntryKind::Other,
+        ..child("/docs", name)
+    };
+    vec![
+        other("a"),
+        hidden_entry("/docs/.b", ".b"),
+        docs("c"),
+        docs("d"),
+    ]
+}
+
+fn first_row_failure(row: &FirstRowCase) -> Option<String> {
+    let mut state = NavigationState::with_preferences(row.preferences);
+    state.set_type_grouping(row.grouped);
+    state.navigate(row.root.clone(), RequestId(1));
+    match row.intent {
+        AutomaticCursor::FirstEntry => state.select_first_on_load(0),
+        AutomaticCursor::MissingPreferred => {
+            state.prefer_location_on_load(0, location("/docs/missing"));
+        }
+    }
+    state.install_snapshot(RequestId(1), mixed_types_listing());
+    let expected = state.columns[0]
+        .entries
+        .iter()
+        .position(|entry| entry.display_name == row.expected);
+    let landed = fill_and_focus(&state, 0);
+    (landed != (expected.into_iter().collect(), Some((0, expected))))
+        .then(|| format!("{}: selection and cursor {landed:?}", row.case))
+}
+
+#[test]
+fn first_visit_cursor_lands_on_the_first_row_shown() {
+    let docs_root = location("/docs");
+    let type_descending = ViewPreferences {
+        sort_key: SortKey::Type,
+        sort_direction: SortDirection::Descending,
+        folders_first: false,
+        ..ViewPreferences::default()
+    };
+    let rows = [
+        FirstRowCase {
+            case: "ungrouped keeps listing order",
+            root: docs_root.clone(),
+            grouped: false,
+            preferences: ViewPreferences::default(),
+            intent: AutomaticCursor::FirstEntry,
+            expected: "a",
+        },
+        FirstRowCase {
+            case: "grouped starts with the first visible folder",
+            root: docs_root.clone(),
+            grouped: true,
+            preferences: ViewPreferences::default(),
+            intent: AutomaticCursor::FirstEntry,
+            expected: "c",
+        },
+        FirstRowCase {
+            case: "a missing preferred entry falls back to the first row shown",
+            root: docs_root.clone(),
+            grouped: true,
+            preferences: ViewPreferences::default(),
+            intent: AutomaticCursor::MissingPreferred,
+            expected: "c",
+        },
+        FirstRowCase {
+            case: "descending type order leads with Other",
+            root: docs_root,
+            grouped: true,
+            preferences: type_descending,
+            intent: AutomaticCursor::FirstEntry,
+            expected: "a",
+        },
+        FirstRowCase {
+            case: "Recent is never grouped",
+            root: Location::uri("recent:///"),
+            grouped: true,
+            preferences: ViewPreferences::default(),
+            intent: AutomaticCursor::FirstEntry,
+            expected: "a",
+        },
+    ];
+    let failures: Vec<_> = rows.iter().filter_map(first_row_failure).collect();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

@@ -69,9 +69,6 @@ pub(in crate::ui) fn model_is_hidden(value: &str) -> bool {
     value.as_bytes().get(1) == Some(&b'h')
 }
 
-pub(in crate::ui) const FOLDER_TYPE_GROUP: &str = crate::services::FOLDER_TYPE_NAME;
-pub(in crate::ui) const OTHER_TYPE_GROUP: &str = crate::services::OTHER_TYPE_NAME;
-
 /// Empty for a value without a group, such as an empty model value.
 pub(in crate::ui) fn model_type_group(value: &str) -> &str {
     value

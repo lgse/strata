@@ -13,7 +13,7 @@ impl ColumnState {
         self.preferences.show_hidden || !entry.is_hidden
     }
 
-    fn first_visible(&self) -> Option<usize> {
+    pub(super) fn first_visible(&self) -> Option<usize> {
         self.entries.iter().position(|entry| self.shows(entry))
     }
 

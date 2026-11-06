@@ -261,10 +261,7 @@ impl ModeViews {
         if self.mode != BrowserMode::List {
             return;
         }
-        let Some(snapshot) = self.browser.column_snapshot(depth) else {
-            return;
-        };
-        let grouped = self.grouping_for_snapshot(depth, &snapshot);
+        let grouped = self.browser.shows_type_groups(depth);
         let stale = self
             .list_pane
             .as_ref()
