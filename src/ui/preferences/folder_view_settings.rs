@@ -149,7 +149,7 @@ impl PreferenceManager {
     pub(in crate::ui) fn set_remember_folder_views(&self, enabled: bool) {
         self.preferences.borrow_mut().remember_folder_views = enabled;
         if enabled {
-            let (sort, size) = (self.default_sort(), self.icons_thumbnail_size());
+            let (sort, size) = (self.default_sort_options(), self.icons_thumbnail_size());
             self.change_folder_views(Affects::Sorts, |views| {
                 views.prune_default_sort(sort) | views.prune_default_icons_size(size)
             });
@@ -191,25 +191,35 @@ impl PreferenceManager {
             self.schedule_folder_views_write(store, USE_SAVE_DELAY);
         }
         match sort {
-            Some((sort_key, sort_direction)) => FolderSort::Saved(sort_key, sort_direction),
+            Some((key, direction, comparison)) => FolderSort::Saved(key, direction, comparison),
             None => FolderSort::Default,
         }
     }
 
     /// A sort equal to the default is not stored, so the folder follows later defaults.
+    #[cfg(test)]
     pub(in crate::ui) fn set_folder_sort(
         &self,
         location: &Location,
         sort_key: SortKey,
         sort_direction: SortDirection,
     ) {
-        if sort_key.stored_name().is_none() {
+        let comparison = crate::model::NameComparison::default();
+        self.set_folder_sort_options(location, (sort_key, sort_direction, comparison));
+    }
+
+    pub(in crate::ui) fn set_folder_sort_options(
+        &self,
+        location: &Location,
+        options: crate::model::SortOptions,
+    ) {
+        if options.0.stored_name().is_none() {
             return;
         }
         let Some(key) = self.remembered_key(location) else {
             return;
         };
-        let sort = Some((sort_key, sort_direction)).filter(|sort| *sort != self.default_sort());
+        let sort = Some(options).filter(|sort| *sort != self.default_sort_options());
         self.change_folder_views(Affects::Sorts, |views| {
             views.update(&key, |view| view.sort = sort)
         });
@@ -229,17 +239,21 @@ impl PreferenceManager {
     }
 
     pub(in crate::ui) fn set_default_sort(&self, sort_key: SortKey, sort_direction: SortDirection) {
-        if !store_sort(
-            &mut self.preferences.borrow_mut(),
-            (sort_key, sort_direction),
-        ) {
+        let comparison = self.sort_preferences().name_comparison;
+        self.set_default_sort_options((sort_key, sort_direction, comparison));
+    }
+
+    pub(in crate::ui) fn default_sort_options(&self) -> crate::model::SortOptions {
+        self.sort_preferences().sort_options()
+    }
+
+    pub(in crate::ui) fn set_default_sort_options(&self, options: crate::model::SortOptions) {
+        if !store_sort(&mut self.preferences.borrow_mut(), options) {
             return;
         }
         self.save_preferences();
         if self.remember_folder_views() {
-            self.change_folder_views(Affects::Sorts, |views| {
-                views.prune_default_sort((sort_key, sort_direction))
-            });
+            self.change_folder_views(Affects::Sorts, |views| views.prune_default_sort(options));
         }
     }
 
@@ -397,9 +411,15 @@ impl PreferenceManager {
         let this = self.this.clone();
         glib::MainContext::default().spawn_local(async move {
             if let (Ok(Ok(Some(saved))), Some(manager)) = (saved.await, this.upgrade())
-                && !["sort_key", "sort_direction", "icons_thumbnail_size"]
-                    .iter()
-                    .any(|key| manager.setting_unsaved(key))
+                && ![
+                    "sort_key",
+                    "sort_direction",
+                    "natural_sort",
+                    "case_sensitive_sort",
+                    "icons_thumbnail_size",
+                ]
+                .iter()
+                .any(|key| manager.setting_unsaved(key))
             {
                 manager.adopt_defaults(saved);
             }
@@ -414,17 +434,27 @@ impl PreferenceManager {
             let mut preferences = self.preferences.borrow_mut();
             if preferences.sort_key == saved.sort_key
                 && preferences.sort_direction == saved.sort_direction
+                && preferences.natural_sort == saved.natural_sort
+                && preferences.case_sensitive_sort == saved.case_sensitive_sort
                 && preferences.icons_thumbnail_size == size
             {
                 return;
             }
             preferences.sort_key = saved.sort_key;
             preferences.sort_direction = saved.sort_direction;
+            preferences.natural_sort = saved.natural_sort;
+            preferences.case_sensitive_sort = saved.case_sensitive_sort;
             preferences.icons_thumbnail_size = size;
             if let Ok(current) = toml::Table::try_from(&*preferences) {
                 let mut last = self.last_queued.borrow_mut();
                 let mut dirty = self.dirty_keys.borrow_mut();
-                for key in ["sort_key", "sort_direction", "icons_thumbnail_size"] {
+                for key in [
+                    "sort_key",
+                    "sort_direction",
+                    "natural_sort",
+                    "case_sensitive_sort",
+                    "icons_thumbnail_size",
+                ] {
                     match current.get(key) {
                         Some(value) => last.insert(key.to_owned(), value.clone()),
                         None => last.remove(key),

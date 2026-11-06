@@ -440,6 +440,26 @@ impl super::ViewState {
 }
 
 impl BrowserView {
+    pub fn change_focused_name_comparison(&self, toggle_sensitive: bool, natural: bool) {
+        if let Some(depth) = self.focused_listing_depth() {
+            let mut comparison = self
+                .state
+                .browser
+                .requested_column_preferences(depth)
+                .unwrap_or_default()
+                .name_comparison;
+            if toggle_sensitive {
+                comparison.case_sensitive = !comparison.case_sensitive;
+            } else {
+                comparison.natural = natural;
+            }
+            self.state.browser.set_name_comparison(depth, comparison);
+            self.state
+                .keyboard_refocus
+                .set(Some(KeyboardRefocus::Sort(depth)));
+        }
+    }
+
     pub fn sort_focused_pane(&self, key: SortKey, direction: SortDirection) {
         if let Some(depth) = self.focused_listing_depth() {
             self.state.browser.set_sort(depth, key, direction);

@@ -508,7 +508,7 @@
   "Keep notification": "保留通知",
   "Keep the close button in the top bar. Hide it when the window manager already closes windows.": "在頂端列保留關閉按鈕。當視窗管理員已能關閉視窗時將其隱藏。",
   "Keyboard shortcuts": "鍵盤快速鍵",
-  "LANGUAGE": "語言",
+  "LANGUAGE & UNITS": "語言與單位",
   "LINKS": "連結",
   "LOCATION": "位置",
   "LaTeX equation": "LaTeX 方程式",
@@ -541,7 +541,7 @@
   "MODIFIED": "已修改",
   "MOTION": "動態效果",
   "Make this the default size": "設為預設大小",
-  "Make this the default sort": "設為預設排序",
+  "Make default": "設為預設",
   "Maximize window": "最大化視窗",
   "Maximum items": "最大項目數",
   "Measuring Trash…": "計算回收筒大小…",
@@ -1538,5 +1538,14 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} 英尺",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} 英尺",
-  "No action": "無動作"
+  "No action": "無動作",
+  "Natural": "自然排序",
+  "Alphabetical": "字典順序",
+  "NAME ORDER": "名稱順序",
+  "Case-sensitive names": "名稱區分大小寫",
+  "Extension": "副檔名",
+  "Unsorted": "不排序",
+  "Sort: %{field} %{direction}": "排序：%{field} %{direction}",
+  "%{field} · %{order}": "%{field} · %{order}",
+  "%{field} · case-sensitive": "%{field} · 區分大小寫"
 }

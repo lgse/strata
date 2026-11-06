@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use std::sync::{Arc, Mutex, mpsc::Sender};
+use std::sync::{Arc, Mutex};
 
 struct FocusedEnter {
     view: crate::ui::browser::BrowserView,
@@ -299,35 +299,41 @@ impl ChosenFolderCheck {
     fn hold_the_folder_check(
         &self,
     ) -> (
-        Sender<()>,
+        crate::test_support::Gate,
         Arc<Mutex<Option<bool>>>,
         crate::adapters::FsQuirks,
     ) {
-        let (release, held) = std::sync::mpsc::channel::<()>();
+        // The chooser's own background work also stamps its folder, unforced
+        // when relocating or relisting it, and may get there before the check.
+        const STAMPS: usize = 20;
+        let release = crate::test_support::Gate::default();
+        if !matches!(self.chosen, ChosenFolder::SlowToAnswer) {
+            release.release();
+        }
         let checked = Arc::new(Mutex::new(None));
-        let seen = checked.clone();
-        let slow = matches!(self.chosen, ChosenFolder::SlowToAnswer);
+        let before = (0..STAMPS)
+            .map(|_| {
+                let seen = checked.clone();
+                let mut held = release.racer();
+                let racer: Box<dyn FnMut() + Send> = Box::new(move || {
+                    *seen.lock().expect("check thread") =
+                        Some(crate::util::ui_thread::is_current());
+                    held();
+                });
+                (crate::adapters::FsOp::FolderStamp, "destination", 0, racer)
+            })
+            .collect();
         let scope = crate::adapters::FsQuirks::install(
             self.destination.parent().expect("fixture root"),
             crate::adapters::Quirks {
-                before: vec![(
-                    crate::adapters::FsOp::FolderStamp,
-                    "destination",
-                    0,
-                    Box::new(move || {
-                        *seen.lock().expect("check thread") =
-                            Some(crate::util::ui_thread::is_current());
-                        if slow {
-                            let _released = held.recv();
-                        }
-                    }),
-                )],
+                before,
                 fail: match self.chosen {
                     ChosenFolder::Failing(error, _) => {
-                        vec![(crate::adapters::FsOp::FolderStamp, "destination", 0, error)]
+                        vec![(crate::adapters::FsOp::FolderStamp, "destination", 0, error); STAMPS]
                     }
                     ChosenFolder::SlowToAnswer | ChosenFolder::WriteOnly => Vec::new(),
                 },
+                skip_forced_stamps: true,
                 ..crate::adapters::Quirks::ext4()
             },
         );
@@ -338,7 +344,7 @@ impl ChosenFolderCheck {
         self.view.browser().last_started_operation()
     }
 
-    fn expect_waits_then_lands(&self, started: Started, release: &Sender<()>) {
+    fn expect_waits_then_lands(&self, started: Started, release: &crate::test_support::Gate) {
         let case = self.case;
         iterate_context(20);
         let accept_sensitive = destination_accept(&self.chooser_window).is_sensitive();
@@ -351,7 +357,7 @@ impl ChosenFolderCheck {
             started,
             "{case}: nothing starts before the folder answers"
         );
-        release.send(()).expect("held check");
+        release.release();
         wait_until(
             || self.destination.join("photo.txt").exists(),
             &format!("{case}: the item to land in the chosen folder"),

@@ -144,8 +144,13 @@ generated passwd/group files provide the invoking UID/GID to D-Bus, so one
 published environment works across local user IDs without rebuilding it or
 mounting the host's account database.
 The image includes bubblewrap for sandboxed thumbnail decoding, FFmpeg/ffprobe,
-GTK's GStreamer media backend with the base/good/libav plugins, and strace for
-the opt-in [main-thread I/O audit](#main-thread-io-audit). Rust media
+GTK's GStreamer media backend with the base/good/libav plugins, and strace for the
+opt-in [main-thread I/O audit](#main-thread-io-audit). It also includes libheif, so
+ImageMagick writes real AVIF and HEIC files and glycin's `glycin-heif` loader can
+decode them.
+A QA `magick` fixture step fails when an `.avif`, `.heic`, or `.heif` output lacks
+the matching ISO BMFF major or compatible brand, because ImageMagick silently
+writes the input format when an encoder is missing. Rust media
 regressions exercise actual normalization, playback, and long-source duration
 limits rather than skipping when optional host tools are missing. These packages
 come from the dated Arch snapshot. The accessibility patch is test-only and does
@@ -314,6 +319,24 @@ disables accessibility bridging for Rust tests. A startup failure aborts; it
 never falls back to the real display or an inherited session bus. Its private
 display, buses, and throwaway HOME come from `scripts/headless/`, which
 `scripts/benchmark-scroll.py` uses as well.
+
+### Private main contexts in Rust tests
+
+A Rust test that drives async code on its own GLib main context creates it with
+`test_support::PrivateContext`, never `glib::MainContext::new()` or
+`glib::MainContext::with_flags()` (Clippy rejects both).
+`<glib::MainContext as Default>::default()` also calls `new()`, but Clippy
+cannot catch it by path, so don't use it for a test's context either. A GIO call
+started on the context keeps it alive from its `GTask`, so a GIO pool thread can
+drop the last reference after the test has finished. Finalizing the context
+there would drop any local task or callback still attached to it on the wrong
+thread and abort the whole test process. `PrivateContext` destroys every source
+left on the context when it is dropped, on the thread that created them,
+repeating until no source is left. A source attached after that, such as the
+completion of a GIO call still in flight, is leaked on purpose: it keeps its
+task and the context alive, so nothing on the context is ever finalized on
+another thread. Tests that drive the process-wide default context instead hold
+`test_support::ASYNC_MAIN_CONTEXT_DEFAULT`.
 
 ### Native debugging dependencies
 

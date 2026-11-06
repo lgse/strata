@@ -266,6 +266,9 @@ pub(crate) struct Quirks {
     /// Runs once, after the matching call after skipping the given number of matches, whether
     /// or not the call succeeded.
     pub after: Vec<(Op, &'static str, usize, Racer)>,
+    /// `fail`, `before` and `after` pass over forced stamps, which a browser's
+    /// background freshness checks make, so they reach only the call under test.
+    pub skip_forced_stamps: bool,
     pub unplugged_after: Option<(Op, &'static str, usize)>,
     pub mount_type: Option<(&'static str, &'static str)>,
     pub mount_root: Option<&'static str>,

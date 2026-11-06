@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::test_support::PrivateContext;
 
 #[derive(Debug, PartialEq)]
 enum Resolved<'a> {
@@ -262,7 +263,7 @@ fn text_reads_refuse_a_file_an_operation_fences() {
     let path = directory.path().join("notes.txt");
     fs::write(&path, "notes").expect("text file");
     let file = gio::File::for_path(&path);
-    let read = || glib::MainContext::new().block_on(read_text(&file, Some(&path), 64));
+    let read = || PrivateContext::new().block_on(read_text(&file, Some(&path), 64));
     let activity = crate::services::file_activity::begin(
         crate::services::file_activity::OperationScope::default(),
     );

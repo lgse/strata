@@ -71,6 +71,7 @@ impl Fixture {
                     child_count: MetadataValue::Known(*count),
                     size: MetadataValue::Unknown,
                     modified_unix_seconds: MetadataValue::Unknown,
+                    created_unix_seconds: MetadataValue::Unknown,
                     mode: MetadataValue::Unknown,
                     image_dimensions: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,

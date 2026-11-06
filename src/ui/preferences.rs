@@ -249,13 +249,17 @@ pub(in crate::ui) struct Preferences {
     sort_key: String,
     #[serde(default = "default_sort_direction")]
     sort_direction: String,
+    #[serde(default = "defaults::default_natural_sort")]
+    natural_sort: bool,
+    #[serde(default)]
+    case_sensitive_sort: bool,
     #[serde(default = "default_enabled")]
     check_for_updates: bool,
     #[serde(default)]
     preview_muted: bool,
     #[serde(default = "default_full_volume")]
     preview_volume: f64,
-    #[serde(default)]
+    #[serde(default = "default_enabled")]
     preview_text_wrap: bool,
     #[serde(default)]
     unit_system: UnitSystem,

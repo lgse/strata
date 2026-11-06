@@ -597,6 +597,7 @@ pub struct MetadataUpdate {
     pub location: Location,
     pub size: MetadataValue<u64>,
     pub modified_unix_seconds: MetadataValue<i64>,
+    pub created_unix_seconds: MetadataValue<i64>,
     pub mode: MetadataValue<u32>,
     pub image_dimensions: MetadataValue<(u32, u32)>,
     pub child_count: MetadataValue<u64>,

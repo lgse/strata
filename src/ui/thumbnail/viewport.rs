@@ -84,6 +84,7 @@ pub(super) fn publish_thumbnail_metadata(
             location,
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Unknown,
+            created_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
             image_dimensions: metadata
                 .dimensions

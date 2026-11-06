@@ -21,6 +21,7 @@ pub(crate) fn entry(location: crate::model::Location) -> crate::model::FileEntry
         kind: EntryKind::File,
         size: MetadataValue::Known(100),
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,

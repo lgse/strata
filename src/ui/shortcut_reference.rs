@@ -459,6 +459,10 @@ const COLUMNS_NAVIGATION: &[Shortcut] = &[
         One(BACKSPACE.shown()),
         "Close the current pane or go to the parent folder",
     ),
+    row(
+        One(MAKE_FIRST_COLUMN.shown()),
+        "Make the focused pane the first pane",
+    ),
 ];
 
 const ICONS_NAVIGATION: &[Shortcut] = &[
@@ -1411,6 +1415,15 @@ const TENXER_VIEW: &[Shortcut] = &[
         "Sort by name / modified / size / type; %{keys} reverses",
     )
     .mentioning(Mention::Held(Modifiers::SHIFT_MASK)),
+    row(Chord(shown![SORT_BY, SORT_BY_EXTENSION]), "Extension"),
+    row(Chord(shown![SORT_BY, SORT_BY_CREATED]), "Created"),
+    row(Chord(shown![SORT_BY, SORT_BY_UNSORTED]), "Unsorted"),
+    row(Chord(shown![SORT_BY, SORT_BY_NATURAL]), "Natural"),
+    row(Chord(shown![SORT_BY, SORT_BY_ALPHABETICAL]), "Alphabetical"),
+    row(
+        Chord(shown![SORT_BY, SORT_BY_CASE_SENSITIVE]),
+        "Case-sensitive names",
+    ),
     row(VIEW_MODES, "Switch to Columns, Icons, or List"),
     row(TEXT_SIZE, "Increase / decrease / reset text size"),
 ];

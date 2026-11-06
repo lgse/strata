@@ -3352,7 +3352,7 @@
   "ui::virtual_preview::tests::maximum_source_lines_stay_bounded_and_complete": 0.01,
   "ui::virtual_preview::tests::selection_does_not_invent_newlines_between_line_chunks": 0.01,
   "ui::virtual_preview::tests::small_pathological_lines_use_the_virtual_source_path": 0.01,
-  "ui::virtual_preview::tests::smooth_content_scrolling_keeps_thumb_and_hit_testing_in_document_order": 23.41,
+  "ui::virtual_preview::tests::smooth_content_scrolling_keeps_thumb_and_hit_testing_in_document_order": 29.9,
   "ui::virtual_preview::tests::source_units_bound_normal_rows_and_isolate_pathological_lines": 0.01,
   "ui::virtual_preview::tests::standalone_table_keeps_copy_model_alive_without_document_state": 0.17,
   "ui::virtual_preview::tests::table_formatting_bounds_link_reexpansion_before_gtk": 0.01,

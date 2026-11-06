@@ -134,7 +134,7 @@ impl Browser {
         };
         self.apply_column_preferences(depth, SortOrigin::Followed, move |preferences| {
             preferences.folders_first = target.folders_first;
-            preferences.set_sort(target.sort());
+            preferences.set_sort_options(target.sort_options());
         });
     }
 
@@ -192,7 +192,7 @@ impl Browser {
                 drop(state);
                 self.update_defaults(|defaults| {
                     if sorted.sort_key != SortKey::DeviceOrder {
-                        defaults.set_sort(sorted.sort());
+                        defaults.set_sort_options(sorted.sort_options());
                     }
                 });
                 return;
@@ -207,6 +207,7 @@ impl Browser {
             location,
             sort_key: sorted.sort_key,
             sort_direction: sorted.sort_direction,
+            name_comparison: sorted.name_comparison,
         });
     }
 }

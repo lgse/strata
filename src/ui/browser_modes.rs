@@ -38,6 +38,7 @@ mod drag_drop;
 mod events;
 mod filter;
 mod filter_session;
+mod first_visit;
 mod focus;
 mod grouped_model;
 mod icons_card;

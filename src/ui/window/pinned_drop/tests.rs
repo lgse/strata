@@ -3,10 +3,11 @@
 use std::cell::Cell;
 
 use super::*;
+use crate::test_support::PrivateContext;
 
 #[test]
 fn pending_folder_validation_is_shared_and_delivers_the_whole_selection_once() {
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     context
         .with_thread_default(|| {
             context.block_on(async {
@@ -51,7 +52,7 @@ fn pending_folder_validation_is_shared_and_delivers_the_whole_selection_once() {
 
 #[test]
 fn a_stalled_query_times_out_and_drops_its_pending_io() {
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     context
         .with_thread_default(|| {
             context.block_on(async {
@@ -84,7 +85,7 @@ fn a_stalled_query_times_out_and_drops_its_pending_io() {
 
 #[test]
 fn abandoning_a_request_rejects_its_pending_drop_and_cancels_io() {
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     context
         .with_thread_default(|| {
             let (send, receive) = futures_channel::oneshot::channel::<FolderResult>();

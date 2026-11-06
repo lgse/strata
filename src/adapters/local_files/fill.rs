@@ -59,6 +59,7 @@ pub(super) fn unknown_update(location: &Location) -> MetadataUpdate {
         location: location.clone(),
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         mode: MetadataValue::Unknown,
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
@@ -616,6 +617,10 @@ pub(super) fn update_from_info(
             location: location.clone(),
             size,
             modified_unix_seconds,
+            created_unix_seconds: info
+                .creation_date_time()
+                .map(|time| MetadataValue::Known(time.to_unix()))
+                .unwrap_or(MetadataValue::Unavailable),
             mode,
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,

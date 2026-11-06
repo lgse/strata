@@ -304,6 +304,10 @@ pub(super) fn insert_monitored_entry(
 ) {
     let position = if preferences.sort_key == SortKey::DeviceOrder {
         entries.len()
+    } else if preferences.sort_key == SortKey::Unsorted {
+        entries.partition_point(|current| {
+            compare_entries(current, &entry, preferences) != std::cmp::Ordering::Greater
+        })
     } else {
         entries
             .binary_search_by(|current| compare_entries(current, &entry, preferences))

@@ -13,11 +13,11 @@ impl ColumnState {
         self.preferences.show_hidden || !entry.is_hidden
     }
 
-    fn first_visible(&self) -> Option<usize> {
+    pub(super) fn first_visible(&self) -> Option<usize> {
         self.entries.iter().position(|entry| self.shows(entry))
     }
 
-    fn last_visible(&self) -> Option<usize> {
+    pub(super) fn last_visible(&self) -> Option<usize> {
         self.entries.iter().rposition(|entry| self.shows(entry))
     }
 
@@ -32,8 +32,8 @@ impl ColumnState {
     /// visible entry lies that way.
     fn stepped_cursor(&self, direction: i32) -> Option<usize> {
         match (self.selected, direction.cmp(&0)) {
-            (None, Ordering::Less) => self.last_visible(),
-            (None, _) => self.first_visible(),
+            (None, Ordering::Less) => self.last_displayed_entry(),
+            (None, _) => self.first_displayed_entry(),
             (Some(current), Ordering::Less) => Some(self.step_back(current)),
             (Some(current), Ordering::Greater) => Some(self.step_forward(current)),
             (Some(current), Ordering::Equal) => match self.shows(&self.entries[current]) {
@@ -81,14 +81,12 @@ impl NavigationState {
         let show_hidden = column.preferences.show_hidden;
         let is_visible = |entry: &FileEntry| show_hidden || !entry.is_hidden;
 
-        let first_visible = column.entries.iter().position(is_visible)?;
-        let last_visible = column.entries.iter().rposition(is_visible)?;
-
-        let current = column.selected.unwrap_or(if direction < 0 {
-            last_visible
-        } else {
-            first_visible
-        });
+        let current = match column.selected {
+            _ if column.first_visible().is_none() => return None,
+            Some(current) => current,
+            None if direction < 0 => column.last_displayed_entry()?,
+            None => column.first_displayed_entry()?,
+        };
 
         // Escape clears filled selection without dropping the cursor or leftover
         // range anchor. Start a new range from that cursor instead of stepping.

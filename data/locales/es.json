@@ -522,7 +522,7 @@
   "Keep notification": "Mantener notificación",
   "Keep the close button in the top bar. Hide it when the window manager already closes windows.": "Mantiene el botón Cerrar en la barra superior. Ocúltalo cuando el gestor de ventanas ya cierre las ventanas.",
   "Keyboard shortcuts": "Atajos de teclado",
-  "LANGUAGE": "IDIOMA",
+  "LANGUAGE & UNITS": "IDIOMA Y UNIDADES",
   "LINKS": "ENLACES",
   "LOCATION": "UBICACIÓN",
   "LaTeX equation": "Ecuación LaTeX",
@@ -555,7 +555,7 @@
   "MODIFIED": "MODIFICADO",
   "MOTION": "MOVIMIENTO",
   "Make this the default size": "Usar como tamaño predeterminado",
-  "Make this the default sort": "Usar como orden predeterminado",
+  "Make default": "Establecer como predeterminado",
   "Maximize window": "Maximizar ventana",
   "Maximum items": "Máximo de elementos",
   "Measuring Trash…": "Midiendo la papelera…",
@@ -1538,5 +1538,14 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} pies",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} pies",
-  "No action": "Ninguna acción"
+  "No action": "Ninguna acción",
+  "Natural": "Natural",
+  "Alphabetical": "Alfabético",
+  "NAME ORDER": "ORDEN DE LOS NOMBRES",
+  "Case-sensitive names": "Distinguir mayúsculas y minúsculas",
+  "Extension": "Extensión",
+  "Unsorted": "Sin ordenar",
+  "Sort: %{field} %{direction}": "Ordenar: %{field} %{direction}",
+  "%{field} · %{order}": "%{field} · %{order}",
+  "%{field} · case-sensitive": "%{field} · distingue mayúsculas"
 }

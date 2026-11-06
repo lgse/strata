@@ -32,8 +32,20 @@ use crate::{
 #[derive(Debug)]
 pub(crate) enum Presence {
     Absent,
-    Present,
+    /// Whether the item itself is a folder; a link is not, wherever it points.
+    Present {
+        folder: bool,
+    },
     Unknown,
+}
+
+impl Presence {
+    pub(crate) fn folder(&self) -> Option<bool> {
+        match self {
+            Self::Present { folder } => Some(*folder),
+            Self::Absent | Self::Unknown => None,
+        }
+    }
 }
 
 fn unanswered(unanswered: Unanswered) -> io::Error {
@@ -49,9 +61,11 @@ fn absent(error: Errno) -> bool {
     matches!(error, Errno::NOENT | Errno::NOTDIR)
 }
 
-fn presence_of(answer: Result<(), Errno>) -> Presence {
+fn presence_of(answer: Result<FileType, Errno>) -> Presence {
     match answer {
-        Ok(()) => Presence::Present,
+        Ok(kind) => Presence::Present {
+            folder: kind == FileType::Directory,
+        },
         Err(error) if absent(error) => Presence::Absent,
         Err(_) => Presence::Unknown,
     }
@@ -168,7 +182,7 @@ fn names_in(
             let Some(name) = name else {
                 let stamp = folder_stamp(folder, false);
                 progress.answered(&stamp);
-                return (*index, presence_of(stamp.map(drop)));
+                return (*index, presence_of(stamp.map(|stamp| stamp.kind)));
             };
             let dir = dir.get_or_insert_with(|| {
                 let opened = open_folder(folder);
@@ -179,7 +193,7 @@ fn names_in(
                 Ok(dir) => {
                     let stat = fs().stat(Entry::new(dir, name), false);
                     progress.answered(&stat);
-                    presence_of(stat.map(drop))
+                    presence_of(stat.map(|stat| stat.kind))
                 }
                 Err(error) => presence_of(Err(*error)),
             };
@@ -202,7 +216,9 @@ async fn remote_presence(location: &Location, cancellable: &gio::Cancellable) ->
         cancellable.clone(),
     );
     match mount_lanes::run_remote(mount_lanes::authority(uri), Class::Interactive, query).await {
-        Ok(Ok(Ok(_))) => Presence::Present,
+        Ok(Ok(Ok(info))) => Presence::Present {
+            folder: info.file_type() == gio::FileType::Directory,
+        },
         Ok(Ok(Err(error))) if error.matches(gio::IOErrorEnum::NotFound) => Presence::Absent,
         _ => Presence::Unknown,
     }

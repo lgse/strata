@@ -22,6 +22,7 @@ fn folder(path: &str, listable: bool) -> FileEntry {
         kind: EntryKind::Directory,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         recent_unix_seconds: MetadataValue::Unknown,
         recent_uri: None,
         mode: MetadataValue::Unknown,

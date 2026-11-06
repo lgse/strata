@@ -172,13 +172,13 @@ pub(in crate::ui) fn show_customized_icon_image(
     show_path_icon_image(image, path, fallback_icon, ImageIconKind::Default);
 }
 
+/// Leaves sizing alone: the image follows the live interface scale, and a size
+/// request taken here would outlast a later text-size change.
 pub(in crate::ui) fn show_customized_folder_image(
     image: &gtk::Image,
     path: &Path,
     default_icon: &str,
-    size: i32,
 ) {
-    size_image(image, size);
     show_path_icon_image(image, path, default_icon, ImageIconKind::Folder);
 }
 

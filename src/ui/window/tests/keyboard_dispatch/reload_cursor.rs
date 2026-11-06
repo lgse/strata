@@ -868,6 +868,7 @@ impl crate::services::FileSource for ShrinkingShare {
                 kind: crate::model::EntryKind::File,
                 size: crate::model::MetadataValue::Unknown,
                 modified_unix_seconds: crate::model::MetadataValue::Unknown,
+                created_unix_seconds: crate::model::MetadataValue::Unknown,
                 recent_unix_seconds: crate::model::MetadataValue::Unknown,
                 recent_uri: None,
                 mode: crate::model::MetadataValue::Unknown,

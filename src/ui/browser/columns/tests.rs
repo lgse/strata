@@ -399,17 +399,19 @@ fn double_clicking_an_edge_autofits_the_column_and_saves_its_width() {
                 let edge = shell_edge(&fixture.scroller(), &shell);
                 gesture.emit_by_name::<()>("drag-begin", &[&edge.0, &edge.1]);
                 gesture.emit_by_name::<()>("drag-begin", &[&edge.0, &edge.1]);
-                if animated {
-                    pump_for(COLUMN_TRANSITION + Duration::from_millis(60));
-                }
-                let fitted = shell.width_request();
-                assert_ne!(fitted, before, "the column fits its content");
                 let scale = PreferenceManager::shared().interface_scale();
-                assert_eq!(
-                    PreferenceManager::shared().browser_column_width(),
-                    Some(((f64::from(fitted) / scale).round() as i32).max(COLUMN_WIDTH)),
-                    "the saved width is the one the column ends at"
+                let shown = || {
+                    Some(
+                        ((f64::from(shell.width_request()) / scale).round() as i32)
+                            .max(COLUMN_WIDTH),
+                    )
+                };
+                // Animation ticks wait for frames, which a loaded machine draws late.
+                pump_until(
+                    || PreferenceManager::shared().browser_column_width() == shown(),
+                    "the column to end at the saved width",
                 );
+                assert_ne!(shell.width_request(), before, "the column fits its content");
             }
         },
     );

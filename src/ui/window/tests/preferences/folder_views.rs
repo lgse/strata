@@ -128,7 +128,11 @@ fn saved_folder_sorts_and_icon_sizes_apply_before_settings_and_follow_changes_ac
             manager.set_remember_folder_views(true);
             assert_eq!(
                 manager.resolve_folder_sort(&plain_location, false),
-                FolderSort::Saved(size_ascending.0, size_ascending.1),
+                FolderSort::Saved(
+                    size_ascending.0,
+                    size_ascending.1,
+                    crate::model::NameComparison::default()
+                ),
                 "a default set while folder settings are off drops nothing"
             );
             manager.set_folder_icons_size(Some(&sorted_location), 160);
@@ -194,7 +198,11 @@ fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() 
             drop(held);
             wait_until(|| {
                 manager.resolve_folder_sort(&elsewhere, false)
-                    == FolderSort::Saved(SortKey::Size, SortDirection::Descending)
+                    == FolderSort::Saved(
+                        SortKey::Size,
+                        SortDirection::Descending,
+                        crate::model::NameComparison::default(),
+                    )
             });
             manager.set_folder_sort(&here, SortKey::Type, SortDirection::Ascending);
             manager.flush_folder_views();
@@ -205,7 +213,11 @@ fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() 
             assert!(saved.contains(&elsewhere.display_path()), "{saved}");
             assert_eq!(
                 manager.resolve_folder_sort(&elsewhere, false),
-                FolderSort::Saved(SortKey::Size, SortDirection::Descending)
+                FolderSort::Saved(
+                    SortKey::Size,
+                    SortDirection::Descending,
+                    crate::model::NameComparison::default()
+                )
             );
             wait_until(|| {
                 open.content
@@ -237,7 +249,11 @@ fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() 
                 crate::storage::writer::settle();
                 assert_eq!(
                     manager.resolve_folder_sort(&outside, false),
-                    FolderSort::Saved(SortKey::Size, SortDirection::Ascending)
+                    FolderSort::Saved(
+                        SortKey::Size,
+                        SortDirection::Ascending,
+                        crate::model::NameComparison::default()
+                    )
                 );
                 let saved = folder_views_file();
                 assert!(saved.contains(&outside.display_path()), "{saved}");
@@ -345,7 +361,11 @@ fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() 
             manager.set_folder_sort(&here, SortKey::Name, SortDirection::Ascending);
             assert_eq!(
                 manager.resolve_folder_sort(&here, false),
-                FolderSort::Saved(SortKey::Name, SortDirection::Ascending),
+                FolderSort::Saved(
+                    SortKey::Name,
+                    SortDirection::Ascending,
+                    crate::model::NameComparison::default()
+                ),
                 "a sort equal to a default replaced elsewhere is still stored"
             );
         },
@@ -393,6 +413,70 @@ fn unreadable_folder_settings_use_defaults_and_are_never_overwritten() {
             PreferenceManager::shared().flush_folder_views();
             crate::storage::writer::settle();
             assert_eq!(folder_views_file(), unreadable);
+        },
+    );
+}
+
+#[test]
+fn name_comparison_is_restored_before_settings_and_follows_folders_across_views() {
+    gtk_test(
+        "ui::window::tests::preferences::folder_views::name_comparison_is_restored_before_settings_and_follows_folders_across_views",
+        || {
+            use crate::model::{Location, NameComparison};
+            let folder = tempfile::tempdir().expect("folder");
+            for name in ["a2.md", "a10.md", "Z.md"] {
+                std::fs::write(folder.path().join(name), "same size").expect("file");
+            }
+            let location = Location::local(folder.path());
+            write_folder_views(&format!(
+                "version = 1\n[[folder]]\npath = \"{}\"\nsort = \"name\"\ndirection = \"ascending\"\nnatural_sort = false\ncase_sensitive_sort = true\n",
+                folder.path().display()
+            ));
+            let manager = PreferenceManager::shared();
+            let first = OpenWindow::open();
+            let second = OpenWindow::open();
+            for open in [&first, &second] {
+                open.content.browser.navigate_location(location.clone());
+            }
+            let names = |open: &OpenWindow| {
+                let browser = open.content.browser.browser();
+                (0..3)
+                    .filter_map(|index| browser.entry_at(0, index))
+                    .map(|entry| entry.display_name)
+                    .collect::<Vec<_>>()
+            };
+            wait_until(|| {
+                names(&first) == ["Z.md", "a10.md", "a2.md"]
+                    && names(&second) == ["Z.md", "a10.md", "a2.md"]
+            });
+            first
+                .content
+                .browser
+                .browser()
+                .set_name_comparison(0, NameComparison::default());
+            wait_until(|| {
+                names(&first) == ["a2.md", "a10.md", "Z.md"]
+                    && names(&second) == ["a2.md", "a10.md", "Z.md"]
+            });
+            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                manager.set_browser_mode(mode);
+                wait_until(|| names(&second) == ["a2.md", "a10.md", "Z.md"]);
+                assert_eq!(
+                    second
+                        .content
+                        .browser
+                        .browser()
+                        .column_preferences(0)
+                        .expect("preferences")
+                        .name_comparison,
+                    NameComparison::default()
+                );
+            }
+            manager.flush_folder_views();
+            crate::storage::writer::settle();
+            let saved = folder_views_file();
+            assert!(!saved.contains("natural_sort = false"));
+            assert!(!saved.contains("case_sensitive_sort = true"));
         },
     );
 }

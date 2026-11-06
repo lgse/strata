@@ -21,12 +21,14 @@ pub struct ResponsiveActivationRow {
     pub(super) options: Vec<gtk::Box>,
 }
 
-const DIALOG_WIDTH: i32 = 1400;
-const DIALOG_HEIGHT: i32 = 1024;
-const DIALOG_MARGIN: i32 = 24;
 const COMPACT_NAVIGATION_BREAKPOINT: i32 = 900;
 // Reflow the content before collapsing navigation: desktop toolbars need more room.
 const COMPACT_CONTENT_BREAKPOINT: i32 = 1250;
+// The panel grows only until the side-by-side layout fits, so a large window shows
+// more of the browser around it rather than a wider panel of empty margins.
+const DIALOG_WIDTH: i32 = COMPACT_CONTENT_BREAKPOINT;
+const DIALOG_HEIGHT: i32 = 800;
+const DIALOG_MARGIN: i32 = 24;
 const MIN_SIDE_BY_SIDE_ACTIVATION_WIDTH: i32 = 620;
 const STACK_ACTIVATION_OPTIONS_BREAKPOINT: i32 = 350;
 const STACK_TEXT_SIZE_BREAKPOINT: i32 = 600;

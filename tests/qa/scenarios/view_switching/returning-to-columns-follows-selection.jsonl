@@ -1,0 +1,32 @@
+{"scenario":"returning-to-columns-follows-selection","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"empty-in-list","vars":{"view_key":"ctrl+3","view":"List"}},{"id":"other-folder-in-icons","vars":{"view_key":"ctrl+2","view":"Icons"}},{"id":"unmirrored-empty-in-list","prefs":{"columns_mirror_selection":false},"vars":{"view_key":"ctrl+3","view":"List"}},{"id":"unmirrored-other-folder-in-icons","prefs":{"columns_mirror_selection":false},"vars":{"view_key":"ctrl+2","view":"Icons"}}],"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Columns return opens the selected folder or no child, mirroring on and off; decision pinned by returning_columns_* unit tests"}}
+{"select_with_keyboard":"documents","message":"the cursor to reach 'documents'","variants":["empty-in-list","other-folder-in-icons"]}
+{"select":{"entry":"documents","dir":"$root"},"variants":["unmirrored-empty-in-list","unmirrored-other-folder-in-icons"]}
+{"wait":{"panes":["$root","documents"]},"message":"'documents' to open as the child column"}
+{"key":"Left","variants":["unmirrored-empty-in-list","unmirrored-other-folder-in-icons"]}
+{"wait":{"focused":"documents"},"message":"the cursor to rest on 'documents' in the root column"}
+{"expect":{"panes":["$root","documents"]},"message":"the child column of 'documents' to stay open"}
+{"key":"$view_key"}
+{"wait":{"view_mode":"$view"},"message":"the browser to switch to the $view view"}
+{"wait":{"panes":["$root"]},"message":"$view to show the root folder"}
+{"wait":{"selected":["documents"],"dir":"$root"},"message":"the selection to survive the switch to $view"}
+{"key":"Escape","variants":["empty-in-list","unmirrored-empty-in-list"]}
+{"wait":{"selected":[],"dir":"$root"},"message":"Escape to clear the selection","variants":["empty-in-list","unmirrored-empty-in-list"]}
+{"select":{"entry":"pictures","dir":"$root"},"variants":["other-folder-in-icons","unmirrored-other-folder-in-icons"]}
+{"wait":{"selected":["pictures"],"dir":"$root"},"message":"the click to select 'pictures'","variants":["other-folder-in-icons","unmirrored-other-folder-in-icons"]}
+{"key":"ctrl+1"}
+{"wait":{"view_mode":"Columns"},"message":"the browser to switch back to the Columns view"}
+{"wait":{"panes":["$root"]},"message":"an empty selection to reopen no child column","variants":["empty-in-list","unmirrored-empty-in-list"]}
+{"wait":{"panes":["$root"]},"message":"with mirroring off, a selection to open no child column","variants":["unmirrored-other-folder-in-icons"]}
+{"wait":{"absent":{"role":"button","name":"$root"}},"message":"the breadcrumb to end at the root folder","variants":["empty-in-list","unmirrored-empty-in-list","unmirrored-other-folder-in-icons"]}
+{"expect":{"selected":[],"dir":"$root"},"message":"the selection to stay empty","variants":["empty-in-list","unmirrored-empty-in-list"]}
+{"wait":{"panes":["$root","pictures"]},"message":"the newly selected folder to open as the child column","variants":["other-folder-in-icons"]}
+{"wait":{"entries":["diagram.txt","photo.txt"],"dir":"pictures"},"message":"the child column to list 'pictures'","variants":["other-folder-in-icons"]}
+{"wait":{"present":{"role":"button","name":"$root"}},"message":"the breadcrumb to name 'pictures', with the root as an ancestor crumb","variants":["other-folder-in-icons"]}
+{"expect":{"selected":["pictures"],"dir":"$root"},"message":"the selection to stay on 'pictures'","variants":["other-folder-in-icons","unmirrored-other-folder-in-icons"]}
+{"wait":{"focused_pane":"$root"},"message":"focus to stay in the root column"}
+{"key":"ctrl+shift+n","variants":["empty-in-list","unmirrored-empty-in-list"]}
+{"wait":{"field":{}},"message":"the new folder's name field to take focus","variants":["empty-in-list","unmirrored-empty-in-list"]}
+{"key":"Return","variants":["empty-in-list","unmirrored-empty-in-list"]}
+{"wait":{"editable_fields":0},"message":"the name prompt to close","variants":["empty-in-list","unmirrored-empty-in-list"]}
+{"fs":{"path":"new folder","is":"dir"},"message":"the new folder to be created in the root folder","variants":["empty-in-list","unmirrored-empty-in-list"]}
+{"fs":{"path":"documents/new folder","exists":false},"timeout_ms":0,"variants":["empty-in-list","unmirrored-empty-in-list"]}

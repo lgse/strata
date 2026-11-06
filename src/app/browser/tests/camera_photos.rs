@@ -131,6 +131,7 @@ fn camera_explicit_sorts_work_and_device_order_can_be_restored_without_leaking_t
                     location: Location::uri(format!("gphoto2://camera/202609_a/{name}")),
                     size: MetadataValue::Known(1),
                     modified_unix_seconds: MetadataValue::Known(modified),
+                    created_unix_seconds: MetadataValue::Unknown,
                     ..batch_entry(name)
                 })
                 .collect()

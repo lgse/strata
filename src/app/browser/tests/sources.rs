@@ -74,6 +74,7 @@ fn sized_file(path: &str, size: u64) -> FileEntry {
     FileEntry {
         size: MetadataValue::Known(size),
         modified_unix_seconds: MetadataValue::Known(1),
+        created_unix_seconds: MetadataValue::Unknown,
         ..fixture_entry(path)
     }
 }
@@ -207,6 +208,7 @@ impl FileSource for ArchiveFileSource {
         let remote_archive = FileEntry {
             size: MetadataValue::Known(50),
             modified_unix_seconds: MetadataValue::Known(1),
+            created_unix_seconds: MetadataValue::Unknown,
             ..entry_at(
                 Location::uri("sftp://example.com/remote-archive.zip"),
                 EntryKind::File,
@@ -366,6 +368,7 @@ fn sized_update(location: &Location) -> MetadataUpdate {
         location: location.clone(),
         size: MetadataValue::Known(size),
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         mode: MetadataValue::Unknown,
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,

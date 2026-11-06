@@ -595,6 +595,7 @@ pub(super) fn listing_file(location: Location, name: &str, is_hidden: bool) -> F
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         recent_unix_seconds: MetadataValue::Unknown,
         is_hidden,
         mode: MetadataValue::Unknown,

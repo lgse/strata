@@ -14,6 +14,7 @@ use ashpd::desktop::{
 
 use super::*;
 use crate::model::{EntryKind, FileEntry, MetadataValue};
+use crate::test_support::PrivateContext;
 
 fn entry(path: &Path, directory: bool) -> FileEntry {
     FileEntry {
@@ -35,6 +36,7 @@ fn entry(path: &Path, directory: bool) -> FileEntry {
         mode: MetadataValue::Unknown,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
@@ -387,7 +389,7 @@ fn backend_version_and_success_uri_scheme_are_fixed() {
 }
 
 fn run_async<T>(future: impl Future<Output = T>) -> T {
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     context
         .with_thread_default(|| context.block_on(future))
         .expect("test main context")

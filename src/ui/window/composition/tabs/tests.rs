@@ -642,11 +642,23 @@ fn closing_tabs_releases_observers_and_keeps_other_contexts_alive() {
             let (window, tabs) = open();
             let root = tempfile::tempdir().expect("tab fixture");
             load(&tabs.active_browser(), Location::local(root.path()));
+            let listeners_before = tabs.preferences.listener_count();
             tabs.new_tab();
+            load(&tabs.active_browser(), Location::local(root.path()));
             let closed = tabs.active_browser().downgrade();
+            let closed_listing = tabs.active_browser().widget().downgrade();
             let id = tabs.active.get();
             tabs.close(id);
-            wait_until(|| closed.upgrade().is_none());
+            wait_until_or(
+                || closed.upgrade().is_none() && closed_listing.upgrade().is_none(),
+                || "the closed tab's view or listing is still alive".to_owned(),
+            );
+            assert!(
+                tabs.preferences.listener_count() <= listeners_before,
+                "preference listeners of the closed tab were kept: {} before, {} after",
+                listeners_before,
+                tabs.preferences.listener_count()
+            );
             assert_eq!(tabs.active.get(), 1);
             assert_eq!(
                 tabs.active_browser().browser().active_location(),
@@ -657,6 +669,35 @@ fn closing_tabs_releases_observers_and_keeps_other_contexts_alive() {
             tabs.close(1);
             assert_eq!(tabs.active.get(), active);
             assert_eq!(tabs.tabs.borrow().len(), 1);
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn rebuilding_panes_adds_no_browser_observers() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::rebuilding_panes_adds_no_browser_observers",
+        || {
+            let (window, tabs) = open();
+            let root = tempfile::tempdir().expect("tab fixture");
+            let child = root.path().join("child");
+            std::fs::create_dir(&child).expect("child folder");
+            let view = tabs.active_browser();
+            load(&view, Location::local(root.path()));
+            let before = view.browser().observer_count();
+            for mode in [
+                crate::ui::browser_modes::BrowserMode::Columns,
+                crate::ui::browser_modes::BrowserMode::Icons,
+                crate::ui::browser_modes::BrowserMode::List,
+            ] {
+                tabs.preferences.set_browser_mode(mode);
+                for _ in 0..3 {
+                    load(&view, Location::local(&child));
+                    load(&view, Location::local(root.path()));
+                }
+            }
+            assert_eq!(view.browser().observer_count(), before);
             window.destroy();
         },
     );

@@ -39,6 +39,7 @@ fn added_file() -> FileEntry {
     FileEntry {
         size: MetadataValue::Known(4),
         modified_unix_seconds: MetadataValue::Known(1),
+        created_unix_seconds: MetadataValue::Unknown,
         ..fixture_entry("/fixture/added")
     }
 }

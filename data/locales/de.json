@@ -522,7 +522,7 @@
   "Keep notification": "Benachrichtigung behalten",
   "Keep the close button in the top bar. Hide it when the window manager already closes windows.": "Behält die Schaltfläche zum Schließen in der oberen Leiste. Blenden Sie sie aus, wenn die Fensterverwaltung Fenster bereits schließt.",
   "Keyboard shortcuts": "Tastenkürzel",
-  "LANGUAGE": "SPRACHE",
+  "LANGUAGE & UNITS": "SPRACHE & EINHEITEN",
   "LINKS": "LINKS",
   "LOCATION": "ORT",
   "LaTeX equation": "LaTeX-Gleichung",
@@ -555,7 +555,7 @@
   "MODIFIED": "GEÄNDERT",
   "MOTION": "BEWEGUNG",
   "Make this the default size": "Als Standardgröße festlegen",
-  "Make this the default sort": "Als Standardsortierung festlegen",
+  "Make default": "Als Standard festlegen",
   "Maximize window": "Fenster maximieren",
   "Maximum items": "Maximale Elementanzahl",
   "Measuring Trash…": "Papierkorb wird gemessen…",
@@ -1538,5 +1538,14 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} ft",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} ft",
-  "No action": "Keine Aktion"
+  "No action": "Keine Aktion",
+  "Natural": "Natürlich",
+  "Alphabetical": "Alphabetisch",
+  "NAME ORDER": "NAMENSREIHENFOLGE",
+  "Case-sensitive names": "Groß-/Kleinschreibung beachten",
+  "Extension": "Dateiendung",
+  "Unsorted": "Unsortiert",
+  "Sort: %{field} %{direction}": "Sortierung: %{field} %{direction}",
+  "%{field} · %{order}": "%{field} · %{order}",
+  "%{field} · case-sensitive": "%{field} · Groß-/Kleinschreibung"
 }

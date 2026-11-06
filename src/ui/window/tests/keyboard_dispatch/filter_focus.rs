@@ -286,6 +286,7 @@ fn share_entry(name: &str) -> FileEntry {
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
         recent_unix_seconds: MetadataValue::Unknown,
         recent_uri: None,
         mode: MetadataValue::Unknown,
