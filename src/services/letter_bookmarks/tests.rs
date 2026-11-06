@@ -112,17 +112,30 @@ fn letter_bookmarks_never_follow_a_symlink_on_save() {
 
 #[test]
 fn letter_bookmarks_ignore_remote_uri_targets() {
+    // Stands in for gvfs, which gives a mounted remote URI a FUSE path.
+    gio::Vfs::default().register_uri_scheme(
+        "strata-test-fuse",
+        Some(Box::new(|_, _| {
+            Some(gio::File::for_path("/run/user/1000/gvfs/sftp:host=example.test"))
+        })),
+        None,
+    );
     let root = tempfile::tempdir().expect("temporary directory");
     let store = root.path().join("marks.json");
     std::fs::write(
         &store,
-        br#"{"entries":{"a":"sftp://example.test/private","Z":"file:///uppercase","b":"file:///local%20folder"}}"#,
+        br#"{"entries":{"a":"sftp://example.test/private","d":"strata-test-fuse://example.test/","e":"file://example.test/private","Z":"file:///uppercase","b":"file:///local%20folder"}}"#,
     )
     .expect("remote entry");
-    assert_eq!(
-        read(&store, 'a').expect_err("invalid remote mark").kind(),
-        io::ErrorKind::InvalidData
-    );
+    for letter in ['a', 'd', 'e'] {
+        assert_eq!(
+            read(&store, letter)
+                .expect_err("invalid remote mark")
+                .kind(),
+            io::ErrorKind::InvalidData,
+            "{letter}"
+        );
+    }
     assert_eq!(
         read_all(&store).expect("only usable menu entries"),
         vec![('b', PathBuf::from("/local folder")),]
