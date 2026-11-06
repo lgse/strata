@@ -58,6 +58,16 @@ impl ColumnState {
             .unwrap_or_else(|| self.stay_visible_or(current, || self.last_visible()))
     }
 
+    /// Where a range starts: the cursor, or the end shown that `direction` moves from.
+    fn range_origin(&self, direction: i32) -> Option<usize> {
+        self.first_visible()?;
+        match self.selected {
+            Some(current) => Some(current),
+            None if direction < 0 => self.last_displayed_entry(),
+            None => self.first_displayed_entry(),
+        }
+    }
+
     /// A visible cursor stays put; a hidden one lands on `fallback`.
     fn stay_visible_or(&self, current: usize, fallback: impl FnOnce() -> Option<usize>) -> usize {
         match self.shows(&self.entries[current]) {
@@ -81,12 +91,7 @@ impl NavigationState {
         let show_hidden = column.preferences.show_hidden;
         let is_visible = |entry: &FileEntry| show_hidden || !entry.is_hidden;
 
-        let current = match column.selected {
-            _ if column.first_visible().is_none() => return None,
-            Some(current) => current,
-            None if direction < 0 => column.last_displayed_entry()?,
-            None => column.first_displayed_entry()?,
-        };
+        let current = column.range_origin(direction)?;
 
         // Escape clears filled selection without dropping the cursor or leftover
         // range anchor. Start a new range from that cursor instead of stepping.

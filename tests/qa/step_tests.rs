@@ -15,7 +15,8 @@ use crate::{
     drive::file_failure,
     fixture::{OrderedMap, expand_tree, fixed_fixture_name, manifest},
     fs_check::{FsState, FsStep, contained},
-    fs_helpers::{check_isobmff_brand, glob_matches, pdf_image, raw_photo},
+    fs_helpers::{glob_matches, pdf_image, raw_photo},
+    isobmff::check_brand,
     peer_steps::Relaunch,
     peers,
     process::wait_for_exit,
@@ -744,11 +745,7 @@ pub(crate) fn a_heif_family_output_must_carry_its_iso_bmff_brand() {
     ] {
         let path = directory.path().join(name);
         fs::write(&path, &bytes).expect("the fixture should be written");
-        assert_eq!(
-            check_isobmff_brand(&path).is_ok(),
-            accepted,
-            "{name}: {bytes:?}"
-        );
+        assert_eq!(check_brand(&path).is_ok(), accepted, "{name}: {bytes:?}");
     }
 }
 

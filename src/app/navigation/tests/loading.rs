@@ -264,8 +264,7 @@ fn first_row_failure(row: &FirstRowCase) -> Option<String> {
         .then(|| format!("{}: selection and cursor {landed:?}", row.case))
 }
 
-#[test]
-fn first_visit_cursor_lands_on_the_first_row_shown() {
+fn first_row_cases() -> [FirstRowCase; 6] {
     let docs_root = location("/docs");
     let type_ascending = ViewPreferences {
         sort_key: SortKey::Type,
@@ -281,7 +280,7 @@ fn first_visit_cursor_lands_on_the_first_row_shown() {
         listing,
         expected,
     };
-    let rows = [
+    [
         row(
             "ungrouped keeps listing order",
             false,
@@ -332,8 +331,15 @@ fn first_visit_cursor_lands_on_the_first_row_shown() {
                 "a",
             )
         },
-    ];
-    let failures: Vec<_> = rows.iter().filter_map(first_row_failure).collect();
+    ]
+}
+
+#[test]
+fn first_visit_cursor_lands_on_the_first_row_shown() {
+    let failures: Vec<_> = first_row_cases()
+        .iter()
+        .filter_map(first_row_failure)
+        .collect();
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
