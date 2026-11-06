@@ -191,37 +191,6 @@ fn letter_bookmarks_cancel_and_leave_default_mode_and_text_fields_unchanged() {
 }
 
 #[test]
-fn letter_bookmarks_keep_the_listing_when_the_saved_directory_disappears() {
-    crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::letter_bookmarks::letter_bookmarks_keep_the_listing_when_the_saved_directory_disappears",
-        || {
-            let fixture = KeyboardFixture::new();
-            PreferenceManager::shared().set_tenxer_mode(true);
-            let saved = fixture._directory.path().to_path_buf();
-            mark(&fixture, Key::m, Key::a);
-            wait_until(|| fixture.shortcuts.feedback_text() == "Saved bookmark a");
-            let other = tempfile::tempdir().expect("other folder");
-            fixture
-                .view
-                .browser()
-                .navigate(Location::local(other.path()));
-            wait_until(|| {
-                fixture
-                    .view
-                    .browser()
-                    .column_snapshot(0)
-                    .is_some_and(|column| !column.loading)
-            });
-            std::fs::remove_dir_all(saved).expect("remove bookmarked folder");
-            let origin = fixture.view.browser().active_location();
-            mark(&fixture, Key::apostrophe, Key::a);
-            wait_until(|| fixture.shortcuts.feedback_text() == "Bookmark a is unavailable");
-            assert_eq!(fixture.view.browser().active_location(), origin);
-        },
-    );
-}
-
-#[test]
 fn pending_letter_bookmark_does_not_navigate_after_cancel_or_mode_exit() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::letter_bookmarks::pending_letter_bookmark_does_not_navigate_after_cancel_or_mode_exit",

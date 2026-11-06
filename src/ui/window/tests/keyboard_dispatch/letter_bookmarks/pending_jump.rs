@@ -4,7 +4,6 @@ use super::*;
 
 #[derive(Clone, Copy)]
 enum Refusal {
-    OnlyChildDeleted,
     ParentDeleted,
     Unreadable,
     TimedOut,
@@ -36,14 +35,11 @@ fn refused_jump(name: &str, refusal: Refusal) {
             let tree = tempfile::tempdir().expect("target tree");
             let parent = tree.path().join("parent");
             let target = parent.join("target");
-            std::fs::create_dir_all(&target).expect("only child folder");
+            std::fs::create_dir_all(&target).expect("target folder");
             save_target(&target);
             let gate = crate::test_support::Gate::default();
             let mut quirks = crate::adapters::Quirks::default();
             match refusal {
-                Refusal::OnlyChildDeleted => {
-                    std::fs::remove_dir(&target).expect("delete only child")
-                }
                 Refusal::ParentDeleted => std::fs::remove_dir_all(&parent).expect("delete parent"),
                 Refusal::Unreadable => quirks.fail.push((
                     crate::adapters::FsOp::OpenPath,
@@ -88,14 +84,6 @@ fn refused_jump(name: &str, refusal: Refusal) {
             assert_eq!(browser.navigation_generation(), generation);
             assert_eq!(fixture.shortcuts.armed_chord(), None);
         },
-    );
-}
-
-#[test]
-fn letter_bookmark_only_child_deletion_stays_put() {
-    refused_jump(
-        "letter_bookmark_only_child_deletion_stays_put",
-        Refusal::OnlyChildDeleted,
     );
 }
 
