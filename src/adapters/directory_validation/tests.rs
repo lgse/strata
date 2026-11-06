@@ -6,6 +6,7 @@ use std::{
 };
 
 use super::*;
+use crate::test_support::PrivateContext;
 
 #[test]
 fn foreign_folder_validation_preserves_symlinks_and_native_names_and_rejects_mixed_or_missing_sources()
@@ -19,7 +20,7 @@ fn foreign_folder_validation_preserves_symlinks_and_native_names_and_rejects_mix
     fs::create_dir(&folder).expect("folder");
     symlink(&folder, &link).expect("directory symlink");
     fs::write(&file, b"file").expect("file");
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     context
         .with_thread_default(|| {
             context.block_on(async {

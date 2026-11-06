@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::test_support::PrivateContext;
 
 fn assert_heavy_queue_is_idle() {
     HEAVY_PREVIEW_QUEUE.with(|queue| {
@@ -12,7 +13,7 @@ fn assert_heavy_queue_is_idle() {
 
 #[test]
 fn pdf_renders_wait_for_the_active_renderer_and_resume_in_order() {
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     context.block_on(async {
         let first = request_heavy_preview_permit()
             .acquire()
@@ -36,7 +37,7 @@ fn pdf_renders_wait_for_the_active_renderer_and_resume_in_order() {
 
 #[test]
 fn dropping_a_queued_pdf_render_removes_it_without_consuming_a_slot() {
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     context.block_on(async {
         let first = request_heavy_preview_permit()
             .acquire()
