@@ -33,11 +33,20 @@ fn alt_down_makes_the_focused_column_first_only_in_columns() {
             wait_until(|| focused_widget_shows(&fixture.window, "sub"));
 
             assert!(fixture.press(Key::Down, ALT));
+            wait_loaded(&browser, 0);
             wait_loaded(&browser, 1);
+            wait_until_or(
+                || focused_depth(&browser) == Some(0) && focused_name(&browser) == "sub",
+                || {
+                    format!(
+                        "cursor at {:?} on {:?}",
+                        focused_depth(&browser),
+                        focused_name(&browser)
+                    )
+                },
+            );
 
             assert_eq!(strip(&browser), whole[1..]);
-            assert_eq!(focused_depth(&browser), Some(0));
-            assert_eq!(focused_name(&browser), "sub");
 
             assert!(fixture.press(Key::Left, ALT));
             wait_loaded(&browser, 2);
