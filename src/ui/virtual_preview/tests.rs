@@ -18,7 +18,7 @@ use crate::{
         DocumentLayout, DocumentSpan, DocumentSpanStyle, DocumentTableCellLayout, DocumentUnit,
         DocumentUnitKind,
     },
-    test_support::gtk_test,
+    test_support::{gtk_test, wait_for_paint},
 };
 
 /// Runs ready main-context work, then waits for the list's next painted frame.
@@ -28,27 +28,10 @@ fn paint_frame(list: &gtk::ListView) {
         context.iteration(false);
     }
     let clock = list.frame_clock().expect("mapped list frame clock");
-    let painted = Rc::new(std::cell::Cell::new(false));
-    let handler = {
-        let painted = painted.clone();
-        clock.connect_after_paint(move |_| painted.set(true))
-    };
-    let expired = Rc::new(std::cell::Cell::new(false));
-    let timeout = {
-        let expired = expired.clone();
-        gtk::glib::timeout_add_local_once(std::time::Duration::from_secs(10), move || {
-            expired.set(true);
-        })
-    };
-    clock.request_phase(gtk::gdk::FrameClockPhase::PAINT);
-    while !painted.get() && !expired.get() {
-        context.iteration(true);
-    }
-    clock.disconnect(handler);
-    if !expired.get() {
-        timeout.remove();
-    }
-    assert!(painted.get(), "the document list did not paint a frame");
+    assert!(
+        wait_for_paint(&clock),
+        "the document list did not paint a frame"
+    );
 }
 
 /// Mapped rows in document order with their list geometry and materialization.

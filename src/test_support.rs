@@ -230,10 +230,21 @@ pub(crate) fn create_empty_file(path: &std::path::Path) -> std::io::Result<()> {
 
 pub(crate) fn present_window(window: &gtk::Window) {
     use gtk::prelude::*;
-    use std::{cell::Cell, rc::Rc};
 
     window.present();
     let clock = window.frame_clock().expect("presented window frame clock");
+    assert!(
+        wait_for_paint(&clock),
+        "presented window did not paint its first frame"
+    );
+}
+
+/// Requests a frame from `clock` and runs the main context until it paints,
+/// giving up after ten seconds. Returns whether the frame painted.
+pub(crate) fn wait_for_paint(clock: &gtk::gdk::FrameClock) -> bool {
+    use gtk::prelude::*;
+    use std::{cell::Cell, rc::Rc};
+
     let painted = Rc::new(Cell::new(false));
     let ready = painted.clone();
     let handler = clock.connect_after_paint(move |_| ready.set(true));
@@ -251,10 +262,7 @@ pub(crate) fn present_window(window: &gtk::Window) {
     if !expired.get() {
         timeout.remove();
     }
-    assert!(
-        painted.get(),
-        "presented window did not paint its first frame"
-    );
+    painted.get()
 }
 
 /// GTK initialization is thread-affine; each UI test gets a process and disposable preferences.
