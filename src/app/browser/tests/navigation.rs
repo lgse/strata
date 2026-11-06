@@ -1335,3 +1335,39 @@ fn returning_columns_leave_a_validating_navigation_alone() {
         "the validated navigation still opens"
     );
 }
+
+#[test]
+fn returning_columns_wait_for_a_reloading_column_to_restore_its_selection() {
+    let (browser, tree) = columns_with_open_child();
+    assert!(browser.select_entries_by_name_at(0, &["docs".to_owned()]));
+    tree.held.set(true);
+    browser.reload_active();
+    let loading = || {
+        browser
+            .column_snapshot(0)
+            .is_some_and(|snapshot| snapshot.loading)
+    };
+    assert!(loading());
+
+    assert_eq!(browser.follow_selection_on_return(), None);
+
+    tree.release();
+    pump_until(|| !loading());
+    let selected = browser.selected_positions(0);
+    assert_eq!(
+        selected
+            .iter()
+            .filter_map(|position| browser.entry_at(0, *position))
+            .map(|entry| entry.location)
+            .collect::<Vec<_>>(),
+        vec![Location::local("/fx/docs")],
+    );
+    assert_eq!(
+        open_children(&browser),
+        OPEN_PATH
+            .iter()
+            .map(|path| Location::local(*path))
+            .collect::<Vec<_>>(),
+        "the selected child stays open through the reload"
+    );
+}
