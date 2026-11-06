@@ -13,6 +13,7 @@ use crate::adapters::volume::{
     NameProfile, NameRules, Reserved, Strictness, Strip, family, gvfs_bridge_profile, gvfs_profile,
     learn_mount_capability, mount_capabilities,
 };
+use crate::test_support::PrivateContext;
 
 fn profile_of(profiles: &Profiles, folder: &Path) -> Result<MountProfile, Box<dyn Error>> {
     let folder = open_local_parent_directory(folder)?;
@@ -302,7 +303,7 @@ fn a_mount_learned_again_keeps_what_was_learned_of_it_meanwhile() -> Result<(), 
 
 #[test]
 fn a_gvfs_location_is_numbered_within_the_limit_of_its_scheme() {
-    use gtk::{gio, glib};
+    use gtk::gio;
     for (uri, scheme) in [
         ("mtp://Google_Pixel_8/Internal%20storage/DCIM", "mtp"),
         ("smb://nas.local/media/films", "smb"),
@@ -310,7 +311,7 @@ fn a_gvfs_location_is_numbered_within_the_limit_of_its_scheme() {
     ] {
         let folder = gio::File::for_uri(uri);
         assert_eq!(
-            glib::MainContext::new().block_on(folder_name_limit(&folder)),
+            PrivateContext::new().block_on(folder_name_limit(&folder)),
             gvfs_profile(scheme).limit,
             "{uri}"
         );

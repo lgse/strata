@@ -415,7 +415,7 @@ pub(crate) fn magick(arguments: &[String], output: &Path) -> Result<(), String> 
     let deadline = Instant::now() + FFMPEG_TIMEOUT;
     loop {
         match child.try_wait().map_err(|error| error.to_string())? {
-            Some(status) if status.success() => return Ok(()),
+            Some(status) if status.success() => return crate::isobmff::check_brand(output),
             Some(status) => {
                 let mut errors = String::new();
                 if let Some(mut stderr) = child.stderr.take() {

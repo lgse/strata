@@ -15,7 +15,7 @@ use super::{
         detach_pane_models, install_pane_surface,
     },
 };
-use crate::{app::BrowserColumnSnapshot, model::SortKey, ui::preferences::PreferenceManager};
+use crate::{app::BrowserColumnSnapshot, ui::preferences::PreferenceManager};
 
 impl ModeViews {
     pub fn cancel_pending_restore(&mut self) {
@@ -31,6 +31,7 @@ impl ModeViews {
         self.cancel_rename();
         self.cancel_pending_restore();
         self.mode = mode;
+        self.sync_type_grouping();
         match mode {
             BrowserMode::Columns => {}
             BrowserMode::Icons | BrowserMode::List => self.prepare_pane(mode),
@@ -85,23 +86,11 @@ impl ModeViews {
         }
     }
 
-    pub(super) fn grouping_for_snapshot(
-        &self,
-        depth: usize,
-        snapshot: &BrowserColumnSnapshot,
-    ) -> bool {
-        if snapshot.location.is_recent_root() {
-            return false;
-        }
-        // GTK 4.22 cannot safely section interleaved camera batches. Device order
-        // must also remain ungrouped after completion rather than reshuffling rows.
-        let device_order = self
-            .browser
-            .column_preferences(depth)
-            .is_some_and(|preferences| preferences.sort_key == SortKey::DeviceOrder);
-        let unsettled_camera =
-            snapshot.location.is_camera_photo_root() && (snapshot.loading || device_order);
-        self.group_by_type && !unsettled_camera
+    /// The browser decides which listings show the groups, so its automatic
+    /// cursor lands on the first row this pane shows.
+    fn sync_type_grouping(&self) {
+        self.browser
+            .set_type_grouping(self.group_by_type && self.mode.supports_type_grouping());
     }
 
     /// The List pane already shows this folder with its grouping and sort.
@@ -114,7 +103,7 @@ impl ModeViews {
         if !pane.shows(depth, &snapshot.location) {
             return false;
         }
-        if pane.group_by_type != self.grouping_for_snapshot(depth, snapshot) {
+        if pane.group_by_type != self.browser.shows_type_groups(depth) {
             return false;
         }
         pane.sorting.as_ref().map(|sorting| sorting.get())
@@ -233,7 +222,7 @@ impl ModeViews {
             snapshot.location.display_name(),
             &self.list_click_activation,
         );
-        let mut pane = build_list_pane(&inputs, self.grouping_for_snapshot(depth, &snapshot));
+        let mut pane = build_list_pane(&inputs, self.browser.shows_type_groups(depth));
         install_pane_surface(&pane, &self.browser, &snapshot.location.display_name());
         pane.folder_context_trigger = self.install_context_menu(&pane);
         self.list_root.append(&pane.shell);
@@ -248,6 +237,7 @@ impl ModeViews {
         }
         self.cancel_rename();
         self.group_by_type = enabled;
+        self.sync_type_grouping();
         if self.mode.supports_type_grouping() {
             self.rebuild_list();
         }

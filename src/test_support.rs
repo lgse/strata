@@ -4,8 +4,11 @@
 
 pub(crate) mod operations;
 pub(crate) mod parked;
+mod private_context;
 mod tests;
 pub(crate) mod widgets;
+
+pub(crate) use private_context::PrivateContext;
 
 use std::{
     io::Write,
@@ -90,16 +93,27 @@ fn settle(context: &glib::MainContext) {
 }
 
 fn next_source_id() -> u32 {
+    next_source_id_in(&glib::MainContext::default())
+}
+
+/// Source ids are numbered per context, so every source still attached to `context` has an id
+/// below the one this returns.
+fn next_source_id_in(context: &glib::MainContext) -> u32 {
     let probe = glib::idle_source_new(None, glib::Priority::LOW, || glib::ControlFlow::Break);
-    let id = probe.attach(Some(&glib::MainContext::default())).as_raw();
+    let id = probe.attach(Some(context)).as_raw();
     probe.destroy();
     id
 }
 
-#[expect(
-    unsafe_code,
-    reason = "glib-rs neither lists a context's sources nor tells its tasks apart"
-)]
+#[expect(unsafe_code, reason = "glib-rs does not list a context's sources")]
+fn source_at(context: &glib::MainContext, id: u32) -> Option<glib::Source> {
+    let id = std::num::NonZeroU32::new(id)?;
+    // SAFETY: the id is not 0, the only value `SourceId` forbids.
+    let id = unsafe { glib::translate::from_glib(id.get()) };
+    context.find_source_by_id(&id)
+}
+
+#[expect(unsafe_code, reason = "glib-rs does not tell a context's tasks apart")]
 fn task_at(context: &glib::MainContext, id: u32) -> Option<glib::Source> {
     static TASK_FUNCS: OnceLock<usize> = OnceLock::new();
     let funcs = |source: &glib::Source| {
@@ -107,16 +121,12 @@ fn task_at(context: &glib::MainContext, id: u32) -> Option<glib::Source> {
         unsafe { (*source.as_ptr()).source_funcs as usize }
     };
     let tasks = *TASK_FUNCS.get_or_init(|| {
-        let task = glib::MainContext::new().spawn(std::future::pending::<()>());
+        let task = PrivateContext::new().spawn(std::future::pending::<()>());
         let tasks = funcs(task.source());
         task.abort();
         tasks
     });
-    // SAFETY: `id` is at least the id of a source GLib attached, so it is not 0.
-    let id = unsafe { glib::translate::from_glib(id) };
-    context
-        .find_source_by_id(&id)
-        .filter(|source| funcs(source) == tasks)
+    source_at(context, id).filter(|source| funcs(source) == tasks)
 }
 
 #[derive(Clone, Default)]
@@ -230,10 +240,21 @@ pub(crate) fn create_empty_file(path: &std::path::Path) -> std::io::Result<()> {
 
 pub(crate) fn present_window(window: &gtk::Window) {
     use gtk::prelude::*;
-    use std::{cell::Cell, rc::Rc};
 
     window.present();
     let clock = window.frame_clock().expect("presented window frame clock");
+    assert!(
+        wait_for_paint(&clock),
+        "presented window did not paint its first frame"
+    );
+}
+
+/// Requests a frame from `clock` and runs the main context until it paints,
+/// giving up after ten seconds. Returns whether the frame painted.
+pub(crate) fn wait_for_paint(clock: &gtk::gdk::FrameClock) -> bool {
+    use gtk::prelude::*;
+    use std::{cell::Cell, rc::Rc};
+
     let painted = Rc::new(Cell::new(false));
     let ready = painted.clone();
     let handler = clock.connect_after_paint(move |_| ready.set(true));
@@ -251,10 +272,7 @@ pub(crate) fn present_window(window: &gtk::Window) {
     if !expired.get() {
         timeout.remove();
     }
-    assert!(
-        painted.get(),
-        "presented window did not paint its first frame"
-    );
+    painted.get()
 }
 
 /// GTK initialization is thread-affine; each UI test gets a process and disposable preferences.

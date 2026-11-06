@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 
+use super::collisions::{covered_by_answer, unreplaceable_explanation};
 use super::conflict_dialog::{ConflictActions, ConflictChoice, ConflictPrompt};
 use super::{Preparing, folder_row, found, preparing_row};
+use crate::adapters::TransferTargetCollision;
 use crate::adapters::probes::{self, Presence};
 use crate::app::Browser;
 use crate::model::Location;
@@ -53,10 +55,35 @@ impl ReplayKey {
     }
 }
 
+#[derive(Clone)]
+struct ReplayCollision {
+    record: MoveRecord,
+    kinds: TransferTargetCollision,
+}
+
+impl ReplayCollision {
+    /// An item whose kind is unknown is taken to match, so only a proven file meeting a
+    /// folder, or a folder meeting a file, loses Replace.
+    fn between(record: MoveRecord, item: &Presence, existing_folder: bool) -> Self {
+        let item_folder = item.folder().unwrap_or(existing_folder);
+        Self {
+            record,
+            kinds: TransferTargetCollision::between(item_folder, existing_folder),
+        }
+    }
+
+    fn replacing(self) -> UndoMoveItem {
+        UndoMoveItem {
+            record: self.record,
+            conflict: TransferConflict::ReplaceExisting,
+        }
+    }
+}
+
 /// Records sorted by what the probe found at their two ends.
 struct ReplaySort {
     accepted: Vec<UndoMoveItem>,
-    collisions: Vec<MoveRecord>,
+    collisions: Vec<ReplayCollision>,
     missing: usize,
 }
 
@@ -69,7 +96,9 @@ fn sort_replay_records(records: Vec<MoveRecord>, presence: &[Presence]) -> Repla
     for (record, ends) in records.into_iter().zip(presence.as_chunks::<2>().0) {
         match ends {
             [Presence::Absent, _] => sorted.missing += 1,
-            [_, Presence::Present] => sorted.collisions.push(record),
+            [item, Presence::Present { folder }] => sorted
+                .collisions
+                .push(ReplayCollision::between(record, item, *folder)),
             _ => sorted.accepted.push(UndoMoveItem {
                 record,
                 conflict: TransferConflict::FailIfExists,
@@ -79,11 +108,14 @@ fn sort_replay_records(records: Vec<MoveRecord>, presence: &[Presence]) -> Repla
     sorted
 }
 
-fn replay_conflict_explanation(redo: bool, destination: &Location) -> String {
+fn replay_conflict_explanation(collision: &ReplayCollision, redo: bool) -> String {
+    let destination = replay_destination(&collision.record, redo);
     let name = destination.display_name();
     let parent = destination.parent().unwrap_or_else(|| destination.clone());
     let folder = compact_display_path(&parent);
-    if redo {
+    if !collision.kinds.replaceable {
+        unreplaceable_explanation(&name, &folder)
+    } else if redo {
         rust_i18n::t!(
             "An item named “%{name}” already exists in %{folder}. Redoing the move will overwrite its contents.",
             name = name,
@@ -100,24 +132,40 @@ fn replay_conflict_explanation(redo: bool, destination: &Location) -> String {
     }
 }
 
+/// Skip, and Apply to All beside it, only while an answer can still move something: an item
+/// already accepted, or a later conflict that Replace can resolve. Otherwise only Cancel is left.
+fn replay_prompt_visibility(remaining: &[ReplayCollision], accepted: usize) -> (bool, bool) {
+    let applicable = accepted > 0 || remaining.iter().any(|later| later.kinds.replaceable);
+    let (apply_to_all, skip) = ConflictPrompt::visibility(remaining.len(), accepted);
+    (apply_to_all && applicable, skip && applicable)
+}
+
+fn replay_destination(record: &MoveRecord, redo: bool) -> &Location {
+    if redo {
+        &record.current
+    } else {
+        &record.original
+    }
+}
+
 fn apply_replay_choice(
-    record: &MoveRecord,
+    current: &ReplayCollision,
     (choice, apply_to_all): (ConflictChoice, bool),
     accepted: &mut Vec<UndoMoveItem>,
-    remaining: &mut Vec<MoveRecord>,
+    remaining: &mut Vec<ReplayCollision>,
     group: &mut Option<GroupReplay>,
 ) {
     match choice {
         ConflictChoice::Replace => {
-            accepted.push(UndoMoveItem {
-                record: record.clone(),
-                conflict: TransferConflict::ReplaceExisting,
-            });
+            accepted.push(current.clone().replacing());
             if apply_to_all {
-                accepted.extend(remaining.drain(..).map(|record| UndoMoveItem {
-                    record,
-                    conflict: TransferConflict::ReplaceExisting,
-                }));
+                let (covered, rest) = covered_by_answer(
+                    std::mem::take(remaining),
+                    TransferConflict::ReplaceExisting,
+                    |collision| collision.kinds,
+                );
+                accepted.extend(covered.into_iter().map(ReplayCollision::replacing));
+                *remaining = rest;
             }
         }
         ConflictChoice::Merge | ConflictChoice::KeepBoth => {
@@ -331,9 +379,11 @@ impl ViewState {
         group: Option<GroupReplay>,
     ) {
         let generation = key.generation;
+        // Every conflict was skipped, so nothing moves: the entry stays, as after Cancel.
         if accepted.is_empty() {
-            key.discard(&self.browser);
-        } else if let Some(state) = group {
+            return;
+        }
+        if let Some(state) = group {
             if state.had_missing && !state.skipped {
                 self.browser
                     .undo_group_retaining_folder(generation, accepted);
@@ -350,7 +400,7 @@ impl ViewState {
     fn resolve_replay_collisions(
         self: &Rc<Self>,
         key: ReplayKey,
-        mut collisions: Vec<MoveRecord>,
+        mut collisions: Vec<ReplayCollision>,
         accepted: Vec<UndoMoveItem>,
         group: Option<GroupReplay>,
     ) {
@@ -358,16 +408,11 @@ impl ViewState {
             self.dispatch_replay(key, accepted, group);
             return;
         }
-        let record = collisions.remove(0);
-        let destination = if key.redo {
-            &record.current
-        } else {
-            &record.original
-        };
-        let name = destination.display_name();
-        let explanation = replay_conflict_explanation(key.redo, destination);
+        let collision = collisions.remove(0);
+        let name = replay_destination(&collision.record, key.redo).display_name();
+        let explanation = replay_conflict_explanation(&collision, key.redo);
         let (apply_to_all_visible, skip_visible) =
-            ConflictPrompt::visibility(collisions.len(), accepted.len());
+            replay_prompt_visibility(&collisions, accepted.len());
         let state = self.clone();
         self.confirm_replace_conflict(
             ConflictPrompt {
@@ -376,7 +421,7 @@ impl ViewState {
                 apply_to_all_visible,
                 skip_visible,
                 actions: ConflictActions {
-                    replace: true,
+                    replace: collision.kinds.replaceable,
                     ..ConflictActions::default()
                 },
             },
@@ -385,7 +430,7 @@ impl ViewState {
                 let mut remaining = collisions.clone();
                 let mut group = group;
                 apply_replay_choice(
-                    &record,
+                    &collision,
                     (choice, apply_to_all),
                     &mut accepted,
                     &mut remaining,

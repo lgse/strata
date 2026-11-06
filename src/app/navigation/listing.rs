@@ -250,9 +250,14 @@ impl ColumnState {
         self.restore_pending_selection();
         self.resolve_preferred_on_load();
         self.resolve_open_child_on_load();
-        if self.select_first_on_load && !self.entries.is_empty() {
-            self.select_first_visible_entry();
+        if self.picks_first_row_from_batches() {
+            self.select_first_displayed_entry();
         }
+    }
+
+    /// A grouped listing's first row is known only once every batch is in.
+    fn picks_first_row_from_batches(&self) -> bool {
+        self.select_first_on_load && !self.entries.is_empty() && !self.shows_type_groups()
     }
 
     /// Nothing selected or revealed the cursor in a listing that has entries.
@@ -281,14 +286,9 @@ impl ColumnState {
         self.load_cursor = Some(location);
     }
 
-    pub(super) fn select_first_visible_entry(&mut self) {
+    pub(super) fn select_first_displayed_entry(&mut self) {
         self.pending_selection.clear();
-        let show_hidden = self.preferences.show_hidden;
-        if let Some(position) = self
-            .entries
-            .iter()
-            .position(|entry| show_hidden || !entry.is_hidden)
-        {
+        if let Some(position) = self.first_displayed_entry() {
             self.select_loaded_entry(position);
         }
     }
@@ -336,14 +336,15 @@ impl ColumnState {
         place_committed_cursor(self, position);
     }
 
-    /// Fallbacks that need the complete listing: the first visible entry for a preferred
-    /// entry that never arrived, and a cursor-only neighbour for a reloaded cursor whose
-    /// entry is gone. Returns whether the cursor moved.
+    /// Picks that need the complete listing: the first row shown for a grouped first
+    /// visit or a preferred entry that never arrived, and a cursor-only neighbour for a
+    /// reloaded cursor whose entry is gone. Returns whether the cursor moved.
     pub(super) fn complete_load_selection(&mut self) -> bool {
         let before = self.selected;
         self.open_child_on_load = None;
-        if self.preferred_on_load.take().is_some() && self.awaits_fallback_cursor() {
-            self.select_first_visible_entry();
+        let wants_first_row = self.preferred_on_load.take().is_some() || self.select_first_on_load;
+        if wants_first_row && self.awaits_fallback_cursor() {
+            self.select_first_displayed_entry();
         }
         if let Some(previous) = self.reload_cursor.take()
             && self.awaits_fallback_cursor()

@@ -33,6 +33,7 @@ mod monitored;
 mod ordering;
 mod preferences;
 mod selection;
+mod type_groups;
 mod visual;
 
 use cursor::{place_committed_cursor, place_cursor, visible_positions};
@@ -43,6 +44,7 @@ use monitored::insert_monitored_entry;
 pub(crate) use ordering::{compare_display_names, sort_entries};
 use ordering::{compare_entries, merge_entries};
 use selection::SelectedLocations;
+pub(crate) use type_groups::compare_type_groups;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LoadState {
@@ -120,6 +122,7 @@ pub struct ColumnState {
     reload_cursor: Option<usize>,
     // Auto-selection must not redirect paste into the first folder.
     load_cursor: Option<Location>,
+    type_grouping: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -166,6 +169,7 @@ pub struct NavigationState {
     selectionless_removals: HashSet<Location>,
     preserve_fill_on_removal: bool,
     visual: Option<VisualRange>,
+    type_grouping: bool,
 }
 
 /// A walked range over one pane in displayed order. The fill is recomputed from

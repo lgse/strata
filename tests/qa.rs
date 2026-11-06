@@ -29,6 +29,9 @@ mod fs_helpers;
 #[path = "qa/input_method.rs"]
 mod input_method;
 
+#[path = "qa/isobmff.rs"]
+mod isobmff;
+
 #[path = "qa/keyboard.rs"]
 mod keyboard;
 

@@ -2,6 +2,7 @@
 
 use std::collections::VecDeque;
 
+use super::first_visit::{FirstVisit, is_user_input};
 use super::*;
 use crate::ui::keys::{self, SHORTCUT_MODIFIERS, bindings::FOCUS_NEXT};
 
@@ -108,6 +109,11 @@ pub(super) struct PaneNavigation {
     applied: Rc<Cell<bool>>,
     input: Option<(glib::WeakRef<gtk::Widget>, gtk::EventControllerLegacy)>,
     leaving_with_focus: bool,
+    /// A visit with no saved position to restore, until the pane's load finishes.
+    first_visit: Option<FirstVisit>,
+    /// A navigation is building its pane; rebuilds for relocations, truncations and
+    /// mode switches are not first visits.
+    arriving: bool,
 }
 
 impl PaneNavigation {
@@ -119,6 +125,20 @@ impl PaneNavigation {
         self.restoring.set(false);
         self.pending = None;
         self.applying = None;
+        self.first_visit = None;
+    }
+
+    pub(super) fn take_untouched_first_visit(&mut self, depth: usize) -> bool {
+        FirstVisit::take_untouched(&mut self.first_visit, depth)
+    }
+
+    /// Marks the pane rebuilds until `arrived` as a navigation's.
+    pub(super) fn arrive(&mut self) {
+        self.arriving = true;
+    }
+
+    pub(super) fn arrived(&mut self) {
+        self.arriving = false;
     }
 
     pub(super) fn is_settling(&self) -> bool {
@@ -169,6 +189,8 @@ impl PaneNavigation {
         mode: BrowserMode,
         focus: FocusOwner,
     ) {
+        // A reload restores its own viewport, never the first row.
+        self.first_visit = None;
         // During a burst of reloads the first capture wins.
         if self.is_restoring() {
             if self.pending.is_some() {
@@ -221,6 +243,8 @@ impl PaneNavigation {
         if self.pending.is_some() {
             self.arm_input_cancel(pane, false);
         }
+        self.first_visit = (self.arriving && self.pending.is_none())
+            .then(|| FirstVisit::watch(&pane.shell, pane.depth));
     }
 
     /// The pane's own filter dismissed the field that a pending reload would hand focus
@@ -261,17 +285,11 @@ impl PaneNavigation {
         let input = gtk::EventControllerLegacy::new();
         input.set_propagation_phase(gtk::PropagationPhase::Capture);
         input.connect_event(move |input, event| {
-            let cancels = match event.event_type() {
-                gtk::gdk::EventType::ButtonPress
-                | gtk::gdk::EventType::Scroll
-                | gtk::gdk::EventType::TouchBegin => true,
-                gtk::gdk::EventType::KeyPress => {
-                    applied.get()
-                        || moves_focus(input, event)
-                        || !focus_within(input, field.as_ref())
-                }
-                _ => false,
-            };
+            let cancels = is_user_input(event)
+                && (event.event_type() != gtk::gdk::EventType::KeyPress
+                    || applied.get()
+                    || moves_focus(input, event)
+                    || !focus_within(input, field.as_ref()));
             if cancels {
                 restoring.set(false);
             }

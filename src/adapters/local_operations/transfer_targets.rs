@@ -23,7 +23,7 @@ use super::{
 use crate::{
     adapters::gio_file_for_location,
     model::Location,
-    services::{NameMode, ShownName},
+    services::{NameMode, ShownName, TransferConflict},
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -38,6 +38,23 @@ pub(crate) struct Collision {
     pub mergeable: bool,
     /// Both items are folders or neither is: a file and a folder never replace one another.
     pub replaceable: bool,
+}
+
+impl Collision {
+    pub(crate) fn between(incoming_folder: bool, existing_folder: bool) -> Self {
+        Self {
+            mergeable: incoming_folder && existing_folder,
+            replaceable: incoming_folder == existing_folder,
+        }
+    }
+
+    pub(crate) fn allows(self, conflict: TransferConflict) -> bool {
+        match conflict {
+            TransferConflict::Merge => self.mergeable,
+            TransferConflict::ReplaceExisting => self.replaceable,
+            TransferConflict::KeepBoth | TransferConflict::FailIfExists => true,
+        }
+    }
 }
 
 /// Nothing collides with a link the paste leaves out, as the destination is known not to hold
@@ -137,10 +154,7 @@ pub(crate) async fn transfer_targets(
         .zip(folders)
         .zip(existing)
         .map(|((target, folder), existing)| TransferTarget {
-            collision: existing.map(|existing_folder| Collision {
-                mergeable: folder && existing_folder,
-                replaceable: folder == existing_folder,
-            }),
+            collision: existing.map(|existing_folder| Collision::between(folder, existing_folder)),
             ..target
         })
         .collect())

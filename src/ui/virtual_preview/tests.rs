@@ -18,24 +18,80 @@ use crate::{
         DocumentLayout, DocumentSpan, DocumentSpanStyle, DocumentTableCellLayout, DocumentUnit,
         DocumentUnitKind,
     },
-    test_support::gtk_test,
+    test_support::{gtk_test, wait_for_paint},
 };
+
+fn paint_frame(list: &gtk::ListView) {
+    let context = gtk::glib::MainContext::default();
+    while context.pending() {
+        context.iteration(false);
+    }
+    let clock = list.frame_clock().expect("mapped list frame clock");
+    assert!(
+        wait_for_paint(&clock),
+        "the document list did not paint a frame"
+    );
+}
+
+fn mapped_rows(list: &gtk::ListView, state: &VirtualPreviewState) -> Vec<(usize, i32, i32, bool)> {
+    let mut rows = state
+        .bound
+        .borrow()
+        .iter()
+        .filter_map(|(index, bound)| {
+            let bounds = bound.mapped_root()?.compute_bounds(list)?;
+            Some((
+                *index,
+                bounds.y().round() as i32,
+                bounds.height().round() as i32,
+                bound.materialized,
+            ))
+        })
+        .collect::<Vec<_>>();
+    rows.sort_unstable_by_key(|(index, ..)| *index);
+    rows
+}
+
+/// Paints frames until rows stop moving. A row is first painted at GTK's
+/// estimated text height and grows once its text layout is validated, which a
+/// loaded machine defers by frames; sampling before then reads a transient layout.
+/// Each frame first runs all ready work, so two equal painted frames are settled.
+fn settle_layout(list: &gtk::ListView, state: &VirtualPreviewState, scroll: &gtk::ScrolledWindow) {
+    let layout = || {
+        let adjustment = scroll.vadjustment();
+        (
+            mapped_rows(list, state),
+            adjustment.value().to_bits(),
+            adjustment.upper().to_bits(),
+        )
+    };
+    let mut previous = None;
+    for _ in 0..600 {
+        paint_frame(list);
+        let current = layout();
+        if previous.as_ref() == Some(&current) {
+            return;
+        }
+        previous = Some(current);
+    }
+    panic!("the document layout did not settle: {previous:?}");
+}
+
+fn paint_until(list: &gtk::ListView, frames: usize, reached: impl Fn() -> bool) -> bool {
+    for _ in 0..frames {
+        if reached() {
+            return true;
+        }
+        paint_frame(list);
+    }
+    reached()
+}
 
 #[test]
 fn smooth_content_scrolling_keeps_thumb_and_hit_testing_in_document_order() {
     gtk_test(
         "ui::virtual_preview::tests::smooth_content_scrolling_keeps_thumb_and_hit_testing_in_document_order",
         || {
-            let context = gtk::glib::MainContext::default();
-            let advance_frames = |duration| {
-                let deadline = std::time::Instant::now() + duration;
-                while std::time::Instant::now() < deadline {
-                    while context.pending() {
-                        context.iteration(false);
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                }
-            };
             let _themes = crate::ui::theme::ThemeManager::shared();
             let content = (0..400)
                 .map(|index| {
@@ -78,12 +134,13 @@ fn smooth_content_scrolling_keeps_thumb_and_hit_testing_in_document_order() {
                     .child(&root)
                     .build();
                 window.present();
-                advance_frames(std::time::Duration::from_millis(300));
                 let list = state.list.upgrade().expect("document list");
                 let scroll = list
                     .ancestor(gtk::ScrolledWindow::static_type())
                     .and_downcast::<gtk::ScrolledWindow>()
                     .expect("document scroller");
+                let settle = || settle_layout(&list, &state, &scroll);
+                settle();
                 let controllers = scroll
                     .observe_controllers()
                     .iter::<gtk::glib::Object>()
@@ -146,15 +203,16 @@ fn smooth_content_scrolling_keeps_thumb_and_hit_testing_in_document_order() {
                 };
                 phase("scroll-begin");
                 scroll_by(0.25);
-                advance_frames(std::time::Duration::from_millis(300));
+                settle();
                 let before_momentum = scroll.vadjustment().value();
                 capture.emit_by_name::<()>("decelerate", &[&0.0_f64, &0.35_f64]);
                 phase("scroll-end");
-                advance_frames(std::time::Duration::from_millis(400));
+                let momentum_advanced = || scroll.vadjustment().value() > before_momentum;
                 assert!(
-                    scroll.vadjustment().value() > before_momentum,
+                    paint_until(&list, 120, momentum_advanced),
                     "native momentum must still advance a settled viewport in mode {mode}"
                 );
+                settle();
                 phase("scroll-begin");
                 let mut previous_progress = thumb_progress();
                 let mut previous = point().expect("initial document text");
@@ -164,7 +222,7 @@ fn smooth_content_scrolling_keeps_thumb_and_hit_testing_in_document_order() {
                     for _ in 0..if step % 40 == 0 { 16 } else { 1 } {
                         scroll_by(0.75);
                     }
-                    advance_frames(std::time::Duration::from_millis(20));
+                    settle();
                     let progress = thumb_progress();
                     assert!(
                         progress + 1e-6 >= previous_progress,
@@ -212,7 +270,7 @@ fn smooth_content_scrolling_keeps_thumb_and_hit_testing_in_document_order() {
                 capture.emit_by_name::<()>("decelerate", &[&0.0_f64, &0.35_f64]);
                 phase("scroll-end");
                 for _ in 0..60 {
-                    advance_frames(std::time::Duration::from_millis(20));
+                    paint_frame(&list);
                     let progress = thumb_progress();
                     assert!(
                         progress + 1e-6 >= previous_progress,
@@ -220,7 +278,7 @@ fn smooth_content_scrolling_keeps_thumb_and_hit_testing_in_document_order() {
                     );
                     previous_progress = progress;
                 }
-                advance_frames(std::time::Duration::from_millis(300));
+                settle();
                 assert!(
                     samples > 100,
                     "scrolling must exercise actual document text"
@@ -230,7 +288,10 @@ fn smooth_content_scrolling_keeps_thumb_and_hit_testing_in_document_order() {
                     "smooth input must advance document text"
                 );
                 let stopped = point();
-                advance_frames(std::time::Duration::from_millis(300));
+                for _ in 0..20 {
+                    paint_frame(&list);
+                }
+                settle();
                 assert_eq!(
                     point(),
                     stopped,
@@ -240,7 +301,7 @@ fn smooth_content_scrolling_keeps_thumb_and_hit_testing_in_document_order() {
                 previous_progress = thumb_progress();
                 for _ in 0..120 {
                     scroll_by(-0.75);
-                    advance_frames(std::time::Duration::from_millis(20));
+                    paint_frame(&list);
                     let progress = thumb_progress();
                     assert!(
                         progress <= previous_progress + 1e-6,

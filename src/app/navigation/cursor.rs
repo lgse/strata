@@ -13,11 +13,11 @@ impl ColumnState {
         self.preferences.show_hidden || !entry.is_hidden
     }
 
-    fn first_visible(&self) -> Option<usize> {
+    pub(super) fn first_visible(&self) -> Option<usize> {
         self.entries.iter().position(|entry| self.shows(entry))
     }
 
-    fn last_visible(&self) -> Option<usize> {
+    pub(super) fn last_visible(&self) -> Option<usize> {
         self.entries.iter().rposition(|entry| self.shows(entry))
     }
 
@@ -32,8 +32,8 @@ impl ColumnState {
     /// visible entry lies that way.
     fn stepped_cursor(&self, direction: i32) -> Option<usize> {
         match (self.selected, direction.cmp(&0)) {
-            (None, Ordering::Less) => self.last_visible(),
-            (None, _) => self.first_visible(),
+            (None, Ordering::Less) => self.last_displayed_entry(),
+            (None, _) => self.first_displayed_entry(),
             (Some(current), Ordering::Less) => Some(self.step_back(current)),
             (Some(current), Ordering::Greater) => Some(self.step_forward(current)),
             (Some(current), Ordering::Equal) => match self.shows(&self.entries[current]) {
@@ -56,6 +56,16 @@ impl ColumnState {
             .and_then(|after| after.iter().position(|entry| self.shows(entry)))
             .map(|offset| current + 1 + offset)
             .unwrap_or_else(|| self.stay_visible_or(current, || self.last_visible()))
+    }
+
+    /// Where a range starts: the cursor, or the end shown that `direction` moves from.
+    fn range_origin(&self, direction: i32) -> Option<usize> {
+        self.first_visible()?;
+        match self.selected {
+            Some(current) => Some(current),
+            None if direction < 0 => self.last_displayed_entry(),
+            None => self.first_displayed_entry(),
+        }
     }
 
     /// A visible cursor stays put; a hidden one lands on `fallback`.
@@ -81,14 +91,7 @@ impl NavigationState {
         let show_hidden = column.preferences.show_hidden;
         let is_visible = |entry: &FileEntry| show_hidden || !entry.is_hidden;
 
-        let first_visible = column.entries.iter().position(is_visible)?;
-        let last_visible = column.entries.iter().rposition(is_visible)?;
-
-        let current = column.selected.unwrap_or(if direction < 0 {
-            last_visible
-        } else {
-            first_visible
-        });
+        let current = column.range_origin(direction)?;
 
         // Escape clears filled selection without dropping the cursor or leftover
         // range anchor. Start a new range from that cursor instead of stepping.

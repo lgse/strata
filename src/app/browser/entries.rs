@@ -53,6 +53,16 @@ impl Browser {
         self.state.borrow().column_preferences(depth)
     }
 
+    /// The presentation groups listings by file type, which orders the rows it shows
+    /// and so where a load's automatic cursor lands.
+    pub fn set_type_grouping(&self, grouped: bool) {
+        self.state.borrow_mut().set_type_grouping(grouped);
+    }
+
+    pub fn shows_type_groups(&self, depth: usize) -> bool {
+        self.state.borrow().shows_type_groups(depth)
+    }
+
     pub(crate) fn column_request_id(&self, depth: usize) -> Option<RequestId> {
         self.state.borrow().request_id_for_depth(depth)
     }

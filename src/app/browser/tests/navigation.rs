@@ -730,6 +730,8 @@ struct FolderTree {
     /// While set, listings wait for `release` instead of answering at once.
     held: Cell<bool>,
     pending: RefCell<Vec<(DirectoryRequest, DirectoryEmit)>>,
+    hold_validation: Cell<bool>,
+    validations: RefCell<Vec<Validation>>,
 }
 
 impl FolderTree {
@@ -766,6 +768,15 @@ impl FolderTree {
         }
     }
 
+    fn answer_validation(&self, location: &Location) {
+        let pending = self.validations.take();
+        let (_, emit) = pending
+            .into_iter()
+            .find(|(validated, _)| validated == location)
+            .expect("a pending validation");
+        emit(Ok(()));
+    }
+
     fn answer(&self, request: &DirectoryRequest, emit: &DirectoryEmit) {
         let entries = self
             .listings
@@ -798,6 +809,19 @@ fn tree_location(path: &str) -> Location {
 impl FileSource for FolderTree {
     fn validate_location(&self, _: &Location) -> Result<(), LocationValidationError> {
         Ok(())
+    }
+
+    fn validate_location_async(
+        &self,
+        location: Location,
+        emit: Rc<dyn Fn(Result<(), LocationValidationError>)>,
+    ) -> LoadHandle {
+        if self.hold_validation.get() {
+            self.validations.borrow_mut().push((location, emit));
+        } else {
+            emit(Ok(()));
+        }
+        LoadHandle::new(|| {})
     }
 
     fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
@@ -1151,3 +1175,5 @@ fn a_remote_reload_announces_the_neighbour_cursor_of_an_inactive_column() {
         "the child column's cursor moves to z and is published"
     );
 }
+
+mod returning_columns;

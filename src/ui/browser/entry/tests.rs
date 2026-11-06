@@ -2,6 +2,7 @@
 
 use super::{catppuccin, icon_for_name};
 use crate::assets::icons;
+use crate::test_support::PrivateContext;
 
 #[test]
 fn file_categories_and_case_insensitive_extensions() {
@@ -269,7 +270,7 @@ fn aggregate_directory_summary_does_not_recurse_into_directory_symlinks() {
     let symlink = fixture.path().join("0dirlink");
     std::os::unix::fs::symlink(&real_dir, &symlink).expect("symlink");
 
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     let dir_link_entry = context
         .block_on(crate::adapters::query_file_entry(
             crate::model::Location::local(&symlink),

@@ -16,6 +16,7 @@ use crate::{
     fixture::{OrderedMap, expand_tree, fixed_fixture_name, manifest},
     fs_check::{FsState, FsStep, contained},
     fs_helpers::{glob_matches, pdf_image, raw_photo},
+    isobmff::check_brand,
     peer_steps::Relaunch,
     peers,
     process::wait_for_exit,
@@ -677,6 +678,74 @@ pub(crate) fn glob_and_zipcrypto_helpers_match_names_and_write_archives() {
                 .expect("readable names"),
             ["some.txt"]
         );
+    }
+}
+
+/// An `ftyp` box of the major brand, a zero minor version, and the compatible brands.
+fn ftyp_box(size_field: Option<u32>, largesize: bool, brands: &[&[u8; 4]]) -> Vec<u8> {
+    let mut payload = brands[0].to_vec();
+    payload.extend([0; 4]);
+    payload.extend(brands[1..].iter().flat_map(|brand| brand.iter()));
+    let header = if largesize { 16 } else { 8 };
+    let size = header + payload.len();
+    let mut bytes = size_field
+        .unwrap_or(if largesize { 1 } else { size as u32 })
+        .to_be_bytes()
+        .to_vec();
+    bytes.extend(b"ftyp");
+    if largesize {
+        bytes.extend((size as u64).to_be_bytes());
+    }
+    bytes.extend(payload);
+    bytes
+}
+
+pub(crate) fn a_heif_family_output_must_carry_its_iso_bmff_brand() {
+    let png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+    let avif = ftyp_box(None, false, &[b"avif", b"avif", b"mif1", b"miaf"]);
+    let heic = ftyp_box(None, false, &[b"heic", b"mif1", b"heic"]);
+    let generic = ftyp_box(None, false, &[b"mif1", b"mif1", b"miaf"]);
+    let mut minor_only = ftyp_box(None, false, &[b"mif1", b"mif1"]);
+    minor_only[12..16].copy_from_slice(b"avif");
+    let directory = tempfile::tempdir().expect("a scratch directory");
+    for (name, bytes, accepted) in [
+        ("camera.avif", avif.clone(), true),
+        ("camera.AVIF", avif.clone(), true),
+        (
+            "sequence.avif",
+            ftyp_box(None, false, &[b"avis", b"avis", b"msf1"]),
+            true,
+        ),
+        (
+            "camera.avif",
+            ftyp_box(None, false, &[b"mif1", b"mif1", b"avif"]),
+            true,
+        ),
+        (
+            "camera.avif",
+            ftyp_box(None, true, &[b"mif1", b"avif"]),
+            true,
+        ),
+        (
+            "camera.heic",
+            ftyp_box(Some(0), false, &[b"heic", b"mif1"]),
+            true,
+        ),
+        ("camera.heic", heic.clone(), true),
+        ("camera.heif", heic, true),
+        ("camera.heif", generic.clone(), true),
+        ("camera.heic", generic, false),
+        ("camera.heic", avif.clone(), false),
+        ("camera.avif", minor_only, false),
+        ("camera.avif", ftyp_box(Some(64), false, &[b"avif"]), false),
+        ("camera.avif", avif[..10].to_vec(), false),
+        ("camera.avif", png.clone(), false),
+        ("camera.heic", png.clone(), false),
+        ("small.png", png, true),
+    ] {
+        let path = directory.path().join(name);
+        fs::write(&path, &bytes).expect("the fixture should be written");
+        assert_eq!(check_brand(&path).is_ok(), accepted, "{name}: {bytes:?}");
     }
 }
 
