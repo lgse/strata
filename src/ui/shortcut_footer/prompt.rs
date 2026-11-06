@@ -322,7 +322,10 @@ impl ShortcutFooter {
     }
 
     /// See [`crate::ui::browser::connect_path_separator`].
-    pub(in crate::ui) fn connect_prompt_path_separator(&self, descend: impl Fn() -> bool + 'static) {
+    pub(in crate::ui) fn connect_prompt_path_separator(
+        &self,
+        descend: impl Fn() -> bool + 'static,
+    ) {
         crate::ui::browser::connect_path_separator(&self.prompt.entry, descend);
     }
 

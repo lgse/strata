@@ -846,7 +846,10 @@ fn cursor_result(target: &Target) -> Option<FileEntry> {
 /// key, so a Zhuyin, Array30 or Boshiamy code that starts with it still composes.
 /// Only a lone `/` typed or pasted into the focused field counts: no file name
 /// holds one, while longer text holding it, such as a pasted path, is typed.
-pub(in crate::ui) fn connect_path_separator(entry: &gtk::Entry, descend: impl Fn() -> bool + 'static) {
+pub(in crate::ui) fn connect_path_separator(
+    entry: &gtk::Entry,
+    descend: impl Fn() -> bool + 'static,
+) {
     let Some(text) = entry.delegate() else {
         return;
     };

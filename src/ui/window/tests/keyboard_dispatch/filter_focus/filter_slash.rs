@@ -95,7 +95,10 @@ fn normal_filter_slash_rejects_files_and_cancels_on_edit_focus_loss_and_escape()
                 crate::test_support::commit_text(&entry, "/Projects");
                 pump(150);
                 assert_eq!(browser.navigation_generation(), generation, "{mode:?}");
-                assert!(entry.text().contains('/'), "{mode:?}: a pasted path is typed");
+                assert!(
+                    entry.text().contains('/'),
+                    "{mode:?}: a pasted path is typed"
+                );
                 assert!(fixture.view.filter_has_focus());
                 entry.set_text("doc");
                 type_slash(&fixture);
