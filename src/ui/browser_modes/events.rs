@@ -46,7 +46,9 @@ impl ModeViews {
             BrowserEvent::ColumnsRelocated { from_depth } => self.on_columns_relocated(*from_depth),
             BrowserEvent::ColumnAdded { depth, .. } => {
                 if self.browser.active_depth() == Some(*depth) {
+                    self.pane_navigation.borrow_mut().arrive();
                     self.rebuild_active_mode();
+                    self.pane_navigation.borrow_mut().arrived();
                 }
             }
             _ => return false,
@@ -296,7 +298,7 @@ impl ModeViews {
         let first_visit = self
             .pane_navigation
             .borrow_mut()
-            .take_untouched_first_visit();
+            .take_untouched_first_visit(depth);
         // After the rows are back, so focus parked on the pane surface counts.
         let restored = self.mode_pane(depth).and_then(|pane| {
             let allowed = self.restore_focus_allowed(pane, depth);

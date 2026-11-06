@@ -4,52 +4,86 @@
 
 use std::{cell::Cell, rc::Rc};
 
-use gtk::{glib, prelude::*};
+use gtk::{gdk, glib, prelude::*};
 
-/// Watches a pane opened with no saved position. Its load may still move focus to the
-/// first row shown, but only while no pointer, scroll, touch or key input reached the
-/// pane: a user who scrolled or moved keeps the view where they left it.
+/// Pointer, scroll, touch or key input: what a user does to move through a pane.
+pub(super) fn is_user_input(event: &gdk::Event) -> bool {
+    matches!(
+        event.event_type(),
+        gdk::EventType::ButtonPress
+            | gdk::EventType::Scroll
+            | gdk::EventType::TouchBegin
+            | gdk::EventType::KeyPress
+    )
+}
+
+/// Watches the pane a navigation opened with no saved position. Its load may still
+/// move focus to the first row shown, but only while no user input reached the pane:
+/// a user who scrolled or moved keeps the view where they left it.
 pub(super) struct FirstVisit {
-    untouched: Rc<Cell<bool>>,
-    shell: glib::WeakRef<gtk::Widget>,
-    input: gtk::EventControllerLegacy,
+    depth: usize,
+    untouched: Untouched,
+    input: Option<(glib::WeakRef<gtk::Widget>, gtk::EventControllerLegacy)>,
+}
+
+/// Whether no user input reached the pane yet; the input controller holds a copy.
+#[derive(Clone)]
+struct Untouched(Rc<Cell<bool>>);
+
+impl Untouched {
+    fn interrupt(&self) {
+        self.0.set(false);
+    }
+
+    fn get(&self) -> bool {
+        self.0.get()
+    }
 }
 
 impl FirstVisit {
-    pub(super) fn watch(shell: &impl IsA<gtk::Widget>) -> Self {
-        let untouched = Rc::new(Cell::new(true));
+    pub(super) fn new(depth: usize) -> Self {
+        Self {
+            depth,
+            untouched: Untouched(Rc::new(Cell::new(true))),
+            input: None,
+        }
+    }
+
+    pub(super) fn watch(shell: &impl IsA<gtk::Widget>, depth: usize) -> Self {
+        let mut visit = Self::new(depth);
+        let untouched = visit.untouched.clone();
         let input = gtk::EventControllerLegacy::new();
         input.set_propagation_phase(gtk::PropagationPhase::Capture);
-        let flag = untouched.clone();
         input.connect_event(move |_, event| {
-            if matches!(
-                event.event_type(),
-                gtk::gdk::EventType::ButtonPress
-                    | gtk::gdk::EventType::Scroll
-                    | gtk::gdk::EventType::TouchBegin
-                    | gtk::gdk::EventType::KeyPress
-            ) {
-                flag.set(false);
+            if is_user_input(event) {
+                untouched.interrupt();
             }
             glib::Propagation::Proceed
         });
         shell.as_ref().add_controller(input.clone());
-        Self {
-            untouched,
-            shell: shell.as_ref().downgrade(),
-            input,
-        }
+        visit.input = Some((shell.as_ref().downgrade(), input));
+        visit
     }
 
-    pub(super) fn untouched(&self) -> bool {
-        self.untouched.get()
+    /// Ends the visit in `slot` when its load at `depth` finished, reporting whether no
+    /// input reached its pane. Another column's load leaves the visit waiting.
+    pub(super) fn take_untouched(slot: &mut Option<Self>, depth: usize) -> bool {
+        if slot.as_ref().is_none_or(|visit| visit.depth != depth) {
+            return false;
+        }
+        slot.take().is_some_and(|visit| visit.untouched.get())
     }
 }
 
 impl Drop for FirstVisit {
     fn drop(&mut self) {
-        if let Some(shell) = self.shell.upgrade() {
-            shell.remove_controller(&self.input);
+        if let Some((shell, input)) = self.input.take()
+            && let Some(shell) = shell.upgrade()
+        {
+            shell.remove_controller(&input);
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
