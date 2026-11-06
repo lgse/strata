@@ -39,15 +39,19 @@ fn fake_loader(calls: &Rc<RefCell<Vec<u32>>>) -> TestLoader {
     })
 }
 
+fn tick_allowing_busy(media: &DecodedMedia) {
+    match media.tick() {
+        Ok(()) => {}
+        // Worker slots are shared with other tests.
+        Err(error) if error.contains("busy") => {}
+        Err(error) => panic!("tick failed: {error}"),
+    }
+}
+
 fn drive_until(media: &DecodedMedia, calls: &Rc<RefCell<Vec<u32>>>, want: usize) {
     let deadline = Instant::now() + Duration::from_secs(15);
     while calls.borrow().len() < want {
-        match media.tick() {
-            Ok(()) => {}
-            // Worker slots are shared with other tests.
-            Err(error) if error.contains("busy") => {}
-            Err(error) => panic!("tick failed: {error}"),
-        }
+        tick_allowing_busy(media);
         assert!(Instant::now() < deadline, "decode worker deadline");
         std::thread::sleep(Duration::from_millis(1));
     }
@@ -162,9 +166,18 @@ fn open_starting(path: &str, percent: u32) -> (DecodedMedia, Rc<RefCell<Vec<u32>
     (media, calls)
 }
 
+/// Waits for the decoder header, where the start is decided, then lets any
+/// restart it scheduled reach the loader.
 fn settle(media: &DecodedMedia) {
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while media.imp().header.get().is_none() {
+        tick_allowing_busy(media);
+        assert!(Instant::now() < deadline, "decoder header deadline");
+        std::thread::sleep(Duration::from_millis(1));
+    }
     for _ in 0..20 {
-        media.tick().expect("tick succeeds");
+        tick_allowing_busy(media);
+        std::thread::sleep(Duration::from_millis(1));
     }
 }
 
