@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::test_support::PrivateContext;
 use crate::ui::browser::{BrowserView, PeekBehavior};
 
 use std::{
@@ -503,7 +504,7 @@ fn a_cancelled_confirmation_gives_back_the_cursor_a_completion_took_meanwhile() 
 }
 
 fn followed_file_symlink(link: &Path) -> FileEntry {
-    let mut entry = glib::MainContext::new()
+    let mut entry = PrivateContext::new()
         .block_on(crate::adapters::query_file_entry(Location::local(link)))
         .expect("symlink entry");
     assert_eq!(entry.kind, EntryKind::FileSymbolicLink);
@@ -655,7 +656,7 @@ fn permanent_delete_symlink_to_folder_counts_only_link_and_labels_folder_link() 
             let link = fixture.path().join("0dirlink");
             std::os::unix::fs::symlink(&real_dir, &link).expect("symlink");
 
-            let context = glib::MainContext::new();
+            let context = PrivateContext::new();
             let entry = context
                 .block_on(crate::adapters::query_file_entry(Location::local(&link)))
                 .expect("entry");

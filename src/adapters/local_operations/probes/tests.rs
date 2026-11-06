@@ -5,13 +5,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gtk::{gio, glib};
+use gtk::gio;
 use rustix::io::Errno;
 
 use super::{
     Presence, child_folders, destination_folder, folder, folder_was_deleted, presence,
     writable_folder,
 };
+use crate::test_support::PrivateContext;
 use crate::{
     adapters::{
         local_operations::tests::fs_quirks::{FsQuirks, Op, Quirks},
@@ -23,7 +24,7 @@ use crate::{
 };
 
 fn answer<T>(probe: impl Future<Output = T>) -> T {
-    glib::MainContext::new().block_on(probe)
+    PrivateContext::new().block_on(probe)
 }
 
 fn summary(presence: &Presence) -> String {

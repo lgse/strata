@@ -315,6 +315,18 @@ never falls back to the real display or an inherited session bus. Its private
 display, buses, and throwaway HOME come from `scripts/headless/`, which
 `scripts/benchmark-scroll.py` uses as well.
 
+### Private main contexts in Rust tests
+
+A Rust test that drives async code on its own GLib main context creates it with
+`test_support::PrivateContext`, never `glib::MainContext::new()` (Clippy rejects
+it). A GIO call started on the context keeps it alive from its `GTask`, so a GIO
+pool thread can drop the last reference after the test has finished. Finalizing
+the context there would drop any local task or callback still attached to it on
+the wrong thread and abort the whole test process. `PrivateContext` destroys
+every source left on the context when it is dropped, on the thread that created
+them. Tests that drive the process-wide default context instead hold
+`test_support::ASYNC_MAIN_CONTEXT_DEFAULT`.
+
 ### Native debugging dependencies
 
 These are installed inside the canonical image; only `scripts/test-headless.py`

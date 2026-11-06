@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::test_support::PrivateContext;
 
 #[test]
 fn pending_lookup_finishes_promptly_without_reentering() {
     let root = tempfile::tempdir().expect("fixture");
     let location = Location::local(root.path());
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     context
         .with_thread_default(|| {
             let result = Rc::new(RefCell::new(None));

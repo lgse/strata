@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::model::Location;
+use crate::test_support::PrivateContext;
 use gtk::{gio, glib};
 use std::time::{Duration, Instant};
 
@@ -400,7 +401,7 @@ fn external_volume_mount_completion_is_success() {
 
 #[test]
 fn foreign_mount_wait_finishes_on_signal_poll_or_timeout() {
-    let context = glib::MainContext::new();
+    let context = PrivateContext::new();
     context.block_on(async {
         let (send, receive) = oneshot::channel();
         let signal = async {
