@@ -422,33 +422,98 @@ fn properties_resolve_the_innermost_block_mount_including_btrfs_and_escaped_path
     }
 }
 
+fn native_root(path: &str) -> MountRoot {
+    MountRoot {
+        native: true,
+        path: Some(PathBuf::from(path)),
+    }
+}
+
+/// Name, volume mounts, other mounts, expected roots.
+type RootsCase = (
+    &'static str,
+    Vec<MountRoot>,
+    Vec<(MountRoot, MountListing)>,
+    &'static [&'static str],
+);
+
+const OWN_ROW: MountListing = MountListing {
+    shadowed: false,
+    volume_listed: false,
+};
+
 #[test]
-fn mount_table_fallback_keeps_storage_but_not_system_mounts() {
+fn search_takes_the_local_roots_of_the_mounts_devices_lists() {
+    const USB: &str = "/run/media/me/USB";
+    let gvfs_share = MountRoot {
+        native: false,
+        path: Some(PathBuf::from(
+            "/run/user/1000/gvfs/smb-share:server=nas,share=media",
+        )),
+    };
+    let pathless = MountRoot {
+        native: true,
+        path: None,
+    };
+    let volume_listed = MountListing {
+        shadowed: false,
+        volume_listed: true,
+    };
+    let shadowed = MountListing {
+        shadowed: true,
+        volume_listed: false,
+    };
+    let cases: [RootsCase; 7] = [
+        ("volume mount", vec![native_root(USB)], vec![], &[USB]),
+        (
+            "own-row mount",
+            vec![],
+            vec![(native_root("/mnt/nfs"), OWN_ROW)],
+            &["/mnt/nfs"],
+        ),
+        ("pathless volume mount", vec![pathless.clone()], vec![], &[]),
+        ("pathless mount", vec![], vec![(pathless, OWN_ROW)], &[]),
+        ("GVfs share mount", vec![], vec![(gvfs_share, OWN_ROW)], &[]),
+        (
+            "shadowed mount",
+            vec![],
+            vec![(native_root("/media/shadowed"), shadowed)],
+            &[],
+        ),
+        (
+            "volume mount listed again",
+            vec![native_root(USB)],
+            vec![(native_root(USB), volume_listed)],
+            &[USB],
+        ),
+    ];
+    for (case, volume_mounts, other_mounts, expected) in cases {
+        assert_eq!(
+            local_device_roots(volume_mounts, other_mounts),
+            expected.iter().map(PathBuf::from).collect::<Vec<_>>(),
+            "{case}"
+        );
+    }
+}
+
+#[test]
+fn global_search_skips_mount_table_entries_the_volume_monitor_does_not_list() {
     crate::test_support::gtk_test(
-        "ui::window::devices::tests::mount_table_fallback_keeps_storage_but_not_system_mounts",
+        "ui::window::devices::tests::global_search_skips_mount_table_entries_the_volume_monitor_does_not_list",
         || {
             crate::adapters::mount_watch::publish_for_isolated_test(Some(MountTable::parse(
-                br"25 1 8:1 / / rw - ext4 /dev/sda1 rw
-26 1 8:2 / /boot rw - vfat /dev/sda2 rw
-27 1 0:1 / /proc rw - proc proc rw
-28 1 8:3 / /run/media/me/USB\040Backup rw shared:1 - exfat /dev/sdb1 rw
-29 1 8:4 / /mnt/Archive ro - fuseblk /dev/sdc1 ro
-30 1 0:2 / /run/user/1000/gvfs rw - fuse.gvfsd-fuse gvfsd-fuse rw
-malformed
-31 1 8:5 / /mnt/missing-source rw - ext4
+                br"25 1 0:31 /@ / rw - btrfs /dev/sda1 rw,subvol=/@
+26 1 0:31 /@pkg /var/cache/strata-fixture/pkg rw - btrfs /dev/sda1 rw,subvol=/@pkg
+27 1 8:4 / /mnt/strata-fixture-archive ro - fuseblk /dev/sdc1 ro
 ",
             )));
             let roots = global_search_roots();
-            for (root, searched) in [
-                ("/", false),
-                ("/run/media/me/USB Backup", true),
-                ("/mnt/Archive", true),
-                ("/boot", false),
-                ("/proc", false),
-                ("/run/user/1000/gvfs", false),
-                ("/mnt/missing-source", false),
+            assert_eq!(roots.first(), Some(&super::super::home_directory()));
+            for hidden in [
+                "/var/cache/strata-fixture/pkg",
+                "/mnt/strata-fixture-archive",
             ] {
-                assert_eq!(roots.contains(&PathBuf::from(root)), searched, "{root}");
+                assert!(!roots.contains(&PathBuf::from(hidden)), "{hidden}");
             }
         },
     );
