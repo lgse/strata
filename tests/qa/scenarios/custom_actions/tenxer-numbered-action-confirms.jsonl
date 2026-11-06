@@ -1,4 +1,4 @@
-{"scenario":"tenxer-numbered-action-confirms","modes":["columns"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"$config/strata/actions/record-names","mkdir":true,"parents":true}},{"fs":{"path":"$config/strata/actions/record-names/action.toml","write":"schema_version = 1\nid = \"record-names\"\nname = \"Record names\"\nmenu = \"top\"\n\n[when]\nextensions = [\"txt\"]\n\n[run]\nruntime = \"command\"\nprogram = \"/bin/sh\"\nconfirm = true\nargs = [\"-c\", \"printf '%s\\\\n' \\\"$$@\\\" >> '$environment/numbered-action'\", \"sh\", \"{paths}\"]\n"}}],"cost":{"columns":1.1},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":3,"score":30,"note":"Sole guard of the keyboard numbered-slot route (semicolon then digit) to the confirm dialog; dialog Cancel/Run shared with batch-rename-template-confirms; slot numbering unit-tested in services/actions"}}
+{"scenario":"tenxer-numbered-action-confirms","modes":["columns"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"$config/strata/actions/record-names","mkdir":true,"parents":true}},{"fs":{"path":"$config/strata/actions/record-names/action.toml","write":"schema_version = 1\nid = \"record-names\"\nname = \"Record names\"\nmenu = \"top\"\n\n[when]\nextensions = [\"txt\"]\n\n[run]\nruntime = \"command\"\nprogram = \"/bin/sh\"\nconfirm = true\nargs = [\"-c\", \"printf '%s\\\\n' \\\"$$@\\\" >> '$environment/numbered-action'\", \"sh\", \"{paths}\"]\n"}},{"fs":{"path":"$config/strata/actions/record-folder","mkdir":true,"parents":true}},{"fs":{"path":"$config/strata/actions/record-folder/action.toml","write":"schema_version = 1\nid = \"record-folder\"\nname = \"Record folder\"\nmenu = \"top\"\n\n[when]\nkinds = [\"folder\"]\n\n[run]\nruntime = \"command\"\nprogram = \"/bin/sh\"\nargs = [\"-c\", \"printf '%s\\\\n' \\\"$$STRATA_ACTION_SOURCE\\\" \\\"$$@\\\" >> '$environment/folder-action'\", \"sh\", \"{paths}\"]\n"}}],"cost":{"columns":1.1},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":3,"score":30,"note":"Sole guard of the keyboard numbered-slot routes: semicolon then digit to the confirm dialog, and semicolon, period, digit on the focused folder with source background; dialog Cancel/Run shared with batch-rename-template-confirms; slot numbering unit-tested in services/actions, folder chord rows and rebinding in file_verbs::actions"}}
 {"select_with_keyboard":"todo.txt"}
 {"key":";"}
 {"wait":{"present":{"role":"label","name":";-"}},"message":"the armed action chord"}
@@ -17,3 +17,14 @@
 {"click":{"role":"button","name":"Run","within":{"role":"dialog","name":"Run this action?"}}}
 {"wait":{"present":{"role":"label","name_matches":"Done in "}},"message":"Jobs to show the completed run"}
 {"fs":{"path":"$environment/numbered-action","text":"$fixture/todo.txt\n"},"timeout_ms":0}
+{"key":"Escape"}
+{"wait":{"absent":{"role":"button","name":"Clear finished"}},"message":"Escape to close the Jobs popover the run opened"}
+{"click":{"entry":"todo.txt"}}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to return to 'todo.txt'"}
+{"key":";"}
+{"wait":{"present":{"role":"label","name":";-"}},"message":"the armed action chord"}
+{"key":"."}
+{"wait":{"present":{"role":"label","name":"; .-"}},"message":"the folder action chord"}
+{"key":"1"}
+{"wait":{"present":{"role":"label","name":"2 jobs finished","rendered":false}},"message":"Jobs to count the folder action's run as the second finished job"}
+{"fs":{"path":"$environment/folder-action","text":"background\n$fixture\n"},"timeout_ms":0}
