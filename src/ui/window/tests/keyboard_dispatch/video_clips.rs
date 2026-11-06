@@ -18,10 +18,10 @@ impl PreviewProvider for MediaPreview {
                 .native_path()
                 .expect("local fixture")
                 .to_path_buf();
-            let content_type = if path.extension().is_some_and(|extension| extension == "mp4") {
-                "video/mp4"
-            } else {
-                "audio/x-wav"
+            let content_type = match path.extension().and_then(|extension| extension.to_str()) {
+                Some("mp4") => "video/mp4",
+                Some("h264") => "video/h264",
+                _ => "audio/x-wav",
             };
             emit(PreviewEvent::Ready(Preview {
                 request_id: request.id,
@@ -113,6 +113,64 @@ fn tenxer_angle_brackets_step_through_videos_and_skip_other_media() {
                 focused_name(&browser) == "d.mp4" && shows_clip(&fixture, "d.mp4")
             });
             assert!(file_panes_have_focus(&fixture), "the listing kept the keys");
+        },
+    );
+}
+
+#[test]
+fn configured_start_skips_raw_video_streams() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::video_clips::configured_start_skips_raw_video_streams",
+        || {
+            crate::ui::media::use_test_streams(true);
+            let fixture = KeyboardFixture::with_provider(Rc::new(MediaPreview));
+            let root = fixture._directory.path();
+            for name in ["b.mp4", "c.h264"] {
+                std::fs::write(root.join(name), MP4_BYTES).expect("clip");
+            }
+            let preferences = PreferenceManager::shared();
+            preferences.set_tenxer_mode(true);
+            preferences.set_group_by_type(false);
+            preferences.set_preview_autoplay(false);
+            preferences.set_preview_video_start(20);
+            let browser = fixture.view.browser();
+            fixture.preview.observe_browser(&browser);
+            fixture.view.refresh();
+            wait_loaded(&browser, 0);
+            browser.set_folders_first(0, false);
+            browser.set_sort(0, SortKey::Name, SortDirection::Ascending);
+            fixture.view.set_view_mode(BrowserMode::List);
+            move_to_named(&fixture, &browser, "b.mp4");
+            fixture.press(Key::l, ModifierType::empty());
+            settle("the clip", || {
+                preview_has_focus(&fixture) && shows_clip(&fixture, "b.mp4")
+            });
+            settle("video stream ready", || {
+                fixture.preview.media_for_test().is_some()
+            });
+            let clip = fixture.preview.media_for_test().expect("video stream");
+            clip.play();
+            settle("the clip at its configured start", || {
+                clip.timestamp() > 11_000_000
+            });
+
+            assert!(fixture.press(Key::greater, ModifierType::SHIFT_MASK));
+            settle("the raw stream", || shows_clip(&fixture, "c.h264"));
+            settle("raw stream ready", || {
+                fixture
+                    .preview
+                    .media_for_test()
+                    .is_some_and(|media| media != clip)
+            });
+            let stream = fixture.preview.media_for_test().expect("raw stream");
+            stream.play();
+            settle("raw stream playback", || stream.timestamp() > 500_000);
+            assert!(
+                stream.timestamp() < 5_000_000,
+                "a raw stream starts at the beginning, not at {}",
+                stream.timestamp()
+            );
+            crate::ui::media::use_test_streams(false);
         },
     );
 }
