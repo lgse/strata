@@ -94,7 +94,7 @@ fn resume_where_the_preview_closed() {
     assert_eq!(*calls.borrow(), vec![0]);
     assert!(media.imp().first_frame.get());
     media.close();
-    assert_eq!(recall_media_position(Path::new("/shortened")), Some(0));
+    assert_eq!(recall_media_position(Path::new("/shortened")), None);
 
     let (media, calls) = open_restoring("/ended", media::timestamp(900));
     drive_until(&media, &calls, 2);
@@ -103,13 +103,13 @@ fn resume_where_the_preview_closed() {
     }
     media.imp().position.set(TEST_DURATION_US);
     media.close();
-    assert_eq!(recall_media_position(Path::new("/ended")), Some(0));
+    assert_eq!(recall_media_position(Path::new("/ended")), None);
 
     let (media, calls) = open_restoring("/ended", media::timestamp(900));
     drive_until(&media, &calls, 2);
     media.imp().position.set(RESTORE_MIN_US);
     media.close();
-    assert_eq!(recall_media_position(Path::new("/ended")), Some(0));
+    assert_eq!(recall_media_position(Path::new("/ended")), None);
 
     remember_media_position("/movie.ogg".into(), media::timestamp(900));
     let media = DecodedMedia::new(SandboxedMedia {
