@@ -1194,7 +1194,11 @@ another, the prompt says so first ("“a:b” will be saved as “a_b” in this
 exists". Replace, Merge and Keep Both act on that name, and Keep Both is offered for moves too.
 A file and a folder never replace one another, so where an item meets one of the other kind the
 prompt offers Keep Both instead of Replace and says why, and Apply to All with Replace leaves such
-an item its own prompt, as Merge does for a file.
+an item its own prompt, as Merge does for a file. Undo and Redo of a move follow the same rule:
+their prompt offers no Replace for such an item and says why, and Apply to All with Replace leaves
+it its own prompt. Skip and Apply to All are offered only while an answer can still move
+something; otherwise the prompt offers Cancel alone. A replay that skips every item moves nothing
+and stays in the history, as a cancelled one does.
 Where a folder from another filesystem would be merged into a destination whose rules change
 characters, the prompt also says that items whose names change overwrite items with the new names.
 Where the destination is slow to answer, the transfer shows "Preparing items…" with Cancel and no

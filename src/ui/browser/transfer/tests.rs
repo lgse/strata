@@ -19,6 +19,7 @@ mod conflicts;
 mod destination_reloads;
 mod drops;
 mod plain_transfers;
+mod replay_kinds;
 mod send_to;
 mod undo;
 

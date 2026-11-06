@@ -30,7 +30,8 @@ fn answer<T>(probe: impl Future<Output = T>) -> T {
 fn summary(presence: &Presence) -> String {
     match presence {
         Presence::Absent => "absent".to_owned(),
-        Presence::Present => "present".to_owned(),
+        Presence::Present { folder: true } => "folder".to_owned(),
+        Presence::Present { folder: false } => "file".to_owned(),
         Presence::Unknown => "unknown".to_owned(),
     }
 }
@@ -50,9 +51,9 @@ fn presence_reports_absence_only_where_it_is_proven() -> Result<(), Box<dyn std:
         },
     );
     let rows = [
-        ("file", "present"),
-        ("folder", "present"),
-        ("dangling", "present"),
+        ("file", "file"),
+        ("folder", "folder"),
+        ("dangling", "file"),
         ("missing", "absent"),
         ("gone/child", "absent"),
         ("file/child", "absent"),
@@ -272,7 +273,7 @@ fn probes_of_a_folder_that_stopped_answering_time_out_at_once()
             &gio::Cancellable::new(),
         ))
         .as_slice(),
-        [Presence::Present]
+        [Presence::Present { folder: false }]
     ));
     Ok(())
 }

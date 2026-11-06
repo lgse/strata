@@ -116,6 +116,19 @@ impl ConflictDialog {
         }
     }
 
+    /// A prompt without Replace starts on Keep Both, or on Cancel, which never changes history,
+    /// when it offers neither.
+    fn initial_focus(&self, actions: ConflictActions) -> &gtk::Button {
+        let keep_both_first = actions.focus == ConflictFocus::KeepBoth || !actions.replace;
+        if keep_both_first && actions.keep_both {
+            &self.keep_both
+        } else if actions.replace {
+            &self.layout.confirm
+        } else {
+            &self.layout.cancel
+        }
+    }
+
     fn install_keys(&self, modal: &DialogLayer) {
         let escape = gtk::EventControllerKey::new();
         escape.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -175,12 +188,6 @@ impl ViewState {
         modal.dismiss_on_click(&dialog.layout.close);
         dialog.connect_choices(&modal, &on_choice);
         dialog.install_keys(&modal);
-        let actions = prompt.actions;
-        let keep_both_first = actions.focus == ConflictFocus::KeepBoth || !actions.replace;
-        if keep_both_first && actions.keep_both {
-            focus_button(&dialog.keep_both);
-        } else {
-            focus_button(&dialog.layout.confirm);
-        }
+        focus_button(dialog.initial_focus(prompt.actions));
     }
 }
