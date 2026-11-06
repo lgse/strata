@@ -214,10 +214,8 @@ impl Dispatcher {
         let Some(letter) = press.letter() else {
             return false;
         };
-        if self.chooser.is_some() {
-            self.shortcuts
-                .show_feedback(&crate::i18n::tr(super::chooser::UNAVAILABLE));
-        } else if chord == Chord::BookmarkSet {
+        // A file chooser refuses both triggers, so neither chord arms there.
+        if chord == Chord::BookmarkSet {
             self.save_bookmark(browser, letter);
         } else {
             self.jump_to_bookmark(browser, letter);
