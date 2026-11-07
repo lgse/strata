@@ -17,11 +17,13 @@ use super::{
     device_labels,
     device_lock::{eject_password_drive, lock_encrypted_mount, lock_encrypted_volume},
     device_menu::{DeviceMenuEntries, attach_device_menu},
+    device_order::group_by_drive,
     device_release,
     drive_dialogs::PropertiesTarget,
     gio_devices::{
         gio_mount_is_encrypted, gio_volume_is_encrypted, gio_volume_is_locked,
-        gio_volume_unix_device, orphaned_password_drives,
+        gio_volume_unix_device, mount_placement, orphaned_password_drives,
+        password_drive_placement, volume_placement,
     },
     launch::navigate_to_gio_file,
     sidebar,
@@ -34,6 +36,12 @@ use super::{
 };
 
 type DeviceAction = Rc<dyn Fn()>;
+
+enum DeviceRow {
+    Volume(gio::Volume),
+    PasswordDrive(gio::Drive),
+    Mount(String, Location, gio::Mount),
+}
 
 impl SidebarState {
     pub(super) fn append_devices(self: &Rc<Self>) {
@@ -50,21 +58,17 @@ impl SidebarState {
         }
         let section = self.append_devices_section();
         let mut shown = Vec::new();
-        shown.extend(
-            volumes
-                .into_iter()
-                .filter_map(|volume| self.append_volume(volume)),
-        );
-        shown.extend(
-            password_drives
-                .into_iter()
-                .filter_map(|drive| self.append_password_drive(drive)),
-        );
-        shown.extend(
-            mounts
-                .into_iter()
-                .filter_map(|(name, location, mount)| self.append_mount(&name, location, mount)),
-        );
+        let groups = self.device_row_groups(volumes, password_drives, mounts);
+        for (index, group) in groups.into_iter().enumerate() {
+            if index > 0 {
+                self.append_drive_separator();
+            }
+            shown.extend(
+                group
+                    .into_iter()
+                    .filter_map(|row| self.append_device_row(row)),
+            );
+        }
         for key in device_release::unmatched_pending(&shown) {
             self.append_release_ghost(&key);
         }
@@ -75,6 +79,37 @@ impl SidebarState {
             self.rail.get(),
         );
         self.devices_section.replace(Some(section));
+    }
+
+    fn device_row_groups(
+        &self,
+        volumes: Vec<gio::Volume>,
+        password_drives: Vec<gio::Drive>,
+        mounts: Vec<(String, Location, gio::Mount)>,
+    ) -> Vec<Vec<DeviceRow>> {
+        let volumes = volumes
+            .into_iter()
+            .filter(|volume| !self.hides_volume(volume))
+            .map(|volume| (volume_placement(&volume), DeviceRow::Volume(volume)));
+        let drives = password_drives.into_iter().map(|drive| {
+            (
+                password_drive_placement(&drive),
+                DeviceRow::PasswordDrive(drive),
+            )
+        });
+        let mounts = mounts.into_iter().map(|(name, location, mount)| {
+            let placement = mount_placement(&mount, is_network_share(&location));
+            (placement, DeviceRow::Mount(name, location, mount))
+        });
+        group_by_drive(volumes.chain(drives).chain(mounts).collect())
+    }
+
+    fn append_device_row(self: &Rc<Self>, row: DeviceRow) -> Option<device_release::DeviceIds> {
+        match row {
+            DeviceRow::Volume(volume) => Some(self.append_volume(volume)),
+            DeviceRow::PasswordDrive(drive) => self.append_password_drive(drive),
+            DeviceRow::Mount(name, location, mount) => self.append_mount(&name, location, mount),
+        }
     }
 
     pub(super) fn mounts_without_volumes(
@@ -166,29 +201,20 @@ impl SidebarState {
         }
     }
 
-    pub(super) fn append_volume(
-        self: &Rc<Self>,
-        volume: gio::Volume,
-    ) -> Option<device_release::DeviceIds> {
+    fn append_volume(self: &Rc<Self>, volume: gio::Volume) -> device_release::DeviceIds {
         let name = volume.name().to_string();
         let row = sidebar_button(crate::assets::icons::HARD_DRIVE, &name);
         if let Some(id) = PropertiesTarget::Volume(volume.clone()).label_id() {
             device_labels::bind_row_label(&row, &self.preference_manager, &id, &name);
         }
-        let mounted_location = volume
-            .get_mount()
-            .as_ref()
-            .and_then(|mount| location_for_file(&mount.root()));
+        let mounted_location = mounted_volume_location(&volume);
         crate::ui::accessibility::set_description(
             &row,
             volume_description(&volume, mounted_location.as_ref()).as_deref(),
         );
-        if self.hides_volume(&volume, mounted_location.as_ref()) {
-            return None;
-        }
         let ids = device_release::ids_for_volume(&volume);
         if self.append_if_releasing(&row, &ids) {
-            return Some(ids);
+            return ids;
         }
         if let Some(location) = mounted_location {
             self.install_mounted_volume_row(&row, location);
@@ -196,15 +222,15 @@ impl SidebarState {
         self.connect_volume_click(&row, &volume);
         let entries = self.volume_menu_entries(volume);
         self.append_device_chrome(&row, entries);
-        Some(ids)
+        ids
     }
 
     /// A local-only sidebar lists only volumes that are, or would mount as, local paths.
-    fn hides_volume(&self, volume: &gio::Volume, mounted_location: Option<&Location>) -> bool {
+    fn hides_volume(&self, volume: &gio::Volume) -> bool {
         if !self.local_only {
             return false;
         }
-        match mounted_location {
+        match mounted_volume_location(volume) {
             Some(location) => location.native_path().is_none(),
             None => {
                 gio_volume_unix_device(volume).is_none()
@@ -438,6 +464,13 @@ impl SidebarState {
             self.append_sidebar_row(row);
         }
     }
+}
+
+fn mounted_volume_location(volume: &gio::Volume) -> Option<Location> {
+    volume
+        .get_mount()
+        .as_ref()
+        .and_then(|mount| location_for_file(&mount.root()))
 }
 
 /// Like a mount row, a volume row is described by its path: where it is mounted,

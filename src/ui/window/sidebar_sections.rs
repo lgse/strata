@@ -13,6 +13,8 @@ use crate::ui::{motion::animations_enabled, preferences::PreferenceManager};
 
 use super::{SidebarState, sidebar_drop_feedback, sidebar_rows::reparent_in_order};
 
+const DRIVE_SEPARATOR_CLASS: &str = "sidebar-drive-separator";
+
 /// Pinned rows are split across two revealers with the active row kept between
 /// them, so collapsing folds the other rows away around the row the user is in.
 pub(super) struct PinnedSection {
@@ -62,7 +64,9 @@ impl CollapsibleSection {
             next = child.next_sibling();
             sidebar.remove(&child);
             self.rows.append(&child);
-            if !sidebar_drop_feedback::is_gap(&child) {
+            let spacer =
+                sidebar_drop_feedback::is_gap(&child) || child.has_css_class(DRIVE_SEPARATOR_CLASS);
+            if !spacer {
                 count += 1;
             }
         }
@@ -168,6 +172,12 @@ impl SidebarState {
         let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
         separator.add_css_class("sidebar-separator");
         separator.add_css_class("sidebar-section-separator");
+        self.widget.append(&separator);
+    }
+
+    pub(super) fn append_drive_separator(&self) {
+        let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
+        separator.add_css_class(DRIVE_SEPARATOR_CLASS);
         self.widget.append(&separator);
     }
 

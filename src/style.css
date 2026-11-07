@@ -2576,6 +2576,18 @@ scrollbar.horizontal > range > trough > slider {
   background: alpha(@strata_border, 0.24);
 }
 
+.sidebar-drive-separator {
+  background: alpha(@strata_border, 0.24);
+  background-image: none;
+  border: none;
+  margin: 4px 10px;
+  min-height: 1px;
+}
+
+.sidebar-rail .sidebar-drive-separator {
+  margin: 4px 2px;
+}
+
 .sidebar-heading-toggle {
   background: transparent;
   border: none;
