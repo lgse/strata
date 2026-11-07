@@ -58,9 +58,8 @@ fn natural_size(widget: &impl IsA<gtk::Widget>, orientation: gtk::Orientation) -
     widget.measure(orientation, -1).1
 }
 
-/// A menu's natural size. A hidden popover measures as empty, so this measures its
-/// contents box, the visible menu frame, and the content inside its scrolled window,
-/// which can under-report its child.
+/// A hidden popover measures as empty, and its scrolled window can under-report its
+/// child, so the menu frame and the scrolled content are measured directly.
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct MenuSize {
     content: i32,
@@ -82,16 +81,24 @@ impl MenuSize {
     }
 }
 
+struct Placement {
+    position: gtk::PositionType,
+    offset: (i32, i32),
+    max_content_height: i32,
+}
+
+impl Placement {
+    fn apply(&self, popover: &gtk::Popover, scroll: &gtk::ScrolledWindow) {
+        popover.set_position(self.position);
+        popover.set_offset(self.offset.0, self.offset.1);
+        scroll.set_max_content_height(self.max_content_height);
+    }
+}
+
 /// Keeps a menu opened at `point` inside `window`: below the point when it fits there,
 /// above when only that side fits, else slid up to show it whole. It scrolls only
 /// when the window is shorter than the menu. GTK centres it on the point horizontally.
-fn fit_in_window(
-    popover: &gtk::Popover,
-    scroll: &gtk::ScrolledWindow,
-    window: &gtk::Widget,
-    point: &gtk::graphene::Point,
-    size: MenuSize,
-) {
+fn fit_in_window(window: &gtk::Widget, point: &gtk::graphene::Point, size: MenuSize) -> Placement {
     let (height, width) = (size.content + size.chrome, size.width);
     let (x, y) = (point.x().round() as i32, point.y().round() as i32);
     let bottom = window.height() - CONTEXT_MENU_EDGE_MARGIN;
@@ -111,9 +118,11 @@ fn fit_in_window(
         CONTEXT_MENU_EDGE_MARGIN,
         (right - width).max(CONTEXT_MENU_EDGE_MARGIN),
     ) - left;
-    popover.set_position(position);
-    popover.set_offset(shift_x, shift_y);
-    scroll.set_max_content_height((room - size.chrome).max(1));
+    Placement {
+        position,
+        offset: (shift_x, shift_y),
+        max_content_height: (room - size.chrome).max(1),
+    }
 }
 
 /// Fits the menu before it opens, then again on each frame it grows: some items only
@@ -125,7 +134,7 @@ fn keep_in_window(
     point: gtk::graphene::Point,
 ) {
     let size = MenuSize::of(scroll);
-    fit_in_window(popover, scroll, window, &point, size);
+    fit_in_window(window, &point, size).apply(popover, scroll);
     let fitted = Cell::new(size);
     let pointing = popover.pointing_to();
     let (scroll, window) = (scroll.downgrade(), window.downgrade());
@@ -137,7 +146,7 @@ fn keep_in_window(
         if popover.pointing_to() != pointing || size == fitted.replace(size) {
             return glib::ControlFlow::Break;
         }
-        fit_in_window(popover, &scroll, &window, &point, size);
+        fit_in_window(&window, &point, size).apply(popover, &scroll);
         glib::ControlFlow::Continue
     });
 }
