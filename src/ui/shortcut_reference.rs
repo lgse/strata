@@ -459,6 +459,10 @@ const COLUMNS_NAVIGATION: &[Shortcut] = &[
         One(BACKSPACE.shown()),
         "Close the current pane or go to the parent folder",
     ),
+    row(
+        One(MAKE_FIRST_COLUMN.shown()),
+        "Make the focused pane the first pane",
+    ),
 ];
 
 const ICONS_NAVIGATION: &[Shortcut] = &[

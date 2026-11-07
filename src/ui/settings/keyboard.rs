@@ -1187,6 +1187,7 @@ const NAMES: &[(Command, &str)] = &[
     (HOME_FOLDER, "Go to Home"),
     (OPEN_IN_NEW_TAB, "Open in a new tab"),
     (OPEN_IN_NEW_WINDOW, "Open in a new window"),
+    (MAKE_FIRST_COLUMN, "Make the focused pane the first pane"),
     (PREVIEW, "Preview a file, or open a folder"),
     (COMPLETE, "Write the chosen folder into the prompt"),
     (OPEN, "Open the focused item"),
