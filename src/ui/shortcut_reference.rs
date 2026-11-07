@@ -1420,6 +1420,10 @@ const TENXER_VIEW: &[Shortcut] = &[
         Chord(shown![SORT_BY, SORT_BY_CASE_SENSITIVE]),
         "Case-sensitive names",
     ),
+    row(
+        Chord(shown![SORT_BY, SORT_BY_FOLDERS_FIRST]),
+        "Folders first",
+    ),
     row(VIEW_MODES, "Switch to Columns, Icons, or List"),
     row(TEXT_SIZE, "Increase / decrease / reset text size"),
 ];

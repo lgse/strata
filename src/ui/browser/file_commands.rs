@@ -460,6 +460,16 @@ impl BrowserView {
         }
     }
 
+    pub fn toggle_focused_folders_first(&self) {
+        if let Some(depth) = self.focused_listing_depth()
+            && self.state.browser.toggle_folders_first(depth)
+        {
+            self.state
+                .keyboard_refocus
+                .set(Some(KeyboardRefocus::Sort(depth)));
+        }
+    }
+
     pub fn sort_focused_pane(&self, key: SortKey, direction: SortDirection) {
         if let Some(depth) = self.focused_listing_depth() {
             self.state.browser.set_sort(depth, key, direction);

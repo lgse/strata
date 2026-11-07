@@ -67,6 +67,7 @@ fn sort_chord_lists_its_keys(fixture: &KeyboardFixture) {
             ("n", "Natural"),
             ("l", "Alphabetical"),
             ("c", "Case-sensitive names"),
+            ("f", "Folders first"),
             ("Shift", "Reverse"),
         ]
         .map(|(key, action)| (key.to_owned(), action.to_owned()))
@@ -197,6 +198,49 @@ fn tenxer_sort_chord_sorts_the_focused_pane_and_remembers_it_for_the_folder() {
             wait_until(|| sorting_of(&browser, 1).0 == SortKey::Type);
             wait_until(|| fixture.view.item_view_has_focus());
             unknown_sort_keys_keep_the_order(&fixture);
+        },
+    );
+}
+
+#[test]
+fn tenxer_sort_chord_toggles_folders_first_and_keeps_the_sort() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::sorting::tenxer_sort_chord_toggles_folders_first_and_keeps_the_sort",
+        || {
+            const FOLDERS_FIRST: [&str; 4] = ["directory", "gamma.md", "beta.txt", "alpha.zip"];
+            const MIXED: [&str; 4] = ["gamma.md", "directory", "beta.txt", "alpha.zip"];
+            let fixture = KeyboardFixture::new();
+            let sorting = seed_sorting(fixture._directory.path());
+            std::fs::create_dir(sorting.join("directory")).expect("nested folder");
+            enable_tenxer(&fixture);
+            let browser = fixture.view.browser();
+            browser.set_folders_first(0, true);
+            open_sorting_folder(&fixture);
+            sort(&fixture, Key::A, true);
+            wait_until(|| names_at(&browser, 1) == FOLDERS_FIRST);
+            wait_until(|| fixture.view.item_view_has_focus());
+
+            for (folders_first, order) in [(false, MIXED), (true, FOLDERS_FIRST)] {
+                sort(&fixture, Key::f, false);
+                wait_until(|| names_at(&browser, 1) == order);
+                wait_until(|| fixture.view.item_view_has_focus());
+                assert_eq!(
+                    (
+                        browser.preferences().folders_first,
+                        sorting_of(&browser, 1),
+                        focused_name(&browser),
+                    ),
+                    (
+                        folders_first,
+                        (SortKey::Name, SortDirection::Descending),
+                        "gamma.md".to_owned(),
+                    )
+                );
+            }
+
+            sort(&fixture, Key::F, true);
+            assert_eq!(feedback(&fixture), "Unknown chord");
+            assert!(browser.preferences().folders_first);
         },
     );
 }

@@ -19,6 +19,19 @@
 {"wait":{"entries":["archive","documents","pictures","readme.md","todo.txt"],"dir":"$root"},"message":", a to sort by name"}
 {"expect":{"not":{"field":{}}},"message":", a creates nothing"}
 {"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
+{"key":","}
+{"key":"A"}
+{"wait":{"entries":["pictures","documents","archive","todo.txt","readme.md"],"dir":"$root"},"message":", A to reverse the name sort with folders first"}
+{"key":","}
+{"key":"f"}
+{"wait":{"entries":["todo.txt","readme.md","pictures","documents","archive"],"dir":"$root"},"message":", f to mix folders in and keep the reversed name sort"}
+{"wait":{"pref":{"key":"folders_first","value":false}},"message":", f to save folders first as off"}
+{"wait":{"focused":"readme.md"},"message":"keyboard focus to stay on 'readme.md' after , f"}
+{"key":","}
+{"key":"f"}
+{"wait":{"entries":["pictures","documents","archive","todo.txt","readme.md"],"dir":"$root"},"message":", f again to put folders first"}
+{"wait":{"pref":{"key":"folders_first","value":true}},"message":", f again to save folders first as on"}
+{"wait":{"focused":"readme.md"},"message":"keyboard focus to stay on 'readme.md' after the second , f"}
 {"key":"."}
 {"wait":{"entries":{"contains":[".hidden.txt"]},"dir":"$root"},"message":". to show hidden files"}
 {"key":"."}

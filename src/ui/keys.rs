@@ -54,7 +54,7 @@ pub(crate) const TEXT_EDITING: [(Command, &str); 6] = [
 /// a map whose own stages leave them out: 10xer verbs, chord steps and paging
 /// in the default map, and default-map verbs in 10xer. Neither table binds
 /// them by default.
-pub(crate) const DIRECT_IN_DEFAULT: [Command; 26] = [
+pub(crate) const DIRECT_IN_DEFAULT: [Command; 27] = [
     bindings::OPEN_WITH,
     bindings::MOVE_TO,
     bindings::COPY_TO,
@@ -73,6 +73,7 @@ pub(crate) const DIRECT_IN_DEFAULT: [Command; 26] = [
     bindings::SORT_BY_NATURAL,
     bindings::SORT_BY_ALPHABETICAL,
     bindings::SORT_BY_CASE_SENSITIVE,
+    bindings::SORT_BY_FOLDERS_FIRST,
     bindings::COPY_AS_PATH,
     bindings::COPY_AS_NAME,
     bindings::INVERT_SELECTION,

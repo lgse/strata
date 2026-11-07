@@ -18,7 +18,7 @@ struct Seen {
     modal: bool,
     selected: Vec<usize>,
     focused: String,
-    sort: crate::model::SortOptions,
+    sort: (crate::model::SortOptions, bool),
     clipboard: Option<String>,
     names: Vec<String>,
     children: usize,
@@ -193,6 +193,12 @@ const DEFAULT_ROWS: &[Row] = &[
         Effect::Sort,
     ),
     row(
+        SORT_BY_FOLDERS_FIRST,
+        &[SORT, Binding::plain(Key::f)],
+        "a.txt",
+        Effect::Sort,
+    ),
+    row(
         COPY_AS_PATH,
         &[COPY_AS, Binding::plain(Key::c)],
         "a.txt",
@@ -322,16 +328,14 @@ impl Direct {
     fn seen(&self) -> Seen {
         let fixture = &self.fixture;
         let browser = fixture.view.browser();
+        let preferences = browser.column_preferences(0).expect("column");
         Seen {
             prompt: fixture.shortcuts.open_prompt_kind(),
             feedback: fixture.shortcuts.feedback_text(),
             modal: modal_visible(&fixture.overlay),
             selected: fixture.selected(),
             focused: focused_name(&browser),
-            sort: browser
-                .column_preferences(0)
-                .expect("column")
-                .sort_options(),
+            sort: (preferences.sort_options(), preferences.folders_first),
             clipboard: gtk::gdk::Display::default()
                 .expect("display")
                 .clipboard()
@@ -375,6 +379,7 @@ impl Direct {
             Effect::Sort => (SortKey::Type, SortDirection::Descending),
             _ => (SortKey::Name, SortDirection::Ascending),
         };
+        browser.set_folders_first(0, true);
         browser.set_sort(0, sort.0, sort.1);
         pump(50);
         browser.set_name_comparison(

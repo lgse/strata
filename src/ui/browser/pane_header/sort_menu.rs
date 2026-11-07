@@ -140,16 +140,16 @@ impl SortMenu {
         ] {
             let action = gio::SimpleAction::new_stateful(name, None, &enabled.to_variant());
             self.connect(&action, move |browser, depth, _| {
-                let prefs = browser
-                    .requested_column_preferences(depth)
-                    .unwrap_or_default();
                 if name == "folders" {
-                    browser.set_folders_first(depth, !prefs.folders_first);
-                } else {
-                    let mut comparison = prefs.name_comparison;
-                    comparison.case_sensitive = !comparison.case_sensitive;
-                    browser.set_name_comparison(depth, comparison);
+                    browser.toggle_folders_first(depth);
+                    return;
                 }
+                let mut comparison = browser
+                    .requested_column_preferences(depth)
+                    .unwrap_or_default()
+                    .name_comparison;
+                comparison.case_sensitive = !comparison.case_sensitive;
+                browser.set_name_comparison(depth, comparison);
             });
         }
     }

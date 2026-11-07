@@ -64,6 +64,7 @@ catalog! {
         SORT_BY_NATURAL: Command "sort.natural" step(Sort) = Binding::plain(Key::n);
         SORT_BY_ALPHABETICAL: Command "sort.alphabetical" step(Sort) = Binding::plain(Key::l);
         SORT_BY_CASE_SENSITIVE: Command "sort.case_sensitive" step(Sort) = Binding::plain(Key::c);
+        SORT_BY_FOLDERS_FIRST: Command "sort.folders_first" step(Sort) = Binding::plain(Key::f);
 
         COPY_AS: Command "copy_as" trigger(CopyAs) = Binding::plain(Key::c);
         COPY_AS_PATH: Command "copy_as.path" step(CopyAs) = Binding::plain(Key::c);

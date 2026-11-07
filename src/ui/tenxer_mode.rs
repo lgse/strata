@@ -168,6 +168,7 @@ impl Chord {
                 (step(SORT_BY_NATURAL), "Natural"),
                 (step(SORT_BY_ALPHABETICAL), "Alphabetical"),
                 (step(SORT_BY_CASE_SENSITIVE), "Case-sensitive names"),
+                (step(SORT_BY_FOLDERS_FIRST), "Folders first"),
                 (Mention::Held(gtk::gdk::ModifierType::SHIFT_MASK), "Reverse"),
             ],
             Self::Action => Vec::new(),

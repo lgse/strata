@@ -11,6 +11,12 @@
 {"wait":{"state":{"target":{"role":"check menu item","name":"Case-sensitive names"},"checked":true}},"message":"a second option to apply while the same menu remains open"}
 {"click":{"role":"check menu item","name":"Case-sensitive names"}}
 {"wait":{"state":{"target":{"role":"check menu item","name":"Case-sensitive names"},"checked":false}},"message":"case sensitivity to turn off without dismissing the menu"}
+{"click":{"role":"check menu item","name":"Folders first"}}
+{"wait":{"state":{"target":{"role":"check menu item","name":"Folders first"},"checked":false}},"message":"the menu to turn folders first off"}
+{"wait":{"pref":{"key":"folders_first","value":false}},"message":"the menu to save folders first as off"}
+{"click":{"role":"check menu item","name":"Folders first"}}
+{"wait":{"state":{"target":{"role":"check menu item","name":"Folders first"},"checked":true}},"message":"the menu to turn folders first back on"}
+{"wait":{"pref":{"key":"folders_first","value":true}},"message":"the menu to save folders first as on"}
 {"click":{"role":"radio menu item","name":"Name"}}
 {"wait":{"state":{"target":{"role":"radio menu item","name":"Name"},"checked":true}},"message":"Name sorting to be restored while the menu stays open"}
 {"key":"Escape"}
