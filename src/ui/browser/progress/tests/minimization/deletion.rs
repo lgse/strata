@@ -296,6 +296,42 @@ fn fast_delete_animates_only_its_own_success_without_showing_progress() {
 }
 
 #[test]
+fn confirming_a_permanent_delete_keeps_its_dissolve() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::minimization::deletion::confirming_a_permanent_delete_keeps_its_dissolve",
+        || {
+            for (_, mode) in deletion_routes().filter(|(permanent, _)| *permanent) {
+                let fixture = Fixture::new();
+                fixture.view.set_view_mode(mode);
+                // A window hands focus back to the listing when the dialog closes.
+                fixture
+                    .view
+                    .set_as_modal_focus_fallback(fixture.window.upcast_ref());
+                let (deleted, _) = fixture.prepare_deletion();
+                fixture.view.state.pending_delete_dissolve.take();
+                set_file_progress_delay_for_test(Duration::from_secs(30));
+                fixture.view.state.show_delete_confirmation(vec![deleted]);
+                pump_until(|| focused_button_label(&fixture.window).is_some());
+                gtk::prelude::RootExt::focus(&fixture.window)
+                    .and_downcast::<gtk::Button>()
+                    .expect("the confirmation starts on its confirm button")
+                    .emit_clicked();
+                pump_until(|| fixture.view.browser().last_started_operation().is_some());
+                assert!(
+                    fixture
+                        .view
+                        .state
+                        .pending_delete_dissolve
+                        .borrow()
+                        .is_some(),
+                    "{mode:?}: the confirmed deletion lost its dissolve"
+                );
+            }
+        },
+    );
+}
+
+#[test]
 fn overlapping_fast_deletions_restore_browser_input_after_playback() {
     crate::test_support::gtk_test(
         "ui::browser::progress::tests::minimization::deletion::overlapping_fast_deletions_restore_browser_input_after_playback",

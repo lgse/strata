@@ -299,6 +299,11 @@ impl ViewState {
                 return;
             };
             confirmed.confirmed.set(true);
+            // Closing the dialog returns focus to the listing, which leaves it without a
+            // current allocation to snapshot until the next frame.
+            if !trash && let Some(ui) = weak_ui.upgrade() {
+                ui.prepare_delete_dissolve(&entries);
+            }
             let browser = browser.clone();
             let weak_ui = weak_ui.clone();
             modal.dismiss_then(move || {
@@ -374,7 +379,6 @@ fn delete_confirmed_permanently(
 ) {
     if let Some(ui) = weak_ui.upgrade() {
         ui.leave_folder_being_deleted(&entries);
-        ui.prepare_delete_dissolve(&entries);
     }
     let entries = unshare_entries(entries);
     browser.delete_permanently(entries, reach == DeletionReach::Remote);
