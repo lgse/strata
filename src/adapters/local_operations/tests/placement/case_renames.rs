@@ -134,8 +134,7 @@ fn a_file_handle_follows_the_item_and_not_its_name() -> Result<(), Box<dyn Error
     let dir = open_local_parent_directory(root.path())?;
     let handle =
         |name: &str| super::super::super::native_fs::file_handle(dir.as_fd(), OsStr::new(name));
-    if handleless_base(dir.as_fd()).is_some() {
-        eprintln!("skipped on a base without file handles (exfat, cifs)");
+    if !base_offers(&FILE_HANDLES)? {
         return Ok(());
     }
     fs::write(root.path().join("report"), b"first")?;

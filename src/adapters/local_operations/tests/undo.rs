@@ -3,6 +3,7 @@
 mod fixed_names;
 mod moves;
 mod renames;
+mod replacements;
 
 use rustix::io::Errno;
 
@@ -21,6 +22,7 @@ fn record(original: &Path, current: &Path) -> MoveRecord {
         original: Location::local(original),
         current: Location::local(current),
         renamed: Vec::new(),
+        replaced: None,
     }
 }
 
@@ -42,11 +44,21 @@ fn undo_request(id: u64, items: Vec<UndoMoveItem>) -> UndoMoveRequest {
 }
 
 fn start_undo_move(request: UndoMoveRequest) -> (LoadHandle, Rc<RefCell<Vec<OperationEvent>>>) {
+    start_undo_move_observing(request, |_| {})
+}
+
+fn start_undo_move_observing(
+    request: UndoMoveRequest,
+    observe: impl Fn(&OperationEvent) + 'static,
+) -> (LoadHandle, Rc<RefCell<Vec<OperationEvent>>>) {
     let events = Rc::new(RefCell::new(Vec::new()));
     let emitted = events.clone();
     let operation = LocalOperationProvider.undo_move(
         request,
-        Rc::new(move |event| emitted.borrow_mut().push(event)),
+        Rc::new(move |event| {
+            observe(&event);
+            emitted.borrow_mut().push(event);
+        }),
     );
     (operation, events)
 }
@@ -82,6 +94,16 @@ fn reported_renames(events: &[OperationEvent]) -> Vec<RenamedItem> {
             _ => Vec::new(),
         })
         .collect()
+}
+
+fn completed_before_failing(events: &[OperationEvent]) -> &[Location] {
+    match events.last() {
+        Some(OperationEvent::TransferFailed {
+            completed_locations,
+            ..
+        }) => completed_locations,
+        other => panic!("expected a transfer failure, got {other:?}"),
+    }
 }
 
 fn assert_pasted(events: &[OperationEvent], row: &str) {

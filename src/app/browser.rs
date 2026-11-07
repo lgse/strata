@@ -73,7 +73,7 @@ use undo::{
 use undo::{
     MergeUndoState, UndoEntry, completed_replay_items, finish_replay, mark_replay_item_completed,
     move_records, moved_target, push_background_undo, push_pending_redo, push_pending_undo,
-    push_regenerated_undo, retain_merge_records,
+    push_regenerated_undo, record_replaced_originals, retain_merge_records,
 };
 
 /// Caps a normal directory load. Memory sets the ceiling, not time: a listed entry costs

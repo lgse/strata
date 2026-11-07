@@ -208,10 +208,6 @@ pub(crate) fn smb_base(fd: BorrowedFd<'_>) -> bool {
         .is_some_and(|base| family(&base.fs_type) == Family::Smb)
 }
 
-pub(crate) fn handleless_base(fd: BorrowedFd<'_>) -> Option<MountType> {
-    System.current_mount_type(fd).filter(gives_no_handles)
-}
-
 pub(super) fn gives_no_handles(base: &MountType) -> bool {
     base.fs_type == "exfat" || family(&base.fs_type) == Family::Smb
 }

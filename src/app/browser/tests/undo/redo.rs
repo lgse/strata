@@ -140,10 +140,69 @@ fn an_undone_move_can_be_redone() {
                 original: record.current,
                 current: record.original,
                 renamed: Vec::new(),
+                replaced: None,
             }]],
             vec![NameMode::Keep, NameMode::Fix]
         )
     );
+}
+
+fn finish_move_replay(
+    browser: &Rc<Browser>,
+    redo: bool,
+    trashed: Option<(&Location, ItemIdentity)>,
+    moved: &Location,
+) {
+    let claim = claim_replay(redo, None).expect("replay claim");
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(true));
+    browser.replay_claim(redo).replace(Some(claim));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+    if let Some((location, identity)) = trashed {
+        emit(OperationEvent::ItemTrashed {
+            request_id,
+            location: location.clone(),
+            identity,
+        });
+    }
+    emit(pasted(request_id, vec![moved.clone()]));
+}
+
+#[test]
+fn each_move_replay_records_only_the_original_it_replaced() {
+    let browser = operating_browser();
+    let record = move_record("/fixture/report.txt", "/fixture/archive/report.txt");
+    let staged = |identity| {
+        UndoEntry::Move(vec![MoveRecord {
+            replaced: identity,
+            ..record.clone()
+        }])
+    };
+    let (first, at_source, at_target) = (
+        folder_identity(41, 1),
+        folder_identity(42, 2),
+        folder_identity(43, 3),
+    );
+    push_pending_undo(staged(Some(first)));
+
+    finish_move_replay(
+        &browser,
+        false,
+        Some((&record.original, at_source)),
+        &record.current,
+    );
+    assert_undo_and_redo(None, Some(staged(Some(at_source))));
+
+    finish_move_replay(
+        &browser,
+        true,
+        Some((&record.current, at_target)),
+        &record.original,
+    );
+    assert_undo_and_redo(Some(staged(Some(at_target))), None);
+
+    finish_move_replay(&browser, false, None, &record.current);
+    assert_undo_and_redo(None, Some(staged(None)));
 }
 
 #[test]

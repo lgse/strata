@@ -12,7 +12,7 @@ mod merge;
 mod moves;
 
 pub(super) use merge::{MergeUndoState, retain_merge_records};
-pub(super) use moves::{move_records, moved_target, undo_move_parents};
+pub(super) use moves::{move_records, moved_target, record_replaced_originals, undo_move_parents};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UndoEntry {

@@ -54,7 +54,8 @@ cross-device coverage:
 
 `/dev/shm` must be writable and on a different filesystem from the temporary
 directory. `STRATA_REQUIRE_DEVICE_TESTS=1` is also set by CI; lack of a genuine
-cross-device boundary fails instead of producing a vacuous pass.
+cross-device boundary fails instead of producing a vacuous pass, as does a
+temporary directory whose filesystem lacks `O_TMPFILE` or file handles.
 
 Focused selections can be run on the same infrastructure:
 

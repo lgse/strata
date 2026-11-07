@@ -165,13 +165,90 @@ enum ItemOperation {
     Redo,
 }
 
+/// The conflict cases, each meeting a customized destination.
+mod conflict_steps {
+    use super::ItemCustomization;
+    use super::ItemOperation::{self, *};
+    use crate::assets::icons::{FILE_CODE, PICTURES};
+    use crate::model::FolderColor::{Blue, Green, Purple, Red};
+    use crate::services::TransferConflict;
+
+    type Step = (ItemOperation, &'static [ItemCustomization]);
+
+    const EXISTING: [Step; 2] = [
+        (Customize(("dest/docs", Some(Green), Some(PICTURES))), &[]),
+        (Customize(("dest/docs/kept", Some(Purple), None)), &[]),
+    ];
+    pub(super) const REPLACE: &[Step] = &[
+        EXISTING[0],
+        EXISTING[1],
+        (
+            Move(TransferConflict::ReplaceExisting),
+            &[
+                ("dest/docs", Some(Red), Some(FILE_CODE)),
+                ("dest/docs/inner", Some(Blue), None),
+                ("dest/docs/kept", None, None),
+                ("docs", None, None),
+            ],
+        ),
+        (
+            Undo,
+            &[
+                ("docs", Some(Red), Some(FILE_CODE)),
+                ("docs/inner", Some(Blue), None),
+                ("dest/docs", Some(Green), Some(PICTURES)),
+                ("dest/docs/kept", Some(Purple), None),
+                ("dest/docs/inner", None, None),
+            ],
+        ),
+    ];
+    pub(super) const MERGE: &[Step] = &[
+        EXISTING[0],
+        EXISTING[1],
+        (MakeFile("docs/note.txt"), &[]),
+        (MakeFile("dest/docs/note.txt"), &[]),
+        (Customize(("dest/docs/note.txt", None, Some(PICTURES))), &[]),
+        (
+            Move(TransferConflict::Merge),
+            &[
+                ("dest/docs", Some(Green), Some(PICTURES)),
+                ("dest/docs/inner", Some(Blue), None),
+                ("dest/docs/kept", Some(Purple), None),
+                ("dest/docs/note.txt", None, None),
+                ("docs", None, None),
+                ("docs/inner", None, None),
+            ],
+        ),
+    ];
+    pub(super) const COPY_REPLACE: &[Step] = &[
+        EXISTING[0],
+        EXISTING[1],
+        (
+            Copy(TransferConflict::ReplaceExisting),
+            &[
+                ("dest/docs", None, None),
+                ("dest/docs/inner", None, None),
+                ("dest/docs/kept", None, None),
+                ("docs", Some(Red), Some(FILE_CODE)),
+            ],
+        ),
+        (
+            Undo,
+            &[
+                ("dest/docs", Some(Green), Some(PICTURES)),
+                ("dest/docs/kept", Some(Purple), None),
+            ],
+        ),
+    ];
+}
+
 #[test]
 fn folder_customizations_follow_file_operations_performed_in_strata() {
     gtk_test(
         "ui::window::tests::preferences::item_customizations::folder_customizations_follow_file_operations_performed_in_strata",
         || {
-            use crate::assets::icons::{FILE_CODE, PICTURES};
-            use crate::model::FolderColor::{Blue, Green, Purple, Red};
+            use crate::assets::icons::FILE_CODE;
+            use crate::model::FolderColor::{Blue, Green, Red};
             use crate::model::Location;
             use crate::services::{PasteItem, RestoreTrashItem, TransferConflict};
             use ItemOperation::*;
@@ -198,61 +275,6 @@ fn folder_customizations_follow_file_operations_performed_in_strata() {
                 ("dest/docs", Some(Red), Some(FILE_CODE)),
                 ("dest/docs/inner", Some(Blue), None),
                 ("docs", None, None),
-            ];
-            let existing_customized: [(ItemOperation, &[ItemCustomization]); 2] = [
-                (Customize(("dest/docs", Some(Green), Some(PICTURES))), &[]),
-                (Customize(("dest/docs/kept", Some(Purple), None)), &[]),
-            ];
-            let replace = [
-                existing_customized[0],
-                existing_customized[1],
-                (
-                    Move(TransferConflict::ReplaceExisting),
-                    &[
-                        ("dest/docs", Some(Red), Some(FILE_CODE)),
-                        ("dest/docs/inner", Some(Blue), None),
-                        ("dest/docs/kept", None, None),
-                        ("docs", None, None),
-                    ],
-                ),
-            ];
-            let merge = [
-                existing_customized[0],
-                existing_customized[1],
-                (MakeFile("docs/note.txt"), &[]),
-                (MakeFile("dest/docs/note.txt"), &[]),
-                (Customize(("dest/docs/note.txt", None, Some(PICTURES))), &[]),
-                (
-                    Move(TransferConflict::Merge),
-                    &[
-                        ("dest/docs", Some(Green), Some(PICTURES)),
-                        ("dest/docs/inner", Some(Blue), None),
-                        ("dest/docs/kept", Some(Purple), None),
-                        ("dest/docs/note.txt", None, None),
-                        ("docs", None, None),
-                        ("docs/inner", None, None),
-                    ],
-                ),
-            ];
-            let copy_replace = [
-                existing_customized[0],
-                existing_customized[1],
-                (
-                    Copy(TransferConflict::ReplaceExisting),
-                    &[
-                        ("dest/docs", None, None),
-                        ("dest/docs/inner", None, None),
-                        ("dest/docs/kept", None, None),
-                        ("docs", Some(Red), Some(FILE_CODE)),
-                    ],
-                ),
-                (
-                    Undo,
-                    &[
-                        ("dest/docs", Some(Green), Some(PICTURES)),
-                        ("dest/docs/kept", Some(Purple), None),
-                    ],
-                ),
             ];
             type Steps<'a> = &'a [(ItemOperation, &'a [ItemCustomization])];
             let cases: [(&str, Steps); 11] = [
@@ -284,16 +306,16 @@ fn folder_customizations_follow_file_operations_performed_in_strata() {
                     ],
                 ),
                 (
-                    "Replace drops the replaced folder's customizations",
-                    &replace,
+                    "Replace and undo restore each folder's customizations",
+                    conflict_steps::REPLACE,
                 ),
                 (
                     "Merge keeps the destination folder's own customization",
-                    &merge,
+                    conflict_steps::MERGE,
                 ),
                 (
                     "a copy that replaces drops the replaced folder's customizations until undo",
-                    &copy_replace,
+                    conflict_steps::COPY_REPLACE,
                 ),
                 (
                     "trash and undo",

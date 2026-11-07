@@ -5,6 +5,9 @@ use std::ops::ControlFlow;
 use super::*;
 use crate::services::ItemIdentity;
 
+mod replaced;
+use replaced::ReplacedMoves;
+
 pub(super) fn undo_move(request: UndoMoveRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
     let cancellable = gio::Cancellable::new();
     let _task = glib::MainContext::default().spawn_local(run(request, emit, cancellable.clone()));
@@ -31,6 +34,7 @@ struct UndoMove {
     names: NamePolicy,
     sizes: TransferSizes,
     sources: Vec<gio::File>,
+    replaced: Option<ReplacedMoves>,
     _operation: ActiveOperation,
     request: UndoMoveRequest,
     emit: Rc<dyn Fn(OperationEvent)>,
@@ -51,6 +55,13 @@ fn undo_folders(request: &UndoMoveRequest) -> HashSet<Location> {
         .items
         .iter()
         .flat_map(|item| [&item.record.current, &item.record.original]);
+    if request
+        .items
+        .iter()
+        .any(|item| item.record.replaced.is_some())
+    {
+        affected_locations.insert(Location::uri("trash:///"));
+    }
     for location in moved.chain(&request.cleanup_locations) {
         affected_locations.insert(location.clone());
         if let Some(parent) = location.parent() {
@@ -131,6 +142,13 @@ impl UndoMove {
         cancellable: gio::Cancellable,
     ) -> Option<Self> {
         let affected_locations = undo_folders(&request);
+        let replaced = match ReplacedMoves::prepare(&request, &cancellable).await {
+            Ok(replaced) => replaced,
+            Err(error) => {
+                report_unsized(&request, &emit, &error, affected_locations);
+                return None;
+            }
+        };
         let moved = release::natives(request.items.iter().map(|item| &item.record.current));
         let operation =
             ActiveOperation::begin(release::parents(&moved).into_iter().chain(release::parents(
@@ -170,6 +188,7 @@ impl UndoMove {
             names,
             sizes,
             sources,
+            replaced,
             _operation: operation,
             request,
             emit,
@@ -268,20 +287,20 @@ impl UndoMove {
     }
 
     async fn stop_before(mut self, index: usize) {
-        self.settling.finish().await;
+        let failure = self.settle().await;
         let stop = TransferStop {
             completed: self.settling.completed(),
             failed: self.settling.failed(),
             not_attempted: self.currents(index),
             affected_locations: std::mem::take(&mut self.affected_locations),
-            failure: self.settling.failure(),
+            failure,
             skip_flush: false,
         };
         self.stop(stop).await;
     }
 
     async fn stop_failed(&mut self, index: usize, undone: bool, error: &glib::Error) {
-        self.settling.finish().await;
+        let settled_failure = self.settle().await;
         let failure = (!was_cancelled(error)).then(|| crate::services::gio_error_message(error));
         let untouched = undone && was_cancelled(error);
         let mut failed = self.settling.failed();
@@ -293,15 +312,14 @@ impl UndoMove {
             failed,
             not_attempted: self.currents(index + usize::from(!untouched)),
             affected_locations: std::mem::take(&mut self.affected_locations),
-            failure: joined_failures(failure, self.settling.failure()),
+            failure: joined_failures(failure, settled_failure),
             skip_flush: false,
         };
         self.stop(stop).await;
     }
 
     async fn finish(mut self) {
-        self.settling.finish().await;
-        if let Some(failure) = self.settling.failure() {
+        if let Some(failure) = self.settle().await {
             let stop = TransferStop {
                 completed: self.settling.completed(),
                 failed: self.settling.failed(),

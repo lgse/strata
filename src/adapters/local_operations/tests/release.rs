@@ -441,6 +441,7 @@ fn every_operation_releases_a_preview_of_what_it_changes_before_changing_it()
                             original: elsewhere,
                             current: Location::local(fixture.as_ref().unwrap_or(&item)),
                             renamed: Vec::new(),
+                            replaced: None,
                         },
                         conflict: if row == "undo a move over a file with Replace" {
                             TransferConflict::ReplaceExisting
