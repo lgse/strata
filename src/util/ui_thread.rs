@@ -54,5 +54,6 @@ impl Drop for Allowed {
     }
 }
 
-#[cfg(test)]
+// `assert_off` is a `debug_assert!`, so its tests mean nothing in release builds.
+#[cfg(all(test, debug_assertions))]
 mod tests;

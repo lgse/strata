@@ -143,6 +143,9 @@ fn a_moved_source_stays_when_its_copy_is_gone_before_the_deletion() -> Result<()
         .map(|replaced| (TransferConflict::FailIfExists, None, replaced)),
     );
     for (conflict, published, replaced) in rows {
+        if published == Some(Op::LinkFd) && !base_offers(&UNNAMED_FILES)? {
+            continue;
+        }
         check_copy_gone(conflict, published, replaced)?;
     }
     Ok(())

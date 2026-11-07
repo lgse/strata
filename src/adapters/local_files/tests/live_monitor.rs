@@ -6,6 +6,7 @@ use std::{
 };
 
 use super::*;
+use crate::test_support::temp_base::{UNNAMED_FILES, base_offers};
 
 fn live_watch(location: Location, notify: Rc<dyn Fn(DirectoryChange)>) -> LoadHandle {
     live_watch_of(location, None, notify)
@@ -202,6 +203,9 @@ fn a_look_at_the_path_that_outlasts_later_batches_still_reports_the_departure()
 #[test]
 fn change_events_for_unnamed_temporary_files_are_ignored() -> Result<(), Box<dyn Error>> {
     let _serial = serial();
+    if !base_offers(&UNNAMED_FILES)? {
+        return Ok(());
+    }
     let directory = unique_fixture_root("monitor-unnamed");
     fs::create_dir_all(&directory)?;
     let listed = directory.join("#1234");
@@ -257,6 +261,9 @@ fn a_file_linked_into_place_is_queried_once() -> Result<(), Box<dyn Error>> {
     use std::os::fd::AsRawFd;
 
     let _serial = serial();
+    if !base_offers(&UNNAMED_FILES)? {
+        return Ok(());
+    }
     let directory = unique_fixture_root("monitor-linked");
     fs::create_dir_all(&directory)?;
     let (changes, notify) = change_recorder();

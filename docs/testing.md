@@ -201,8 +201,12 @@ Xvfb, with `GTK_A11Y=none`, `NO_AT_BRIDGE=1`, and `STRATA_REQUIRE_GTK_TESTS=1`.
 Each Xvfb server uses `-noreset` so consecutive test processes do not
 race a server reset when the last display client exits. GTK initialization
 failures cannot silently skip tests. The container's `/tmp`, which holds `HOME` and
-the tests' temporary folders, is an executable tmpfs: copy tests need `O_TMPFILE`
-there, which an overlay `/tmp` may refuse. Formatting, compiler,
+the tests' temporary folders, is an executable tmpfs: the file-operation tests
+need `O_TMPFILE` and file handles there, which an overlay `/tmp` refuses
+(overlayfs has `O_TMPFILE` only since Linux 6.10 and gives file handles only
+when exported over NFS). Outside CI those tests skip on such a base;
+`STRATA_REQUIRE_DEVICE_TESTS=1`, which CI and `scripts/test-headless.py` set,
+fails them instead. Formatting, compiler,
 lint, and test failures remain blocking. Lightweight policy/helper jobs retain
 their existing runners rather than downloading a large GUI image unnecessarily.
 

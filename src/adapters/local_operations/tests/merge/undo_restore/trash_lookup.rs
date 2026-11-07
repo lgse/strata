@@ -227,6 +227,9 @@ fn a_trashed_original_is_passed_over_only_where_its_mount_proves_another()
 -> Result<(), Box<dyn Error>> {
     use Chosen::{Item, Nothing, Refused};
     let _serial = serial()?;
+    if !base_offers(&FILE_HANDLES)? {
+        return Ok(());
+    }
     let reusing_ext4: Preset = || Quirks {
         reused_inodes: Some("report*"),
         ..Quirks::ext4()

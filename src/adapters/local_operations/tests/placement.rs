@@ -13,7 +13,7 @@ use super::super::{
         place, probe, rename_in_place, set_aside,
     },
 };
-use super::fs_quirks::{Op, OverEmptyDirectory, Preset, Racer, Support, handleless_base, hold};
+use super::fs_quirks::{Op, OverEmptyDirectory, Preset, Racer, Support, hold};
 use super::*;
 use crate::{
     adapters::volume::{MountCapabilities, mount_capabilities},

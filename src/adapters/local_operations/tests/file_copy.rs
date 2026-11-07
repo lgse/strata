@@ -200,6 +200,9 @@ fn a_tmpfile_that_cannot_be_linked_is_published_without_rereading_the_source()
             true,
         ),
     ] {
+        if !staged && !base_offers(&UNNAMED_FILES)? {
+            continue;
+        }
         // One pass reads the data, then the end; a third read would fail.
         let mounts = mounts(
             Quirks {
@@ -223,6 +226,9 @@ fn a_tmpfile_that_cannot_be_linked_is_published_without_rereading_the_source()
 #[test]
 fn a_name_taken_just_before_the_link_is_left_alone() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
+    if !base_offers(&UNNAMED_FILES)? {
+        return Ok(());
+    }
     let root = tempfile::tempdir()?;
     let source = root.path().join("source.txt");
     fs::write(&source, b"ours")?;
@@ -293,6 +299,9 @@ fn a_file_put_at_the_published_name_right_after_publishing_stays_there()
 #[test]
 fn a_folder_removed_before_the_link_leaves_tmpfiles_in_use() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
+    if !base_offers(&UNNAMED_FILES)? {
+        return Ok(());
+    }
     let root = tempfile::tempdir()?;
     let source = root.path().join("source.txt");
     fs::write(&source, b"contents")?;
@@ -325,6 +334,9 @@ fn a_folder_removed_before_the_link_leaves_tmpfiles_in_use() -> Result<(), Box<d
 #[test]
 fn what_a_mount_learns_of_its_copy_support_stays_with_that_mount() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
+    if !base_offers(&UNNAMED_FILES)? {
+        return Ok(());
+    }
     for (case, learner, learned) in [
         (
             "AT_EMPTY_PATH refused",
@@ -362,23 +374,16 @@ fn what_a_mount_learns_of_its_copy_support_stays_with_that_mount() -> Result<(),
         for folder in [learning.path(), bystanding.path()] {
             fs::write(folder.join("source.bin"), b"contents")?;
         }
-        copy(
-            &learning.path().join("source.bin"),
-            &learning.path().join("first.bin"),
-        )?;
-        copy(
-            &bystanding.path().join("source.bin"),
-            &bystanding.path().join("target.bin"),
-        )?;
+        let copy_in =
+            |folder: &Path, target: &str| copy(&folder.join("source.bin"), &folder.join(target));
+        copy_in(learning.path(), "first.bin")?;
+        copy_in(bystanding.path(), "target.bin")?;
         learner_scope.clear_calls();
         drop(FsQuirks::install(
             tempfile::tempdir()?.path(),
             Quirks::default(),
         ));
-        copy(
-            &learning.path().join("source.bin"),
-            &learning.path().join("second.bin"),
-        )?;
+        copy_in(learning.path(), "second.bin")?;
 
         for (op, count) in learned {
             assert_eq!(learner_scope.count(op), count, "{case}: {op:?}");
@@ -397,6 +402,9 @@ fn what_a_mount_learns_of_its_copy_support_stays_with_that_mount() -> Result<(),
 fn a_mount_found_unable_to_link_tmpfiles_stays_so_while_another_copy_opens_one()
 -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
+    if !base_offers(&UNNAMED_FILES)? {
+        return Ok(());
+    }
     let folder = tempfile::tempdir()?;
     let source = folder.path().join("source.bin");
     fs::write(&source, b"contents")?;
@@ -483,6 +491,9 @@ fn a_write_error_reported_at_close_fails_the_copy() -> Result<(), Box<dyn Error>
         ("named stage", ".strata-copy-*", Quirks::nfs3 as Preset),
         ("unnamed file", "#*", Quirks::default),
     ] {
+        if case == "unnamed file" && !base_offers(&UNNAMED_FILES)? {
+            continue;
+        }
         let mounts = mounts(Quirks::default(), |_| Quirks {
             fail: vec![(Op::Close, closed, 0, Errno::IO)],
             ..preset()
