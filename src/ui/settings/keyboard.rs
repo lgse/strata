@@ -1299,6 +1299,7 @@ const NAMES: &[(Command, &str)] = &[
     (SORT_BY_NATURAL, "Natural"),
     (SORT_BY_ALPHABETICAL, "Alphabetical"),
     (SORT_BY_CASE_SENSITIVE, "Case-sensitive names"),
+    (SORT_BY_FOLDERS_FIRST, "Folders first"),
     (COPY_AS, "Copy chord"),
     (COPY_AS_PATH, "Copy path (copy chord)"),
     (COPY_AS_NAME, "Copy name"),

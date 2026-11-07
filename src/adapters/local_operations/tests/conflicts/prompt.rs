@@ -11,8 +11,9 @@ type Met = (&'static str, Option<Collision>);
 
 /// A source: its name and what it meets on vfat, then on ext4, and whether
 /// names inside it change on vfat. `own.txt` and `same` are pasted from
-/// the destination itself and `old.txt` from a Trash on another disk.
-fn prompt_rows() -> [(&'static str, Met, Met, bool); 10] {
+/// the destination itself, `old.txt` from a Trash on another disk, and
+/// `holder` from inside the folder of its name.
+fn prompt_rows() -> [(&'static str, Met, Met, bool); 11] {
     let collision = |mergeable, replaceable| {
         Some(Collision {
             mergeable,
@@ -24,12 +25,19 @@ fn prompt_rows() -> [(&'static str, Met, Met, bool); 10] {
         collision(true, true),
         collision(false, false),
     );
+    let folder_holding_it = file;
     [
         ("a:b", ("a_b", file), ("a:b", None), false),
         ("Photo.jpg", ("Photo.jpg", file), ("Photo.jpg", None), false),
         ("x:y", ("x_y", folder), ("x:y", None), true),
         ("folder", ("folder", folder), ("folder", folder), true),
         ("same", ("same", folder), ("same", folder), false),
+        (
+            "holder",
+            ("holder", folder_holding_it),
+            ("holder", folder_holding_it),
+            false,
+        ),
         (
             "data",
             ("data", file_on_folder),
@@ -54,7 +62,14 @@ fn seed_prompt_items(source: &Path, disk: &Path, pads: &[String]) -> io::Result<
         fs::write(source.join(name), name)?;
     }
     std::os::unix::fs::symlink("a:b", source.join("link"))?;
-    for name in ["x_y", "folder", "data", "same", "inner/same"] {
+    for name in [
+        "x_y",
+        "folder",
+        "data",
+        "same",
+        "inner/same",
+        "holder/holder",
+    ] {
         fs::create_dir_all(disk.join(name))?;
     }
     for name in ["a_b", "photo.JPG", "link", "own.txt", "old.txt"] {
@@ -69,6 +84,7 @@ fn prompt_sources(source: &Path, disk: &Path, pads: &[String]) -> Vec<Location> 
         .map(|(name, ..)| match *name {
             "own.txt" => Location::local(disk.join(name)),
             "same" => Location::local(disk.join("inner").join(name)),
+            "holder" => Location::local(disk.join("holder").join(name)),
             "old.txt" => Location::uri(format!(
                 "trash:///%5Cmnt%5CData%5C.Trash-1000%5Cfiles%5C{name}"
             )),

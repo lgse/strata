@@ -249,6 +249,10 @@ impl Dispatcher {
 
 impl Dispatcher {
     pub(super) fn complete_sort(&self, press: &KeyPress) -> bool {
+        if press.is(SORT_BY_FOLDERS_FIRST) {
+            self.view.toggle_focused_folders_first();
+            return true;
+        }
         if press.is(SORT_BY_NATURAL)
             || press.is(SORT_BY_ALPHABETICAL)
             || press.is(SORT_BY_CASE_SENSITIVE)

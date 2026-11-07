@@ -688,6 +688,7 @@
   "Replace existing file?": "Vorhandene Datei ersetzen?",
   "Replace existing files?": "Vorhandene Dateien ersetzen?",
   "Replace your %{value1} draft with %{value2}? Code can be undone in the editor.": "Ihren Entwurf %{value1} durch %{value2} ersetzen? Code kann im Editor rückgängig gemacht werden.",
+  "Merging removes the source folder and can’t be undone.": "Beim Zusammenführen wird der Quellordner entfernt; dies kann nicht rückgängig gemacht werden.",
   "Replaced items can't be moved to Trash here and will be deleted.": "Ersetzte Elemente können hier nicht in den Papierkorb verschoben werden und werden gelöscht.",
   "Reported %{value1} created.": "Erstellung von %{value1} gemeldet.",
   "Requirements for %{name}": "Voraussetzungen für %{name}",

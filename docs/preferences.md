@@ -226,10 +226,12 @@ clears every saved value.
 
 Local folders are keyed by path and folders on removable drives by filesystem UUID
 plus their path inside the drive, so values survive remounting; drives read through
-a FUSE driver for local disks (`fuseblk`, such as ntfs-3g or exfat-fuse) count as
-local. Remote shares, other FUSE filesystems, Trash, Recent, Camera Photos, and
+a FUSE driver for local disks (`fuseblk`, such as ntfs-3g or exfat-fuse) and FUSE
+filesystems that layer local storage (such as mergerfs, gocryptfs or bindfs) count
+as local. Remote shares, other FUSE filesystems, Trash, Recent, Camera Photos, and
 paths that are not valid UTF-8 are not remembered: their sort stays with the open
-column, and a size change lasts while the folder is shown. Renames and moves
+column, also when the column is rebuilt because a folder open after it was
+removed, and a size change lasts while the folder is shown. Renames and moves
 performed in Strata, including undo and redo, carry a folder's values and those of
 the folders inside it, following the Replace, Merge, Trash, Put back, and undo
 rules of folder colors (see [Consumers and intentional

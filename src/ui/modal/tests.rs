@@ -6,8 +6,6 @@ use gtk::subclass::prelude::ObjectSubclassIsExt;
 use std::cell::Cell;
 use std::time::Instant;
 
-mod fade;
-
 #[test]
 fn modal_hosts_preserve_nested_blur_and_support_plain_overlays() {
     crate::test_support::gtk_test(

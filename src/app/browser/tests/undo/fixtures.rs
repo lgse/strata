@@ -49,6 +49,7 @@ pub(super) fn move_record(original: &str, current: &str) -> MoveRecord {
         original: Location::local(original),
         current: Location::local(current),
         renamed: Vec::new(),
+        replaced: None,
     }
 }
 

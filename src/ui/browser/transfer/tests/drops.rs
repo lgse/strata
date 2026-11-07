@@ -346,3 +346,45 @@ fn background_move_without_reveal_restores_the_source_column() {
         },
     );
 }
+
+#[test]
+fn dropping_a_folder_onto_its_namesake_merges_and_removes_the_source() {
+    crate::test_support::gtk_test(
+        "ui::browser::transfer::tests::drops::dropping_a_folder_onto_its_namesake_merges_and_removes_the_source",
+        || {
+            let dir = tempfile::tempdir().expect("merge drop fixture");
+            let source = dir.path().join("b/Photos");
+            let merged = dir.path().join("a/Photos");
+            std::fs::create_dir_all(&source).expect("source folder");
+            std::fs::create_dir_all(&merged).expect("destination folder");
+            std::fs::write(source.join("two.txt"), b"two").expect("source file");
+            std::fs::write(merged.join("one.txt"), b"one").expect("destination file");
+            let (view, overlay, window) = conflict_view();
+
+            view.state.commit_file_drop(
+                Location::local(dir.path().join("a")),
+                vec![Location::local(&source)],
+                DropCommit::Move,
+            );
+
+            assert!(wait_for_modal_layer(&overlay), "the conflict prompt");
+            assert!(
+                visible_texts(&overlay)
+                    .iter()
+                    .any(|text| text.contains("Merging removes the source folder")),
+                "the prompt must say a merged move can't be undone"
+            );
+            click_button(&overlay, "Merge");
+            wait_until(
+                || holds(&merged.join("two.txt"), b"two") && !source.exists(),
+                "the merged move to finish",
+            );
+            assert_eq!(
+                std::fs::read(merged.join("one.txt")).expect("destination-only file"),
+                b"one",
+                "destination-only contents survive the merged move"
+            );
+            window.destroy();
+        },
+    );
+}

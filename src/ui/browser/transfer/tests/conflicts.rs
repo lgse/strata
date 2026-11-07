@@ -125,6 +125,12 @@ fn merging_a_folder_combines_contents_through_the_conflict_dialog() {
                 has_visible_button(&overlay, "Merge"),
                 "a folder collision must offer Merge"
             );
+            assert!(
+                !visible_texts(&overlay)
+                    .iter()
+                    .any(|text| text.contains("Merging removes the source folder")),
+                "a copy merge keeps its source and its undo"
+            );
 
             click_button(&overlay, "Merge");
             let merged = collision.destination.join("folder");
@@ -154,9 +160,9 @@ fn merging_a_folder_combines_contents_through_the_conflict_dialog() {
 }
 
 #[test]
-fn merge_is_only_offered_for_copying_a_folder_onto_a_folder() {
+fn merge_is_only_offered_for_a_folder_onto_a_folder() {
     crate::test_support::gtk_test(
-        "ui::browser::transfer::tests::conflicts::merge_is_only_offered_for_copying_a_folder_onto_a_folder",
+        "ui::browser::transfer::tests::conflicts::merge_is_only_offered_for_a_folder_onto_a_folder",
         || {
             let collision = collision(&[("file.txt", b"new")], &[("file.txt", b"old")]);
             std::fs::create_dir_all(collision.source_dir.join("folder")).expect("source folder");
@@ -182,8 +188,8 @@ fn merge_is_only_offered_for_copying_a_folder_onto_a_folder() {
                 "move conflict dialog modal did not appear"
             );
             assert!(
-                !has_visible_button(&overlay, "Merge"),
-                "a moved folder collision cannot merge"
+                has_visible_button(&overlay, "Merge"),
+                "a moved folder collision must offer Merge"
             );
             window.destroy();
         },

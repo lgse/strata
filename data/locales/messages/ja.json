@@ -688,6 +688,7 @@
   "Replace existing file?": "既存のファイルを置き換えますか？",
   "Replace existing files?": "既存のファイルを置き換えますか？",
   "Replace your %{value1} draft with %{value2}? Code can be undone in the editor.": "%{value1} の下書きを「%{value2}」で置き換えますか？コードはエディターで元に戻せます。",
+  "Merging removes the source folder and can’t be undone.": "統合すると移動元のフォルダーは削除され、元に戻すことはできません。",
   "Replaced items can't be moved to Trash here and will be deleted.": "置き換えられる項目はここではゴミ箱へ移動できず、削除されます。",
   "Reported %{value1} created.": "%{value1}の作成が報告されました。",
   "Requirements for %{name}": "%{name} の必要条件",

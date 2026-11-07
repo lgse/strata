@@ -19,6 +19,7 @@ mod device_actions;
 mod device_labels;
 mod device_lock;
 mod device_menu;
+mod device_order;
 mod device_release;
 mod devices;
 mod drive_dialogs;

@@ -130,7 +130,14 @@ fn transfer_conflict_text(
     plan: &TransferPlan,
     merge: bool,
 ) -> String {
-    let explanation = conflict_explanation(collision, &plan.destination, merge);
+    let mut explanation = conflict_explanation(collision, &plan.destination, merge);
+    // Undo cannot put back a source the merge deleted, so say so before the choice.
+    if merge && plan.move_sources {
+        explanation = crate::i18n::join_sentences(
+            &explanation,
+            &crate::i18n::tr("Merging removes the source folder and can’t be undone."),
+        );
+    }
     if collision.kinds.replaceable && replaces_without_trash(&plan.destination) {
         format!(
             "{explanation}\n\n{}",
@@ -185,11 +192,8 @@ impl ViewState {
         }
         let collision = collisions.remove(0);
         let name = collision.source.display_name();
-        // Merge stays copy-only: undoing a merged move cannot tell which
-        // destination contents the source actually owned. It stages what it
-        // overwrites in Trash, which `admin://` lacks.
-        let allow_merge =
-            collision.kinds.mergeable && !plan.move_sources && !plan.destination.is_administrator();
+        // Merge stages what it overwrites in Trash, which `admin://` lacks.
+        let allow_merge = collision.kinds.mergeable && !plan.destination.is_administrator();
         let explanation = transfer_conflict_text(&collision, &plan, allow_merge);
         let (apply_to_all_visible, skip_visible) =
             ConflictPrompt::visibility(collisions.len(), accepted.len());

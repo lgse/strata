@@ -688,6 +688,7 @@
   "Replace existing file?": "要替换现有文件吗？",
   "Replace existing files?": "要替换现有文件吗？",
   "Replace your %{value1} draft with %{value2}? Code can be undone in the editor.": "要用“%{value2}”替换当前的 %{value1} 草稿吗？可在编辑器中撤销代码更改。",
+  "Merging removes the source folder and can’t be undone.": "合并会移除源文件夹，且无法撤销。",
   "Replaced items can't be moved to Trash here and will be deleted.": "此处无法将被替换的项目移到回收站，它们将被删除。",
   "Reported %{value1} created.": "据操作报告，已创建 %{value1}。",
   "Requirements for %{name}": "%{name} 的依赖项",

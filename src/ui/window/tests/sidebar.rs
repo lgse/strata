@@ -6,7 +6,7 @@ use gtk::prelude::*;
 
 use super::super::{
     browser_for_window, build_sidebar, move_pinned_place, pin_gap_index, pin_locations_at,
-    sidebar_reorder_matches,
+    sidebar_reorder_matches, sidebar_rows::sidebar_button,
 };
 use crate::model::Location;
 use crate::test_support::gtk_test_with_env;
@@ -382,6 +382,32 @@ fn an_empty_pinned_section_shows_only_while_files_are_dragged_over_the_sidebar()
             view.browser().clear_observer();
             sidebar.disconnect();
             window.destroy();
+        },
+    );
+}
+
+#[test]
+fn devices_item_count_ignores_the_dividers_between_drives() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::sidebar::devices_item_count_ignores_the_dividers_between_drives",
+        || {
+            PreferenceManager::seed_saved_preferences_for_test();
+            let view = browser_for_window();
+            let sidebar = build_sidebar(view.clone(), PreferenceManager::shared(), false);
+            let section = sidebar.state.append_devices_section();
+            let append_row = |name| {
+                sidebar
+                    .state
+                    .append_sidebar_row(&sidebar_button(crate::assets::icons::HARD_DRIVE, name));
+            };
+            append_row("First partition");
+            append_row("Second partition");
+            sidebar.state.append_drive_separator();
+            append_row("Other drive");
+
+            assert_eq!(section.collect_rows(&sidebar.state.widget), 3);
+            view.browser().clear_observer();
+            sidebar.disconnect();
         },
     );
 }

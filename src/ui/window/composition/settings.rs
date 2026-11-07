@@ -194,7 +194,6 @@ impl SettingsLauncher {
         }
         layer.focus_current_page();
         self.button.add_css_class("active");
-        crate::ui::modal::fade_in(layer.widget.upcast_ref());
     }
 }
 

@@ -688,6 +688,7 @@
   "Replace existing file?": "Sostituire il file esistente?",
   "Replace existing files?": "Sostituire i file esistenti?",
   "Replace your %{value1} draft with %{value2}? Code can be undone in the editor.": "Sostituire la bozza %{value1} con %{value2}? Le modifiche al codice possono essere annullate nell’editor.",
+  "Merging removes the source folder and can’t be undone.": "L’unione rimuove la cartella di origine e non può essere annullata.",
   "Replaced items can't be moved to Trash here and will be deleted.": "Gli elementi sostituiti non possono essere spostati nel cestino qui e verranno eliminati.",
   "Reported %{value1} created.": "L’azione ha segnalato la creazione di %{value1}.",
   "Requirements for %{name}": "Requisiti di %{name}",

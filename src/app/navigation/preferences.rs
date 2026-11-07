@@ -65,14 +65,24 @@ impl NavigationState {
             })
     }
 
-    pub(super) fn initial_preferences(&self, location: &Location) -> ViewPreferences {
-        let mut preferences = self.preferences;
-        if let FolderSort::Saved(sort_key, sort_direction, comparison) =
-            self.resolve_folder_sort(location, true)
-        {
-            preferences.set_sort_options((sort_key, sort_direction, comparison));
+    /// `kept` is the column's preferences before a rebuild of the same path,
+    /// whose sort survives when its folder's sort is not remembered.
+    pub(super) fn initial_preferences(
+        &self,
+        location: &Location,
+        kept: Option<ViewPreferences>,
+    ) -> ViewPreferences {
+        let mut preferences = preferences_for_location(self.preferences, location);
+        match (self.resolve_folder_sort(location, true), kept) {
+            (FolderSort::Saved(sort_key, sort_direction, comparison), _) => {
+                preferences.set_sort_options((sort_key, sort_direction, comparison));
+            }
+            (FolderSort::Unremembered, Some(kept)) => {
+                preferences.set_sort_options(kept.sort_options());
+            }
+            _ => {}
         }
-        preferences_for_location(preferences, location)
+        preferences
     }
 
     /// What a column's preferences become after its folder's sort or the

@@ -235,6 +235,36 @@ fn saved_and_default_changes_resync_open_columns_while_unremembered_columns_keep
 }
 
 #[test]
+fn an_unremembered_column_keeps_its_sort_when_its_open_child_folder_is_removed() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let pool = Location::local("/fixture");
+    let child = Location::local("/fixture/child");
+    let saved: SavedSorts = Rc::new(RefCell::new(HashMap::from([(
+        pool.clone(),
+        FolderSort::Unremembered,
+    )])));
+    let (browser, _) = remembering_browser(Rc::new(RestoredSortingSource), &saved);
+    browser.navigate(pool.clone());
+    browser.set_sort(0, SortKey::Name, SortDirection::Descending);
+    pump_until_settled(&browser, || {
+        sorting(&browser, 0) == Some((SortKey::Name, SortDirection::Descending))
+    });
+    browser.descend(0, child.clone());
+
+    browser.handle_directory_change(0, &pool, DirectoryChange::Remove(child));
+
+    assert_eq!(browser.location_at(1), None);
+    assert_eq!(
+        sorting(&browser, 0),
+        Some((SortKey::Name, SortDirection::Descending))
+    );
+    pump_until_settled(&browser, || column_names(&browser, 0) == ["small", "large"]);
+    assert_eq!(browser.preferences(), ViewPreferences::default());
+}
+
+#[test]
 fn a_resync_sort_abandoned_for_missing_metadata_keeps_the_order_without_retrying() {
     let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()

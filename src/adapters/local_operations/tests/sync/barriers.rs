@@ -400,6 +400,11 @@ fn a_barrier_needs_a_readable_folder_only_where_it_flushes_one() -> Result<(), B
         ("cifs", false, true),
     ];
     for (id, (fs_type, beneath, moved)) in (390..).zip(rows) {
+        // Only an unnamed file can flush an unreadable root.
+        let flushes_the_root = fs_type == "ext4" && !beneath;
+        if flushes_the_root && !base_offers(&UNNAMED_FILES)? {
+            continue;
+        }
         check_unreadable_destination(id, fs_type, beneath, moved)?;
     }
     Ok(())
@@ -540,6 +545,9 @@ fn a_writeback_lost_during_a_move_keeps_every_source_it_may_hold() -> Result<(),
         .into_iter()
         .flat_map(|stage| [&["a"][..], &["a", "b"][..]].map(|names| (stage, names)));
     for (id, (stage, names)) in (440..).zip(cases) {
+        if stage.0 == Op::LinkFd && !base_offers(&UNNAMED_FILES)? {
+            continue;
+        }
         check_lost_writeback(id, stage, names)?;
     }
     Ok(())

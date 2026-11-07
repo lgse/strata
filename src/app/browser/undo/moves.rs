@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     model::Location,
-    services::{MoveRecord, RenamedItem, UndoMoveItem},
+    services::{ItemIdentity, MoveRecord, RenamedItem, UndoMoveItem},
 };
 
 pub(in crate::app::browser) fn undo_move_parents(items: &[UndoMoveItem]) -> HashSet<Location> {
@@ -41,6 +41,7 @@ pub(in crate::app::browser) fn move_records(
                 original: source.clone(),
                 current,
                 renamed: Vec::new(),
+                replaced: None,
             })
         })
         .collect::<Vec<_>>();
@@ -60,4 +61,19 @@ pub(in crate::app::browser) fn move_records(
         }
     }
     records
+}
+
+pub(in crate::app::browser) fn record_replaced_originals(
+    records: &mut [MoveRecord],
+    trashed: &HashMap<Location, ItemIdentity>,
+    forward: bool,
+) {
+    for record in records {
+        let location = if forward {
+            &record.current
+        } else {
+            &record.original
+        };
+        record.replaced = trashed.get(location).copied();
+    }
 }

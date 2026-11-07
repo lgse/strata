@@ -487,6 +487,9 @@ fn a_bulk_copy_records_for_undo_where_a_refused_name_was_saved() -> Result<(), B
 fn a_refused_name_keeps_unnamed_files_on_and_writes_twice_only_after_enoent()
 -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
+    if !base_offers(&UNNAMED_FILES)? {
+        return Ok(());
+    }
     // Names given back are refused as they are.
     for (case, policy, refused, outcome, staged) in [
         (

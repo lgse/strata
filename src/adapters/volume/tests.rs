@@ -438,7 +438,7 @@ fn navigation_lookups_read_the_mount_table_the_watcher_published() {
             let looked_up = || {
                 with_mount_snapshot(|snapshot| {
                     (
-                        snapshot.table.is_network_path(&share.join("folder")),
+                        snapshot.table.is_remote_share(&share.join("folder")),
                         snapshot.table.has_mount_inside(root.path()),
                     )
                 })

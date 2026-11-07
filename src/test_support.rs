@@ -5,6 +5,7 @@
 pub(crate) mod operations;
 pub(crate) mod parked;
 mod private_context;
+pub(crate) mod temp_base;
 mod tests;
 pub(crate) mod widgets;
 

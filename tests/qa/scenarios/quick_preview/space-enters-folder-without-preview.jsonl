@@ -1,5 +1,6 @@
-{"scenario":"space-enters-folder-without-preview","modes":["columns","icons","list"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"cost":{"columns":0.3,"icons":0.3,"list":0.3},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Space on a selected folder enters it without a preview; only route for Space-on-folder (Enter/arrows elsewhere); preview-hides-on-folder covers only the hidden-preview check"}}
-{"select_with_keyboard":"folder"}
+{"scenario":"space-enters-folder-without-preview","modes":["columns","icons","list"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"cost":{"columns-keyboard":0.3,"icons-keyboard":0.3,"list-keyboard":0.3,"columns-click":0.3},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Space on a selected folder enters it without a preview, whether the folder row or its opened column holds focus; only route for Space-on-folder (Enter/arrows elsewhere); preview-hides-on-folder covers only the hidden-preview check"},"variants":[{"id":"keyboard"},{"id":"click","modes":["columns"]}]}
+{"select_with_keyboard":"folder","variants":["keyboard"]}
+{"select":{"entry":"folder"},"variants":["click"]}
 {"key":"space"}
 {"wait":{"entries":{"contains":["inner.txt"]}},"message":"Space to enter the folder"}
-{"expect":{"preview":null}}
+{"expect":{"preview":null},"message":"Space on a folder opens no preview"}

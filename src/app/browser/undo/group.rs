@@ -102,6 +102,7 @@ fn regrouped_records(records: &[MoveRecord], folder: &Location) -> Vec<MoveRecor
                 .and_then(|name| folder.child(&name))
                 .unwrap_or_else(|| moved.current.clone()),
             renamed: Vec::new(),
+            replaced: moved.replaced,
         })
         .collect()
 }

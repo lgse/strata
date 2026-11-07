@@ -18,6 +18,7 @@ fn move_undo_refreshes_both_ends_without_repeating_shared_parents() {
             original,
             current,
             renamed: Vec::new(),
+            replaced: None,
         },
         conflict: TransferConflict::FailIfExists,
     })

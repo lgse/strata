@@ -110,12 +110,19 @@ impl NavigationState {
         self.peek = None;
         self.visual = None;
         self.selection_commit = false;
+        let previous = std::mem::take(&mut self.columns);
+        let kept = |location: &Location| {
+            previous
+                .iter()
+                .find(|column| column.location == *location)
+                .map(|column| column.preferences)
+        };
         self.columns = path
             .locations
             .into_iter()
             .zip(request_ids)
             .map(|(location, request_id)| ColumnState {
-                preferences: self.initial_preferences(&location),
+                preferences: self.initial_preferences(&location, kept(&location)),
                 location,
                 entries: Vec::new(),
                 entry_counts: Cell::new(None),
@@ -198,7 +205,7 @@ impl NavigationState {
 
     pub(super) fn push_column(&mut self, location: Location, request_id: RequestId) {
         self.columns.push(ColumnState {
-            preferences: self.initial_preferences(&location),
+            preferences: self.initial_preferences(&location, None),
             location,
             entries: Vec::new(),
             entry_counts: Cell::new(None),

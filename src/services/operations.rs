@@ -181,6 +181,8 @@ pub struct MoveRecord {
     pub current: Location,
     /// Entries the move saved under other names, beneath `current`.
     pub renamed: Vec<RenamedItem>,
+    /// The staged original to restore at the path the next replay vacates.
+    pub replaced: Option<ItemIdentity>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

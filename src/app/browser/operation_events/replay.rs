@@ -10,6 +10,7 @@ use crate::{
 use super::{
     UndoEntry, completed_replay_items, deleted_locations, finish_replay,
     mark_replay_item_completed, moved_locations, push_pending_redo, push_regenerated_undo,
+    record_replaced_originals,
 };
 
 pub(super) fn finish_claimed_replay(
@@ -69,7 +70,14 @@ fn replay_succeeded(redo: bool, entry: &UndoEntry, event: &OperationEvent) -> bo
     }
 }
 
-fn push_applied_replay(redo: bool, applied: UndoEntry, trashed: &HashMap<Location, ItemIdentity>) {
+fn push_applied_replay(
+    redo: bool,
+    mut applied: UndoEntry,
+    trashed: &HashMap<Location, ItemIdentity>,
+) {
+    if let UndoEntry::Move(records) = &mut applied {
+        record_replaced_originals(records, trashed, redo);
+    }
     if redo {
         push_regenerated_undo(match applied {
             UndoEntry::Trash { locations, .. } => UndoEntry::trashed(locations, trashed),

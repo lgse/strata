@@ -683,8 +683,9 @@ for a pinyin input method's composition. See
 ### Additional 10xer sort choices
 
 The sort chord adds Extension, Created and Unsorted, plus Natural, Alphabetical
-and case-sensitive name comparison. Their commands are `sort.extension`,
-`sort.created`, `sort.unsorted`, `sort.natural`, `sort.alphabetical` and
-`sort.case_sensitive`. Settings and F1 show their bindings from the key catalog;
-they can also be rebound in the default map. Reversing direction has no effect
-on Unsorted.
+and case-sensitive name comparison, and a Folders first toggle. Their commands
+are `sort.extension`, `sort.created`, `sort.unsorted`, `sort.natural`,
+`sort.alphabetical`, `sort.case_sensitive` and `sort.folders_first`. Settings and
+F1 show their bindings from the key catalog; they can also be rebound in the
+default map. Reversing direction has no effect on Unsorted. Folders first stays
+application-wide, keeps the sort field and direction, and has no effect in Recent.

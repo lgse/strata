@@ -259,6 +259,9 @@ impl Share {
 #[test]
 fn a_target_is_replaced_only_while_its_mount_still_knows_it() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
+    if !base_offers(&FILE_HANDLES)? {
+        return Ok(());
+    }
     let samba = || Quirks {
         births: Births::MadeUp,
         ..Quirks::cifs()

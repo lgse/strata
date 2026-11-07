@@ -4,7 +4,10 @@
 
 use gtk::{gio, gio::prelude::EmblemedIconExt as _, glib, prelude::*};
 
-use super::devices;
+use super::{
+    device_order::{DeviceHome, DevicePlacement, DriveRank},
+    devices,
+};
 
 pub(super) fn gio_icon_names(icon: &gio::Icon) -> Vec<String> {
     let mut names = Vec::new();
@@ -100,6 +103,47 @@ pub(super) fn gio_drive_identity(drive: &gio::Drive) -> Option<String> {
             .as_deref(),
         None,
     )
+}
+
+fn drive_home(drive: Option<gio::Drive>) -> DeviceHome {
+    drive.map_or(DeviceHome::NoDrive, |drive| {
+        DeviceHome::Drive(DriveRank {
+            sort_key: drive
+                .sort_key()
+                .filter(|key| !key.is_empty())
+                .map(String::from),
+            name: drive.name().to_string(),
+            identity: gio_drive_identity(&drive),
+        })
+    })
+}
+
+pub(super) fn volume_placement(volume: &gio::Volume) -> DevicePlacement {
+    DevicePlacement {
+        home: drive_home(volume.drive()),
+        name: volume.name().to_string(),
+        identity: gio_volume_identity(volume),
+    }
+}
+
+pub(super) fn password_drive_placement(drive: &gio::Drive) -> DevicePlacement {
+    DevicePlacement {
+        home: drive_home(Some(drive.clone())),
+        name: drive.name().to_string(),
+        identity: gio_drive_identity(drive),
+    }
+}
+
+pub(super) fn mount_placement(mount: &gio::Mount, network_share: bool) -> DevicePlacement {
+    DevicePlacement {
+        home: if network_share {
+            DeviceHome::Network
+        } else {
+            drive_home(mount.drive())
+        },
+        name: mount.name().to_string(),
+        identity: Some(mount.root().uri().to_string()),
+    }
 }
 
 pub(super) fn orphaned_password_drives(

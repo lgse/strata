@@ -275,12 +275,17 @@ impl Dispatcher {
         self.view.cancel_pending_click_rename();
         let activated_directory =
             press.is(PREVIEW.in_map(Map::Default)) && self.view.activate_directory_on_space();
-        if !activated_directory {
-            self.preview.toggle(
-                preview_target(browser.focused_entry()),
-                browser.active_depth(),
-            );
+        if activated_directory {
+            return;
         }
+        let focused = browser.focused_entry();
+        // A folder, or a column with nothing focused, has nothing to preview: Space
+        // only closes a drawer that is already open there.
+        if !self.preview.is_open() && focused.as_ref().is_none_or(|entry| entry.is_directory()) {
+            return;
+        }
+        self.preview
+            .toggle(preview_target(focused), browser.active_depth());
     }
 
     fn selection_navigation(&self, browser: &Browser, event: &KeyEvent) -> KeyResult {

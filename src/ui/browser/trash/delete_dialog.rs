@@ -299,6 +299,11 @@ impl ViewState {
                 return;
             };
             confirmed.confirmed.set(true);
+            // Closing the dialog returns focus to the listing, which leaves it without a
+            // current allocation to snapshot until the next frame.
+            if !trash && let Some(ui) = weak_ui.upgrade() {
+                ui.prepare_delete_dissolve(&entries);
+            }
             let browser = browser.clone();
             let weak_ui = weak_ui.clone();
             modal.dismiss_then(move || {
@@ -345,10 +350,11 @@ impl ViewState {
 
     fn prepare_delete_dissolve(&self, entries: &[FileEntry]) {
         self.reset_delete_animation();
-        let dissolve = self.delete_animation_source().and_then(|source| {
+        let depth = self.deletion_depth(entries);
+        let dissolve = self.delete_animation_source_at(depth).and_then(|source| {
             crate::ui::browser::dissolve_delete::prepare_dissolve(&source, entries)
         });
-        if let (Some(depth), Some(dissolve)) = (self.browser.active_depth(), dissolve) {
+        if let (Some(depth), Some(dissolve)) = (depth, dissolve) {
             self.pending_delete_dissolve
                 .replace(Some((depth, dissolve)));
         }
@@ -374,7 +380,6 @@ fn delete_confirmed_permanently(
 ) {
     if let Some(ui) = weak_ui.upgrade() {
         ui.leave_folder_being_deleted(&entries);
-        ui.prepare_delete_dissolve(&entries);
     }
     let entries = unshare_entries(entries);
     browser.delete_permanently(entries, reach == DeletionReach::Remote);
