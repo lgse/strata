@@ -20,6 +20,8 @@ const MANY_ROLES: &str =
 const GENERIC: &str = "a key many surfaces read for their own job, kept as a fixed binding";
 const GTK_OWNED: &str = "GTK acts on it once the dispatcher yields";
 const EXTENDS_SELECTION: &str = "Shift with a motion key extends the selection and stays fixed";
+const PATH_SEPARATOR: &str = "the filter's path separator, read from the text an input method \
+     commits rather than from the key; not a rebindable action";
 
 /// Catalog bindings that are not commands, and why.
 const NOT_COMMANDS: &[(&str, &str)] = &[
@@ -41,6 +43,7 @@ const NOT_COMMANDS: &[(&str, &str)] = &[
     ("UNSELECT_ALL", GTK_OWNED),
     ("DOCUMENT_START", GTK_OWNED),
     ("DOCUMENT_END", GTK_OWNED),
+    ("FILTER_DESCEND", PATH_SEPARATOR),
 ];
 
 const TIMELINE: &str = "the media timeline reads it in either map";

@@ -108,6 +108,9 @@ impl PaneFilter {
         let filtered = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
         let results_replace_listing = Rc::new(Cell::new(false));
         let enter_target = in_place_enter_target(&entry, browser, inputs.depth);
+        if let Some(state) = &inputs.state {
+            browser::bind_filter_descent(&entry, state.clone());
+        }
         browser::bind_listing_filter(
             &entry,
             &filter,

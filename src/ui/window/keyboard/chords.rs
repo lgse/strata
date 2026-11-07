@@ -17,6 +17,7 @@ use super::{Dispatcher, KeyResult};
 use crate::{
     app::Browser,
     model::Location,
+    services::InvocationSource,
     ui::{
         keys::{KeyPress, bindings::*},
         tenxer_mode::{Chord, Prompt},
@@ -136,6 +137,9 @@ impl Dispatcher {
             }
             Chord::Copy => self.complete_copy(press),
             Chord::Action => self.complete_action(press),
+            Chord::FolderAction => {
+                self.complete_numbered_action(press, InvocationSource::Background)
+            }
             Chord::Tabs => self.complete_tab(press),
         };
         if !completed {

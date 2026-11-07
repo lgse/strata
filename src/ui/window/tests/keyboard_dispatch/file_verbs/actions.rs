@@ -2,22 +2,23 @@
 
 use super::*;
 
-/// A custom action manifest whose command appends its id and paths to a recorder file.
+/// A custom action manifest whose command appends its id, `STRATA_ACTION_SOURCE` and
+/// paths to a recorder file.
 struct ActionManifest<'a> {
     id: &'a str,
     name: &'a str,
     menu: &'a str,
-    extensions: &'a str,
+    when: &'a str,
     extra: &'a str,
 }
 
 impl<'a> ActionManifest<'a> {
-    fn new(id: &'a str, name: &'a str, menu: &'a str, extensions: &'a str) -> Self {
+    fn new(id: &'a str, name: &'a str, menu: &'a str, when: &'a str) -> Self {
         Self {
             id,
             name,
             menu,
-            extensions,
+            when,
             extra: "",
         }
     }
@@ -31,7 +32,7 @@ impl<'a> ActionManifest<'a> {
             id,
             name,
             menu,
-            extensions,
+            when,
             extra,
         } = self;
         let directory = crate::storage::config_directory().join("actions").join(id);
@@ -39,7 +40,7 @@ impl<'a> ActionManifest<'a> {
         std::fs::write(
             directory.join("action.toml"),
             format!(
-                "schema_version = 1\nid = \"{id}\"\nname = \"{name}\"\nmenu = \"{menu}\"\n{extra}\n[when]\nextensions = [{extensions}]\n\n[run]\nruntime = \"command\"\nprogram = \"/bin/sh\"\nargs = [\"-c\", \"printf '%s\\\\n' {id} \\\"$@\\\" >> '{}'\", \"sh\", \"{{paths}}\"]\n",
+                "schema_version = 1\nid = \"{id}\"\nname = \"{name}\"\nmenu = \"{menu}\"\n{extra}\n[when]\n{when}\n\n[run]\nruntime = \"command\"\nprogram = \"/bin/sh\"\nargs = [\"-c\", \"printf '%s\\\\n' \\\"{id} $STRATA_ACTION_SOURCE\\\" \\\"$@\\\" >> '{}'\", \"sh\", \"{{paths}}\"]\n",
                 output.display()
             ),
         )
@@ -92,17 +93,23 @@ fn require_confirmation(id: &str) {
 }
 
 fn write_numbered_actions(output: &Path) {
-    ActionManifest::new("top-b", "Top B", "top", "\"txt\"").write(output);
-    ActionManifest::new("top-a", "Top A", "top", "\"txt\"").write(output);
+    ActionManifest::new("top-b", "Top B", "top", "extensions = [\"txt\"]").write(output);
+    ActionManifest::new("top-a", "Top A", "top", "extensions = [\"txt\"]").write(output);
     for index in 1..=9 {
         let (id, name) = (format!("sub-{index}"), format!("Sub {index}"));
-        ActionManifest::new(&id, &name, "submenu", "\"txt\"").write(output);
+        ActionManifest::new(&id, &name, "submenu", "extensions = [\"txt\"]").write(output);
     }
-    ActionManifest::new("disabled", "Aaa disabled", "top", "\"txt\"")
+    ActionManifest::new("disabled", "Aaa disabled", "top", "extensions = [\"txt\"]")
         .with_extra("enabled = false")
         .write(output);
-    ActionManifest::new("images", "Aaa images", "top", "\"png\"").write(output);
-    ActionManifest::new("confirming", "Aaa confirm", "submenu", "\"md\"").write(output);
+    ActionManifest::new("images", "Aaa images", "top", "extensions = [\"png\"]").write(output);
+    ActionManifest::new(
+        "confirming",
+        "Aaa confirm",
+        "submenu",
+        "extensions = [\"md\"]",
+    )
+    .write(output);
     require_confirmation("confirming");
     reload_actions();
 }
@@ -136,7 +143,10 @@ fn digits_run_the_listed_action(fixture: &KeyboardFixture, directory: &Path, out
     plain(fixture, Key::_1);
     assert_eq!(
         wait_invocations(output, 2),
-        ["top-a".to_owned(), path_text(directory.join("a.txt"))]
+        [
+            "top-a selection".to_owned(),
+            path_text(directory.join("a.txt"))
+        ]
     );
     std::fs::remove_file(output).expect("reset recorder");
 }
@@ -151,7 +161,7 @@ fn a_digit_runs_on_the_fill(fixture: &KeyboardFixture, directory: &Path, output:
     assert_eq!(
         wait_invocations(output, 3),
         [
-            "sub-8".to_owned(),
+            "sub-8 selection".to_owned(),
             path_text(directory.join("a.txt")),
             path_text(directory.join("b.txt")),
         ],
@@ -214,7 +224,7 @@ fn changed_actions_run_nothing(fixture: &KeyboardFixture) {
     browser.clear_active_selection();
     move_to_named(fixture, &browser, "notes.md");
     plain(fixture, Key::semicolon);
-    ActionManifest::new("aa-new", "Aa new", "submenu", "\"md\"").write(&unlisted);
+    ActionManifest::new("aa-new", "Aa new", "submenu", "extensions = [\"md\"]").write(&unlisted);
     reload_actions();
     plain(fixture, Key::_1);
     assert_eq!(feedback(fixture), "Actions changed");
@@ -281,6 +291,98 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
     );
 }
 
+#[test]
+fn tenxer_folder_actions_run_on_the_focused_folder_not_the_cursor_item() {
+    use crate::ui::keys::{Binding, Keymap, Map, bindings::ACTIONS_FOLDER, use_keymap};
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::actions::tenxer_folder_actions_run_on_the_focused_folder_not_the_cursor_item",
+        || {
+            let fixture = KeyboardFixture::new();
+            let directory = fixture._directory.path().to_path_buf();
+            let output = fixture._history_directory.path().join("invocations");
+            ActionManifest::new("folders", "Folders", "submenu", "kinds = [\"folder\"]")
+                .write(&output);
+            ActionManifest::new("texts", "Texts", "top", "extensions = [\"txt\"]").write(&output);
+            reload_actions();
+            enable_tenxer(&fixture);
+            let browser = fixture.view.browser();
+
+            move_to_named(&fixture, &browser, "a.txt");
+            plain(&fixture, Key::semicolon);
+            plain(&fixture, Key::period);
+            assert_eq!(fixture.shortcuts.armed_chord(), Some(Chord::FolderAction));
+            assert_eq!(fixture.shortcuts.chord().text(), "; .-");
+            assert_eq!(
+                chord_rows(&fixture),
+                owned_rows(&[("1", "Folders")]),
+                "the folder's matches, not the cursor file's"
+            );
+            plain(&fixture, Key::_1);
+            assert_eq!(
+                wait_invocations(&output, 2),
+                [
+                    "folders background".to_owned(),
+                    path_text(directory.clone())
+                ]
+            );
+            std::fs::remove_file(&output).expect("reset recorder");
+
+            focus_files(&fixture);
+            plain(&fixture, Key::semicolon);
+            plain(&fixture, Key::period);
+            plain(&fixture, Key::_2);
+            assert_eq!(feedback(&fixture), "No action 2");
+
+            plain(&fixture, Key::semicolon);
+            plain(&fixture, Key::period);
+            open_empty_folder(&fixture);
+            plain(&fixture, Key::_1);
+            assert_eq!(feedback(&fixture), "Folder changed");
+            run_jobs(Duration::from_millis(300));
+            assert!(
+                invocations(&output).is_empty(),
+                "a folder left since the chord was armed runs nothing"
+            );
+
+            plain(&fixture, Key::semicolon);
+            plain(&fixture, Key::period);
+            plain(&fixture, Key::_1);
+            assert_eq!(
+                wait_invocations(&output, 2),
+                [
+                    "folders background".to_owned(),
+                    path_text(directory.join("empty")),
+                ],
+                "an empty folder still offers its own actions"
+            );
+            std::fs::remove_file(&output).expect("reset recorder");
+
+            let _keymap = use_keymap(Keymap::defaults().with(
+                Map::Tenxer,
+                ACTIONS_FOLDER,
+                vec![Binding::plain(Key::f)],
+            ));
+            plain(&fixture, Key::semicolon);
+            assert!(
+                chord_rows(&fixture)
+                    .contains(&("f".to_owned(), "Actions for this folder\u{2026}".to_owned())),
+                "the panel shows the rebound key"
+            );
+            plain(&fixture, Key::f);
+            assert_eq!(fixture.shortcuts.armed_chord(), Some(Chord::FolderAction));
+            assert_eq!(fixture.shortcuts.chord().text(), "; f-");
+            plain(&fixture, Key::_1);
+            assert_eq!(
+                wait_invocations(&output, 2),
+                [
+                    "folders background".to_owned(),
+                    path_text(directory.join("empty")),
+                ]
+            );
+        },
+    );
+}
+
 /// Slot N is the Nth action Settings → Actions lists, disabled ones included,
 /// so a slot never runs another action in its place.
 #[test]
@@ -295,11 +397,13 @@ fn default_map_custom_action_slots_run_their_listed_action() {
             preferences.set_type_to_search(false);
             let directory = fixture._directory.path().to_path_buf();
             let output = fixture._history_directory.path().join("invocations");
-            ActionManifest::new("a-off", "Off", "top", "\"txt\"")
+            ActionManifest::new("a-off", "Off", "top", "extensions = [\"txt\"]")
                 .with_extra("enabled = false")
                 .write(&output);
-            ActionManifest::new("b-images", "Images", "top", "\"png\"").write(&output);
-            ActionManifest::new("c-text", "Text", "submenu", "\"txt\"").write(&output);
+            ActionManifest::new("b-images", "Images", "top", "extensions = [\"png\"]")
+                .write(&output);
+            ActionManifest::new("c-text", "Text", "submenu", "extensions = [\"txt\"]")
+                .write(&output);
             reload_actions();
             let key = Binding::ctrl_alt(Key::e);
             let press_slot = |number: usize| {
@@ -315,7 +419,10 @@ fn default_map_custom_action_slots_run_their_listed_action() {
             press_slot(3);
             assert_eq!(
                 wait_invocations(&output, 2),
-                ["c-text".to_owned(), path_text(directory.join("a.txt"))]
+                [
+                    "c-text selection".to_owned(),
+                    path_text(directory.join("a.txt"))
+                ]
             );
             std::fs::remove_file(&output).expect("reset recorder");
 
@@ -337,6 +444,7 @@ fn default_map_custom_action_slots_run_their_listed_action() {
 }
 
 const LETTERED_ACTIONS: &[(&str, &str)] = &[
+    (".", "Actions for this folder\u{2026}"),
     ("t", "Open terminal here"),
     ("c", "Compress\u{2026}"),
     ("e", "Extract here"),
@@ -350,15 +458,25 @@ fn owned_rows(rows: &[(&str, &str)]) -> Vec<(String, String)> {
 }
 
 #[test]
-fn tenxer_action_chord_terminal_refuses_a_non_local_folder() {
+fn tenxer_action_chord_steps_refuse_a_non_local_folder() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::file_verbs::actions::tenxer_action_chord_terminal_refuses_a_non_local_folder",
+        "ui::window::tests::keyboard_dispatch::file_verbs::actions::tenxer_action_chord_steps_refuse_a_non_local_folder",
         || {
             let fixture = KeyboardFixture::new();
+            let output = fixture._history_directory.path().join("invocations");
+            ActionManifest::new("folders", "Folders", "top", "kinds = [\"folder\"]").write(&output);
+            reload_actions();
+            // A named folder: the Trash root has no file name to match against.
+            let trashed = gtk::glib::home_dir().join("trashed-folder");
+            std::fs::create_dir(&trashed).expect("folder to trash");
+            gtk::gio::File::for_path(&trashed)
+                .trash(gtk::gio::Cancellable::NONE)
+                .expect("trash the folder");
+            let folder = Location::uri("trash:///trashed-folder");
             enable_tenxer(&fixture);
             let browser = fixture.view.browser();
-            browser.navigate(Location::uri("trash:///"));
-            wait_until(|| browser.active_location() == Some(Location::uri("trash:///")));
+            browser.navigate(folder.clone());
+            wait_until(|| browser.active_location().as_ref() == Some(&folder));
             wait_loaded(&browser, 0);
             focus_files(&fixture);
 
@@ -367,6 +485,23 @@ fn tenxer_action_chord_terminal_refuses_a_non_local_folder() {
             assert_eq!(feedback(&fixture), "Can\u{2019}t open a terminal here");
             assert!(!modal_visible(&fixture.overlay), "no error dialog");
             assert_eq!(fixture.shortcuts.armed_chord(), None);
+
+            plain(&fixture, Key::semicolon);
+            plain(&fixture, Key::period);
+            assert_eq!(fixture.shortcuts.armed_chord(), Some(Chord::FolderAction));
+            assert_eq!(
+                chord_rows(&fixture),
+                owned_rows(&[("1\u{2013}9 / 0", "No matching actions")]),
+                "a folder without a native path offers no actions"
+            );
+            plain(&fixture, Key::_1);
+            assert_eq!(feedback(&fixture), "No action 1");
+            assert!(!modal_visible(&fixture.overlay), "no error dialog");
+            run_jobs(Duration::from_millis(300));
+            assert!(
+                invocations(&output).is_empty(),
+                "a folder action never runs on a non-local folder"
+            );
         },
     );
 }

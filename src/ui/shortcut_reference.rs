@@ -1032,6 +1032,10 @@ const TENXER_FILES: &[Shortcut] = &[
         "Run one of the first ten matching custom actions",
     ),
     row(
+        Keys::Digits(ACTIONS_FOLDER_NUMBERS),
+        "Run one of the first ten custom actions for the focused folder",
+    ),
+    row(
         Chord(shown![ACTIONS, ACTIONS_TERMINAL]),
         "Open a terminal in the focused folder",
     ),
@@ -1217,6 +1221,11 @@ fn tenxer_mode_rows(
 
 const DEFAULT_TOOLS: &[Shortcut] = &[
     row(One(FILTER.shown()), "Filter the current pane"),
+    within(
+        "%{keys} in a filter",
+        One(FILTER_DESCEND.shown()),
+        "Enter the first matching folder",
+    ),
     row(One(SEARCH.shown()), "Open global search"),
     row(One(JUMP_TO_FOLDER.shown()), "Jump to a recent folder"),
     row(
@@ -1298,6 +1307,11 @@ const TENXER_FIND: &[Shortcut] = &[
         "Dismiss the find highlights",
     ),
     row(One(FILTER.shown()), "Filter this listing"),
+    within(
+        "%{keys} in a filter",
+        One(FILTER_DESCEND.shown()),
+        "Enter the highlighted or first matching folder",
+    ),
     within(
         "%{keys} after a filter",
         One(ESCAPE.shown()),
