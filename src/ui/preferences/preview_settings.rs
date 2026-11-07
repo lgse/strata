@@ -96,7 +96,6 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
-    /// Percent of the duration a first-time video preview starts at.
     pub fn preview_video_start(&self) -> u32 {
         self.preferences.borrow().preview_video_start
     }
