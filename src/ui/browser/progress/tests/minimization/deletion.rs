@@ -295,6 +295,89 @@ fn fast_delete_animates_only_its_own_success_without_showing_progress() {
     );
 }
 
+/// Confirms a permanent deletion the way a person does, once the dialog has painted.
+fn confirm_permanent_delete(fixture: &Fixture, entries: Vec<crate::model::FileEntry>) {
+    // A window hands focus back to the listing when the dialog closes.
+    fixture
+        .view
+        .set_as_modal_focus_fallback(fixture.window.upcast_ref());
+    fixture.view.state.pending_delete_dissolve.take();
+    set_file_progress_delay_for_test(Duration::from_secs(30));
+    fixture.view.state.show_delete_confirmation(entries);
+    pump_until(|| focused_button_label(&fixture.window).is_some());
+    let painted = Rc::new(std::cell::Cell::new(false));
+    let ready = painted.clone();
+    let clock = fixture.window.frame_clock().expect("window frame clock");
+    let handler = clock.connect_after_paint(move |_| ready.set(true));
+    fixture.window.queue_draw();
+    pump_until(|| painted.get());
+    clock.disconnect(handler);
+    gtk::prelude::RootExt::focus(&fixture.window)
+        .and_downcast::<gtk::Button>()
+        .expect("the confirmation starts on its confirm button")
+        .emit_clicked();
+    pump_until(|| fixture.view.browser().last_started_operation().is_some());
+}
+
+fn pending_dissolve_depth(fixture: &Fixture) -> Option<usize> {
+    fixture
+        .view
+        .state
+        .pending_delete_dissolve
+        .borrow()
+        .as_ref()
+        .map(|(depth, _)| *depth)
+}
+
+#[test]
+fn confirming_a_permanent_delete_keeps_its_dissolve() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::minimization::deletion::confirming_a_permanent_delete_keeps_its_dissolve",
+        || {
+            for (_, mode) in deletion_routes().filter(|(permanent, _)| *permanent) {
+                let fixture = Fixture::new();
+                fixture.view.set_view_mode(mode);
+                let (deleted, _) = fixture.prepare_deletion();
+                confirm_permanent_delete(&fixture, vec![deleted]);
+                assert!(
+                    pending_dissolve_depth(&fixture).is_some(),
+                    "{mode:?}: the confirmed deletion lost its dissolve"
+                );
+            }
+        },
+    );
+}
+
+#[test]
+fn permanently_deleting_the_open_folder_dissolves_its_row_in_the_parent() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::minimization::deletion::permanently_deleting_the_open_folder_dissolves_its_row_in_the_parent",
+        || {
+            let fixture = Fixture::new();
+            fixture.view.set_view_mode(BrowserMode::Columns);
+            let folder = fixture.temp.path().join("doomed");
+            std::fs::create_dir(&folder).expect("open folder fixture");
+            fixture.prepare_deletion();
+            let browser = fixture.view.browser();
+            let (position, doomed) = (0..)
+                .map_while(|position| browser.entry_at(0, position).map(|entry| (position, entry)))
+                .find(|(_, entry)| entry.location == Location::local(&folder))
+                .expect("folder listed in the root column");
+            browser.activate(0, position);
+            pump_until(|| {
+                browser.active_depth() == Some(1)
+                    && browser.location_at(1) == Some(Location::local(&folder))
+            });
+            confirm_permanent_delete(&fixture, vec![doomed]);
+            assert_eq!(
+                pending_dissolve_depth(&fixture),
+                Some(0),
+                "deleting the open folder must dissolve its row in the parent column"
+            );
+        },
+    );
+}
+
 #[test]
 fn overlapping_fast_deletions_restore_browser_input_after_playback() {
     crate::test_support::gtk_test(

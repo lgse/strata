@@ -187,8 +187,8 @@ fn closing_settings_cancels_the_theme_preview_and_collapses_the_editor() {
                 close(route, &layer, window.upcast_ref());
                 if !matches!(route, Close::WindowDestroyed) {
                     assert!(
-                        settles(|| !layer.is_visible()),
-                        "{route:?}: Settings did not close"
+                        !layer.is_visible(),
+                        "{route:?}: Settings must close at once"
                     );
                 }
                 if manager.is_previewing() || manager.active_model_palette() != saved {
