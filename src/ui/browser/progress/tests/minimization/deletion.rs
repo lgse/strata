@@ -312,6 +312,14 @@ fn confirming_a_permanent_delete_keeps_its_dissolve() {
                 set_file_progress_delay_for_test(Duration::from_secs(30));
                 fixture.view.state.show_delete_confirmation(vec![deleted]);
                 pump_until(|| focused_button_label(&fixture.window).is_some());
+                // Someone confirms a dialog they have seen, so it paints before the click.
+                let painted = Rc::new(std::cell::Cell::new(false));
+                let ready = painted.clone();
+                let clock = fixture.window.frame_clock().expect("window frame clock");
+                let handler = clock.connect_after_paint(move |_| ready.set(true));
+                fixture.window.queue_draw();
+                pump_until(|| painted.get());
+                clock.disconnect(handler);
                 gtk::prelude::RootExt::focus(&fixture.window)
                     .and_downcast::<gtk::Button>()
                     .expect("the confirmation starts on its confirm button")
