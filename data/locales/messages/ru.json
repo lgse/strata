@@ -675,6 +675,7 @@
   "Replace existing file?": "Заменить существующий файл?",
   "Replace existing files?": "Заменить существующие файлы?",
   "Replace your %{value1} draft with %{value2}? Code can be undone in the editor.": "Заменить черновик %{value1} шаблоном «%{value2}»? Изменение кода можно отменить в редакторе.",
+  "Merging removes the source folder and can’t be undone.": "При объединении исходная папка будет удалена, и это действие нельзя отменить.",
   "Replaced items can't be moved to Trash here and will be deleted.": "Заменяемые элементы здесь нельзя переместить в корзину, они будут удалены.",
   "Reported %{value1} created.": "Создано: %{value1}.",
   "Requirements for %{name}": "Требования %{name}",

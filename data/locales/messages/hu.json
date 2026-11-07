@@ -675,6 +675,7 @@
   "Replace existing file?": "Cseréli a meglévő fájlt?",
   "Replace existing files?": "Cseréli a meglévő fájlokat?",
   "Replace your %{value1} draft with %{value2}? Code can be undone in the editor.": "Cseréli a(z) %{value1} piszkozatát erre: %{value2}? A kód visszavonható a szerkesztőben.",
+  "Merging removes the source folder and can’t be undone.": "Az egyesítés eltávolítja a forrásmappát, és nem vonható vissza.",
   "Replaced items can't be moved to Trash here and will be deleted.": "A cserélt elemek nem helyezhetők a kukába ezen a helyen, és törölve lesznek.",
   "Reported %{value1} created.": "Jelentett %{value1} létrehozva.",
   "Requirements for %{name}": "A(z) %{name} követelményei",

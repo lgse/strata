@@ -655,6 +655,7 @@
   "Replace existing file?": "取代現有檔案？",
   "Replace existing files?": "取代現有檔案？",
   "Replace your %{value1} draft with %{value2}? Code can be undone in the editor.": "將你的 %{value1} 草稿取代為 %{value2}？編輯器中的程式碼可以復原。",
+  "Merging removes the source folder and can’t be undone.": "合併會移除來源資料夾，且無法復原。",
   "Replaced items can't be moved to Trash here and will be deleted.": "取代的項目無法在此移至垃圾桶，將被刪除。",
   "Reported %{value1} created.": "已建立回報 %{value1}。",
   "Requirements for %{name}": "%{name} 的相依項目",

@@ -675,6 +675,7 @@
   "Replace existing file?": "Replace existing file?",
   "Replace existing files?": "Replace existing files?",
   "Replace your %{value1} draft with %{value2}? Code can be undone in the editor.": "Replace your %{value1} draft with %{value2}? Code can be undone in the editor.",
+  "Merging removes the source folder and can’t be undone.": "Merging removes the source folder and can’t be undone.",
   "Replaced items can't be moved to Trash here and will be deleted.": "Replaced items can't be moved to Trash here and will be deleted.",
   "Reported %{value1} created.": "Reported %{value1} created.",
   "Requirements for %{name}": "Requirements for %{name}",
