@@ -2,7 +2,7 @@
 
 use gtk::gdk::Key;
 
-use crate::ui::keys::{Binding, Command, Digits};
+use crate::ui::keys::{Binding, Command, Digits, Letters};
 
 catalog! {
     tenxer_only {
@@ -34,6 +34,11 @@ catalog! {
         SEARCH_SUBFOLDERS: Command "search_subfolders" = Binding::plain(Key::s);
         JUMP_VISITED: Command "jump_visited" = Binding::plain(Key::z);
         JUMP_RECENT: Command "jump_recent" = Binding::shift(Key::z);
+
+        BOOKMARK_SET: Command "bookmark_set" trigger(BookmarkSet) = Binding::plain(Key::m);
+        BOOKMARK_SET_LETTERS: Letters = Letters::after(BOOKMARK_SET.shown());
+        BOOKMARK_GO: Command "bookmark_go" trigger(BookmarkGo) = Binding::plain(Key::apostrophe);
+        BOOKMARK_GO_LETTERS: Letters = Letters::after(BOOKMARK_GO.shown());
 
         GO: Command "go" trigger(Go) = Binding::plain(Key::g);
         GO_FIRST: Command "go.first" step(Go) = Binding::plain(Key::g);

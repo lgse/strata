@@ -26,6 +26,12 @@ Shortcuts follow the key's label first, then its physical position:
   sits on the US `.` position and also resolves to **Ctrl+.**.
 - **AltGr** (third- and fourth-level) characters are text input and never fall
   back.
+- **Dead keys match no shortcut.** A key the active layout makes a dead key
+  types nothing until the next key, so it never matches a binding and has no
+  fallback. On US International (`us(intl)`) the `'` key is a dead acute, so the
+  10xer **'** bookmark menu does not open and the next letter runs its own
+  command. Rebind a shortcut on a dead key, such as `bookmark_go`, to another
+  key (see [Keymap](keymap.md)), or use a layout variant without dead keys.
 - **The top digit row is 1–0 by position** on every layout, with or without
   Shift. **Ctrl+1**, **Ctrl+Shift+1** and 10xer digits work on AZERTY, where the
   row types `&é"'(` without Shift, and on layouts whose Shift+digit symbols
@@ -327,6 +333,8 @@ only its primary:
 - a chord: **g h**
 - a digit range with its modifiers or chord prefix: **Ctrl+Shift+1–9 / 0**,
   **t 1–9 / t 0**
+- the letter slots after a chord prefix: **m a–z**; `press.letter()` reads
+  the slot through the Latin fallback, and the range never rebinds
 - alternatives of different shapes: **g g / Home**
 
 ### Structural keys

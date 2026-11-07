@@ -28,6 +28,7 @@ mod icon_motion;
 mod jump_keys;
 mod keymap_conflicts;
 mod keymap_overrides;
+mod letter_bookmarks;
 mod list_motion;
 mod mode_exit;
 mod open_in_new;

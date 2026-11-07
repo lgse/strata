@@ -40,6 +40,8 @@ pub(crate) enum Group {
     Sort,
     Actions,
     Tabs,
+    BookmarkSet,
+    BookmarkGo,
 }
 
 impl Group {
@@ -52,6 +54,8 @@ impl Group {
             Self::Sort => "sort",
             Self::Actions => "actions",
             Self::Tabs => "tabs",
+            Self::BookmarkSet => "bookmark_set",
+            Self::BookmarkGo => "bookmark_go",
         }
     }
 }
@@ -343,7 +347,9 @@ impl Alternate {
 pub(crate) fn registry() -> impl Iterator<Item = Command> {
     bindings::entries().filter_map(|entry| match entry {
         bindings::Entry::Command(command) => Some(command),
-        bindings::Entry::Binding(_) | bindings::Entry::Digits(_) => None,
+        bindings::Entry::Binding(_) | bindings::Entry::Digits(_) | bindings::Entry::Letters(_) => {
+            None
+        }
     })
 }
 

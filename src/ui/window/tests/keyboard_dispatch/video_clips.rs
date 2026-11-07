@@ -407,6 +407,8 @@ fn page_home_and_end_seek_a_focused_timeline_in_both_key_maps() {
                     (false, 0.5, Key::equal, NONE, 0.6, false),
                     (false, 0.5, Key::minus, NONE, 0.4, false),
                     (false, 0.1, Key::KP_Subtract, NONE, 0.1, true),
+                    // m saves a bookmark from the listing, but mutes a focused preview.
+                    (false, 0.5, Key::m, NONE, 0.5, true),
                 ] {
                     if !tenxer && !in_default_map {
                         continue;
@@ -420,6 +422,13 @@ fn page_home_and_end_seek_a_focused_timeline_in_both_key_maps() {
                              expected ({volume}, {muted})",
                             key.name().unwrap_or_default()
                         ));
+                    }
+                    if let Some(chord) = fixture.shortcuts.armed_chord() {
+                        mismatches.push(format!(
+                            "10xer={tenxer} {mods:?}+{}: armed {chord:?}",
+                            key.name().unwrap_or_default()
+                        ));
+                        fixture.shortcuts.cancel_chord();
                     }
                 }
             }

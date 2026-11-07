@@ -86,6 +86,8 @@ pub(crate) enum Chord {
     Action,
     FolderAction,
     Tabs,
+    BookmarkSet,
+    BookmarkGo,
 }
 
 impl Chord {
@@ -93,7 +95,9 @@ impl Chord {
     pub(crate) fn mark(self) -> String {
         use super::keys::{
             Keys,
-            bindings::{ACTIONS, ACTIONS_FOLDER, COPY_AS, GO, SORT_BY, TAB_CHORD},
+            bindings::{
+                ACTIONS, ACTIONS_FOLDER, BOOKMARK_GO, BOOKMARK_SET, COPY_AS, GO, SORT_BY, TAB_CHORD,
+            },
         };
         let prefix = match self {
             Self::Go | Self::PreviewTop => Keys::One(GO.shown()),
@@ -102,13 +106,15 @@ impl Chord {
             Self::Action => Keys::One(ACTIONS.shown()),
             Self::FolderAction => Keys::Chord(super::keys::shown![ACTIONS, ACTIONS_FOLDER]),
             Self::Tabs => Keys::One(TAB_CHORD.shown()),
+            Self::BookmarkSet => Keys::One(BOOKMARK_SET.shown()),
+            Self::BookmarkGo => Keys::One(BOOKMARK_GO.shown()),
         };
         format!("{}-", super::keys::label(&prefix))
     }
 
     /// The second keys and their untranslated actions. The `;` and `; .`
-    /// panels list the matching actions themselves, and a file chooser leaves
-    /// out the steps it refuses.
+    /// panels list the matching actions themselves, the `'` panel the saved
+    /// bookmarks, and a file chooser leaves out the steps it refuses.
     pub(crate) fn options(
         self,
         chooser: bool,
@@ -172,7 +178,11 @@ impl Chord {
                 (step(SORT_BY_CASE_SENSITIVE), "Case-sensitive names"),
                 (Mention::Held(gtk::gdk::ModifierType::SHIFT_MASK), "Reverse"),
             ],
-            Self::Action | Self::FolderAction => Vec::new(),
+            Self::Action | Self::FolderAction | Self::BookmarkGo => Vec::new(),
+            Self::BookmarkSet => vec![(
+                Mention::Keys(Keys::Letters(BOOKMARK_SET_LETTERS.step())),
+                "Save bookmark",
+            )],
             Self::Tabs => vec![
                 (step(TAB_CHORD_NEW), "New tab"),
                 (step(TAB_CHORD_CLOSE), "Close tab"),

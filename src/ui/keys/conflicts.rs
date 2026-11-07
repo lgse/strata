@@ -1028,7 +1028,7 @@ fn step_digits(group: Group) -> Option<Digits> {
         Group::Go => Some(PIN_NUMBERS),
         Group::Actions => Some(ACTIONS_NUMBERS),
         Group::Tabs => Some(TAB_CHORD_NUMBERS),
-        Group::CopyAs | Group::Sort => None,
+        Group::CopyAs | Group::Sort | Group::BookmarkSet | Group::BookmarkGo => None,
     }
 }
 

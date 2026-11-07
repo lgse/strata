@@ -90,7 +90,15 @@ pub(super) fn bind_footer_filter(dispatcher: &Dispatcher) {
     let shortcuts = dispatcher.shortcuts.clone();
     let view = dispatcher.view.downgrade();
     let descent = dispatcher.filter_descent.clone();
+    let pending = dispatcher.bookmark_pending.clone();
     let handler = dispatcher.window.connect_focus_widget_notify(move |_| {
+        if pending.get()
+            && view
+                .upgrade()
+                .is_none_or(|view| !view.item_view_has_focus())
+        {
+            shortcuts.cancel_chord();
+        }
         shortcuts.schedule_filter_refresh();
         if let Some(view) = view.upgrade() {
             prompts::cancel_stale_filter_descent(&view, &shortcuts, &descent);
@@ -235,6 +243,7 @@ pub(super) fn clear_find_on_mode_exit(
     let shortcuts = dispatcher.shortcuts.clone();
     let open_with = dispatcher.open_with.clone();
     let armed_actions = dispatcher.armed_actions.clone();
+    let bookmark_pending = dispatcher.bookmark_pending.clone();
     let browser = browser.clone();
     let primed = Cell::new(false);
     crate::ui::preferences::PreferenceManager::shared().bind_preference(
@@ -247,6 +256,9 @@ pub(super) fn clear_find_on_mode_exit(
                 return;
             }
             open_with.invalidate();
+            if bookmark_pending.get() {
+                shortcuts.cancel_chord();
+            }
             armed_actions.take();
             shortcuts.refresh_filter();
             let focus = window.root().and_then(|root| root.focus());
