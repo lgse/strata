@@ -185,25 +185,24 @@ fn first_video_preview_starts_at_the_configured_percent() {
     );
 }
 
+fn assert_opens_at(path: &str, percent: u32, ticks: &[u32], context: &str) {
+    let (media, calls) = open_starting(path, percent);
+    drive_until(&media, &calls, ticks.len());
+    settle(&media);
+    assert_eq!(*calls.borrow(), ticks, "{path}: {context}");
+    media.close();
+}
+
 fn start_at_the_configured_percent() {
     let start = media::seek_tick(TEST_DURATION_US / 5, TEST_DURATION_US);
-    let (media, calls) = open_starting("/fresh", 20);
-    drive_until(&media, &calls, 2);
-    settle(&media);
-    assert_eq!(*calls.borrow(), vec![0, start]);
-    media.close();
-
+    assert_opens_at("/fresh", 20, &[0, start], "first preview");
     remember_media_position("/watched".into(), media::timestamp(900));
-    let (media, calls) = open_starting("/watched", 20);
-    drive_until(&media, &calls, 2);
-    settle(&media);
-    assert_eq!(
-        *calls.borrow(),
-        vec![0, 900],
-        "a remembered position wins over the configured start"
+    assert_opens_at(
+        "/watched",
+        20,
+        &[0, 900],
+        "a remembered position wins over the configured start",
     );
-    media.close();
-
     for (path, closed_at) in [
         ("/restarted", RESTORE_MIN_US),
         ("/finished", TEST_DURATION_US),
@@ -213,23 +212,18 @@ fn start_at_the_configured_percent() {
         settle(&media);
         media.imp().position.set(closed_at);
         media.close();
-        let (media, calls) = open_starting(path, 20);
-        drive_until(&media, &calls, 1);
-        settle(&media);
-        assert_eq!(
-            *calls.borrow(),
-            vec![0],
-            "{path}: a video left in its first second or at its end reopens at 0:00"
+        assert_opens_at(
+            path,
+            20,
+            &[0],
+            "a video left in its first second or at its end reopens at 0:00",
         );
-        media.close();
     }
+    assert_opens_at("/beginning", 0, &[0], "no start configured");
+    sources_without_a_usable_start_begin_at_zero();
+}
 
-    let (media, calls) = open_starting("/beginning", 0);
-    drive_until(&media, &calls, 1);
-    settle(&media);
-    assert_eq!(*calls.borrow(), vec![0]);
-    media.close();
-
+fn sources_without_a_usable_start_begin_at_zero() {
     let audio = Header {
         width: 0,
         height: 0,
