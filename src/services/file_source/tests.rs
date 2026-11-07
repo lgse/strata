@@ -177,6 +177,21 @@ fn sanitized_uris_keep_gio_percent_encoding() {
 }
 
 #[test]
+fn non_ascii_hosts_are_preserved_verbatim() {
+    // MTP device names may contain non-ASCII characters ("一加" below): GUri
+    // re-serialization IDNA-encodes the host (mtp://OnePlus_一加_... becomes
+    // mtp://xn--...), which the gvfs backend cannot match to its device name,
+    // so the location stays permanently NotMounted.
+    assert_eq!(
+        sanitize_uri_credentials("mtp://OnePlus_%E4%B8%80%E5%8A%A0_Ace_5_Pro_9d231cfe/"),
+        Ok((
+            "mtp://OnePlus_%E4%B8%80%E5%8A%A0_Ace_5_Pro_9d231cfe/".to_owned(),
+            None
+        )),
+    );
+}
+
+#[test]
 fn malformed_uris_fail_without_echoing_input() {
     assert_eq!(
         validate_uri_credentials("smb://user%ZZ@host/share"),
