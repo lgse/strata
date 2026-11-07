@@ -374,6 +374,9 @@ fn a_merge_undo_without_trash_deletes_what_its_paste_copied_only_if_unchanged()
         .into_iter()
         .flat_map(|stage| changes.map(|change| (stage, change)))
     {
+        if stage.1 == Op::LinkFd && !base_offers(&UNNAMED_FILES)? {
+            continue;
+        }
         check_pasted_copies_undo(stage, change)?;
     }
     Ok(())

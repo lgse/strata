@@ -57,7 +57,7 @@ mod scope;
 mod silly;
 
 use self::{environment::*, lookup::*, mounts::*, names::*, presets::*, scope::*, silly::*};
-pub(crate) use environment::{SCOPED, Scoped, handleless_base, smb_base};
+pub(crate) use environment::{SCOPED, Scoped, smb_base};
 pub(crate) use kinds::{
     Aside, Births, CachedListing, CachedTimes, Exchange, NameOpens, Op, OverEmptyDirectory, Preset,
     Quirks, Racer, Silly, Support, TmpfileLink, Trash,

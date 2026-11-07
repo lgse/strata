@@ -15,7 +15,7 @@ use std::{
     path::{Path, PathBuf},
     pin::Pin,
     rc::Rc,
-    sync::{Arc, atomic::AtomicBool},
+    sync::{Arc, OnceLock, atomic::AtomicBool},
     thread,
     time::{Duration, Instant, SystemTime},
 };
@@ -23,6 +23,7 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 
 use crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT;
+use crate::test_support::temp_base::{BaseNeed, UNNAMED_FILES, base_offers, probed_once};
 use benchmark::Benchmark;
 use fs_quirks::{FsQuirks, Preset, Quirks};
 
@@ -379,6 +380,24 @@ fn base_links_keep_their_number(folder: &Path) -> io::Result<bool> {
 
 pub(super) fn base_places_files_by_linking(folder: &Path) -> io::Result<bool> {
     Ok(!base_takes_noreplace(folder)? && base_links_keep_their_number(folder)?)
+}
+
+/// File handles, which overlayfs gives only when exported over NFS.
+const FILE_HANDLES: BaseNeed = BaseNeed {
+    what: "file handles",
+    probe: gives_file_handles,
+};
+
+fn gives_file_handles() -> io::Result<bool> {
+    static PROBED: OnceLock<Result<bool, String>> = OnceLock::new();
+    probed_once(&PROBED, |folder| {
+        let dir = open_local_parent_directory(folder).map_err(io::Error::other)?;
+        match super::native_fs::file_handle(dir.as_fd(), OsStr::new(".")) {
+            Ok(_) => Ok(true),
+            Err(rustix::io::Errno::OPNOTSUPP) => Ok(false),
+            Err(error) => Err(error.into()),
+        }
+    })
 }
 
 fn forced_mode(path: &Path) -> io::Result<u32> {
