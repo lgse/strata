@@ -10,10 +10,11 @@ use crate::{
 use super::{FolderKey, local_path};
 
 /// `None` for non-native locations, network shares, and paths that cannot be stored.
+/// Local FUSE overlays such as mergerfs are remembered like the drives under them.
 pub(in crate::ui) fn key_for_location(location: &Location) -> Option<FolderKey> {
     let path = location.native_path()?;
     with_mount_snapshot(|snapshot| {
-        if snapshot.table.is_network_path(path) {
+        if snapshot.table.is_remote_share(path) {
             return None;
         }
         key_for_path(path, snapshot.removable)

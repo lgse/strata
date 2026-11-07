@@ -82,7 +82,7 @@ fn wait_until(what: &str, done: impl Fn() -> bool) {
 }
 
 fn shares(table: &MountTable) -> bool {
-    table.is_network_path(Path::new("/mnt/share/folder"))
+    table.is_remote_share(Path::new("/mnt/share/folder"))
 }
 
 fn fresh_within_deadline(watcher: &Arc<Watcher>) -> MountTable {

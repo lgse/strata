@@ -109,12 +109,7 @@ pub(super) enum DeletionReach {
 pub(super) fn deletion_reach(entries: &[FileEntry]) -> DeletionReach {
     let mounts = crate::adapters::mount_watch::latest();
     let remote = |location: &Location| match location.native_path() {
-        Some(path) => {
-            mounts.is_network_path(path)
-                && !mounts
-                    .fs_type_for(path)
-                    .is_some_and(crate::adapters::is_local_fuse_overlay)
-        }
+        Some(path) => mounts.is_remote_share(path),
         None => {
             !location.is_administrator()
                 && !location

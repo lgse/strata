@@ -33,7 +33,7 @@ pub(crate) use mounts::set_mountinfo_for_isolated_test;
 pub(crate) use mounts::{
     CoarseTimes, Family, FuseFormat, LONGEST_NAME_NTFS_3G_RENAMES_OVER, MountKey as TrashMountKey,
     MountSite, MountTable, MountType, SillyNames, family, holds_symlinks, is_fuse_fs_type,
-    is_local_fuse_overlay, max_file_size,
+    max_file_size,
 };
 pub(crate) use names::{
     MountNames, NameEncoding, NameLimit, NameProfile, NameRules, PrivateUse, Reserved, StrictRule,

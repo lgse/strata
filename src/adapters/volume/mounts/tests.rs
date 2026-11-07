@@ -275,21 +275,22 @@ fn prefix_matching_is_component_wise() {
 }
 
 #[test]
-fn fuse_drivers_for_local_drives_are_not_network_shares() {
+fn fuse_drivers_for_local_storage_are_not_remote_shares() {
     let table = MountTable::parse(format!(
-        "{SAMPLE}70 22 8:33 / /run/media/user/USB rw,relatime shared:40 - fuseblk /dev/sdc1 rw\n"
+        "{SAMPLE}70 22 8:33 / /run/media/user/USB rw,relatime shared:40 - fuseblk /dev/sdc1 rw\n\
+         71 22 0:60 / /data/pool rw,relatime shared:41 - fuse.mergerfs disks rw\n"
     ));
-    let usb = Path::new("/run/media/user/USB/photos");
-    assert!(remote(&table, usb), "a FUSE daemon can still block");
-    assert!(!table.is_network_path(usb));
-    for share in [
-        "/mnt/nfs/docs",
-        "/run/user/1000/gvfs/share",
-        "/mnt/my share/docs",
+    for (path, remote_share) in [
+        ("/run/media/user/USB/photos", false),
+        ("/data/pool/media", false),
+        ("/mnt/nfs/docs", true),
+        ("/run/user/1000/gvfs/share", true),
+        ("/mnt/my share/docs", true),
+        ("/mnt/nfs/local/docs", false),
     ] {
-        assert!(table.is_network_path(Path::new(share)), "{share}");
+        let path = Path::new(path);
+        assert_eq!(table.is_remote_share(path), remote_share, "{path:?}");
     }
-    assert!(!table.is_network_path(Path::new("/mnt/nfs/local/docs")));
 }
 
 #[test]
