@@ -529,23 +529,15 @@ impl DismissHooks {
 
 fn hide(layer: &gtk::Box, button: &gtk::Button, root: &BlurBin, hooks: &DismissHooks) {
     hooks.run();
-    if layer.has_css_class("dismissing") {
+    if !layer.is_visible() {
         return;
     }
+    // A `dismissing` hide hands focus back to where Settings was opened from.
     layer.add_css_class("dismissing");
-    layer.set_sensitive(false);
-    let layer_for_anim = layer.clone();
-    let layer = layer.clone();
-    let root = root.clone();
-    let button = button.clone();
-    super::modal::fade_out(layer_for_anim.upcast_ref(), move || {
-        layer.set_visible(false);
-        layer.set_opacity(1.0);
-        layer.remove_css_class("dismissing");
-        layer.set_sensitive(true);
-        root.set_blurred(false);
-        button.remove_css_class("active");
-    });
+    layer.set_visible(false);
+    layer.remove_css_class("dismissing");
+    root.set_blurred(false);
+    button.remove_css_class("active");
 }
 
 /// Translates Settings copy, rendering the shortcuts it names.
