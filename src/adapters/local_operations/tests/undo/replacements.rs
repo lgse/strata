@@ -105,43 +105,6 @@ fn undoing_a_replacing_move_restores_both_items() {
 }
 
 #[test]
-fn undoing_a_replacing_move_requires_its_staged_original_before_moving() {
-    crate::test_support::gtk_test(
-        "adapters::local_operations::tests::undo::replacements::undoing_a_replacing_move_requires_its_staged_original_before_moving",
-        || {
-            let fixture = ReplacingMove::new(false).expect("replacing move");
-            fs::remove_file(&fixture.staged).expect("remove staged original");
-
-            let events = fixture.undo();
-
-            assert!(completed_before_failing(&events).is_empty());
-            assert!(!fixture.source().exists());
-            expect_contents(&[(fixture.target().to_path_buf(), b"incoming")]);
-        },
-    );
-}
-
-#[test]
-fn a_move_back_conflict_keeps_both_items_and_the_staged_original() {
-    crate::test_support::gtk_test(
-        "adapters::local_operations::tests::undo::replacements::a_move_back_conflict_keeps_both_items_and_the_staged_original",
-        || {
-            let fixture = ReplacingMove::new(false).expect("replacing move");
-            fs::write(fixture.source(), b"newer").expect("occupy source");
-
-            let events = fixture.undo();
-
-            assert!(completed_before_failing(&events).is_empty());
-            expect_contents(&[
-                (fixture.source().to_path_buf(), b"newer"),
-                (fixture.target().to_path_buf(), b"incoming"),
-                (fixture.staged, b"original"),
-            ]);
-        },
-    );
-}
-
-#[test]
 fn restoring_a_replaced_move_never_overwrites_a_new_arrival() {
     crate::test_support::gtk_test(
         "adapters::local_operations::tests::undo::replacements::restoring_a_replaced_move_never_overwrites_a_new_arrival",

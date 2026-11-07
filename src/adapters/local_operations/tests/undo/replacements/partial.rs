@@ -37,6 +37,44 @@ fn a_partial_replacing_move_undo_restores_only_completed_originals() {
 }
 
 #[test]
+fn a_missing_original_does_not_hold_back_the_undo() {
+    crate::test_support::gtk_test(
+        "adapters::local_operations::tests::undo::replacements::partial::a_missing_original_does_not_hold_back_the_undo",
+        || {
+            let emptied = ReplacingMove::new(false).expect("first replacing move");
+            let kept = ReplacingMove::new(false).expect("second replacing move");
+            fs::remove_file(&emptied.staged).expect("remove staged original");
+            let request = undo_request(
+                2078,
+                vec![
+                    fail_if_exists(emptied.record.clone()),
+                    fail_if_exists(kept.record.clone()),
+                ],
+            );
+
+            let events = undo_move(request);
+
+            assert_eq!(
+                completed_before_failing(&events),
+                [emptied.record.current.clone(), kept.record.current.clone()]
+            );
+            expect_contents(&[
+                (emptied.source().to_path_buf(), b"incoming"),
+                (kept.source().to_path_buf(), b"incoming"),
+                (kept.target().to_path_buf(), b"original"),
+            ]);
+            assert!(!emptied.target().exists());
+            assert!(!kept.staged.exists());
+            assert!(matches!(
+                events.last(),
+                Some(OperationEvent::TransferFailed { message, .. })
+                    if message.contains("no longer available")
+            ));
+        },
+    );
+}
+
+#[test]
 fn cancelling_a_replacing_move_undo_restores_committed_items_only() {
     crate::test_support::gtk_test(
         "adapters::local_operations::tests::undo::replacements::partial::cancelling_a_replacing_move_undo_restores_committed_items_only",

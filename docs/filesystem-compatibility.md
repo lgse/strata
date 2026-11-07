@@ -923,8 +923,10 @@ before moving anything back. It settles the completed move batches before restor
 the vacated paths, so cross-filesystem moves keep their batched flushes. A failed or unattempted
 move leaves its original in Trash; cancellation still restores originals for moves already
 committed. A new arrival at a vacated path is never overwritten: restoration fails and its original
-stays in Trash. Redo asks before replacing the restored item again and records its new Trash
-identity, so the next Undo can restore it too.
+stays in Trash. An original no longer in Trash does not hold anything back: its item still moves
+back and the undo reports the failure, rather than failing the same way each time it is retried.
+Redo asks before replacing the restored item again and records its new Trash identity, so the next
+Undo can restore it too.
 
 Undoing a merge, or a copy or an archive that replaced its original through the Trash, deletes what
 the operation put at the original's path, then restores the original. As it places an item there,

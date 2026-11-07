@@ -3,9 +3,12 @@
 use super::*;
 use crate::adapters::trash_restore::RestoreContext;
 
+/// A failed lookup keeps its own message, which says more than its error code.
+type Staged = Result<restore::RestoreEntry, String>;
+
 /// Looks up every staged original once, rather than rescanning Trash per moved item.
 pub(super) struct ReplacedMoves {
-    entries: HashMap<Location, restore::RestoreEntry>,
+    entries: HashMap<Location, Staged>,
     context: RestoreContext,
     _operation: ActiveOperation,
 }
@@ -23,24 +26,50 @@ impl ReplacedMoves {
         if originals.is_empty() {
             return Ok(None);
         }
-        let locations: Vec<_> = request
-            .items
-            .iter()
-            .filter(|item| item.record.replaced.is_some())
-            .map(|item| item.record.current.clone())
+        let entries = staged_originals(&originals, cancellable).await?;
+        let found: Vec<_> = entries
+            .values()
+            .filter_map(|staged| staged.as_ref().ok().cloned())
             .collect();
-        let entries = restore::trashed_entries_for_originals(&locations, cancellable, &originals)
-            .await?
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|(_, error)| error)?;
-        let operation = restore::release_trashed(&entries, cancellable).await;
+        let operation = restore::release_trashed(&found, cancellable).await;
         cancellable.set_error_if_cancelled()?;
         Ok(Some(Self {
-            entries: locations.into_iter().zip(entries).collect(),
+            entries,
             context: RestoreContext::current().await,
             _operation: operation,
         }))
+    }
+}
+
+/// A failed undo stays on top of the history, so an original that is gone for good must
+/// not stop the items from moving back: a failed batch is looked up item by item.
+async fn staged_originals(
+    originals: &HashMap<Location, ItemIdentity>,
+    cancellable: &gio::Cancellable,
+) -> Result<HashMap<Location, Staged>, glib::Error> {
+    let locations: Vec<_> = originals.keys().cloned().collect();
+    match restore::trashed_entries_for_originals(&locations, cancellable, originals).await {
+        Ok(found) => {
+            let found = found
+                .into_iter()
+                .map(|staged| staged.map_err(|(_, error)| error.message().to_owned()));
+            Ok(locations.into_iter().zip(found).collect())
+        }
+        Err(error) if was_cancelled(&error) => Err(error),
+        Err(_) => {
+            let mut entries = HashMap::new();
+            for location in locations {
+                let staged = restore::trashed_merge_original(
+                    location.clone(),
+                    cancellable.clone(),
+                    originals.clone(),
+                )
+                .await;
+                cancellable.set_error_if_cancelled()?;
+                entries.insert(location, staged.map_err(|error| error.message().to_owned()));
+            }
+            Ok(entries)
+        }
     }
 }
 
@@ -63,23 +92,37 @@ impl UndoMove {
             unlinks: &unlinks,
             cancellable: &cancellable,
         };
-        let mut failure = None;
+        let mut failures = Vec::new();
         for location in self.settling.completed() {
-            let Some(entry) = replaced.entries.remove(&location) else {
+            let Some(staged) = replaced.entries.remove(&location) else {
                 continue;
             };
-            let restored =
-                restore::restore_trash_entry(&entry, &restoring, &mut self.affected_locations)
-                    .await;
-            match restored {
-                Ok((report, identity)) => self.report_restored(location, report, identity),
-                Err(error) => {
-                    failure =
-                        joined_failures(failure, Some(crate::services::gio_error_message(&error)));
-                }
+            let failure = match staged {
+                Ok(entry) => self.restore_original(location, &entry, &restoring).await,
+                Err(message) => Some(message),
+            };
+            if let Some(message) = failure
+                && !failures.contains(&message)
+            {
+                failures.push(message);
             }
         }
-        failure
+        failures.into_iter().map(Some).reduce(joined_failures)?
+    }
+
+    async fn restore_original(
+        &mut self,
+        location: Location,
+        entry: &restore::RestoreEntry,
+        restoring: &restore::Restoring<'_>,
+    ) -> Option<String> {
+        match restore::restore_trash_entry(entry, restoring, &mut self.affected_locations).await {
+            Ok((report, identity)) => {
+                self.report_restored(location, report, identity);
+                None
+            }
+            Err(error) => Some(crate::services::gio_error_message(&error)),
+        }
     }
 
     fn report_restored(
