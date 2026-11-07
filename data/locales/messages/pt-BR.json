@@ -675,6 +675,7 @@
   "Replace existing file?": "Substituir o arquivo existente?",
   "Replace existing files?": "Substituir os arquivos existentes?",
   "Replace your %{value1} draft with %{value2}? Code can be undone in the editor.": "Substituir seu rascunho de %{value1} por %{value2}? O código pode ser desfeito no editor.",
+  "Merging removes the source folder and can’t be undone.": "Mesclar remove a pasta de origem e não pode ser desfeito.",
   "Replaced items can't be moved to Trash here and will be deleted.": "Os itens substituídos não podem ser movidos para a Lixeira aqui e serão excluídos.",
   "Reported %{value1} created.": "A ação informou a criação de %{value1}.",
   "Requirements for %{name}": "Requisitos de %{name}",

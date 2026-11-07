@@ -1,0 +1,23 @@
+{"scenario":"drag-folder-merges-into-same-named-folder","modes":["columns"],"layout":"us","mutation":null,"known_bug":null}
+{"fs":{"path":"a","mkdir":true}}
+{"fs":{"path":"a/Photos","mkdir":true}}
+{"fs":{"path":"a/Photos/one.txt","write":"one\n"}}
+{"fs":{"path":"a/Photos/shared.txt","write":"original\n"}}
+{"fs":{"path":"b","mkdir":true}}
+{"fs":{"path":"b/Photos","mkdir":true}}
+{"fs":{"path":"b/Photos/two.txt","write":"two\n"}}
+{"fs":{"path":"b/Photos/shared.txt","write":"incoming\n"}}
+{"wait":{"entry":"a","dir":"$root"},"message":"the fixture folder 'a' to be listed"}
+{"select":{"entry":"b"}}
+{"wait":{"entry":"Photos","dir":"b"},"message":"the entry 'Photos' in 'b' to appear"}
+{"settle":{"entry":"Photos","dir":"b"}}
+{"drag":{"from":{"entry":"Photos","dir":"b"},"to":{"entry":"a","dir":"$root"}}}
+{"wait":{"dialog":true},"message":"the conflict prompt for the dropped folder"}
+{"expect":{"present":{"role":"button","name":"Replace","within":{"dialog":true}}},"message":"Replace stays on offer beside Merge"}
+{"expect":{"present":{"role":"button","name":"Merge","within":{"dialog":true}}},"message":"a dragged folder meeting a folder can merge"}
+{"click":{"dialog_button":"Merge"}}
+{"fs":{"path":"a/Photos/two.txt","text":"two\n"},"message":"the dragged folder's file to arrive"}
+{"fs":{"path":"a/Photos/shared.txt","text":"incoming\n"},"message":"the incoming item to overwrite a same-named destination item"}
+{"fs":{"path":"a/Photos/one.txt","text":"one\n"},"timeout_ms":0,"message":"destination-only contents survive the merge"}
+{"fs":{"path":"b/Photos","exists":false},"message":"a merged move to remove its source folder"}
+{"wait":{"dialog":null},"message":"the conflict dialog to finish dismissing"}

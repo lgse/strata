@@ -675,6 +675,7 @@
   "Replace existing file?": "Remplacer le fichier existant ?",
   "Replace existing files?": "Remplacer les fichiers existants ?",
   "Replace your %{value1} draft with %{value2}? Code can be undone in the editor.": "Remplacer votre brouillon %{value1} par %{value2} ? Le code peut être annulé dans l’éditeur.",
+  "Merging removes the source folder and can’t be undone.": "La fusion supprime le dossier source et ne peut pas être annulée.",
   "Replaced items can't be moved to Trash here and will be deleted.": "Les éléments remplacés ne peuvent pas être mis à la corbeille ici et seront supprimés.",
   "Reported %{value1} created.": "Création signalée : %{value1}.",
   "Requirements for %{name}": "Prérequis de %{name}",

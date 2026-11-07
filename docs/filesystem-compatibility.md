@@ -475,6 +475,11 @@ reported as still open ("“%{name}” was left in “%{folder}”, as a file in
 %{program}"), which alone never stops the merge. It refuses to set a file aside where Replace would.
 How the incoming items are placed is described under [Merges](#merges).
 
+A move can merge too, and its prompt says it can't be undone: the source folder is deleted once its
+items are in place, so a merged move adds no Undo entry, and the originals it overwrote stay in
+Trash. Merge is not offered where the target folder holds the source, as when `a/Photos/Photos` is
+moved or copied into `a`. Staging what the merge overwrites would take the source's own files.
+
 ## Copying
 
 Every copy between two native paths goes through one engine, `copy_engine` in
