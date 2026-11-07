@@ -547,9 +547,8 @@ impl Replaced<'_> {
                 identity,
             });
         }
-        // Only copies get the restore-the-original undo
-        // entry; a replaced move keeps the move-back
-        // record and leaves the original in Trash.
+        // Copies restore through merge undo; moves attach the ItemTrashed
+        // identity to their move-back record instead.
         if self.moving {
             return;
         }

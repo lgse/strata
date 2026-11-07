@@ -96,6 +96,7 @@ impl Browser {
                                     original: item.record.current,
                                     current: item.record.original,
                                     renamed: Vec::new(),
+                                    replaced: item.record.replaced,
                                 },
                                 conflict: item.conflict,
                             }

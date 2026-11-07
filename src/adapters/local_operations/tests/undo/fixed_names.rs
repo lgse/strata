@@ -268,6 +268,7 @@ fn moved_onto_fat(project: &Path, usb: &Path) -> MoveRecord {
             .filter(|item| item.saved_as != current && item.saved_as.is_within(&current))
             .collect(),
         current,
+        replaced: None,
     }
 }
 
