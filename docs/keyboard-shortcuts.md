@@ -113,6 +113,17 @@ Shortcuts follow the key's label first, then its physical position:
   Strata command takes a plain digit or punctuation key, so the first key of a
   syllable reaches the input method and the composition then sees the rest. New
   bindings on these keys must keep it that way.
+- **A filter's `/` is read after the input method.** In the **Ctrl+F** filter
+  and the 10xer **f** prompt, **/** enters a matching folder. It is the
+  one exception to recognizing commands from key presses, never from typed
+  text: the key goes to the field's input method like any other, and a lone `/`
+  it commits is taken from the field's `insert-text` before it reaches the
+  query (`browser::connect_path_separator`). A Zhuyin, Array30 or Boshiamy code
+  that starts with `/` therefore still composes, and a layout that types `/`
+  with Shift, such as German **Shift+7**, enters the folder too. Longer
+  committed text holding `/`, such as a pasted path, is typed; a lone pasted
+  `/` enters the folder as a typed one does, since no file name holds `/`.
+  `FILTER_DESCEND` stays in the catalog only for the F1 label.
 - **Hanyu Pinyin with AltGr dead keys** (`cn(altgr-pinyin)`): AltGr+1 to
   AltGr+4 are the tone dead keys that type ā á ǎ à, AltGr+6 and Shift+AltGr+6
   are the ^ and ¨ dead keys, and AltGr+v types ü. These are text input, never

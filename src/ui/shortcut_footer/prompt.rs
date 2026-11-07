@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-use std::{cell::Cell, path::PathBuf, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    path::PathBuf,
+    rc::Rc,
+};
 
 use gtk::{glib, prelude::*};
 
@@ -224,19 +228,26 @@ impl ShortcutFooter {
     }
 
     /// Runs `listener` as the open prompt's text is edited, not when a prompt
-    /// opens empty or closes, or a [`PromptSink`] replaces the text.
+    /// opens empty or closes, a [`PromptSink`] replaces the text, or a change
+    /// leaves the text as it was, such as a `/` that puts back a selection.
     pub(in crate::ui) fn connect_prompt_changed(
         &self,
         listener: impl Fn(Prompt, String) + 'static,
     ) {
         let kind = self.prompt.kind.clone();
         let replacing = self.prompt.replacing.clone();
+        let last = RefCell::new(self.prompt.entry.text().to_string());
         self.prompt.entry.connect_changed(move |entry| {
+            let text = entry.text().to_string();
+            if *last.borrow() == text {
+                return;
+            }
+            last.replace(text.clone());
             if replacing.get() {
                 return;
             }
             if let Some(kind) = kind.get() {
-                listener(kind, entry.text().to_string());
+                listener(kind, text);
             }
         });
     }
@@ -319,6 +330,15 @@ impl ShortcutFooter {
 
     pub(in crate::ui) fn connect_prompt_activated(&self, listener: impl Fn() + 'static) {
         self.prompt.entry.connect_activate(move |_| listener());
+    }
+
+    /// See [`crate::ui::browser::connect_path_separator`].
+    pub(in crate::ui) fn connect_prompt_path_separator(
+        &self,
+        accepts: impl Fn() -> bool + 'static,
+        descend: impl Fn() + 'static,
+    ) {
+        crate::ui::browser::connect_path_separator(&self.prompt.entry, accepts, descend);
     }
 
     pub(in crate::ui) fn connect_candidate_activated(&self, listener: impl Fn(PathBuf) + 'static) {

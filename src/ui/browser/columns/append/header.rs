@@ -134,6 +134,7 @@ impl ViewState {
 
         let (filter_entry, filter_revealer, filter_button) =
             crate::ui::browser_modes::filter_controls("Filter this pane (%{keys})");
+        crate::ui::browser::bind_filter_descent(&filter_entry, Rc::downgrade(self));
         let enter_target = EnterTarget::new(&filter_entry);
         let weak_self = Rc::downgrade(self);
         filter_button.connect_toggled(move |button| {
