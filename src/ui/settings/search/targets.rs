@@ -75,6 +75,12 @@ pub(super) const TARGETS: &[Target] = &[
         aliases: "browsing video audio gif playback paused sound",
     },
     Target {
+        id: "preview-video-start",
+        page: "general",
+        title: "Video preview start",
+        aliases: "browsing video playback position seek skip intro offset percent",
+    },
+    Target {
         id: "render-documents",
         page: "general",
         title: "Render documents by default",

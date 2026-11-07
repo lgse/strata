@@ -236,9 +236,10 @@ fn assert_saved_previews(manager: &PreferenceManager) {
             manager.preview_text_wrap(),
             manager.unit_system(),
             manager.preview_autoplay(),
+            manager.preview_video_start(),
         ),
-        (true, 0.35, false, UnitSystem::Imperial, true),
-        "(muted, volume, text wrap, units, autoplay)"
+        (true, 0.35, false, UnitSystem::Imperial, true, 20),
+        "(muted, volume, text wrap, units, autoplay, video start)"
     );
     assert_eq!(
         (

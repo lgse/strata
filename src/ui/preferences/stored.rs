@@ -73,6 +73,12 @@ pub(super) fn normalized_font_family(family: Option<String>) -> Option<String> {
         .filter(|family| !family.is_empty())
 }
 
+pub(in crate::ui) const MAX_PREVIEW_VIDEO_START: u32 = 99;
+
+pub(super) fn normalized_video_start(percent: u32) -> u32 {
+    percent.min(MAX_PREVIEW_VIDEO_START)
+}
+
 /// Unlisted limits round up to the next choice; 0 and anything past the largest
 /// choice mean no limit.
 pub(super) fn normalized_search_limit(value: u32, choices: &[(&str, u32)]) -> u32 {
@@ -142,6 +148,7 @@ impl Preferences {
             normalized_search_limit(self.search_time_limit, &SEARCH_TIME_LIMIT_CHOICES);
         self.search_entry_limit =
             normalized_search_limit(self.search_entry_limit, &SEARCH_ENTRY_LIMIT_CHOICES);
+        self.preview_video_start = normalized_video_start(self.preview_video_start);
         self.thumbnail_workers = self
             .thumbnail_workers
             .clamp(1, crate::sandbox::browser::MAX_WORKERS);

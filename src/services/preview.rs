@@ -230,6 +230,13 @@ fn raw_video_stream_type(path: &Path) -> Option<&'static str> {
         .map(|(_, content_type)| *content_type)
 }
 
+/// Raw elementary streams can only seek by decoding up to the target position.
+pub(crate) fn is_raw_video_stream(content_type: &str) -> bool {
+    RAW_VIDEO_STREAMS
+        .iter()
+        .any(|(_, raw_type)| *raw_type == content_type)
+}
+
 pub(crate) fn guess_content_type(path: &Path) -> (String, bool) {
     if let Some(content_type) = raw_video_stream_type(path) {
         return (content_type.to_owned(), false);

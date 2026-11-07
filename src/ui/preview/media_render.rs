@@ -20,8 +20,14 @@ impl PreviewState {
         let family = media_family(&preview.content_type);
         let handed_off = self.handed_off.borrow().as_ref() == Some(&preview.entry.location);
         source.audio_only = family == Some(MediaFamily::Audio);
-        let media = self.open_media_stream(source.clone());
         let preferences = super::super::preferences::PreferenceManager::shared();
+        let starts_at_zero = is_gif || crate::services::is_raw_video_stream(&preview.content_type);
+        let start_percent = if starts_at_zero {
+            0
+        } else {
+            preferences.preview_video_start()
+        };
+        let media = self.open_media_stream(source.clone(), start_percent);
         if is_gif {
             media.set_loop(true);
         } else {
@@ -71,8 +77,11 @@ impl PreviewState {
     fn open_media_stream(
         self: &Rc<Self>,
         source: crate::services::SandboxedMedia,
+        start_percent: u32,
     ) -> gtk::MediaStream {
-        let media = super::super::media::DecodedMedia::new(source).upcast::<gtk::MediaStream>();
+        let decoded = super::super::media::DecodedMedia::new(source);
+        decoded.set_start_percent(start_percent);
+        let media = decoded.upcast::<gtk::MediaStream>();
         self.media.replace(Some(media.clone()));
         let weak = Rc::downgrade(self);
         media.connect_playing_notify(move |media| {
