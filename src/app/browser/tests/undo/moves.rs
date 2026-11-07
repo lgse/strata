@@ -276,6 +276,7 @@ fn a_move_is_undone_from_where_the_item_went() {
             original: source,
             current: kept_both,
             renamed: Vec::new(),
+            replaced: None,
         }]))
     );
 }
@@ -310,6 +311,7 @@ fn a_move_undo_record_keeps_the_names_the_move_changed_inside_its_item() {
             original: source,
             current: Location::local("/fixture/archive/project"),
             renamed: vec![alias("project")],
+            replaced: None,
         }]))
     );
 }
@@ -385,17 +387,20 @@ fn a_merged_move_source_is_excluded_from_the_move_undo() {
 }
 
 #[test]
-fn a_replaced_move_keeps_the_move_undo_record() {
+fn a_replaced_move_keeps_the_staged_original_with_its_move_undo() {
+    let identity = folder_identity(41, 1);
+    let mut record = archived_report();
+    record.replaced = Some(identity);
     let undo = move_undo_after(|request_id| {
-        vec![pasted(
-            request_id,
-            vec![Location::local("/fixture/report.txt")],
-        )]
+        vec![
+            OperationEvent::ItemTrashed {
+                request_id,
+                location: record.current.clone(),
+                identity,
+            },
+            pasted(request_id, vec![record.original.clone()]),
+        ]
     });
 
-    assert_eq!(
-        undo,
-        Some(UndoEntry::Move(vec![archived_report()])),
-        "a move-replace restores the moved item to its source; the original stays in Trash"
-    );
+    assert_eq!(undo, Some(UndoEntry::Move(vec![record])));
 }

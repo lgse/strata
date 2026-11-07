@@ -35,16 +35,6 @@ fn undoing_a_move_returns_each_item_to_its_original_directory() -> Result<(), Bo
     Ok(())
 }
 
-fn completed_before_failing(events: &[OperationEvent]) -> Vec<Location> {
-    match events.last() {
-        Some(OperationEvent::TransferFailed {
-            completed_locations,
-            ..
-        }) => completed_locations.clone(),
-        other => panic!("expected a transfer failure, got {other:?}"),
-    }
-}
-
 #[test]
 fn undoing_a_move_stops_at_an_unconfirmed_conflict() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;

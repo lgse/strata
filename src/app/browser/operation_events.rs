@@ -22,7 +22,7 @@ use replay::finish_claimed_replay;
 use super::{
     Browser, BrowserEvent, MergeUndoState, UndoEntry, completed_replay_items, finish_replay,
     mark_replay_item_completed, move_records, moved_target, push_pending_redo, push_pending_undo,
-    push_regenerated_undo, retain_merge_records,
+    push_regenerated_undo, record_replaced_originals, retain_merge_records,
 };
 
 /// The items a transfer moved, where each landed, and its report.
@@ -136,7 +136,7 @@ impl OperationCompletion {
         }
         match (self.moving, &self.destination) {
             (Some(true), Some(destination)) => {
-                record_move_undo(moves, destination, &merged, publish)
+                record_move_undo(moves, destination, (&merged, trashed), publish)
             }
             (Some(false), _) => {
                 record_copy_undo(created, merged, trashed, publish);
@@ -150,7 +150,7 @@ impl OperationCompletion {
 fn record_move_undo(
     (moved, moved_to, report): Moves<'_>,
     destination: &Location,
-    merged: &MergeUndoState,
+    (merged, trashed): (&MergeUndoState, &HashMap<Location, ItemIdentity>),
     publish: fn(UndoEntry),
 ) -> Vec<Location> {
     let kept_back = kept_back(moved, report);
@@ -163,12 +163,9 @@ fn record_move_undo(
         .filter(|source| !kept_back.contains(*source))
         .cloned()
         .collect();
-    publish(UndoEntry::Move(move_records(
-        &movable,
-        destination,
-        moved_to,
-        &report.renamed,
-    )));
+    let mut records = move_records(&movable, destination, moved_to, &report.renamed);
+    record_replaced_originals(&mut records, trashed, true);
+    publish(UndoEntry::Move(records));
     moved
         .iter()
         .filter(|source| kept_back.contains(source))

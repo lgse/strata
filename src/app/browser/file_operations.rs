@@ -203,6 +203,7 @@ impl Browser {
             original: original.clone(),
             current: current.clone(),
             renamed: Vec::new(),
+            replaced: None,
         };
         // Undoing what made folders also trashes them, as for a group folder.
         push_pending_undo(if placed.len() > 1 {

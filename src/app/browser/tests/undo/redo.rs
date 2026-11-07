@@ -140,6 +140,7 @@ fn an_undone_move_can_be_redone() {
                 original: record.current,
                 current: record.original,
                 renamed: Vec::new(),
+                replaced: None,
             }]],
             vec![NameMode::Keep, NameMode::Fix]
         )

@@ -138,6 +138,7 @@ fn renaming_an_item_into_new_folders_undoes_as_a_move_back_that_trashes_them() {
                 original: original.clone(),
                 current: current.clone(),
                 renamed: Vec::new(),
+                replaced: None,
             }],
         })
     );
@@ -175,6 +176,7 @@ fn renaming_an_item_into_an_existing_folder_undoes_as_a_move() {
             original,
             current,
             renamed: Vec::new(),
+            replaced: None,
         }]))
     );
 }

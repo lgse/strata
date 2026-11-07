@@ -455,7 +455,8 @@ it keeps its number once closed; archive stages too.
 When Replace is part of a move within one filesystem, the source itself is placed after the
 original is out of the way, so nothing is copied unless no step can place it. Without Trash, a
 replaced original is gone for good: the replacement is not added to Undo, because undoing it could
-only delete the remaining copy. A replacing move keeps its Undo, which moves the item back. Where
+only delete the remaining copy. A replacing move keeps its Undo, which moves the item back and,
+where its original went to Trash, restores that original. Where
 the original cannot be removed once the new item is in place and flushed, as when another program
 holds a file in it, a paste, move or compression completes with its Undo, if it has one, and
 reports "“%{name}” was replaced, but its original could not be removed from “%{kept}”: %{error}",
@@ -916,6 +917,14 @@ it created. A cancel during the copy removes them too and counts the item as not
 the Trash with its `.trashinfo`; if they cannot be removed, the item counts as failed. A cancelled
 restore or merge undo ends as cancelled, even when its last item finished. A restore across
 filesystems is refused.
+
+Undoing a replacing move looks up its originals together, by their recorded Trash identities,
+before moving anything back. It settles the completed move batches before restoring originals to
+the vacated paths, so cross-filesystem moves keep their batched flushes. A failed or unattempted
+move leaves its original in Trash; cancellation still restores originals for moves already
+committed. A new arrival at a vacated path is never overwritten: restoration fails and its original
+stays in Trash. Redo asks before replacing the restored item again and records its new Trash
+identity, so the next Undo can restore it too.
 
 Undoing a merge, or a copy or an archive that replaced its original through the Trash, deletes what
 the operation put at the original's path, then restores the original. As it places an item there,

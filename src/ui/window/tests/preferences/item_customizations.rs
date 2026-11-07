@@ -215,6 +215,16 @@ fn folder_customizations_follow_file_operations_performed_in_strata() {
                         ("docs", None, None),
                     ],
                 ),
+                (
+                    Undo,
+                    &[
+                        ("docs", Some(Red), Some(FILE_CODE)),
+                        ("docs/inner", Some(Blue), None),
+                        ("dest/docs", Some(Green), Some(PICTURES)),
+                        ("dest/docs/kept", Some(Purple), None),
+                        ("dest/docs/inner", None, None),
+                    ],
+                ),
             ];
             let merge = [
                 existing_customized[0],
@@ -284,7 +294,7 @@ fn folder_customizations_follow_file_operations_performed_in_strata() {
                     ],
                 ),
                 (
-                    "Replace drops the replaced folder's customizations",
+                    "Replace and undo restore each folder's customizations",
                     &replace,
                 ),
                 (

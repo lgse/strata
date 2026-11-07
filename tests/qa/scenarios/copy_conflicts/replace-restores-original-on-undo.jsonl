@@ -1,17 +1,33 @@
-{"scenario":"replace-restores-original-on-undo","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.0},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":4,"score":38,"note":"Replace then Ctrl+Z restores original from Trash; superset of test_clipboard/replacing-duplicate-name-overwrites, adds only the undo"}}
+{"scenario":"replace-restores-original-on-undo","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"copy","vars":{"clipboard_key":"ctrl+c"}},{"id":"move","vars":{"clipboard_key":"ctrl+x"}}],"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":4,"score":38,"note":"Copy and move Replace then Ctrl+Z restore both files; only GUI coverage of replacement undo through the conflict dialog"}}
 {"fs":{"path":"archive/todo.txt","write":"existing\n"}}
 {"select":{"entry":"todo.txt"}}
-{"key":"ctrl+c"}
+{"wait":{"focused":"todo.txt"},"message":"the source file to have keyboard focus"}
+{"key":"$clipboard_key"}
 {"select":{"entry":"archive"}}
 {"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
-{"settle":{"pane":"archive"}}
-{"move":{"pane":"archive"}}
+{"select":{"entry":"todo.txt","dir":"archive"}}
+{"wait":{"focused_pane":"archive"},"message":"the destination pane to have keyboard focus"}
 {"key":"ctrl+v"}
 {"wait":{"dialog":true},"message":"a dialog to appear"}
 {"click":{"dialog_button":"Replace"}}
 {"fs":{"path":"archive/todo.txt","text":"todo\n"},"message":"the replacement"}
-{"fs":{"path":"todo.txt","text":"todo\n"},"timeout_ms":0,"message":"a copy keeps the source"}
+{"fs":{"path":"todo.txt","text":"todo\n"},"timeout_ms":0,"variants":["copy"],"message":"a copy keeps the source"}
+{"fs":{"path":"todo.txt","exists":false},"variants":["move"],"message":"a move removes the source"}
+{"wait":{"entries":{"excludes":["todo.txt"]},"dir":"$root"},"variants":["move"],"message":"the completed move to remove the source row"}
 {"wait":{"dialog":null},"message":"the conflict dialog to finish dismissing"}
 {"key":"ctrl+z"}
 {"fs":{"path":"archive/todo.txt","text":"existing\n"},"message":"replace undo restores the original staged in Trash"}
-{"fs":{"path":"todo.txt","text":"todo\n"},"timeout_ms":0}
+{"fs":{"path":"todo.txt","text":"todo\n"},"message":"undo preserves the copy source or returns the moved file"}
+{"wait":{"entries":{"contains":["todo.txt"]},"dir":"$root"},"variants":["move"],"message":"the completed undo to list the returned source file"}
+{"select":{"entry":"todo.txt","dir":"$root"},"variants":["move"]}
+{"wait":{"focused_pane":"$root"},"variants":["move"],"message":"the returned source file to be focusable before redo"}
+{"key":"ctrl+shift+z","variants":["move"]}
+{"wait":{"dialog":true},"variants":["move"],"message":"redo to ask before replacing the restored original"}
+{"click":{"dialog_button":"Replace"},"variants":["move"]}
+{"fs":{"path":"archive/todo.txt","text":"todo\n"},"variants":["move"],"message":"redo to replace the destination again"}
+{"fs":{"path":"todo.txt","exists":false},"variants":["move"],"message":"redo to move the source again"}
+{"wait":{"entries":{"excludes":["todo.txt"]},"dir":"$root"},"variants":["move"],"message":"the completed redo to remove the source row again"}
+{"wait":{"dialog":null},"variants":["move"],"message":"redo conflict dialog to close"}
+{"key":"ctrl+z","variants":["move"]}
+{"fs":{"path":"archive/todo.txt","text":"existing\n"},"variants":["move"],"message":"a second undo to restore the original re-staged by redo"}
+{"fs":{"path":"todo.txt","text":"todo\n"},"variants":["move"],"message":"a second undo to return the moved file"}
