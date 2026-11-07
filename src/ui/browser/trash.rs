@@ -182,8 +182,12 @@ impl ViewState {
     }
 
     pub(super) fn delete_animation_source(&self) -> Option<gtk::Widget> {
+        self.delete_animation_source_at(self.browser.active_depth())
+    }
+
+    fn delete_animation_source_at(&self, depth: Option<usize>) -> Option<gtk::Widget> {
         if self.mode_views.borrow().mode() == crate::ui::browser_modes::BrowserMode::Columns {
-            let depth = self.browser.active_depth()?;
+            let depth = depth?;
             self.columns
                 .borrow()
                 .get(depth)
@@ -265,15 +269,28 @@ impl ViewState {
     /// parent, so the cursor goes there first: a deletion moves it on to a
     /// neighbour, and a cancelled one leaves focus on the folder's row.
     pub(super) fn leave_folder_being_deleted(&self, entries: &[FileEntry]) {
+        if self.leaves_folder_being_deleted(entries) {
+            self.browser.focus_parent();
+        }
+    }
+
+    fn leaves_folder_being_deleted(&self, entries: &[FileEntry]) -> bool {
         let open = self
             .browser
             .active_depth()
             .and_then(|depth| self.browser.location_at(depth));
-        let deleting_open =
-            open.is_some_and(|open| entries.iter().any(|entry| entry.location == open));
-        if deleting_open && self.browser.can_start_operation() {
-            self.browser.focus_parent();
-        }
+        open.is_some_and(|open| entries.iter().any(|entry| entry.location == open))
+            && self.browser.can_start_operation()
+    }
+
+    /// The depth that shows `entries` once `leave_folder_being_deleted` has run.
+    fn deletion_depth(&self, entries: &[FileEntry]) -> Option<usize> {
+        let depth = self.browser.active_depth()?;
+        Some(if self.leaves_folder_being_deleted(entries) {
+            depth.saturating_sub(1)
+        } else {
+            depth
+        })
     }
 
     fn move_to_trash(self: &Rc<Self>, entries: Vec<FileEntry>) {
