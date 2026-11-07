@@ -17,7 +17,9 @@ hints show; every key on the list works.
 These keys stay fixed:
 
 - digit ranges: tab numbers (**Ctrl+Shift+1–9 / 0**) and the digits after the
-  Go, Action and Tabs chords, which follow their chord's trigger;
+  Go, Action and Tabs chords and after **; .**, which follow their chord's keys;
+- the letters **a–z** after the two bookmark chords, which name the bookmark
+  rather than bind an action and follow their chord's trigger;
 - **Backspace**, which goes to the parent folder and deletes text;
 - the keys GTK handles in file lists: **Ctrl+Space** toggles the selection, and
   Shift with an arrow, Home, End, Page Up or Page Down extends it;
@@ -43,7 +45,8 @@ thumbnail resizing use the default table in both modes.
 An action only one mode ships a key for usually has no handler in the other. The
 default table can still run these 10xer actions: Open with, Move to, Copy to,
 Restore, invert selection, search subfolders, the visited and recent folder
-jumps, half-page paging, and the Sort, Copy and Action chord steps. 10xer mode
+jumps, half-page paging, and the Sort, Copy and Action chord steps except
+**Actions for the focused folder**. 10xer mode
 can run duplicate, pin, jump to folder and arrow scope, and copy path on a key
 that types nothing, such as one with Ctrl or an F key. A key on any other such action, such as yank or a Go
 step in the default table, does nothing, and Settings says so on its row.
@@ -65,10 +68,15 @@ actions that match the selection instead.
 
 ## Chord groups
 
-10xer mode has five chords: Go (**g**), Copy (**c**), Sort (**,**), Action
-(**;**) and Tabs (**t**). Each has a trigger and steps, rebound separately:
-the steps, and the digits after Go, Action and Tabs, follow whatever key the
-trigger has. A step works only while its trigger waits for the next key, so a
+10xer mode has seven chords: Go (**g**), Copy (**c**), Sort (**,**), Action
+(**;**), Tabs (**t**), and the letter bookmark chords, save (**m**, id
+`bookmark_set`) and go (**'**, id `bookmark_go`). Each has a trigger and
+steps, rebound separately: the steps, the digits after Go, Action and Tabs,
+and the letters after the bookmark chords follow whatever key the trigger
+has. The bookmark chords have no steps to rebind; their letters are fixed. The
+Action step **Actions for the focused folder** (**.**) switches the **;** panel
+to the focused folder's actions, and the digits after it follow both keys. A
+step works only while its trigger waits for the next key, so a
 step key never collides with a top-level one; a top-level key equal to a
 trigger is an error. Settings shows a step with its trigger's key in front. No
 other chord groups can be made.
@@ -78,7 +86,8 @@ step therefore cannot hold Shift, and a digit or a symbol typed with Shift, such
 as **<**, sorts but cannot be reversed.
 
 The default table has no chords. Its Sort, Copy and Action steps are plain keys
-there, which Shift does not reverse, and its Go and Tabs steps do nothing.
+there, which Shift does not reverse, and its Go and Tabs steps and **Actions for
+the focused folder** do nothing.
 
 ## Escape, Enter, Tab and the arrows
 

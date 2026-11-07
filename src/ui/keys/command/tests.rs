@@ -20,6 +20,8 @@ const MANY_ROLES: &str =
 const GENERIC: &str = "a key many surfaces read for their own job, kept as a fixed binding";
 const GTK_OWNED: &str = "GTK acts on it once the dispatcher yields";
 const EXTENDS_SELECTION: &str = "Shift with a motion key extends the selection and stays fixed";
+const PATH_SEPARATOR: &str = "the filter's path separator, read from the text an input method \
+     commits rather than from the key; not a rebindable action";
 
 /// Catalog bindings that are not commands, and why.
 const NOT_COMMANDS: &[(&str, &str)] = &[
@@ -41,6 +43,7 @@ const NOT_COMMANDS: &[(&str, &str)] = &[
     ("UNSELECT_ALL", GTK_OWNED),
     ("DOCUMENT_START", GTK_OWNED),
     ("DOCUMENT_END", GTK_OWNED),
+    ("FILTER_DESCEND", PATH_SEPARATOR),
 ];
 
 const TIMELINE: &str = "the media timeline reads it in either map";
@@ -110,7 +113,8 @@ fn listed_commands_are_bound_in_the_maps_that_list_them() {
                 );
                 checked += 1;
             }
-            // Digit ranges stay fixed; a chord's range belongs to its trigger's group.
+            // Digit and letter ranges stay fixed; a chord's range belongs to
+            // its trigger's group.
             Entry::Digits(digits) => {
                 if let Some(prefix) = digits.prefix() {
                     assert!(
@@ -119,6 +123,12 @@ fn listed_commands_are_bound_in_the_maps_that_list_them() {
                     );
                 }
             }
+            Entry::Letters(letters) => assert!(
+                letters
+                    .prefix()
+                    .is_some_and(|prefix| block.iter().all(|map| is_trigger_key(prefix, *map))),
+                "{name} follows no chord trigger"
+            ),
             Entry::Binding(_) => assert!(
                 NOT_COMMANDS.iter().any(|(excluded, _)| *excluded == name),
                 "{name} is a fixed binding; make it a command or give it a reason"
@@ -151,6 +161,7 @@ fn unlisted_constants_are_commands_or_excluded() {
                 "{name} needs to be a command or have a reason on the exclusion list"
             ),
             Entry::Digits(_) => panic!("{name} is an unlisted digit range"),
+            Entry::Letters(_) => panic!("{name} is an unlisted letter range"),
         }
         checked += 1;
     }

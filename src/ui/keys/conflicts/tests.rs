@@ -8,10 +8,10 @@ use super::{
     super::{
         Binding, Command, Keymap, Map,
         bindings::{
-            ACTIONS_NUMBERS, ACTIONS_TERMINAL, CHOOSE_FOLDER, COPY, COPY_AS_NAME, COPY_PATH,
-            DELETE_PERMANENTLY, DOWN, DUPLICATE, ENTER, ESCAPE, FILTER, FILTER_SLASH, FIND,
-            FIND_IN_PREVIEW, GO, GO_DOWNLOADS, GO_FIRST, GO_HOME, GO_PROMPT, HISTORY_BACK,
-            LAST_ITEM, LEFT, MEDIA_SEEK_BACK_PAGE, MEDIA_SEEK_END, MEDIA_SEEK_START,
+            ACTIONS_FOLDER, ACTIONS_NUMBERS, ACTIONS_TERMINAL, BOOKMARK_SET, CHOOSE_FOLDER, COPY,
+            COPY_AS_NAME, COPY_PATH, DELETE_PERMANENTLY, DOWN, DUPLICATE, ENTER, ESCAPE, FILTER,
+            FILTER_SLASH, FIND, FIND_IN_PREVIEW, GO, GO_DOWNLOADS, GO_FIRST, GO_HOME, GO_PROMPT,
+            HISTORY_BACK, LAST_ITEM, LEFT, MEDIA_SEEK_BACK_PAGE, MEDIA_SEEK_END, MEDIA_SEEK_START,
             MEDIA_VOLUME_STEP_DOWN, MEDIA_VOLUME_STEP_UP, MOVE_TO_TRASH, NEW_FOLDER,
             OPEN_CONTAINING_FOLDER, OPEN_IN_NEW_WINDOW, OPEN_WITH, PAGE_DOWN, PAGE_UP,
             PDF_ZOOM_RESET, PIN, PIN_NUMBERS, PREVIEW, PREVIOUS_MATCH, REFERENCE, REFERENCE_SEARCH,
@@ -88,6 +88,16 @@ const ROWS: &[Row] = &[
         table: &[],
         policy: OFF,
         kind: Kind::Duplicate(GO_DOWNLOADS),
+        found: true,
+    },
+    Row {
+        case: "an Action step on the folder actions key",
+        map: Map::Tenxer,
+        command: ACTIONS_TERMINAL,
+        candidate: Binding::plain(Key::period),
+        table: &[],
+        policy: OFF,
+        kind: Kind::Duplicate(ACTIONS_FOLDER),
         found: true,
     },
     Row {
@@ -917,6 +927,16 @@ const ROWS: &[Row] = &[
         found: true,
     },
     Row {
+        case: "the folder actions step in the default map, which has no panel to switch",
+        map: Map::Default,
+        command: ACTIONS_FOLDER,
+        candidate: Binding::ctrl(Key::e),
+        table: &[],
+        policy: OFF,
+        kind: Kind::NoPath,
+        found: true,
+    },
+    Row {
         case: "the type-to-search filter key in 10xer",
         map: Map::Tenxer,
         command: FILTER_SLASH,
@@ -1163,6 +1183,7 @@ fn audit_of_default_tables_is_clean() {
             (THUMBNAILS_LARGER, MEDIA_VOLUME_STEP_UP),
             (THUMBNAILS_SMALLER, MEDIA_VOLUME_STEP_DOWN),
             (OPEN_IN_NEW_WINDOW, PREVIOUS_MATCH),
+            (BOOKMARK_SET, TENXER_MEDIA_MUTE),
         ]
         .into_iter()
         .flat_map(|(window, preview)| {

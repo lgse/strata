@@ -450,6 +450,7 @@ impl ViewState {
         }
         self.finish_column_load(depth, truncated, defer_empty);
         self.reveal_pending_transfer_at(depth);
+        self.notify_filter_listing_loaded(depth);
         if archive_destination_loaded {
             self.select_pending_archive_names(depth);
         } else {
@@ -588,6 +589,7 @@ impl ViewState {
         if let Some(location) = self.browser.location_at(depth) {
             crate::ui::preferences::PreferenceManager::shared().forget_missing_folder(&location);
         }
+        self.notify_filter_listing_loaded(depth);
         let columns = self.columns.borrow();
         let Some(column) = columns.get(depth) else {
             return;

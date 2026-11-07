@@ -11,6 +11,7 @@ use crate::{
 
 mod enter_target;
 mod escape;
+mod filter_slash;
 mod live_changes;
 mod returning_focus;
 mod view_switch;
@@ -271,7 +272,7 @@ fn check_modes(modes: &[BrowserMode], run: impl Fn(BrowserMode) -> Result<(), St
     ));
 }
 
-const SHARE: &str = "sftp://share.invalid/reports";
+pub(super) const SHARE: &str = "sftp://share.invalid/reports";
 
 /// A remote share: it has no native path, so Icons and List narrow it in place instead
 /// of showing separate results.
@@ -325,6 +326,40 @@ impl FileSource for RemoteShare {
             can_delete: None,
         });
         LoadHandle::new(|| {})
+    }
+}
+
+/// [`RemoteShare`] with every entry under the share a folder.
+pub(super) struct RemoteFolders;
+
+impl FileSource for RemoteFolders {
+    fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
+        RemoteShare.validate_location(location)
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        let remote = request.location.native_path().is_none();
+        RemoteShare.enumerate(
+            request,
+            Rc::new(move |event| {
+                let event = match event {
+                    DirectoryEvent::Batch {
+                        request_id,
+                        mut entries,
+                    } if remote => {
+                        for entry in &mut entries {
+                            entry.kind = EntryKind::Directory;
+                        }
+                        DirectoryEvent::Batch {
+                            request_id,
+                            entries,
+                        }
+                    }
+                    event => event,
+                };
+                emit(event);
+            }),
+        )
     }
 }
 

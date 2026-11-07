@@ -17,6 +17,16 @@ use crate::{
 };
 
 impl ModeViews {
+    pub(in crate::ui) fn settle_in_place_filter(&self) {
+        let Some(pane) = self.single_pane() else {
+            return;
+        };
+        let Some(entry) = pane.filter_entry.as_ref() else {
+            return;
+        };
+        browser::notify_filter_query(&pane.filter, &pane.filter_query, entry.text().to_string());
+    }
+
     pub(in crate::ui) fn clear_filter(&self, depth: usize) {
         for pane in self
             .icons_panes

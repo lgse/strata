@@ -84,29 +84,37 @@ pub(crate) enum Chord {
     Copy,
     Sort,
     Action,
+    FolderAction,
     Tabs,
+    BookmarkSet,
+    BookmarkGo,
 }
 
 impl Chord {
-    /// The pending chord's first key, as its footer pill shows it.
+    /// The pending chord's keys so far, as its footer pill shows them.
     pub(crate) fn mark(self) -> String {
         use super::keys::{
             Keys,
-            bindings::{ACTIONS, COPY_AS, GO, SORT_BY, TAB_CHORD},
+            bindings::{
+                ACTIONS, ACTIONS_FOLDER, BOOKMARK_GO, BOOKMARK_SET, COPY_AS, GO, SORT_BY, TAB_CHORD,
+            },
         };
         let prefix = match self {
-            Self::Go | Self::PreviewTop => GO,
-            Self::Copy => COPY_AS,
-            Self::Sort => SORT_BY,
-            Self::Action => ACTIONS,
-            Self::Tabs => TAB_CHORD,
+            Self::Go | Self::PreviewTop => Keys::One(GO.shown()),
+            Self::Copy => Keys::One(COPY_AS.shown()),
+            Self::Sort => Keys::One(SORT_BY.shown()),
+            Self::Action => Keys::One(ACTIONS.shown()),
+            Self::FolderAction => Keys::Chord(super::keys::shown![ACTIONS, ACTIONS_FOLDER]),
+            Self::Tabs => Keys::One(TAB_CHORD.shown()),
+            Self::BookmarkSet => Keys::One(BOOKMARK_SET.shown()),
+            Self::BookmarkGo => Keys::One(BOOKMARK_GO.shown()),
         };
-        format!("{}-", super::keys::label(&Keys::One(prefix.shown())))
+        format!("{}-", super::keys::label(&prefix))
     }
 
-    /// The second keys and their untranslated actions. The `;` panel lists
-    /// the matching actions itself, and a file chooser leaves out the steps
-    /// it refuses.
+    /// The second keys and their untranslated actions. The `;` and `; .`
+    /// panels list the matching actions themselves, the `'` panel the saved
+    /// bookmarks, and a file chooser leaves out the steps it refuses.
     pub(crate) fn options(
         self,
         chooser: bool,
@@ -171,7 +179,11 @@ impl Chord {
                 (step(SORT_BY_FOLDERS_FIRST), "Folders first"),
                 (Mention::Held(gtk::gdk::ModifierType::SHIFT_MASK), "Reverse"),
             ],
-            Self::Action => Vec::new(),
+            Self::Action | Self::FolderAction | Self::BookmarkGo => Vec::new(),
+            Self::BookmarkSet => vec![(
+                Mention::Keys(Keys::Letters(BOOKMARK_SET_LETTERS.step())),
+                "Save bookmark",
+            )],
             Self::Tabs => vec![
                 (step(TAB_CHORD_NEW), "New tab"),
                 (step(TAB_CHORD_CLOSE), "Close tab"),

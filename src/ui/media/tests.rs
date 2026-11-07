@@ -39,15 +39,19 @@ fn fake_loader(calls: &Rc<RefCell<Vec<u32>>>) -> TestLoader {
     })
 }
 
+fn tick_allowing_busy(media: &DecodedMedia) {
+    match media.tick() {
+        Ok(()) => {}
+        // Worker slots are shared with other tests.
+        Err(error) if error.contains("busy") => {}
+        Err(error) => panic!("tick failed: {error}"),
+    }
+}
+
 fn drive_until(media: &DecodedMedia, calls: &Rc<RefCell<Vec<u32>>>, want: usize) {
     let deadline = Instant::now() + Duration::from_secs(15);
     while calls.borrow().len() < want {
-        match media.tick() {
-            Ok(()) => {}
-            // Worker slots are shared with other tests.
-            Err(error) if error.contains("busy") => {}
-            Err(error) => panic!("tick failed: {error}"),
-        }
+        tick_allowing_busy(media);
         assert!(Instant::now() < deadline, "decode worker deadline");
         std::thread::sleep(Duration::from_millis(1));
     }
@@ -151,6 +155,124 @@ fn resume_where_the_preview_closed() {
     media.imp().position.set(media::timestamp(600));
     media.close();
     assert_eq!(recall_media_position(Path::new("/song")), None);
+}
+
+fn open_starting(path: &str, percent: u32) -> (DecodedMedia, Rc<RefCell<Vec<u32>>>) {
+    let media = DecodedMedia::new(test_source(path));
+    media.set_start_percent(percent);
+    let calls = Rc::new(RefCell::new(Vec::new()));
+    media.imp().loader.replace(Some(fake_loader(&calls)));
+    media.upcast_ref::<gtk::MediaStream>().play();
+    (media, calls)
+}
+
+/// Waits for the decoder header, where the start is decided, and for any
+/// restart it scheduled to reach the loader.
+fn settle(media: &DecodedMedia) {
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while media.imp().header.get().is_none() || media.imp().restart.get().is_some() {
+        tick_allowing_busy(media);
+        assert!(Instant::now() < deadline, "decoder settle deadline");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
+#[test]
+fn first_video_preview_starts_at_the_configured_percent() {
+    crate::test_support::gtk_test(
+        "ui::media::tests::first_video_preview_starts_at_the_configured_percent",
+        start_at_the_configured_percent,
+    );
+}
+
+fn start_at_the_configured_percent() {
+    let start = media::seek_tick(TEST_DURATION_US / 5, TEST_DURATION_US);
+    let (media, calls) = open_starting("/fresh", 20);
+    drive_until(&media, &calls, 2);
+    settle(&media);
+    assert_eq!(*calls.borrow(), vec![0, start]);
+    media.close();
+
+    remember_media_position("/watched".into(), media::timestamp(900));
+    let (media, calls) = open_starting("/watched", 20);
+    drive_until(&media, &calls, 2);
+    settle(&media);
+    assert_eq!(
+        *calls.borrow(),
+        vec![0, 900],
+        "a remembered position wins over the configured start"
+    );
+    media.close();
+
+    for (path, closed_at) in [
+        ("/restarted", RESTORE_MIN_US),
+        ("/finished", TEST_DURATION_US),
+    ] {
+        let (media, calls) = open_starting(path, 20);
+        drive_until(&media, &calls, 2);
+        settle(&media);
+        media.imp().position.set(closed_at);
+        media.close();
+        let (media, calls) = open_starting(path, 20);
+        drive_until(&media, &calls, 1);
+        settle(&media);
+        assert_eq!(
+            *calls.borrow(),
+            vec![0],
+            "{path}: a video left in its first second or at its end reopens at 0:00"
+        );
+        media.close();
+    }
+
+    let (media, calls) = open_starting("/beginning", 0);
+    drive_until(&media, &calls, 1);
+    settle(&media);
+    assert_eq!(*calls.borrow(), vec![0]);
+    media.close();
+
+    let audio = Header {
+        width: 0,
+        height: 0,
+        audio: true,
+        ..test_header(0)
+    };
+    let unknown_length = Header {
+        duration_us: media::MAX_DURATION_US,
+        ..test_header(0)
+    };
+    let before_first_frame = Header {
+        duration_us: 100_000,
+        ..test_header(0)
+    };
+    for (path, audio_only, header) in [
+        ("/track", true, audio),
+        ("/live", false, unknown_length),
+        ("/blink", false, before_first_frame),
+    ] {
+        let media = DecodedMedia::new(SandboxedMedia {
+            audio_only,
+            ..test_source(path)
+        });
+        media.set_start_percent(20);
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let loader_calls = calls.clone();
+        media.imp().loader.replace(Some(Rc::new(move |_, tick| {
+            loader_calls.borrow_mut().push(tick);
+            crate::sandbox::media::tests::stream(Header {
+                start_tick: tick,
+                ..header
+            })
+        })));
+        media.upcast_ref::<gtk::MediaStream>().play();
+        drive_until(&media, &calls, 1);
+        settle(&media);
+        assert_eq!(
+            *calls.borrow(),
+            vec![0],
+            "{path}: audio, video of unknown length, and a start before the first frame begin at 0"
+        );
+        media.close();
+    }
 }
 
 fn pcm(values: impl IntoIterator<Item = i16>) -> Vec<u8> {

@@ -92,7 +92,7 @@ impl ChordIndicator {
         rows.retain(|(keys, _)| !keys.is_empty());
         let previous = self.armed.replace(chord);
         if let Some(mark) = self.mark.upgrade() {
-            self.show_mark(&mark, previous, &rows);
+            self.show_mark(&mark, &rows);
         }
         if previous != chord {
             for listener in self.listeners.borrow().iter() {
@@ -101,16 +101,15 @@ impl ChordIndicator {
         }
     }
 
-    fn show_mark(&self, mark: &gtk::Label, previous: Option<Chord>, rows: &[(String, String)]) {
+    fn show_mark(&self, mark: &gtk::Label, rows: &[(String, String)]) {
         let chord = self.armed.get();
         mark.set_text(&chord.map(Chord::mark).unwrap_or_default());
         mark.set_visible(chord.is_some());
         match chord {
-            Some(chord) if previous != Some(chord) => {
+            Some(chord) if !rows.is_empty() => {
                 self.panel.show(mark, chord, rows, self.armed.clone());
             }
-            Some(_) => {}
-            None => self.panel.hide(),
+            _ => self.panel.hide(),
         }
     }
 }

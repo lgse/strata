@@ -4,6 +4,7 @@ use super::*;
 use crate::ui::tenxer_mode::Prompt;
 
 mod filter;
+mod filter_slash;
 mod find;
 mod search;
 mod search_hits;

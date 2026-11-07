@@ -3,7 +3,7 @@
 //! Every shortcut as a named constant, grouped by area. Handlers match these
 //! constants, and the F1 reference, hints and labels show the same ones.
 
-use super::{Binding, Command, Digits};
+use super::{Binding, Command, Digits, Letters};
 
 /// Declares an area's constants and lists them for the registry and the
 /// catalog tests. The F1 reference shows `listed` constants in both maps,
@@ -49,6 +49,9 @@ macro_rules! catalog {
     };
     (@define [$($attr:tt)*] $name:ident Digits [] [$value:expr] [] $block:ident []) => {
         $($attr)* pub(crate) const $name: Digits = $value;
+    };
+    (@define [$($attr:tt)*] $name:ident Letters [] [$value:expr] [] $block:ident []) => {
+        $($attr)* pub(crate) const $name: Letters = $value;
     };
     (
         @define [$($attr:tt)*] $name:ident Command [$id:literal $($kind:ident $(($group:ident))?)?]
@@ -178,6 +181,7 @@ pub(crate) use window::*;
 pub(super) enum Entry {
     Binding(Binding),
     Digits(Digits),
+    Letters(Letters),
     Command(Command),
 }
 

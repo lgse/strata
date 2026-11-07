@@ -96,6 +96,16 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
+    /// Percent of the duration a first-time video preview starts at.
+    pub fn preview_video_start(&self) -> u32 {
+        self.preferences.borrow().preview_video_start
+    }
+
+    pub fn set_preview_video_start(&self, percent: u32) {
+        self.preferences.borrow_mut().preview_video_start = normalized_video_start(percent);
+        self.save_preferences();
+    }
+
     pub fn set_preview_audio(&self, volume: f64, muted: bool) {
         self.preferences.borrow_mut().preview_muted = muted;
         if volume > 0.0 {

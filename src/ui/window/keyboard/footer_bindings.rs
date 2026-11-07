@@ -38,9 +38,13 @@ pub(super) fn release_preview_keys_on_mode_exit(
 /// footer reports the focused listing's filter or search in every key map.
 pub(super) fn bind_footer_filter(dispatcher: &Dispatcher) {
     let view = dispatcher.view.downgrade();
+    let descent = dispatcher.filter_descent.clone();
+    let cursor_moved = dispatcher.filter_cursor_moved.clone();
     dispatcher
         .shortcuts
         .connect_prompt_changed(move |kind, text| {
+            descent.take();
+            cursor_moved.set(false);
             let Some(view) = view.upgrade() else {
                 return;
             };
@@ -66,9 +70,16 @@ pub(super) fn bind_footer_filter(dispatcher: &Dispatcher) {
             )
     }));
     let shortcuts = dispatcher.shortcuts.clone();
+    let view = dispatcher.view.downgrade();
+    let descent = dispatcher.filter_descent.clone();
     dispatcher
         .view
-        .connect_filter_results_changed(Rc::new(move || shortcuts.refresh_filter()));
+        .connect_filter_results_changed(Rc::new(move || {
+            shortcuts.refresh_filter();
+            if let Some(view) = view.upgrade() {
+                prompts::finish_filter_descent(&view, &shortcuts, &descent);
+            }
+        }));
     let shortcuts = dispatcher.shortcuts.clone();
     dispatcher
         .view
@@ -77,9 +88,22 @@ pub(super) fn bind_footer_filter(dispatcher: &Dispatcher) {
     // GTK may land that focus after the selection change has been reported. In
     // Columns the footer also follows the focused column.
     let shortcuts = dispatcher.shortcuts.clone();
-    let handler = dispatcher
-        .window
-        .connect_focus_widget_notify(move |_| shortcuts.schedule_filter_refresh());
+    let view = dispatcher.view.downgrade();
+    let descent = dispatcher.filter_descent.clone();
+    let pending = dispatcher.bookmark_pending.clone();
+    let handler = dispatcher.window.connect_focus_widget_notify(move |_| {
+        if pending.get()
+            && view
+                .upgrade()
+                .is_none_or(|view| !view.item_view_has_focus())
+        {
+            shortcuts.cancel_chord();
+        }
+        shortcuts.schedule_filter_refresh();
+        if let Some(view) = view.upgrade() {
+            prompts::cancel_stale_filter_descent(&view, &shortcuts, &descent);
+        }
+    });
     // A closed tab's view unrealizes while its window lives on.
     let window = dispatcher.window.downgrade();
     let handler = Cell::new(Some(handler));
@@ -102,6 +126,41 @@ pub(super) fn submit_prompt_on_activate(
             dispatcher.submit_prompt(&browser);
         }
     });
+}
+
+/// A `/` reaches a filter field's input method like any typed key; a lone `/`
+/// it commits enters the matching folder instead of reaching the query.
+pub(super) fn descend_on_committed_slash(dispatcher: &Rc<Dispatcher>) {
+    let weak = Rc::downgrade(dispatcher);
+    let accepts = weak.clone();
+    let descends = weak.clone();
+    dispatcher.shortcuts.connect_prompt_path_separator(
+        move || {
+            accepts
+                .upgrade()
+                .is_some_and(|dispatcher| dispatcher.prompt_accepts_slash())
+        },
+        move || {
+            if let Some(dispatcher) = descends.upgrade() {
+                dispatcher.begin_filter_descent(None);
+            }
+        },
+    );
+    let accepts = weak.clone();
+    dispatcher
+        .view
+        .connect_filter_descent(crate::ui::browser::FilterDescentHandler {
+            accepts: Box::new(move || {
+                accepts
+                    .upgrade()
+                    .is_some_and(|dispatcher| dispatcher.filter_entry_accepts_slash())
+            }),
+            descend: Box::new(move || {
+                if let Some(dispatcher) = weak.upgrade() {
+                    dispatcher.descend_from_filter_entry();
+                }
+            }),
+        });
 }
 
 pub(super) fn bind_prompt_hints(dispatcher: &Dispatcher) {
@@ -184,6 +243,7 @@ pub(super) fn clear_find_on_mode_exit(
     let shortcuts = dispatcher.shortcuts.clone();
     let open_with = dispatcher.open_with.clone();
     let armed_actions = dispatcher.armed_actions.clone();
+    let bookmark_pending = dispatcher.bookmark_pending.clone();
     let browser = browser.clone();
     let primed = Cell::new(false);
     crate::ui::preferences::PreferenceManager::shared().bind_preference(
@@ -196,6 +256,9 @@ pub(super) fn clear_find_on_mode_exit(
                 return;
             }
             open_with.invalidate();
+            if bookmark_pending.get() {
+                shortcuts.cancel_chord();
+            }
             armed_actions.take();
             shortcuts.refresh_filter();
             let focus = window.root().and_then(|root| root.focus());

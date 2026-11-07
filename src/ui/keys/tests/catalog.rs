@@ -3,7 +3,7 @@
 use gtk::glib::translate::IntoGlib;
 
 use super::super::{
-    CUSTOM_ACTIONS, Keymap, Keys, Map, Shown,
+    CUSTOM_ACTIONS, Keymap, Keys, Letters, Map, Shown,
     bindings::{self, Entry, Listed},
     command::{Kind, registry},
     main_key, use_keymap,
@@ -23,7 +23,7 @@ fn catalog_bindings_use_the_canonical_key() {
                     .flat_map(|map| command.defaults(map).iter().copied())
                     .collect(),
             ),
-            Entry::Digits(_) => continue,
+            Entry::Digits(_) | Entry::Letters(_) => continue,
         };
         for binding in bindings {
             checked += 1;
@@ -47,17 +47,19 @@ fn catalog_bindings_use_the_canonical_key() {
 }
 
 /// What a row shows for a listed constant in a map: its bindings, the chord
-/// key they follow, or its digit range.
+/// key they follow, or its digit or letter range.
 #[derive(PartialEq)]
 enum Wanted {
     Keys(Vec<Binding>, Option<Binding>),
     Digits(Digits),
+    Letters(Letters),
 }
 
 fn wanted(constant: &Listed, map: Map) -> Wanted {
     match constant.entry {
         Entry::Binding(binding) => Wanted::Keys(vec![binding], None),
         Entry::Digits(digits) => Wanted::Digits(digits),
+        Entry::Letters(letters) => Wanted::Letters(letters),
         Entry::Command(command) => {
             let after = match command.kind() {
                 Kind::Step(group) => {
@@ -78,6 +80,22 @@ fn shows(keys: &Keys, wanted: &Wanted, map: Map) -> bool {
     match (keys, wanted) {
         (Keys::Mixed(alternatives), _) => alternatives.iter().any(|keys| shows(keys, wanted, map)),
         (Keys::Digits(digits), Wanted::Digits(wanted)) => digits == wanted,
+        (Keys::Letters(letters), Wanted::Letters(wanted)) => letters == wanted,
+        // A letter range shows the trigger it follows.
+        (Keys::Letters(letters), Wanted::Keys(bindings, None)) => letters
+            .prefix()
+            .as_ref()
+            .and_then(primary)
+            .is_some_and(|prefix| bindings.contains(&prefix)),
+        // The digits after a two-key chord show its second key too: ; . 1–9.
+        (Keys::Digits(digits), Wanted::Keys(bindings, Some(first))) => {
+            digits.prefix().as_ref().and_then(primary) == Some(*first)
+                && digits
+                    .then()
+                    .as_ref()
+                    .and_then(primary)
+                    .is_some_and(|then| bindings.contains(&then))
+        }
         (Keys::Chord(steps), Wanted::Keys(bindings, Some(first))) => {
             let steps: Vec<Option<Binding>> = steps.iter().map(primary).collect();
             bindings.iter().any(|binding| {

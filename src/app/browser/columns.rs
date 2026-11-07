@@ -370,7 +370,62 @@ impl Browser {
         }
     }
 
+    /// Drops the columns before `depth`, keeping the ones after it, and leaves
+    /// focus, the cursor and a multi-selection in what becomes the first column.
+    /// False when nothing was re-rooted.
+    pub fn make_first_column(self: &Rc<Self>, depth: usize) -> bool {
+        if (depth..)
+            .map_while(|depth| self.location_at(depth))
+            .any(|location| !self.source.allows_navigation(&location))
+        {
+            return false;
+        }
+        let cursor = self.cursor_entry(depth).map(|entry| entry.location);
+        let mut filled: Vec<_> = self
+            .filled_entries(depth)
+            .into_iter()
+            .map(|entry| entry.location)
+            .collect();
+        let selection = if filled.len() > 1 {
+            // The first listed target takes the cursor.
+            if let Some(at) = filled
+                .iter()
+                .position(|location| Some(location) == cursor.as_ref())
+            {
+                filled[..=at].rotate_right(1);
+            }
+            LoadSelection::Target(filled)
+        } else {
+            cursor.map_or(LoadSelection::FirstEntry, LoadSelection::Prefer)
+        };
+        let target = self.state.borrow_mut().go_to_column(depth);
+        let Some(target) = target else {
+            return false;
+        };
+        self.restore_path_focused(target, 0, selection);
+        true
+    }
+
     pub(super) fn restore_path(self: &Rc<Self>, path: NavigationPath) {
+        let preferred = path
+            .locations()
+            .last()
+            .and_then(|destination| self.came_from_child(destination));
+        let Some(depth) = path.locations().len().checked_sub(1) else {
+            return;
+        };
+        let selection = preferred.map_or(LoadSelection::FirstEntry, LoadSelection::Prefer);
+        self.restore_path_focused(path, depth, selection);
+    }
+
+    /// Restores `path` with focus in the column at `focus`, which selects
+    /// `selection` once it loads.
+    fn restore_path_focused(
+        self: &Rc<Self>,
+        path: NavigationPath,
+        focus: usize,
+        selection: LoadSelection,
+    ) {
         let _update = self.navigation_update();
         self.cancel_deferred_reveal();
         if path
@@ -380,10 +435,6 @@ impl Browser {
         {
             return;
         }
-        let preferred = path
-            .locations()
-            .last()
-            .and_then(|destination| self.came_from_child(destination));
         self.bump_navigation_generation();
         self.emit(BrowserEvent::NavigationStarting { history: true });
         self.close_peek();
@@ -403,15 +454,11 @@ impl Browser {
             .borrow_mut()
             .restore(path, loads.iter().map(|(_, request_id)| *request_id));
 
-        let active_depth = loads.len().checked_sub(1);
+        let active_depth = (focus < loads.len()).then_some(focus);
         if let Some(depth) = active_depth {
-            match preferred {
-                Some(child) => self
-                    .state
-                    .borrow_mut()
-                    .prefer_location_on_load(depth, child),
-                None => self.select_first_on_load(depth),
-            }
+            let mut state = self.state.borrow_mut();
+            state.focus_column(depth);
+            select_on_load(&mut state, depth, selection);
         }
         self.emit(BrowserEvent::Reset);
         for (depth, (location, request_id)) in loads.into_iter().enumerate() {

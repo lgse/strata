@@ -15,6 +15,7 @@ use gtk::{glib, prelude::*};
 use super::{BrowserView, FilterQueryBinding, ViewState, columns::ColumnView};
 use crate::{
     app::VisualKind,
+    model::FileEntry,
     services::SearchItem,
     ui::{browser_modes::BrowserMode, inline_search::InlineSearch},
 };
@@ -31,6 +32,15 @@ pub(super) struct FilterState {
     footer_focus: RefCell<Option<Rc<dyn Fn() -> bool>>>,
     /// The search query and the hit the cursor last rested on in its results.
     cursor_hit: RefCell<Option<(String, PathBuf)>>,
+    /// Takes a `/` committed into one of this browser's filter fields.
+    descent: RefCell<Option<Rc<FilterDescentHandler>>>,
+}
+
+/// Whether a filter field's `/` enters a folder rather than being typed, and the
+/// descent that then runs.
+pub(in crate::ui) struct FilterDescentHandler {
+    pub(in crate::ui) accepts: Box<dyn Fn() -> bool>,
+    pub(in crate::ui) descend: Box<dyn Fn()>,
 }
 
 impl FilterState {
@@ -208,6 +218,13 @@ impl Target {
         match self {
             Self::Column(column) => column.search_session.awaiting_results(),
             Self::Pane { search, .. } => search.awaiting_results(),
+        }
+    }
+
+    fn has_pending_results(&self) -> bool {
+        match self {
+            Self::Column(column) => column.search_session.has_pending_results(),
+            Self::Pane { search, .. } => search.has_pending_results(),
         }
     }
 
@@ -520,6 +537,12 @@ impl BrowserView {
         self.state.filter_focus()
     }
 
+    pub(in crate::ui) fn focused_filter_entry(&self) -> Option<gtk::Entry> {
+        (self.filter_focus() == Some(FilterFocus::Entry))
+            .then(|| self.filter_target().map(|target| target.entry().clone()))
+            .flatten()
+    }
+
     pub(in crate::ui) fn listing_filter(&self) -> Option<String> {
         let target = self.filter_target()?;
         let text = if target.searching() {
@@ -572,6 +595,53 @@ impl BrowserView {
         };
         target.flush();
         self.focus_filter_results(&target);
+    }
+
+    /// The entry under the result cursor when `at_cursor` and the cursor rests on
+    /// one; otherwise `None` while the current query or its folder is loading,
+    /// and then its first displayed match.
+    pub(in crate::ui) fn settled_filter_match(&self, at_cursor: bool) -> Option<Option<FileEntry>> {
+        let Some(target) = self.filter_target() else {
+            return Some(None);
+        };
+        if at_cursor && let Some(entry) = cursor_result(&target) {
+            return Some(Some(entry));
+        }
+        target.settle();
+        if matches!(&target, Target::Pane { .. }) && !target.has_query_binding() {
+            self.state.mode_views.borrow().settle_in_place_filter();
+        }
+        if target.awaiting_results() {
+            return None;
+        }
+        let entry = match target.results() {
+            Some(results) => results.first().map(super::collection::search_result_entry),
+            None => {
+                let depth = self.state.filter_depth()?;
+                let order = self.displayed_order(depth).unwrap_or_default();
+                if at_cursor && let Some(index) = self.cursor_index(depth, &order) {
+                    return Some(self.state.browser.entry_at(depth, order[index]));
+                }
+                let entry = order
+                    .first()
+                    .and_then(|&position| self.state.browser.entry_at(depth, position));
+                // A folder still listing may yet show a folder ahead of a file match.
+                let loading = self
+                    .state
+                    .browser
+                    .column_snapshot(depth)
+                    .is_some_and(|column| column.loading);
+                if loading && !entry.as_ref().is_some_and(FileEntry::is_directory) {
+                    return None;
+                }
+                entry
+            }
+        };
+        if entry.is_none() && target.has_pending_results() {
+            None
+        } else {
+            Some(entry)
+        }
     }
 
     pub(in crate::ui) fn focus_visible_results(&self) -> bool {
@@ -757,6 +827,13 @@ impl BrowserView {
             .replace(Some(has_focus));
     }
 
+    pub(in crate::ui) fn connect_filter_descent(&self, handler: FilterDescentHandler) {
+        self.state
+            .listing_filter
+            .descent
+            .replace(Some(Rc::new(handler)));
+    }
+
     pub(in crate::ui) fn connect_filter_results_changed(&self, handler: Rc<dyn Fn()>) {
         self.state
             .listing_filter
@@ -764,6 +841,110 @@ impl BrowserView {
             .borrow_mut()
             .push(handler);
     }
+}
+
+/// The result row under the cursor that Up and Down move. A folder without a
+/// native path filters its listing in place instead, without result rows.
+fn cursor_result(target: &Target) -> Option<FileEntry> {
+    let cursor = usize::try_from(target.hits()?.cursor?).ok()?;
+    target
+        .results()?
+        .get(cursor)
+        .map(super::collection::search_result_entry)
+}
+
+/// The field's text before a commit replaced its selection or an overwritten
+/// character, where the commit goes, and where the cursor returns if the text
+/// is put back.
+struct Replaced {
+    text: glib::GString,
+    at: i32,
+    cursor: i32,
+}
+
+/// Enters a folder for a `/` committed into `entry` when `accepts`, keeping the
+/// `/` out of the text. The `/` is read once the input method has had the key,
+/// so a Zhuyin, Array30 or Boshiamy code that starts with it still composes.
+/// Only a lone `/` typed or pasted into the focused field counts: no file name
+/// holds one, while longer text holding it, such as a pasted path, is typed.
+pub(in crate::ui) fn connect_path_separator(
+    entry: &gtk::Entry,
+    accepts: impl Fn() -> bool + 'static,
+    descend: impl Fn() + 'static,
+) {
+    let Some(text) = entry.delegate() else {
+        return;
+    };
+    // Within one change, GTK deletes the selection, or the character overwrite
+    // mode replaces, before inserting the commit; a `/` taken here puts it back.
+    // An input method that shows `/` as preedit before committing it still
+    // drops a selected query: GTK deletes the selection when the preedit starts.
+    let replaced: Rc<RefCell<Option<Replaced>>> = Rc::default();
+    let restoring = Rc::new(Cell::new(false));
+    let deleted = replaced.clone();
+    let restoring_delete = restoring.clone();
+    text.connect_delete_text(move |text, start, end| {
+        if restoring_delete.get() || !text.is_focus() {
+            return;
+        }
+        let selection = text.selection_bounds();
+        // Overwrite mode replaces the grapheme at the cursor, however many
+        // characters it holds.
+        let overwritten = selection.is_none()
+            && start == text.position()
+            && text
+                .downcast_ref::<gtk::Text>()
+                .is_some_and(gtk::Text::is_overwrite_mode);
+        let cursor = if selection == Some((start, end)) {
+            end
+        } else if overwritten {
+            start
+        } else {
+            return;
+        };
+        deleted.replace(Some(Replaced {
+            text: text.text(),
+            at: start,
+            cursor,
+        }));
+    });
+    let finished = replaced.clone();
+    text.connect_changed(move |_| {
+        finished.take();
+    });
+    text.connect_insert_text(move |text, inserted, position| {
+        let replaced = replaced.take();
+        if restoring.get() || inserted != "/" || !text.is_focus() || !accepts() {
+            return;
+        }
+        text.stop_signal_emission_by_name("insert-text");
+        if let Some(replaced) = replaced.filter(|replaced| replaced.at == *position) {
+            restoring.set(true);
+            text.set_text(&replaced.text);
+            restoring.set(false);
+            *position = replaced.cursor;
+        }
+        descend();
+    });
+}
+
+/// A pane filter field's `/` goes to the browser's descent.
+pub(in crate::ui) fn bind_filter_descent(entry: &gtk::Entry, state: Weak<ViewState>) {
+    let handler = move || {
+        state
+            .upgrade()
+            .and_then(|state| state.listing_filter.descent.borrow().clone())
+    };
+    let descend = handler.clone();
+    connect_path_separator(
+        entry,
+        move || handler().is_some_and(|descent| (descent.accepts)()),
+        move || {
+            if let Some(descent) = descend() {
+                (descent.descend)();
+            }
+        },
+    );
 }
 
 impl Target {
@@ -796,6 +977,13 @@ impl ViewState {
                 handler();
             }
         });
+    }
+
+    /// A filter read while its folder was still listing settles when the listing ends.
+    pub(super) fn notify_filter_listing_loaded(&self, depth: usize) {
+        if self.filter_depth() == Some(depth) {
+            self.notify_filter_results_changed();
+        }
     }
 
     fn focus_arrived_results(&self) {

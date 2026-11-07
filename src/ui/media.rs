@@ -25,7 +25,6 @@ mod positions;
 mod tests;
 use audio::PcmOutput;
 use history::PcmHistory;
-#[cfg(test)]
 use positions::recall_media_position;
 pub(crate) use positions::resume_position;
 use positions::{RESTORE_MIN_US, forget_media_position, remember_media_position};
@@ -94,6 +93,8 @@ mod imp {
         pub(super) audio_anchored: Cell<bool>,
         pub(super) audio_chunks: Cell<u32>,
         pub(super) restore: Cell<Option<u64>>,
+        pub(super) start_percent: Cell<u32>,
+        pub(super) start_requested: Cell<bool>,
         pub(super) history: RefCell<Option<PcmHistory>>,
         pub(super) edge_grid: Cell<Option<ambient::EdgeGrid>>,
         pub(super) edge_sampled: Cell<Option<Instant>>,
@@ -271,6 +272,23 @@ impl DecodedMedia {
         obj
     }
 
+    /// A video not previewed earlier this session opens this far into its
+    /// duration. One already previewed resumes, at 0:00 when it was left in its
+    /// first second or at its end.
+    pub(crate) fn set_start_percent(&self, percent: u32) {
+        self.imp().start_requested.set(percent > 0);
+        let previewed = self
+            .imp()
+            .source
+            .borrow()
+            .as_ref()
+            .is_some_and(|source| recall_media_position(&source.path).is_some());
+        let percent = if previewed { 0 } else { percent };
+        self.imp()
+            .start_percent
+            .set(percent.min(crate::ui::preferences::MAX_PREVIEW_VIDEO_START));
+    }
+
     pub(crate) fn source(&self) -> Option<SandboxedMedia> {
         self.imp().source.borrow().clone()
     }
@@ -401,6 +419,12 @@ impl DecodedMedia {
         if let Some(source) = imp.source.borrow().as_ref() {
             if self.resumes_later() {
                 remember_media_position(source.path.clone(), imp.position.get());
+            } else if imp.start_requested.get()
+                && imp.header.get().is_some_and(|header| header.width > 0)
+            {
+                // A video closed in its first second or at its end reopens at
+                // 0:00, not at the configured start: remember it as previewed.
+                remember_media_position(source.path.clone(), 0);
             } else {
                 forget_media_position(&source.path);
             }

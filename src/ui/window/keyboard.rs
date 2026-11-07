@@ -40,7 +40,7 @@ mod wheel_zoom;
 
 use footer_bindings::{
     bind_candidate_prompts, bind_footer_filter, bind_prompt_hints, clear_find_on_mode_exit,
-    release_preview_keys_on_mode_exit, submit_prompt_on_activate,
+    descend_on_committed_slash, release_preview_keys_on_mode_exit, submit_prompt_on_activate,
 };
 #[cfg(test)]
 pub(super) use wheel_zoom::WheelZoom;
@@ -91,6 +91,7 @@ pub(super) fn install_on(
     let wheel_view = parts.view.downgrade();
     let dispatcher = Rc::new(Dispatcher::bind(window, sidebar, parts, None));
     submit_prompt_on_activate(&dispatcher, weak_browser.clone());
+    descend_on_committed_slash(&dispatcher);
     connect_key_presses(&keys, root.as_ref(), dispatcher, weak_browser);
     window.add_controller(keys.clone());
     let wheel = wheel_zoom::zoom_controller(root.as_ref(), preferences, wheel_view);
@@ -117,6 +118,9 @@ fn connect_key_presses(
     keys::on_press(keys, move |_, press| {
         if !accepts_input(&key_root) {
             return Propagation::Proceed;
+        }
+        if dispatcher.cancel_pending_bookmark(press) {
+            return Propagation::Stop;
         }
         if tab_scoped && super::composition::is_tab_shortcut(press) {
             return Propagation::Proceed;
@@ -190,6 +194,7 @@ impl ChooserKeys {
         let browser = Rc::downgrade(&parts.view.browser());
         let dispatcher = Rc::new(Dispatcher::bind(window, sidebar, parts, Some(policy)));
         submit_prompt_on_activate(&dispatcher, browser.clone());
+        descend_on_committed_slash(&dispatcher);
         Self {
             dispatcher,
             browser,
@@ -222,6 +227,10 @@ struct Dispatcher {
     type_to_search: TypeToSearch,
     shortcuts: ShortcutFooter,
     history: Rc<NavigationHistory>,
+    filter_descent: Rc<RefCell<Option<prompts::FilterDescent>>>,
+    /// Up or Down moved the 10xer filter's result cursor since its query changed;
+    /// **/** then enters the highlighted result.
+    filter_cursor_moved: Rc<Cell<bool>>,
     rename_target: Rc<RefCell<Option<crate::model::FileEntry>>>,
     /// Only the latest typed name submitted may act after its check.
     typed_name_revision: Rc<Cell<u64>>,
@@ -231,6 +240,8 @@ struct Dispatcher {
     destinations: crate::ui::folder_picker::FolderPicker,
     armed_actions: Rc<RefCell<Option<files::ArmedActions>>>,
     open_with: files::OpenWithLookup,
+    bookmark_revision: Rc<Cell<u64>>,
+    bookmark_pending: Rc<Cell<bool>>,
     chooser: Option<ChooserPolicy>,
 }
 
@@ -281,6 +292,8 @@ impl Dispatcher {
             type_to_search: parts.type_to_search,
             shortcuts: parts.shortcuts,
             history: parts.history,
+            filter_descent: Rc::default(),
+            filter_cursor_moved: Rc::default(),
             rename_target: Rc::default(),
             typed_name_revision: Rc::default(),
             destination_targets: Rc::default(),
@@ -288,6 +301,8 @@ impl Dispatcher {
             destinations: crate::ui::folder_picker::FolderPicker::default(),
             armed_actions: Rc::default(),
             open_with: files::OpenWithLookup::default(),
+            bookmark_revision: Rc::default(),
+            bookmark_pending: Rc::default(),
             sidebar: SidebarFocus {
                 state: sidebar.state.clone(),
                 widget: sidebar.widget.clone(),
@@ -297,24 +312,47 @@ impl Dispatcher {
         };
         dispatcher.preview.bind_keyboard_view(&dispatcher.view);
         let keycaps = Rc::downgrade(&sidebar.state);
+        let pending = dispatcher.bookmark_pending.clone();
+        let revision = dispatcher.bookmark_revision.clone();
         dispatcher.shortcuts.connect_chord_changed(move |chord| {
+            if chord != Some(crate::ui::tenxer_mode::Chord::BookmarkGo) && pending.replace(false) {
+                revision.set(revision.get().wrapping_add(1));
+            }
             if let Some(sidebar) = keycaps.upgrade() {
                 sidebar.show_place_keycaps(chord == Some(crate::ui::tenxer_mode::Chord::Go));
+            }
+        });
+        let pending = dispatcher.bookmark_pending.clone();
+        let shortcuts = dispatcher.shortcuts.clone();
+        let observed = Rc::downgrade(&dispatcher.view.browser());
+        dispatcher.view.browser().observe(move |event| {
+            if pending.get()
+                && observed
+                    .upgrade()
+                    .is_some_and(|browser| chords::cancels_pending_bookmark(&browser, event))
+            {
+                shortcuts.cancel_chord();
             }
         });
         let cancel_on_destroy = dispatcher.shortcuts.clone();
         let destinations_on_destroy = dispatcher.destinations.clone();
         let open_with_on_destroy = dispatcher.open_with.clone();
+        let bookmark_revision_on_destroy = dispatcher.bookmark_revision.clone();
         dispatcher.view.widget().connect_unrealize(move |_| {
             cancel_on_destroy.cancel_chord();
             destinations_on_destroy.cancel();
             open_with_on_destroy.invalidate();
+            bookmark_revision_on_destroy.set(bookmark_revision_on_destroy.get().wrapping_add(1));
         });
         let rename_target = dispatcher.rename_target.clone();
         let typed_name_revision = dispatcher.typed_name_revision.clone();
         let destination_targets = dispatcher.destination_targets.clone();
         let destinations = dispatcher.destinations.clone();
+        let filter_descent = dispatcher.filter_descent.clone();
+        let filter_cursor_moved = dispatcher.filter_cursor_moved.clone();
         dispatcher.shortcuts.connect_prompt_reset(move || {
+            filter_descent.take();
+            filter_cursor_moved.set(false);
             typed_name_revision.set(typed_name_revision.get().wrapping_add(1));
             drop(rename_target.take());
             drop(destination_targets.take());
@@ -367,6 +405,8 @@ impl Dispatcher {
     fn handle_key(&self, browser: &Rc<Browser>, press: &KeyPress) -> Propagation {
         if !press.is_modifier() {
             self.open_with.invalidate();
+            self.bookmark_revision
+                .set(self.bookmark_revision.get().wrapping_add(1));
         }
         if let Some(result) = self.rename_tab(press) {
             return result;

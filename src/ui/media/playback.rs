@@ -214,11 +214,19 @@ impl DecodedMedia {
 
     fn on_prepared(&self, header: Header) -> Result<Pump, String> {
         let imp = self.imp();
+        let start = self.start_position(&header);
         if let Some(saved) = self.resumable_position(&header) {
             imp.header.set(Some(header));
             self.invalidate_size();
             tracing::debug!(position_us = saved, "resuming media preview");
             self.restart_at(saved);
+            return Ok(Pump::Drained);
+        }
+        if let Some(position) = start {
+            imp.header.set(Some(header));
+            self.invalidate_size();
+            tracing::debug!(position_us = position, "starting video preview");
+            self.restart_at(position);
             return Ok(Pump::Drained);
         }
         let audio = header.audio.then(|| self.pcm_output()).transpose()?;
@@ -250,6 +258,14 @@ impl DecodedMedia {
             .restore
             .take()
             .filter(|&saved| header.width > 0 && saved < header.duration_us)
+    }
+
+    /// Consumes the configured start; only video of known duration starts there.
+    fn start_position(&self, header: &Header) -> Option<u64> {
+        let percent = self.imp().start_percent.take();
+        (header.width > 0 && header.duration_us != media::MAX_DURATION_US)
+            .then(|| header.duration_us / 100 * u64::from(percent))
+            .filter(|&position| media::seek_tick(position, header.duration_us) > 0)
     }
 
     fn on_frame(&self, mut frame: Frame) -> Result<(), String> {

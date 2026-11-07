@@ -20,6 +20,7 @@ mod escape_precedence;
 mod file_commands;
 mod file_verbs;
 mod filter_focus;
+mod first_column;
 mod folder_jump;
 mod footer_prompt;
 mod go_prompt;
@@ -27,6 +28,7 @@ mod icon_motion;
 mod jump_keys;
 mod keymap_conflicts;
 mod keymap_overrides;
+mod letter_bookmarks;
 mod list_motion;
 mod mode_exit;
 mod open_in_new;
@@ -563,6 +565,16 @@ fn visible_menu(widget: &gtk::Widget) -> Option<gtk::PopoverMenu> {
         return Some(menu.clone());
     }
     children(widget).find_map(|child| visible_menu(&child))
+}
+
+/// `/` as typed: the window leaves the key to the focused field's input method,
+/// which commits it.
+fn type_slash(fixture: &KeyboardFixture) {
+    assert!(
+        !fixture.press(Key::slash, ModifierType::empty()),
+        "the input method gets /"
+    );
+    crate::test_support::commit_text(&focused_entry(&fixture.window), "/");
 }
 
 fn focused_entry(window: &gtk::ApplicationWindow) -> gtk::Entry {

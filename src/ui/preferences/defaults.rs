@@ -77,6 +77,7 @@ impl Default for Preferences {
             preview_text_wrap: true,
             unit_system: UnitSystem::Metric,
             preview_autoplay: false,
+            preview_video_start: 0,
             watch_network_folders: true,
             thumbnail_workers: crate::sandbox::browser::default_worker_limit(),
             show_thumbnails: true,

@@ -791,6 +791,7 @@ impl Browser {
         self.state.borrow_mut().focus_column(depth);
     }
 
+    #[cfg(test)]
     pub fn select_first_on_load(&self, depth: usize) {
         self.state.borrow_mut().select_first_on_load(depth);
     }

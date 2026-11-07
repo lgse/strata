@@ -88,6 +88,7 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         preview_text_wrap: false,
         unit_system: UnitSystem::Imperial,
         preview_autoplay: true,
+        preview_video_start: 20,
         watch_network_folders: false,
         thumbnail_workers: 6,
         show_thumbnails: false,

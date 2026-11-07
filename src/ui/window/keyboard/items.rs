@@ -310,7 +310,7 @@ impl Dispatcher {
 
     fn directory_navigation(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
         let press = &event.press;
-        if self.opens_focused_in_new(browser, event) {
+        if self.opens_focused_in_new(browser, event) || self.makes_focused_column_first(event) {
             return Some(Propagation::Stop);
         }
         // Ahead of the Ctrl and Super guard, which a user's binding may hold.
@@ -338,6 +338,14 @@ impl Dispatcher {
             return false;
         };
         self.open_focused_in_new(browser, target)
+    }
+
+    fn makes_focused_column_first(&self, event: &KeyEvent) -> bool {
+        event.press.is(MAKE_FIRST_COLUMN)
+            && self.view.item_view_has_focus()
+            && !event.text_has_focus()
+            && self.chooser.is_none()
+            && self.view.make_focused_column_first()
     }
 
     fn directory_key(&self, browser: &Rc<Browser>, event: &KeyEvent) -> bool {

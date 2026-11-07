@@ -4,7 +4,7 @@ use super::{
     ArchiveDirectory, ArchiveFileEntry, ArchiveNode, MediaPreviewSize, PreviewContent,
     archive_preview_format, archive_preview_tree, bytes_support_named_family, content_family,
     guess_content_type, has_plain_text_extension, is_extensionless_dotfile, is_image_path,
-    is_media_path, is_non_executable_extensionless_dotfile, looks_like_text,
+    is_media_path, is_non_executable_extensionless_dotfile, is_raw_video_stream, looks_like_text,
     normalize_preview_text, read_supports_named_family, reconcile_with_sample,
     refine_reported_content_type,
 };
@@ -50,6 +50,10 @@ fn recognizes_image_paths_for_metadata_probes() {
     ] {
         assert!(is_media_path(std::path::Path::new(name)), "{name}");
         assert_eq!(guess_content_type(std::path::Path::new(name)).0, expected);
+        assert!(is_raw_video_stream(expected), "{expected}");
+    }
+    for content_type in ["video/mp4", "image/gif", "video/x-matroska"] {
+        assert!(!is_raw_video_stream(content_type), "{content_type}");
     }
     for name in ["photo.png", "stream.h264.txt", "stream.hevc.backup"] {
         assert!(!is_media_path(std::path::Path::new(name)), "{name}");

@@ -98,6 +98,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_preview_text_wrap(true),
                 |m| m.set_unit_system(UnitSystem::Metric),
                 |m| m.set_preview_autoplay(false),
+                |m| m.set_preview_video_start(0),
                 |m| m.set_watch_network_folders(true),
                 |m| m.set_thumbnail_workers(3),
                 |m| m.set_show_thumbnails(true),

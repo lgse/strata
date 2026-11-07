@@ -18,10 +18,10 @@ impl PreviewProvider for MediaPreview {
                 .native_path()
                 .expect("local fixture")
                 .to_path_buf();
-            let content_type = if path.extension().is_some_and(|extension| extension == "mp4") {
-                "video/mp4"
-            } else {
-                "audio/x-wav"
+            let content_type = match path.extension().and_then(|extension| extension.to_str()) {
+                Some("mp4") => "video/mp4",
+                Some("h264") => "video/h264",
+                _ => "audio/x-wav",
             };
             emit(PreviewEvent::Ready(Preview {
                 request_id: request.id,
@@ -117,6 +117,70 @@ fn tenxer_angle_brackets_step_through_videos_and_skip_other_media() {
     );
 }
 
+#[test]
+fn configured_start_skips_raw_video_streams() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::video_clips::configured_start_skips_raw_video_streams",
+        || {
+            crate::ui::media::use_test_streams(true);
+            let fixture = KeyboardFixture::with_provider(Rc::new(MediaPreview));
+            let root = fixture._directory.path();
+            for name in ["b.mp4", "c.h264"] {
+                std::fs::write(root.join(name), MP4_BYTES).expect("clip");
+            }
+            let preferences = PreferenceManager::shared();
+            preferences.set_tenxer_mode(true);
+            preferences.set_group_by_type(false);
+            preferences.set_preview_autoplay(false);
+            preferences.set_preview_video_start(20);
+            let browser = fixture.view.browser();
+            fixture.preview.observe_browser(&browser);
+            fixture.view.refresh();
+            wait_loaded(&browser, 0);
+            browser.set_folders_first(0, false);
+            browser.set_sort(0, SortKey::Name, SortDirection::Ascending);
+            fixture.view.set_view_mode(BrowserMode::List);
+            move_to_named(&fixture, &browser, "b.mp4");
+            fixture.press(Key::l, ModifierType::empty());
+            settle("the clip", || {
+                preview_has_focus(&fixture) && shows_clip(&fixture, "b.mp4")
+            });
+            settle("video stream ready", || {
+                fixture.preview.media_for_test().is_some()
+            });
+            let clip = fixture.preview.media_for_test().expect("video stream");
+            clip.play();
+            let decoded = clip
+                .downcast_ref::<crate::ui::media::DecodedMedia>()
+                .expect("decoded media");
+            settle("the clip's first frame", || decoded.has_frame());
+            assert!(
+                clip.timestamp() >= 11_000_000,
+                "the clip starts at its configured start, not at {}",
+                clip.timestamp()
+            );
+
+            assert!(fixture.press(Key::greater, ModifierType::SHIFT_MASK));
+            settle("the raw stream", || shows_clip(&fixture, "c.h264"));
+            settle("raw stream ready", || {
+                fixture
+                    .preview
+                    .media_for_test()
+                    .is_some_and(|media| media != clip)
+            });
+            let stream = fixture.preview.media_for_test().expect("raw stream");
+            stream.play();
+            settle("raw stream playback", || stream.timestamp() > 500_000);
+            assert!(
+                stream.timestamp() < 5_000_000,
+                "a raw stream starts at the beginning, not at {}",
+                stream.timestamp()
+            );
+            crate::ui::media::use_test_streams(false);
+        },
+    );
+}
+
 fn player_recorder(mime_type: &str, output: &std::path::Path) {
     let id = "strata-mpv-recorder";
     let applications = glib::user_data_dir().join("applications");
@@ -168,6 +232,7 @@ fn enter_on_a_video_preview_opens_it_where_it_stopped() {
             preferences.set_tenxer_mode(true);
             preferences.set_group_by_type(false);
             preferences.set_preview_autoplay(false);
+            preferences.set_preview_video_start(0);
             let browser = fixture.view.browser();
             fixture.preview.observe_browser(&browser);
             fixture.view.refresh();
@@ -342,6 +407,8 @@ fn page_home_and_end_seek_a_focused_timeline_in_both_key_maps() {
                     (false, 0.5, Key::equal, NONE, 0.6, false),
                     (false, 0.5, Key::minus, NONE, 0.4, false),
                     (false, 0.1, Key::KP_Subtract, NONE, 0.1, true),
+                    // m saves a bookmark from the listing, but mutes a focused preview.
+                    (false, 0.5, Key::m, NONE, 0.5, true),
                 ] {
                     if !tenxer && !in_default_map {
                         continue;
@@ -355,6 +422,13 @@ fn page_home_and_end_seek_a_focused_timeline_in_both_key_maps() {
                              expected ({volume}, {muted})",
                             key.name().unwrap_or_default()
                         ));
+                    }
+                    if let Some(chord) = fixture.shortcuts.armed_chord() {
+                        mismatches.push(format!(
+                            "10xer={tenxer} {mods:?}+{}: armed {chord:?}",
+                            key.name().unwrap_or_default()
+                        ));
+                        fixture.shortcuts.cancel_chord();
                     }
                 }
             }
