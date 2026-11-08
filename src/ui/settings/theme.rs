@@ -48,52 +48,7 @@ pub(super) fn theme_page(
     let follow_system = append_follow_system_option(&system, &themes);
     let follow_omarchy = append_follow_omarchy_option(&system, &themes);
     append_omarchy_variant_option(&system, &preferences, &themes);
-    let current = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    current.set_valign(gtk::Align::Center);
-    current.set_halign(gtk::Align::Start);
-    let current_row = super::control_row("Current theme", "", &current);
-    let description = current_row
-        .first_child()
-        .and_downcast::<gtk::Box>()
-        .expect("current theme row copy")
-        .last_child()
-        .and_downcast::<gtk::Label>()
-        .expect("current theme description");
-    let weak_description = description.downgrade();
-    themes.bind_theme_preference(
-        &current,
-        |manager| {
-            (
-                manager.follows_system_appearance(),
-                manager.follows_omarchy(),
-                manager.appearance_tokens(),
-            )
-        },
-        move |widget, (following_system, following_omarchy, tokens)| {
-            let current = widget
-                .downcast_ref::<gtk::Box>()
-                .expect("current theme preview");
-            while let Some(child) = current.first_child() {
-                current.remove(&child);
-            }
-            current.append(&theme_preview(&tokens));
-            let name = gtk::Label::new(Some(&tokens.name));
-            name.set_ellipsize(gtk::pango::EllipsizeMode::End);
-            name.set_max_width_chars(24);
-            current.append(&name);
-            if let Some(description) = weak_description.upgrade() {
-                description.set_visible(true);
-                description.set_text(&crate::i18n::tr(if following_omarchy {
-                    "Managed by Omarchy. Turn off Follow Omarchy to pick a theme manually."
-                } else if following_system {
-                    "Following the system light/dark mode. Choose a theme family from the library below."
-                } else {
-                    "Choose a theme from the library below."
-                }));
-            }
-        },
-    );
-    system.append(&current_row);
+    append_current_theme_row(&system, &themes);
 
     let library = gtk::Box::new(gtk::Orientation::Vertical, 0);
     library.add_css_class("theme-library");
@@ -189,22 +144,82 @@ pub(super) fn theme_page(
     motion.append(&row);
 
     let scroller = scrollable_page(&content, None);
-    bind_theme_switch(
-        &themes,
-        &follow_system,
-        ThemeManager::follows_system_appearance,
-        ThemeManager::set_follow_system_appearance,
-    );
-    bind_theme_switch(
-        &themes,
-        &follow_omarchy,
-        ThemeManager::follows_omarchy,
-        ThemeManager::set_follow_omarchy,
-    );
+    bind_theme_source_switches(&themes, &follow_system, &follow_omarchy);
     ThemePage {
         widget: scroller,
         flows: vec![(catalog.packaged, 1), (custom, 1), (editor_fields, 4)],
         dismiss,
+    }
+}
+
+fn bind_theme_source_switches(
+    themes: &Rc<ThemeManager>,
+    follow_system: &gtk::Switch,
+    follow_omarchy: &gtk::Switch,
+) {
+    bind_theme_switch(
+        themes,
+        follow_system,
+        ThemeManager::follows_system_appearance,
+        ThemeManager::set_follow_system_appearance,
+    );
+    bind_theme_switch(
+        themes,
+        follow_omarchy,
+        ThemeManager::follows_omarchy,
+        ThemeManager::set_follow_omarchy,
+    );
+}
+
+fn append_current_theme_row(system: &gtk::Box, themes: &Rc<ThemeManager>) {
+    let current = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    current.set_valign(gtk::Align::Center);
+    current.set_halign(gtk::Align::Start);
+    let current_row = super::control_row("Current theme", "", &current);
+    let description = current_row
+        .first_child()
+        .and_downcast::<gtk::Box>()
+        .expect("current theme row copy")
+        .last_child()
+        .and_downcast::<gtk::Label>()
+        .expect("current theme description");
+    let weak_description = description.downgrade();
+    themes.bind_theme_preference(
+        &current,
+        |manager| {
+            (
+                current_theme_description(manager),
+                manager.appearance_tokens(),
+            )
+        },
+        move |widget, (message, tokens)| {
+            let current = widget
+                .downcast_ref::<gtk::Box>()
+                .expect("current theme preview");
+            while let Some(child) = current.first_child() {
+                current.remove(&child);
+            }
+            current.append(&theme_preview(&tokens));
+            let name = gtk::Label::new(Some(&tokens.name));
+            name.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            name.set_max_width_chars(24);
+            current.append(&name);
+            if let Some(description) = weak_description.upgrade() {
+                description.set_visible(true);
+                description.set_text(&crate::i18n::tr(message));
+            }
+        },
+    );
+    system.append(&current_row);
+}
+
+fn current_theme_description(themes: &ThemeManager) -> &'static str {
+    if themes.follows_omarchy() {
+        "Managed by Omarchy. Turn off Follow Omarchy to pick a theme manually."
+    } else if themes.follows_system_appearance() {
+        "Following the system light/dark mode. Choose a theme family from the library below."
+    } else {
+        "Choose a theme from the library below."
     }
 }
 

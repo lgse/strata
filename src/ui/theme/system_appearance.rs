@@ -2,7 +2,7 @@
 
 //! Follows GNOME's day and night appearance by switching between paired themes.
 
-use std::rc::Rc;
+use std::{cell::Cell, rc::Rc};
 
 use gtk::{gio, prelude::*};
 
@@ -11,7 +11,7 @@ use super::ThemeManager;
 pub(super) const GNOME_INTERFACE_SCHEMA: &str = "org.gnome.desktop.interface";
 pub(super) const GNOME_COLOR_SCHEME_KEY: &str = "color-scheme";
 
-/// Explicit families whose bundled light and dark palettes are intended to match.
+/// `(dark, light)` bundled theme families; unlisted themes look the same in both modes.
 pub(super) const SYSTEM_THEME_PAIRS: &[(&str, &str)] = &[
     ("atelier-cave", "atelier-cave-light"),
     ("atelier-dune", "atelier-dune-light"),
@@ -46,9 +46,59 @@ pub(super) const SYSTEM_THEME_PAIRS: &[(&str, &str)] = &[
     ("tomorrow-night", "tomorrow"),
 ];
 
+pub(super) struct SystemAppearance {
+    settings: Option<gio::Settings>,
+    dark: Cell<bool>,
+}
+
+impl SystemAppearance {
+    pub(super) fn read() -> Self {
+        let settings = gnome_interface_settings();
+        let dark = settings.as_ref().is_some_and(gnome_prefers_dark);
+        Self {
+            settings,
+            dark: Cell::new(dark),
+        }
+    }
+
+    pub(super) fn is_available(&self) -> bool {
+        self.settings.is_some()
+    }
+}
+
 impl ThemeManager {
+    pub fn is_system_appearance_available(&self) -> bool {
+        self.system_appearance.is_available()
+    }
+
+    pub fn follows_system_appearance(&self) -> bool {
+        self.preferences.theme_mode() == "system"
+    }
+
+    pub fn effective_theme_id(&self) -> String {
+        let selected = self.selected_id();
+        if self.follows_system_appearance() {
+            system_theme_id(&selected, self.system_appearance.dark.get()).to_owned()
+        } else {
+            selected
+        }
+    }
+
+    pub fn set_follow_system_appearance(&self, enabled: bool) {
+        if enabled && !self.is_system_appearance_available() {
+            return;
+        }
+        self.preview.take();
+        let changed = self.follows_system_appearance() != enabled;
+        let mode = if enabled { "system" } else { "theme" };
+        self.preferences.set_theme_selection(mode, None);
+        if !changed {
+            self.apply_selected();
+        }
+    }
+
     pub(super) fn monitor_system_appearance(self: &Rc<Self>) {
-        let Some(settings) = &self.system_settings else {
+        let Some(settings) = &self.system_appearance.settings else {
             return;
         };
         let weak = Rc::downgrade(self);
@@ -57,7 +107,9 @@ impl ThemeManager {
                 return;
             };
             let dark = gnome_prefers_dark(settings);
-            if manager.system_dark.replace(dark) != dark && manager.follows_system_appearance() {
+            if manager.system_appearance.dark.replace(dark) != dark
+                && manager.follows_system_appearance()
+            {
                 manager.apply_selected();
             }
         });
@@ -77,7 +129,7 @@ pub(super) fn gnome_interface_settings() -> Option<gio::Settings> {
     ))
 }
 
-pub(super) fn gnome_prefers_dark(settings: &gio::Settings) -> bool {
+fn gnome_prefers_dark(settings: &gio::Settings) -> bool {
     settings.string(GNOME_COLOR_SCHEME_KEY) == "prefer-dark"
 }
 

@@ -420,10 +420,13 @@ impl PreferenceManager {
         if !theme_is_known(&preferences.theme) {
             preferences.theme = "azure-glow".to_owned();
         }
-        if (preferences.mode == "system" && !system_available)
-            || (preferences.mode == "omarchy" && !omarchy_available)
-            || !matches!(preferences.mode.as_str(), "theme" | "system" | "omarchy")
-        {
+        let mode_available = match preferences.mode.as_str() {
+            "theme" => true,
+            "system" => system_available,
+            "omarchy" => omarchy_available,
+            _ => false,
+        };
+        if !mode_available {
             preferences.mode = "theme".to_owned();
         } else if !settings_path().is_file() && omarchy_available {
             preferences.mode = "omarchy".to_owned();

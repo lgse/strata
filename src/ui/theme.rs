@@ -7,7 +7,7 @@ use std::{
     rc::Rc,
 };
 
-use gtk::{gdk, gio, glib, prelude::*};
+use gtk::{gdk, glib, prelude::*};
 use serde::{Deserialize, Serialize};
 
 use super::browser_modes::DensityScale;
@@ -50,7 +50,7 @@ use listeners::{ThemeListeners, on_change};
 use omarchy_state::{OmarchyRefresh, OmarchyState, is_omarchy_theme_event};
 pub(super) use source_style::{new_source_buffer, source_languages};
 use source_style::{resolved_source_palette, stage_source_style_scheme};
-use system_appearance::{gnome_interface_settings, gnome_prefers_dark, system_theme_id};
+use system_appearance::SystemAppearance;
 use watch::{read_user_stylesheet, user_stylesheet_path};
 
 // Read by the test modules through their `super::*` globs.
@@ -184,8 +184,7 @@ pub struct ThemeManager {
     base_roundness: Cell<Option<CornerRoundness>>,
     themes: RefCell<Vec<Theme>>,
     preferences: Rc<PreferenceManager>,
-    system_settings: Option<gio::Settings>,
-    system_dark: Cell<bool>,
+    system_appearance: SystemAppearance,
     omarchy_available: Cell<bool>,
     omarchy_state: RefCell<Option<OmarchyState>>,
     omarchy_monitors: RefCell<Vec<(PathBuf, LoadHandle)>>,
@@ -220,28 +219,20 @@ impl ThemeManager {
     fn load() -> Rc<Self> {
         let preferences = PreferenceManager::shared();
         let themes = merge_builtin_and_custom_themes(builtins(), load_custom_themes());
-        let system_settings = gnome_interface_settings();
-        let system_dark = system_settings.as_ref().is_some_and(gnome_prefers_dark);
+        let system_appearance = SystemAppearance::read();
         let omarchy = OmarchyRefresh::read();
         if let Some(state) = &omarchy.state {
             preferences.set_active_omarchy_theme(&state.name);
         }
-        let omarchy_available = omarchy
-            .state
-            .as_ref()
-            .and_then(|state| state.tokens(OmarchyVariant::Lighter))
-            .is_some();
         preferences.normalize_loaded_theme_selection(
             |id| themes.iter().any(|theme| theme.id == id),
-            system_settings.is_some(),
-            omarchy_available,
+            system_appearance.is_available(),
+            has_omarchy_theme(omarchy.state.as_ref()),
         );
         let manager = Rc::new(Self::new(
             preferences,
             themes,
-            system_settings,
-            system_dark,
-            omarchy_available,
+            system_appearance,
             omarchy.state,
         ));
         manager.start(&omarchy.directories, omarchy.theme_directory.as_deref());
@@ -251,11 +242,10 @@ impl ThemeManager {
     fn new(
         preferences: Rc<PreferenceManager>,
         themes: Vec<Theme>,
-        system_settings: Option<gio::Settings>,
-        system_dark: bool,
-        omarchy_available: bool,
+        system_appearance: SystemAppearance,
         omarchy_state: Option<OmarchyState>,
     ) -> Self {
+        let omarchy_available = has_omarchy_theme(omarchy_state.as_ref());
         let appearance = AppearancePreferences::read(&preferences);
         Self {
             provider: gtk::CssProvider::new(),
@@ -270,8 +260,7 @@ impl ThemeManager {
             base_roundness: Cell::new(None),
             themes: RefCell::new(themes),
             preferences,
-            system_settings,
-            system_dark: Cell::new(system_dark),
+            system_appearance,
             omarchy_available: Cell::new(omarchy_available),
             omarchy_state: RefCell::new(omarchy_state),
             omarchy_monitors: RefCell::new(Vec::new()),
@@ -330,25 +319,8 @@ impl ThemeManager {
         self.preferences.theme_mode() == "omarchy"
     }
 
-    pub fn is_system_appearance_available(&self) -> bool {
-        self.system_settings.is_some()
-    }
-
-    pub fn follows_system_appearance(&self) -> bool {
-        self.preferences.theme_mode() == "system"
-    }
-
     pub fn selected_id(&self) -> String {
         self.preferences.selected_theme_id()
-    }
-
-    pub fn effective_theme_id(&self) -> String {
-        let selected = self.selected_id();
-        if self.follows_system_appearance() {
-            system_theme_id(&selected, self.system_dark.get()).to_owned()
-        } else {
-            selected
-        }
     }
 
     pub(crate) fn active_model_palette(&self) -> crate::services::ModelPalette {
@@ -392,19 +364,6 @@ impl ThemeManager {
         self.preview.take();
         let changed = self.follows_omarchy() != enabled;
         let mode = if enabled { "omarchy" } else { "theme" };
-        self.preferences.set_theme_selection(mode, None);
-        if !changed {
-            self.apply_selected();
-        }
-    }
-
-    pub fn set_follow_system_appearance(&self, enabled: bool) {
-        if enabled && !self.is_system_appearance_available() {
-            return;
-        }
-        self.preview.take();
-        let changed = self.follows_system_appearance() != enabled;
-        let mode = if enabled { "system" } else { "theme" };
         self.preferences.set_theme_selection(mode, None);
         if !changed {
             self.apply_selected();
@@ -734,6 +693,10 @@ impl ThemeManager {
         self.apply_density();
         self.theme_listeners.notify(self);
     }
+}
+
+fn has_omarchy_theme(state: Option<&OmarchyState>) -> bool {
+    state.is_some_and(|state| state.tokens(OmarchyVariant::Lighter).is_some())
 }
 
 fn default_danger() -> String {
