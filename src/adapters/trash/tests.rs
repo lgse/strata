@@ -13,6 +13,48 @@ fn unique_fixture_root(label: &str) -> std::path::PathBuf {
 }
 
 #[test]
+fn delete_errors_count_as_deleted_only_when_absence_is_confirmed() {
+    let root = tempfile::tempdir().expect("fixture");
+    std::fs::write(root.path().join("present"), b"keep").expect("file");
+
+    PrivateContext::new().block_on(async {
+        for (name, code, deleted) in [
+            ("missing", gio::IOErrorEnum::Failed, true),
+            ("missing", gio::IOErrorEnum::Cancelled, false),
+            ("present", gio::IOErrorEnum::Failed, false),
+            ("present/child", gio::IOErrorEnum::Failed, false),
+        ] {
+            let info = gio::FileInfo::new();
+            info.set_display_name(name);
+            let error = glib::Error::new(code, "original delete error");
+            let expected_errors = if deleted {
+                Vec::new()
+            } else {
+                vec![format!("{name}: {error}")]
+            };
+            let mut outcome = EmptyTrashOutcome {
+                deleted: 0,
+                failed: 0,
+                errors: Vec::new(),
+            };
+            outcome
+                .record_deletion(
+                    &gio::File::for_path(root.path().join(name)),
+                    &info,
+                    Err(error),
+                )
+                .await;
+            assert_eq!(
+                (outcome.deleted, outcome.failed),
+                if deleted { (1, 0) } else { (0, 1) },
+                "{name} {code:?}"
+            );
+            assert_eq!(outcome.errors, expected_errors, "{name} {code:?}");
+        }
+    });
+}
+
+#[test]
 fn empty_trash_deletes_every_top_level_entry_in_bounded_batches() {
     let root = unique_fixture_root("empty-trash-streaming");
     std::fs::create_dir_all(&root).expect("the trash fixture should be created");

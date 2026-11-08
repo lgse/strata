@@ -15,6 +15,46 @@ pub(crate) struct EmptyTrashOutcome {
     pub(crate) errors: Vec<String>,
 }
 
+impl EmptyTrashOutcome {
+    async fn record_deletion(
+        &mut self,
+        file: &gio::File,
+        info: &gio::FileInfo,
+        result: Result<(), glib::Error>,
+    ) {
+        let Err(error) = result else {
+            self.deleted += 1;
+            return;
+        };
+        if already_removed(file, &error).await {
+            self.deleted += 1;
+            return;
+        }
+        self.failed += 1;
+        if self.errors.len() < 8 {
+            self.errors
+                .push(format!("{}: {error}", info.display_name()));
+        }
+    }
+}
+
+/// gvfs reports a generic failure when its expunge rename fails after the item is already gone (#1854).
+async fn already_removed(file: &gio::File, error: &glib::Error) -> bool {
+    if error.matches(gio::IOErrorEnum::NotFound) {
+        return true;
+    }
+    if error.matches(gio::IOErrorEnum::Cancelled) {
+        return false;
+    }
+    file.query_info_future(
+        "standard::type",
+        gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+        glib::Priority::DEFAULT,
+    )
+    .await
+    .is_err_and(|probe| probe.matches(gio::IOErrorEnum::NotFound))
+}
+
 /// Deletes one batch at a time, independently of any prior measurement's budget or truncation.
 pub(crate) async fn empty_trash(
     root: &gio::File,
@@ -67,17 +107,8 @@ async fn empty_releasing(
         }
         for info in children {
             let file = root.child(info.name());
-            match file.delete_future(glib::Priority::DEFAULT).await {
-                Ok(_) => outcome.deleted += 1,
-                Err(error) => {
-                    outcome.failed += 1;
-                    if outcome.errors.len() < 8 {
-                        outcome
-                            .errors
-                            .push(format!("{}: {error}", info.display_name()));
-                    }
-                }
-            }
+            let result = file.delete_future(glib::Priority::DEFAULT).await;
+            outcome.record_deletion(&file, &info, result).await;
         }
         on_progress(outcome.deleted + outcome.failed);
     }
