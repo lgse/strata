@@ -41,6 +41,22 @@ fn legacy_omarchy_variant_migrates_to_the_active_theme() {
 }
 
 #[test]
+fn unavailable_or_unknown_theme_sources_normalize_to_manual() {
+    gtk_test(
+        "ui::preferences::tests::preferences::themes::unavailable_or_unknown_theme_sources_normalize_to_manual",
+        || {
+            seed_saved_preferences_for_test();
+            let preferences = PreferenceManager::shared();
+            for mode in ["system", "unknown"] {
+                preferences.set_theme_selection(mode, None);
+                preferences.normalize_loaded_theme_selection(|_| true, false, false);
+                assert_eq!(preferences.theme_mode(), "theme", "{mode}");
+            }
+        },
+    );
+}
+
+#[test]
 fn saved_omarchy_mode_loads_and_changes_through_the_same_binding() {
     gtk_test(
         "ui::preferences::tests::preferences::themes::saved_omarchy_mode_loads_and_changes_through_the_same_binding",

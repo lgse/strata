@@ -45,7 +45,8 @@ pub(super) fn theme_page(
     content.add_css_class("theme-page");
 
     let system = super::settings_group(&content, "THEME");
-    let follow = append_follow_omarchy_option(&system, &themes);
+    let follow_system = append_follow_system_option(&system, &themes);
+    let follow_omarchy = append_follow_omarchy_option(&system, &themes);
     append_omarchy_variant_option(&system, &preferences, &themes);
     let current = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     current.set_valign(gtk::Align::Center);
@@ -61,8 +62,14 @@ pub(super) fn theme_page(
     let weak_description = description.downgrade();
     themes.bind_theme_preference(
         &current,
-        |manager| (manager.follows_omarchy(), manager.appearance_tokens()),
-        move |widget, (following, tokens)| {
+        |manager| {
+            (
+                manager.follows_system_appearance(),
+                manager.follows_omarchy(),
+                manager.appearance_tokens(),
+            )
+        },
+        move |widget, (following_system, following_omarchy, tokens)| {
             let current = widget
                 .downcast_ref::<gtk::Box>()
                 .expect("current theme preview");
@@ -76,8 +83,10 @@ pub(super) fn theme_page(
             current.append(&name);
             if let Some(description) = weak_description.upgrade() {
                 description.set_visible(true);
-                description.set_text(&crate::i18n::tr(if following {
+                description.set_text(&crate::i18n::tr(if following_omarchy {
                     "Managed by Omarchy. Turn off Follow Omarchy to pick a theme manually."
+                } else if following_system {
+                    "Following the system light/dark mode. Choose a theme family from the library below."
                 } else {
                     "Choose a theme from the library below."
                 }));
@@ -182,7 +191,13 @@ pub(super) fn theme_page(
     let scroller = scrollable_page(&content, None);
     bind_theme_switch(
         &themes,
-        &follow,
+        &follow_system,
+        ThemeManager::follows_system_appearance,
+        ThemeManager::set_follow_system_appearance,
+    );
+    bind_theme_switch(
+        &themes,
+        &follow_omarchy,
         ThemeManager::follows_omarchy,
         ThemeManager::set_follow_omarchy,
     );
@@ -191,6 +206,21 @@ pub(super) fn theme_page(
         flows: vec![(catalog.packaged, 1), (custom, 1), (editor_fields, 4)],
         dismiss,
     }
+}
+
+fn append_follow_system_option(content: &gtk::Box, themes: &Rc<ThemeManager>) -> gtk::Switch {
+    let (row, follow) = super::settings_option(
+        "Follow system light/dark mode",
+        "Use the light or dark version of the chosen theme to match your desktop's light/dark mode.",
+        themes.follows_system_appearance(),
+    );
+    content.append(&row);
+    themes.bind_theme_preference(
+        &row,
+        ThemeManager::is_system_appearance_available,
+        super::search::set_available,
+    );
+    follow
 }
 
 struct ThemeCatalog {
@@ -912,7 +942,7 @@ fn append_theme_card(
     metadata.append(&kind);
     content.append(&metadata);
     let check = crate::assets::primary_icon(icons::CHECK, 14);
-    let selected = !themes.follows_omarchy() && themes.selected_id() == theme.id;
+    let selected = !themes.follows_omarchy() && themes.effective_theme_id() == theme.id;
     check.set_visible(selected);
     metadata.append(&check);
     if selected {
@@ -924,7 +954,7 @@ fn append_theme_card(
     let check = check.downgrade();
     themes.bind_theme_preference(
         &card,
-        move |themes| !themes.follows_omarchy() && themes.selected_id() == selected_theme,
+        move |themes| !themes.follows_omarchy() && themes.effective_theme_id() == selected_theme,
         move |card, selected| {
             if selected {
                 card.add_css_class("selected");

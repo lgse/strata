@@ -2,9 +2,127 @@
 
 use super::*;
 use crate::{
-    test_support::gtk_test,
-    ui::preferences::{CornerRoundness, fixtures::seed_omarchy_for_test},
+    test_support::{gtk_test, gtk_test_with_env},
+    ui::preferences::{
+        CornerRoundness,
+        fixtures::{seed_omarchy_for_test, seed_saved_preferences_for_test},
+    },
 };
+
+#[test]
+fn theme_source_switches_sync_and_remain_mutually_exclusive() {
+    gtk_test_with_env(
+        "ui::settings::theme::tests::theme_source_switches_sync_and_remain_mutually_exclusive",
+        [("GSETTINGS_BACKEND", "memory")],
+        || {
+            seed_saved_preferences_for_test();
+            seed_omarchy_for_test();
+            let preferences = PreferenceManager::shared();
+            let themes = ThemeManager::shared();
+            assert!(themes.is_system_appearance_available());
+            crate::storage::writer::settle();
+            let settings = crate::ui::preferences::config_directory().join("settings.toml");
+            let before = std::fs::read(&settings).expect("saved settings");
+            let windows = [gtk::Window::new(), gtk::Window::new()];
+            let controls: Vec<_> = windows
+                .iter()
+                .map(|window| {
+                    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                    let system = append_follow_system_option(&content, &themes);
+                    let omarchy = append_follow_omarchy_option(&content, &themes);
+                    bind_theme_switch(
+                        &themes,
+                        &system,
+                        ThemeManager::follows_system_appearance,
+                        ThemeManager::set_follow_system_appearance,
+                    );
+                    bind_theme_switch(
+                        &themes,
+                        &omarchy,
+                        ThemeManager::follows_omarchy,
+                        ThemeManager::set_follow_omarchy,
+                    );
+                    window.set_child(Some(&content));
+                    window.present();
+                    (system, omarchy)
+                })
+                .collect();
+            assert_eq!(
+                std::fs::read(&settings).expect("unchanged settings"),
+                before,
+                "building source switches writes nothing"
+            );
+
+            controls[0].0.set_active(true);
+            assert_eq!(preferences.theme_mode(), "system");
+            for (system, omarchy) in &controls {
+                assert!(system.is_active());
+                assert!(!omarchy.is_active());
+            }
+            controls[1].1.set_active(true);
+            assert_eq!(preferences.theme_mode(), "omarchy");
+            for (system, omarchy) in &controls {
+                assert!(!system.is_active());
+                assert!(omarchy.is_active());
+            }
+            controls[0].1.set_active(false);
+            assert_eq!(preferences.theme_mode(), "theme");
+            for (system, omarchy) in &controls {
+                assert!(!system.is_active());
+                assert!(!omarchy.is_active());
+            }
+            for window in windows {
+                window.close();
+            }
+        },
+    );
+}
+
+#[test]
+fn selecting_a_catalog_theme_keeps_system_mode_and_marks_the_effective_theme() {
+    gtk_test_with_env(
+        "ui::settings::theme::tests::selecting_a_catalog_theme_keeps_system_mode_and_marks_the_effective_theme",
+        [("GSETTINGS_BACKEND", "memory")],
+        || {
+            let themes = ThemeManager::shared();
+            themes.set_follow_system_appearance(true);
+            let flow = theme_grid();
+            let card = append_theme_card(
+                &flow,
+                themes
+                    .themes()
+                    .into_iter()
+                    .find(|theme| theme.id == "onedark-dark")
+                    .expect("OneDark theme"),
+                &themes,
+            );
+            card.child()
+                .and_downcast::<gtk::Button>()
+                .expect("theme card")
+                .emit_clicked();
+            assert!(themes.follows_system_appearance());
+            assert_eq!(themes.selected_id(), "onedark-dark");
+            assert_eq!(themes.effective_theme_id(), "one-light");
+
+            let effective = append_theme_card(
+                &flow,
+                themes
+                    .themes()
+                    .into_iter()
+                    .find(|theme| theme.id == "one-light")
+                    .expect("One Light theme"),
+                &themes,
+            );
+            assert!(
+                effective
+                    .child()
+                    .and_downcast::<gtk::Button>()
+                    .expect("effective theme card")
+                    .has_css_class("selected")
+            );
+        },
+    );
+}
 
 #[test]
 fn variant_choices_sync_across_windows_without_initialization_writes() {

@@ -6,6 +6,7 @@ mod density;
 mod live;
 mod omarchy;
 mod syntax;
+mod system_appearance;
 mod text_size;
 
 use std::rc::Rc;
