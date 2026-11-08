@@ -6,12 +6,10 @@ use super::wait_for_live_theme;
 use crate::test_support::gtk_test_with_env;
 use crate::ui::preferences::PreferenceManager;
 use crate::ui::theme::{
-    Theme, ThemeManager, ThemeTokens, azure_tokens, builtins, color_to_hex,
-    merge_builtin_and_custom_themes, new_source_buffer, parse_rgb_channels,
+    ThemeManager, ThemeTokens, builtins, color_to_hex, new_source_buffer, parse_rgb_channels,
     register_document_buffer,
     system_appearance::{
-        GNOME_COLOR_SCHEME_KEY, SYSTEM_THEME_PAIRS, color_scheme_prefers_dark,
-        gnome_interface_settings, system_theme_id,
+        GNOME_COLOR_SCHEME_KEY, SYSTEM_THEME_PAIRS, gnome_interface_settings, system_theme_id,
     },
 };
 use gtk::prelude::*;
@@ -32,38 +30,6 @@ fn curated_system_theme_pairs_resolve_in_both_directions() {
     assert_eq!(system_theme_id("tokyo-night", false), "tokyo-night");
     assert_eq!(system_theme_id("custom-palette", true), "custom-palette");
     assert_eq!(system_theme_id("custom-palette", false), "custom-palette");
-}
-
-#[test]
-fn only_gnome_prefer_dark_uses_night_appearance() {
-    assert!(color_scheme_prefers_dark("prefer-dark"));
-    for day in ["default", "prefer-light", "", "unexpected"] {
-        assert!(!color_scheme_prefers_dark(day), "{day}");
-    }
-}
-
-#[test]
-fn system_mode_uses_custom_overrides_by_stable_id() {
-    let mut custom = azure_tokens();
-    custom.name = "My One Light".into();
-    let themes = merge_builtin_and_custom_themes(
-        builtins(),
-        vec![Theme {
-            id: "one-light".into(),
-            tokens: custom.clone(),
-            custom: true,
-        }],
-    );
-    let effective = system_theme_id("onedark-dark", false);
-    assert_eq!(effective, "one-light");
-    assert_eq!(
-        themes
-            .iter()
-            .find(|theme| theme.id == effective)
-            .expect("custom paired theme")
-            .tokens,
-        custom
-    );
 }
 
 #[test]

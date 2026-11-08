@@ -78,11 +78,7 @@ pub(super) fn gnome_interface_settings() -> Option<gio::Settings> {
 }
 
 pub(super) fn gnome_prefers_dark(settings: &gio::Settings) -> bool {
-    color_scheme_prefers_dark(&settings.string(GNOME_COLOR_SCHEME_KEY))
-}
-
-pub(super) fn color_scheme_prefers_dark(value: &str) -> bool {
-    value == "prefer-dark"
+    settings.string(GNOME_COLOR_SCHEME_KEY) == "prefer-dark"
 }
 
 pub(super) fn system_theme_id(id: &str, dark: bool) -> &str {
