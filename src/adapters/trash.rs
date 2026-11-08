@@ -22,31 +22,37 @@ impl EmptyTrashOutcome {
         info: &gio::FileInfo,
         result: Result<(), glib::Error>,
     ) {
-        match result {
-            Ok(()) => self.deleted += 1,
-            Err(error) => {
-                let absent = error.matches(gio::IOErrorEnum::NotFound)
-                    || (!error.matches(gio::IOErrorEnum::Cancelled)
-                        && file
-                            .query_info_future(
-                                "standard::type",
-                                gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
-                                glib::Priority::DEFAULT,
-                            )
-                            .await
-                            .is_err_and(|error| error.matches(gio::IOErrorEnum::NotFound)));
-                if absent {
-                    self.deleted += 1;
-                    return;
-                }
-                self.failed += 1;
-                if self.errors.len() < 8 {
-                    self.errors
-                        .push(format!("{}: {error}", info.display_name()));
-                }
-            }
+        let Err(error) = result else {
+            self.deleted += 1;
+            return;
+        };
+        if already_removed(file, &error).await {
+            self.deleted += 1;
+            return;
+        }
+        self.failed += 1;
+        if self.errors.len() < 8 {
+            self.errors
+                .push(format!("{}: {error}", info.display_name()));
         }
     }
+}
+
+/// gvfs reports a generic failure when its expunge rename fails after the item is already gone (#1854).
+async fn already_removed(file: &gio::File, error: &glib::Error) -> bool {
+    if error.matches(gio::IOErrorEnum::NotFound) {
+        return true;
+    }
+    if error.matches(gio::IOErrorEnum::Cancelled) {
+        return false;
+    }
+    file.query_info_future(
+        "standard::type",
+        gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+        glib::Priority::DEFAULT,
+    )
+    .await
+    .is_err_and(|probe| probe.matches(gio::IOErrorEnum::NotFound))
 }
 
 /// Deletes one batch at a time, independently of any prior measurement's budget or truncation.
