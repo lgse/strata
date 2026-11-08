@@ -40,7 +40,11 @@ fn claim_second_press(gesture: &gtk::GestureClick, weak: &Weak<ViewState>, paire
     let press = gesture.current_event().and_then(|event| event.position());
     let first = weak.upgrade().and_then(|state| {
         let first = state.folder_press.take()?;
-        let press = press.filter(|press| !modified && first.pairs_with(*press, &state))?;
+        let opened_on_first = state.columns_click_activation.get().folders
+            == crate::ui::browser_modes::ClickCount::One
+            && state.browser.is_open_child(first.depth, &first.location);
+        let press = press
+            .filter(|press| opened_on_first && !modified && first.pairs_with(*press, &state))?;
         state.cancel_click_rename();
         Some((first, press))
     });

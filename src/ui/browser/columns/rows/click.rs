@@ -14,7 +14,9 @@ use crate::ui::browser::{
     tab_location::TabLocationHold,
 };
 use crate::ui::browser_modes::{FilteredFileClick, filtered_file_click};
-use crate::ui::collection_interaction::{MiddleClickAction, PointerSequence, SelectionChange};
+use crate::ui::collection_interaction::{
+    MiddleClickAction, PointerSequence, SelectionChange, picks_editable,
+};
 use gtk::{gdk::ModifierType, glib, prelude::*};
 use std::{cell::Cell, rc::Rc};
 
@@ -135,13 +137,6 @@ fn record_folder_press(state: &ViewState, press: &RowPress, depth: usize, entry:
             location: entry.location.clone(),
         }));
     }
-}
-
-fn picks_editable(gesture: &gtk::GestureClick, x: f64, y: f64) -> bool {
-    gesture
-        .widget()
-        .and_then(|row| row.pick(x, y, gtk::PickFlags::DEFAULT))
-        .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
 }
 
 /// A Control or Shift press on the row's content moves keyboard focus to it.
@@ -282,11 +277,24 @@ impl RowClick {
         self.sequence.press(modifiers);
         let outcome = self.select_pressed(&press);
         focus_modified_press(gesture, &press);
-        if press.filtered {
-            self.arm_filtered_activation(&press, outcome.location_hold);
-            return;
+        self.sequence
+            .claim_double_press(gesture, press_count, (x, y));
+        self.arm_pointer_activation(gesture, &press, outcome);
+    }
+
+    fn arm_pointer_activation(
+        &self,
+        gesture: &gtk::GestureClick,
+        press: &RowPress,
+        outcome: PressOutcome,
+    ) {
+        if press.count == 2 && press.unmodified() {
+            self.arm_double_activation(press);
+        } else if press.filtered {
+            self.arm_filtered_activation(press, outcome.location_hold);
+        } else {
+            self.arm_standard_activation(gesture, press, outcome);
         }
-        self.arm_standard_activation(gesture, &press, outcome);
     }
 
     fn select_pressed(&self, press: &RowPress) -> PressOutcome {
@@ -373,6 +381,34 @@ impl RowClick {
             .pointer
             .pending_activation
             .replace(Some(activation));
+    }
+
+    fn arm_double_activation(&self, press: &RowPress) {
+        let context = self.context();
+        let Some(state) = context.state.upgrade() else {
+            return;
+        };
+        let Some(entry) = context.view_entry(&state, press.position) else {
+            return;
+        };
+        let (position, kind) = if context.search_active.get() {
+            (
+                press.position as usize,
+                PendingActivationKind::RecursiveSearch,
+            )
+        } else if let Some(position) = press.source_position {
+            (position, PendingActivationKind::Standard { preview: false })
+        } else {
+            return;
+        };
+        self.arm(PendingPointerActivation {
+            position,
+            location: entry.location,
+            press: press.point,
+            moved: false,
+            kind,
+            location_hold: None,
+        });
     }
 
     fn arm_filtered_activation(&self, press: &RowPress, location_hold: Option<TabLocationHold>) {

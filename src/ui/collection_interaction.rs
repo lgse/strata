@@ -7,6 +7,10 @@
 use gtk::{gdk, glib, prelude::*};
 use std::{cell::Cell, rc::Rc};
 
+mod double_press;
+
+pub(super) use double_press::picks_editable;
+
 pub(super) struct SelectionChange {
     pub(super) selected: gtk::Bitset,
     pub(super) anchor: Option<u32>,

@@ -10,6 +10,12 @@ bookmarked, not moved. The picker still hides non-local pins and rejects remote
 pin offers before probing them. Its sidebar visibility/compact choice remains
 local to the dialog; pin and place-order changes use the shared saved state.
 
+Multiple-selection requests support marquee selection from blank file-area and sidebar
+space beside the divider; only the divider itself resizes the sidebar. Single-selection
+and Save requests do not enable marquee selection. Double-click acceptance waits for
+release: holding and moving the second tap keeps the chooser open instead of accepting
+the file. Chooser rows remain selection controls, not outgoing file-transfer drag sources.
+
 File-open requests include a **Name** field. Type an existing filename in the current folder, or paste a direct `http://` or `https://` file URL, then click **Open** or press Enter. A URL downloads to a temporary local file returned to the requesting application. A compact circular progress indicator and cancel button appear at the bottom-left of the action bar; downloads without a known size show a spinner and bytes downloaded. Escape cancels the download before the chooser itself. Chooser validation errors, including Name-field file lookup and URL download failures, appear as plain error text in the action bar rather than adding a row above it. The address bar remains navigation-only, and downloads are unavailable in folder and Save requests.
 
 Downloads are named from `Content-Disposition` or the URL path and persist under a `strata-download-*` folder in the temp directory, readable only by the user, after the chooser closes, so the requesting app can still open them. Folders older than a day are swept when the portal starts or a new download begins. URLs with credentials and automatic redirects are rejected; use the direct file URL.

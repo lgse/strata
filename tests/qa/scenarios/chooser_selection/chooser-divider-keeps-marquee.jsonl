@@ -1,0 +1,12 @@
+{"scenario":"chooser-divider-keeps-marquee","modes":["columns","list","icons"],"portal":true,"session_bus":true,"cost":{"columns-file-area":0.6,"columns-rail-file-area":0.6,"columns-sidebar":0.6,"icons-file-area":0.6,"icons-rail-file-area":0.6,"icons-sidebar":0.6,"list-file-area":0.6,"list-rail-file-area":0.6,"list-sidebar":0.6},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Chooser divider whitespace, including compact rail, selects files; only GUI guard of resize-versus-marquee routing"},"variants":[{"id":"sidebar","vars":{"origin":"start-2"}},{"id":"file-area","vars":{"origin":"start+2"}},{"id":"rail-file-area","vars":{"origin":"start+2"}}]}
+{"portal_open":"Divider selection test","options":{"current_folder":"$fixture","multiple":true}}
+{"adopt":"Divider selection test","message":"the multiple-file chooser to open"}
+{"wait":{"entries":{"contains":["readme.md","todo.txt"]},"dir":"$root"},"message":"the fixture files to be listed"}
+{"key":"ctrl+b","variants":["rail-file-area"]}
+{"wait":{"description":{"target":{"role":"toggle button","name":"Toggle sidebar (Ctrl+B)"},"text":"Hide sidebar (Ctrl+B)"}},"message":"the sidebar control to offer hiding the compact rail","variants":["rail-file-area"]}
+{"click":{"background":true,"dir":"$root"}}
+{"wait":{"selected":[],"dir":"$root"},"message":"the starting selection to be empty"}
+{"drag":{"from":{"pane":"$root"},"from_at":["$origin","50%"],"to":{"entry":"readme.md","part":"label","dir":"$root"},"to_at":[20,"50%"]}}
+{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"modes":["columns","list"],"message":"blank space beside the divider to select both files rather than resize the sidebar","timeout_ms":1500}
+{"wait":{"selected":["archive","documents","pictures","readme.md"],"dir":"$root"},"modes":["icons"],"message":"blank space beside the divider to select the crossed icons rather than resize the sidebar","timeout_ms":1500}
+{"portal_response":{"done":false},"message":"marquee selection to leave the chooser open"}

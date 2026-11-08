@@ -1,0 +1,13 @@
+{"scenario":"chooser-tap-drag-keeps-request-open","modes":["columns","list","icons"],"portal":true,"session_bus":true,"cost":{"columns":0.5,"icons":0.5,"list":0.5},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Held second tap cannot accept a chooser before release; only portal route for drag-threshold cancellation"}}
+{"portal_open":"Tap drag selection test","options":{"current_folder":"$fixture","multiple":false}}
+{"adopt":"Tap drag selection test","message":"the file chooser to open"}
+{"click":{"entry":"todo.txt","part":"icon","dir":"$root"}}
+{"wait":{"selected":["todo.txt"],"dir":"$root"},"message":"the first tap to select todo.txt"}
+{"button_down":1}
+{"portal_response":{"done":false},"message":"the held second tap must not accept the file before drag intent is known"}
+{"move_by":[20,0]}
+{"wait":{"selected":["todo.txt"],"dir":"$root"},"message":"moving the held second tap to keep the grabbed file selected"}
+{"button_up":1}
+{"portal_response":{"done":false},"message":"a tap that moved past the drag threshold must leave the chooser open"}
+{"click":{"entry":"todo.txt","part":"icon","dir":"$root"},"count":2}
+{"portal_response":{"done":true,"status":0,"names":["todo.txt"]},"message":"an ordinary double-click release to accept the selected file"}

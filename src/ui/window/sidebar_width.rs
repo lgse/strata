@@ -21,6 +21,18 @@ pub(in crate::ui) const SIDEBAR_WIDTH: i32 = 201;
 
 pub(in crate::ui) const MIN_SIDEBAR_WIDTH: i32 = 169;
 
+pub(in crate::ui) fn sidebar_split() -> gtk::Paned {
+    let split = gtk::Paned::new(gtk::Orientation::Horizontal);
+    split.add_css_class("sidebar-split");
+    // Native narrow handles extend their input region into the adjacent file area.
+    split.set_wide_handle(true);
+    split.set_shrink_start_child(false);
+    split.set_resize_start_child(false);
+    split.set_position(SIDEBAR_WIDTH);
+    split.set_vexpand(true);
+    split
+}
+
 pub(in crate::ui) fn sidebar_rail_button_size() -> i32 {
     // Match the compact header toggle; the rail supplies its own side gutters.
     (24.0 * PreferenceManager::shared().interface_scale()).round() as i32

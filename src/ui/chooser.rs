@@ -63,9 +63,9 @@ use super::{
     shortcut_footer::ShortcutFooter,
     top_bar_navigation::TopBarNavigation,
     window::{
-        ChooserKeys, ChooserPolicy, MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH, SidebarView,
-        build_appearance_menu, build_sidebar, edit_focused_text, home_directory,
-        install_modal_focus_trap, visible_modal_layer,
+        ChooserKeys, ChooserPolicy, MIN_SIDEBAR_WIDTH, SidebarView, build_appearance_menu,
+        build_sidebar, edit_focused_text, home_directory, install_modal_focus_trap,
+        visible_modal_layer,
     },
 };
 use super::{
