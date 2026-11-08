@@ -87,42 +87,45 @@ fn paint_until(list: &gtk::ListView, frames: usize, reached: impl Fn() -> bool) 
     reached()
 }
 
+/// Alternating one-line and long linked paragraphs, as plain text and as laid out Markdown.
+fn scroll_fixture() -> (String, DocumentLayout) {
+    let content = (0..400)
+        .map(|index| {
+            if index % 2 == 0 {
+                format!("Short paragraph {index}.")
+            } else {
+                (0..10 + (index * 37) % 150)
+                    .map(|word| format!("paragraph-{index}-word-{word}"))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let cancellation = crate::sandbox::Cancellation::default();
+    let kind =
+        crate::services::document_kind("text/markdown", std::ffi::OsStr::new("scroll.md"), true)
+            .expect("Markdown");
+    let markdown = content
+        .split("\n\n")
+        .enumerate()
+        .map(|(index, text)| format!("[{text}](https://example.test/{index})"))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let parsed =
+        crate::services::parse_document(kind, &markdown, &cancellation).expect("scroll fixture");
+    let layout =
+        crate::services::layout_document(parsed.document, &cancellation).expect("scroll layout");
+    (content, layout)
+}
+
 #[test]
 fn smooth_content_scrolling_keeps_thumb_and_hit_testing_in_document_order() {
     gtk_test(
         "ui::virtual_preview::tests::smooth_content_scrolling_keeps_thumb_and_hit_testing_in_document_order",
         || {
             let _themes = crate::ui::theme::ThemeManager::shared();
-            let content = (0..400)
-                .map(|index| {
-                    if index % 2 == 0 {
-                        format!("Short paragraph {index}.")
-                    } else {
-                        (0..10 + (index * 37) % 150)
-                            .map(|word| format!("paragraph-{index}-word-{word}"))
-                            .collect::<Vec<_>>()
-                            .join(" ")
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("\n\n");
-            let cancellation = crate::sandbox::Cancellation::default();
-            let kind = crate::services::document_kind(
-                "text/markdown",
-                std::ffi::OsStr::new("scroll.md"),
-                true,
-            )
-            .expect("Markdown");
-            let markdown = content
-                .split("\n\n")
-                .enumerate()
-                .map(|(index, text)| format!("[{text}](https://example.test/{index})"))
-                .collect::<Vec<_>>()
-                .join("\n\n");
-            let parsed = crate::services::parse_document(kind, &markdown, &cancellation)
-                .expect("scroll fixture");
-            let layout = crate::services::layout_document(parsed.document, &cancellation)
-                .expect("scroll layout");
+            let (content, layout) = scroll_fixture();
             let previews = [
                 rendered_document(layout, Vec::new(), true, None),
                 source_document(&content, false, true),
@@ -312,6 +315,77 @@ fn smooth_content_scrolling_keeps_thumb_and_hit_testing_in_document_order() {
                 phase("scroll-end");
                 window.close();
             }
+        },
+    );
+}
+
+#[test]
+fn rows_scrolled_into_view_do_not_move_when_idle_work_finally_runs() {
+    gtk_test(
+        "ui::virtual_preview::tests::rows_scrolled_into_view_do_not_move_when_idle_work_finally_runs",
+        || {
+            let _themes = crate::ui::theme::ThemeManager::shared();
+            let (_, layout) = scroll_fixture();
+            let (root, state) = rendered_document(layout, Vec::new(), true, None);
+            let window = gtk::Window::builder()
+                .default_width(480)
+                .default_height(500)
+                .child(&root)
+                .build();
+            window.present();
+            let list = state.list.upgrade().expect("document list");
+            let scroll = list
+                .ancestor(gtk::ScrolledWindow::static_type())
+                .and_downcast::<gtk::ScrolledWindow>()
+                .expect("document scroller");
+            settle_layout(&list, &state, &scroll);
+            let adjustment = scroll.vadjustment();
+            let clock = list.frame_clock().expect("mapped list frame clock");
+            let visible_text = || {
+                [0.15, 0.3, 0.45, 0.6, 0.75, 0.9]
+                    .map(|fraction| {
+                        super::link_point_at(
+                            &list,
+                            &state,
+                            f64::from(list.width()) / 4.0,
+                            f64::from(list.height()) * fraction,
+                        )
+                    })
+                    .to_vec()
+            };
+
+            for jump in [3000.0, 2500.0, 3500.0] {
+                // Idle callbacks sit below the redraw priority, so a loaded machine paints
+                // frames before they run. A source between the two keeps them waiting.
+                let starve = gtk::glib::idle_add_local_full(gtk::glib::Priority::from(150), || {
+                    gtk::glib::ControlFlow::Continue
+                });
+                adjustment.set_value(adjustment.value() + jump);
+                let mut previous = None;
+                for _ in 0..100 {
+                    assert!(wait_for_paint(&clock), "the document list did not paint");
+                    let current = (mapped_rows(&list, &state), adjustment.upper().to_bits());
+                    if previous.as_ref() == Some(&current) {
+                        break;
+                    }
+                    previous = Some(current);
+                }
+                let before = visible_text();
+                assert!(
+                    before.iter().any(Option::is_some),
+                    "the jump must land on document text"
+                );
+                starve.remove();
+                for _ in 0..10 {
+                    paint_frame(&list);
+                }
+                assert_eq!(
+                    visible_text(),
+                    before,
+                    "the text moved once the idle work ran after a {jump} px jump"
+                );
+            }
+            window.close();
         },
     );
 }
