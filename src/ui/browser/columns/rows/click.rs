@@ -14,7 +14,9 @@ use crate::ui::browser::{
     tab_location::TabLocationHold,
 };
 use crate::ui::browser_modes::{FilteredFileClick, filtered_file_click};
-use crate::ui::collection_interaction::{MiddleClickAction, PointerSequence, SelectionChange};
+use crate::ui::collection_interaction::{
+    MiddleClickAction, PointerSequence, SelectionChange, picks_editable,
+};
 use gtk::{gdk::ModifierType, glib, prelude::*};
 use std::{cell::Cell, rc::Rc};
 
@@ -135,13 +137,6 @@ fn record_folder_press(state: &ViewState, press: &RowPress, depth: usize, entry:
             location: entry.location.clone(),
         }));
     }
-}
-
-fn picks_editable(gesture: &gtk::GestureClick, x: f64, y: f64) -> bool {
-    gesture
-        .widget()
-        .and_then(|row| row.pick(x, y, gtk::PickFlags::DEFAULT))
-        .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
 }
 
 /// A Control or Shift press on the row's content moves keyboard focus to it.

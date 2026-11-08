@@ -7,6 +7,10 @@
 use gtk::{gdk, glib, prelude::*};
 use std::{cell::Cell, rc::Rc};
 
+mod double_press;
+
+pub(super) use double_press::picks_editable;
+
 pub(super) struct SelectionChange {
     pub(super) selected: gtk::Bitset,
     pub(super) anchor: Option<u32>,
@@ -89,26 +93,6 @@ impl PointerSequence {
 
     pub(super) fn activation(&self) -> Option<bool> {
         self.activation.get()
-    }
-
-    /// Keep GTK's item widget from activating and claiming the second press before a
-    /// grouped file drag can start. Editors retain their own word-selection gesture.
-    pub(super) fn claim_double_press(
-        &self,
-        gesture: &gtk::GestureClick,
-        count: i32,
-        point: (f64, f64),
-    ) {
-        if count != 2 || self.activation() != Some(true) {
-            return;
-        }
-        let editing = gesture
-            .widget()
-            .and_then(|widget| widget.pick(point.0, point.1, gtk::PickFlags::DEFAULT))
-            .is_some_and(|widget| super::focus_navigation::editable(&widget));
-        if !editing {
-            gesture.set_state(gtk::EventSequenceState::Claimed);
-        }
     }
 }
 
