@@ -508,7 +508,7 @@ impl ThemeManager {
         {
             return tokens;
         }
-        self.effective_tokens().unwrap_or_else(azure_tokens)
+        self.current_tokens().unwrap_or_else(azure_tokens)
     }
 
     pub fn starter_tokens(&self) -> ThemeTokens {
@@ -646,7 +646,7 @@ impl ThemeManager {
             return;
         }
         self.applied_omarchy_tokens.take();
-        if let Some(tokens) = self.effective_tokens() {
+        if let Some(tokens) = self.current_tokens() {
             self.apply_tokens(&tokens, None);
         }
     }
@@ -659,15 +659,6 @@ impl ThemeManager {
     }
 
     pub(in crate::ui) fn current_tokens(&self) -> Option<ThemeTokens> {
-        let id = self.preferences.selected_theme_id();
-        self.themes
-            .borrow()
-            .iter()
-            .find(|theme| theme.id == id)
-            .map(|theme| theme.tokens.clone())
-    }
-
-    fn effective_tokens(&self) -> Option<ThemeTokens> {
         let id = self.effective_theme_id();
         self.themes
             .borrow()

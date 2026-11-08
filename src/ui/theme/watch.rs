@@ -270,7 +270,7 @@ impl ThemeManager {
     fn adopt_custom_themes(&self, custom: Vec<Theme>) {
         let selected = self.preferences.selected_theme_id();
         let effective = self.effective_theme_id();
-        let before = self.effective_tokens();
+        let before = self.current_tokens();
         let mut themes = merge_builtin_and_custom_themes(builtins(), custom);
         for retained in [selected, effective] {
             if !themes.iter().any(|theme| theme.id == retained)
@@ -280,7 +280,7 @@ impl ThemeManager {
             }
         }
         self.themes.replace(themes);
-        let after = self.effective_tokens();
+        let after = self.current_tokens();
         let colors_kept = after.is_none() || after == before;
         if self.follows_omarchy() || colors_kept {
             return;

@@ -96,6 +96,7 @@ fn assert_applied_system_tokens(
         .expect("applied accent");
     let expected = gtk::gdk::RGBA::parse(&tokens.accent).expect("valid accent");
     assert_eq!(accent, expected);
+    assert_eq!(manager.current_tokens().as_ref(), Some(tokens));
     assert_eq!(
         crate::assets::primary_icon_color(),
         color_to_hex(&tokens.accent)
