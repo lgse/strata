@@ -21,53 +21,11 @@ pub(super) fn folder_locations(drop: &gdk::Drop) -> Option<Rc<[Location]>> {
     Some(snapshot.locations)
 }
 
-pub(super) fn track_folder_drag(state: &Rc<TabWindow>) {
-    let Some(window) = state.window.upgrade() else {
-        return;
-    };
-    let motion = gtk::DropControllerMotion::new();
-    let active = Rc::new(glib::WeakRef::<gdk::Drag>::new());
-    let weak = Rc::downgrade(state);
-    motion.connect_enter(move |motion, _, _| {
-        let Some(state) = weak.upgrade().filter(|state| !state.blocked()) else {
-            return;
-        };
-        let Some(drop) = motion
-            .drop()
-            .filter(|drop| folder_locations(drop).is_some())
-        else {
-            return;
-        };
-        let Some(drag) = drop.drag() else {
-            return;
-        };
-        if active.upgrade().as_ref() == Some(&drag) {
-            return;
-        }
-        active.set(Some(&drag));
-        state.strip.show_open_drop(true);
-        let weak = Rc::downgrade(&state);
-        let active = active.clone();
-        let finish = Rc::new(move |drag: &gdk::Drag| {
-            if active.upgrade().as_ref() != Some(drag) {
-                return;
-            }
-            active.set(None::<&gdk::Drag>);
-            if let Some(state) = weak.upgrade() {
-                state.strip.show_open_drop(false);
-            }
-        });
-        let cancelled = finish.clone();
-        drag.connect_cancel(move |drag, _| cancelled(drag));
-        drag.connect_dnd_finished(move |drag| finish(drag));
-    });
-    window.add_controller(motion);
-}
-
 fn intent(
     state: &TabWindow,
     target: &gtk::DropTarget,
     value: Option<glib::Value>,
+    append: bool,
 ) -> Option<Intent> {
     if state.blocked() {
         return None;
@@ -80,7 +38,7 @@ fn intent(
         return Some(Intent::Open(vec![location].into()));
     }
     if let Some(locations) = target.current_drop().as_ref().and_then(folder_locations) {
-        return Some(Intent::Open(locations));
+        return append.then_some(Intent::Open(locations));
     }
     let value = value?.get::<String>().ok()?;
     let source = value
@@ -124,9 +82,10 @@ pub(super) fn install(state: &Rc<TabWindow>, widget: &gtk::Widget, append: bool)
     target.set_types(&[String::static_type(), gdk::FileList::static_type()]);
     target.set_propagation_phase(gtk::PropagationPhase::Capture);
     target.set_preload(true);
-    target.connect_accept(|_, drop| {
+    target.connect_accept(move |_, drop| {
         if folder_locations(drop).is_some() {
-            return true;
+            // Only plus and unused space open view folders; existing tabs transfer them.
+            return append;
         }
         let formats = drop.formats();
         let decoded = formats.clone().union_deserialize_types();
@@ -146,7 +105,7 @@ pub(super) fn install(state: &Rc<TabWindow>, widget: &gtk::Widget, append: bool)
             return gdk::DragAction::empty();
         };
         if reload {
-            validity.set(intent(&state, target, target.value()).is_some());
+            validity.set(intent(&state, target, target.value(), append).is_some());
         }
         if !validity.get() || state.blocked() {
             clear(&state, target);
@@ -197,7 +156,7 @@ pub(super) fn install(state: &Rc<TabWindow>, widget: &gtk::Widget, append: bool)
         let Some(state) = weak.upgrade() else {
             return false;
         };
-        let intent = intent(&state, target, Some(value.clone()));
+        let intent = intent(&state, target, Some(value.clone()), append);
         let insertion = position(&state, x, append);
         clear(&state, target);
         match intent {

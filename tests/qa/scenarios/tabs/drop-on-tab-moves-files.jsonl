@@ -1,4 +1,4 @@
-{"scenario":"drop-on-tab-moves-files","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.3,"icons":1.4,"list":1.4},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"plain drag of a file onto another tab moves it; ctrl-drop-on-tab-copies covers only the copy route, move route and source removal are unique"}}
+{"scenario":"drop-on-tab-moves-files","modes":["columns","icons","list"],"variants":[{"id":"file","vars":{"entry":"todo.txt","payload":"todo.txt","contents":"todo\n"}},{"id":"folder","vars":{"entry":"pictures","payload":"pictures/photo.txt","contents":"photo\n"}}],"layout":"us","mutation":null,"known_bug":null,"quality":{"impact":4,"coverage":4,"criticality":3,"diagnostic":3,"score":45,"note":"File and folder moves onto tab headers preserve contents and undo; sole GUI guard of the header move-and-undo route"},"cost":{"columns-file":0.8,"icons-file":1.0,"list-file":1.0,"columns-folder":0.8,"icons-folder":0.9,"list-folder":0.9}}
 {"key":"ctrl+t"}
 {"select":{"entry":"archive"},"modes":["columns"]}
 {"click":{"entry":"archive"},"count":2,"modes":["icons","list"]}
@@ -7,8 +7,17 @@
 {"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"active tab archive"}
 {"key":"ctrl+shift+1"}
 {"wait":{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}},"message":"active tab $root"}
-{"select":{"entry":"todo.txt"}}
-{"drag":{"from":{"entry":"todo.txt"},"to":{"role":"page tab","name":"archive"}}}
-{"fs":{"path":"archive/todo.txt","exists":true},"message":"file transferred to the other tab"}
-{"fs":{"path":"todo.txt","exists":false},"timeout_ms":0}
-{"fs":{"path":"archive/todo.txt","text":"todo\n"},"timeout_ms":0}
+{"fs":{"path":".","remember":"before"}}
+{"select":{"entry":"$entry","dir":"$root"},"variants":["file"]}
+{"wait":{"selected":["$entry"],"dir":"$root"},"message":"only the dragged $entry is selected","variants":["file"]}
+{"drag":{"from":{"entry":"$entry","dir":"$root"},"to":{"role":"page tab","name":"archive"}}}
+{"fs":{"path":"archive/$payload","text":"$contents"},"message":"$entry arrives intact in the existing destination tab"}
+{"fs":{"path":"$entry","exists":false},"message":"the moved $entry leaves the source directory"}
+{"fs":{"path":"archive/pictures","names":["diagram.txt","photo.txt"]},"message":"the moved folder retains every child","variants":["folder"]}
+{"fs":{"path":"archive/pictures/diagram.txt","text":"diagram\n"},"message":"the other child also moves without content changes","variants":["folder"]}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"the existing destination tab takes the transfer"}
+{"expect":{"compare":{"left":{"count":{"role":"page tab"}},"op":"==","right":2}},"message":"the transfer reuses the two existing tabs"}
+{"key":"ctrl+z"}
+{"fs":{"path":"$payload","text":"$contents"},"message":"undo restores $entry and its contents at the source"}
+{"fs":{"path":"archive/$entry","exists":false},"message":"undo removes $entry from the destination"}
+{"fs":{"path":".","unchanged":"before"},"message":"undo restores the original tree without leftover or missing children"}

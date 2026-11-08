@@ -15,6 +15,7 @@ use crate::ui::{
         file_drop_action, prepare_file_drop_target,
     },
     motion,
+    window::pinned_drop,
 };
 
 use super::{TabWindow, layout};
@@ -124,6 +125,7 @@ pub(super) struct TabStrip {
     row: gtk::Box,
     scroller: gtk::ScrolledWindow,
     overlay: gtk::Overlay,
+    empty_space: gtk::WindowHandle,
     line: gtk::DrawingArea,
     headers: Rc<RefCell<Vec<Header>>>,
     indicator: Rc<Indicator>,
@@ -229,6 +231,7 @@ impl TabStrip {
             row,
             scroller,
             overlay,
+            empty_space: handle,
             line,
             headers,
             indicator,
@@ -245,7 +248,7 @@ impl TabStrip {
 
     pub(super) fn install_drop(&self, state: &Rc<TabWindow>) {
         drop::install(state, self.overlay.upcast_ref(), false);
-        drop::track_folder_drag(state);
+        drop::install(state, self.empty_space.upcast_ref(), true);
     }
 
     pub(super) fn refresh_visibility(&self) {
@@ -539,7 +542,7 @@ fn install_file_drop(state: &Rc<TabWindow>, id: u64, widget: &gtk::Box, browser:
     } = prepare_file_drop_target(move || {
         destination_browser.upgrade()?.browser().active_location()
     });
-    drop_state.filter_offers(|offered| drop::folder_locations(offered).is_none());
+    drop_state.filter_offers(|offered| pinned_drop::dragged_location(offered).is_none());
     let hover = Rc::new(Cell::new(0_u64));
     let enter_hover = hover.clone();
     let weak = Rc::downgrade(state);
@@ -576,13 +579,7 @@ fn install_file_drop(state: &Rc<TabWindow>, id: u64, widget: &gtk::Box, browser:
         let (Some(state), Some(browser)) = (weak.upgrade(), weak_browser.upgrade()) else {
             return false;
         };
-        if state.blocked()
-            || target
-                .current_drop()
-                .as_ref()
-                .and_then(drop::folder_locations)
-                .is_some()
-        {
+        if state.blocked() {
             return false;
         }
         let Some(destination) = browser.browser().active_location() else {
