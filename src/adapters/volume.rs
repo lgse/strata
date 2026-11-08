@@ -165,6 +165,7 @@ struct PendingState {
     remaining: usize,
     on_ready: Option<Box<dyn FnOnce(DropVolumeLookup)>>,
     waiting: Vec<Box<dyn FnOnce(VolumeRelation)>>,
+    timer: Option<glib::JoinHandle<()>>,
 }
 
 impl PendingVolumeLookup {
@@ -175,6 +176,7 @@ impl PendingVolumeLookup {
             remaining: locations.len(),
             on_ready: Some(on_ready),
             waiting: Vec::new(),
+            timer: None,
         }));
         for (index, location) in locations.iter().enumerate() {
             let file = gio_file_for_location(location);
@@ -197,11 +199,14 @@ impl PendingVolumeLookup {
         // dead mount, so the timeout finishes the lookup with what it has.
         let cancel = cancellable.clone();
         let timed_out = state.clone();
-        glib::MainContext::ref_thread_default().spawn_local(async move {
+        let timer = glib::MainContext::ref_thread_default().spawn_local(async move {
             glib::timeout_future(REMOTE_QUERY_TIMEOUT).await;
             cancel.cancel();
+            // Detached, not aborted: this task is the one running `finish`.
+            drop(timed_out.borrow_mut().timer.take());
             PendingState::finish(&timed_out);
         });
+        state.borrow_mut().timer = Some(timer);
         Self { cancellable, state }
     }
 
@@ -210,10 +215,14 @@ impl PendingVolumeLookup {
     }
 
     pub(crate) fn cancel(&self) {
-        let mut state = self.state.borrow_mut();
-        state.on_ready = None;
-        if state.waiting.is_empty() {
+        let idle = {
+            let mut state = self.state.borrow_mut();
+            state.on_ready = None;
+            state.waiting.is_empty()
+        };
+        if idle {
             self.cancellable.cancel();
+            PendingState::abort_timer(&self.state);
         }
     }
 }
@@ -240,7 +249,15 @@ impl PendingState {
         Self::finish(state);
     }
 
+    fn abort_timer(state: &Rc<RefCell<Self>>) {
+        let timer = state.borrow_mut().timer.take();
+        if let Some(timer) = timer {
+            timer.abort();
+        }
+    }
+
     fn finish(state: &Rc<RefCell<Self>>) {
+        Self::abort_timer(state);
         let (on_ready, waiting, lookup) = {
             let mut state = state.borrow_mut();
             let on_ready = state.on_ready.take();
