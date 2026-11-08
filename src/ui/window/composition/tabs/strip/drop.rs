@@ -15,7 +15,7 @@ enum Intent {
     Open(Rc<[Location]>),
 }
 
-pub(super) fn folder_locations(drop: &gdk::Drop) -> Option<Rc<[Location]>> {
+fn folder_locations(drop: &gdk::Drop) -> Option<Rc<[Location]>> {
     let snapshot = active_drag_snapshot(drop)?;
     snapshot.folders.filter(|folders| !folders.is_empty())?;
     Some(snapshot.locations)
@@ -25,7 +25,6 @@ fn intent(
     state: &TabWindow,
     target: &gtk::DropTarget,
     value: Option<glib::Value>,
-    append: bool,
 ) -> Option<Intent> {
     if state.blocked() {
         return None;
@@ -38,7 +37,7 @@ fn intent(
         return Some(Intent::Open(vec![location].into()));
     }
     if let Some(locations) = target.current_drop().as_ref().and_then(folder_locations) {
-        return append.then_some(Intent::Open(locations));
+        return Some(Intent::Open(locations));
     }
     let value = value?.get::<String>().ok()?;
     let source = value
@@ -105,7 +104,7 @@ pub(super) fn install(state: &Rc<TabWindow>, widget: &gtk::Widget, append: bool)
             return gdk::DragAction::empty();
         };
         if reload {
-            validity.set(intent(&state, target, target.value(), append).is_some());
+            validity.set(intent(&state, target, target.value()).is_some());
         }
         if !validity.get() || state.blocked() {
             clear(&state, target);
@@ -156,7 +155,7 @@ pub(super) fn install(state: &Rc<TabWindow>, widget: &gtk::Widget, append: bool)
         let Some(state) = weak.upgrade() else {
             return false;
         };
-        let intent = intent(&state, target, Some(value.clone()), append);
+        let intent = intent(&state, target, Some(value.clone()));
         let insertion = position(&state, x, append);
         clear(&state, target);
         match intent {

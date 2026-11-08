@@ -15,7 +15,6 @@ use crate::ui::{
         file_drop_action, prepare_file_drop_target,
     },
     motion,
-    window::pinned_drop,
 };
 
 use super::{TabWindow, layout};
@@ -542,7 +541,6 @@ fn install_file_drop(state: &Rc<TabWindow>, id: u64, widget: &gtk::Box, browser:
     } = prepare_file_drop_target(move || {
         destination_browser.upgrade()?.browser().active_location()
     });
-    drop_state.filter_offers(|offered| pinned_drop::dragged_location(offered).is_none());
     let hover = Rc::new(Cell::new(0_u64));
     let enter_hover = hover.clone();
     let weak = Rc::downgrade(state);
