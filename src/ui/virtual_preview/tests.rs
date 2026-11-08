@@ -55,8 +55,13 @@ fn mapped_rows(list: &gtk::ListView, state: &VirtualPreviewState) -> Vec<(usize,
 /// Paints frames until rows stop moving. A row is first painted at GTK's
 /// estimated text height and grows once its text layout is validated, which a
 /// loaded machine defers by frames; sampling before then reads a transient layout.
-/// Each frame first runs all ready work, so two equal painted frames are settled.
-fn settle_layout(list: &gtk::ListView, state: &VirtualPreviewState, scroll: &gtk::ScrolledWindow) {
+/// With `paint_frame`, each frame first runs all ready work, so two equal painted frames are settled.
+fn settle_layout(
+    list: &gtk::ListView,
+    state: &VirtualPreviewState,
+    scroll: &gtk::ScrolledWindow,
+    paint: impl Fn(),
+) {
     let layout = || {
         let adjustment = scroll.vadjustment();
         (
@@ -67,7 +72,7 @@ fn settle_layout(list: &gtk::ListView, state: &VirtualPreviewState, scroll: &gtk
     };
     let mut previous = None;
     for _ in 0..600 {
-        paint_frame(list);
+        paint();
         let current = layout();
         if previous.as_ref() == Some(&current) {
             return;
@@ -142,7 +147,7 @@ fn smooth_content_scrolling_keeps_thumb_and_hit_testing_in_document_order() {
                     .ancestor(gtk::ScrolledWindow::static_type())
                     .and_downcast::<gtk::ScrolledWindow>()
                     .expect("document scroller");
-                let settle = || settle_layout(&list, &state, &scroll);
+                let settle = || settle_layout(&list, &state, &scroll, || paint_frame(&list));
                 settle();
                 let controllers = scroll
                     .observe_controllers()
@@ -338,7 +343,7 @@ fn rows_scrolled_into_view_do_not_move_when_idle_work_finally_runs() {
                 .ancestor(gtk::ScrolledWindow::static_type())
                 .and_downcast::<gtk::ScrolledWindow>()
                 .expect("document scroller");
-            settle_layout(&list, &state, &scroll);
+            settle_layout(&list, &state, &scroll, || paint_frame(&list));
             let adjustment = scroll.vadjustment();
             let clock = list.frame_clock().expect("mapped list frame clock");
             let visible_text = || {
@@ -361,15 +366,10 @@ fn rows_scrolled_into_view_do_not_move_when_idle_work_finally_runs() {
                     gtk::glib::ControlFlow::Continue
                 });
                 adjustment.set_value(adjustment.value() + jump);
-                let mut previous = None;
-                for _ in 0..100 {
+                // paint_frame drains every ready source and would spin on `starve`.
+                settle_layout(&list, &state, &scroll, || {
                     assert!(wait_for_paint(&clock), "the document list did not paint");
-                    let current = (mapped_rows(&list, &state), adjustment.upper().to_bits());
-                    if previous.as_ref() == Some(&current) {
-                        break;
-                    }
-                    previous = Some(current);
-                }
+                });
                 let before = visible_text();
                 assert!(
                     before.iter().any(Option::is_some),
