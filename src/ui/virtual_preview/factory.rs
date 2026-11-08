@@ -83,6 +83,11 @@ fn materialize_on_map(
                 &state,
                 document_tags.as_ref(),
             );
+            // GTK drops a resize queued while it lays this row out; the next frame keeps it.
+            row.add_tick_callback(|row, _| {
+                row.queue_resize();
+                glib::ControlFlow::Break
+            });
         }
     });
 }
