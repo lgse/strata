@@ -368,6 +368,7 @@ fn timeout_finishes_with_partial_results_and_ignores_late_callbacks() {
             sink.borrow_mut().push(lookup);
         })),
         waiting: Vec::new(),
+        timer: None,
     }));
     let dest = VolumeIdentity {
         filesystem_id: "l1".into(),
