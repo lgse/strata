@@ -766,7 +766,13 @@ Open **Settings → Appearance** from the gear menu or with <kbd>Ctrl</kbd>+<kbd
 
 Use **Search settings** to filter options across pages and navigate to the closest match, including keywords such as “font size.” In compact windows, the magnifying-glass button opens the search field. Clear the query or press <kbd>Esc</kbd> in the field to restore all settings.
 
-![Strata Appearance settings showing Follow Omarchy, the Omarchy variant, the current theme, and the searchable theme library](docs/assets/strata-themes.png)
+![Strata Appearance settings showing theme following options, the current theme, and the searchable theme library](docs/assets/strata-themes.png)
+
+### Follow system light/dark mode
+
+Turn on **Follow system light/dark mode** under **Settings → Appearance** to have Strata switch between the light and dark versions of your chosen Strata theme when your desktop switches between light and dark mode. Only the light/dark preference is followed; Strata keeps its own theme palettes and does not adopt the desktop's GTK theme, icons, or accent color. Choose either version of a paired theme in the library to change the theme family without turning the switch off. Themes without a light/dark partner keep the same palette in both modes.
+
+Strata reads the light/dark preference from the `color-scheme` key of `org.gnome.desktop.interface`, and hides the switch when that setting is unavailable. **Follow system light/dark mode** and **Follow Omarchy** are exclusive; enabling either one turns the other off.
 
 ### Follow Omarchy Quattro
 
@@ -776,7 +782,7 @@ This integration supports Omarchy Quattro only. The switch is hidden when Strata
 
 ### Bundled themes
 
-Choose any of the 95 included themes from the searchable, light/dark-filterable library under **Settings → Appearance**, including Tokyo Night (the default), Azure Glow, Catppuccin, Everforest, Rosé Pine, Gruvbox, Nord, Dracula, Solarized, and Omarchy Light. Selecting a bundled theme turns off Omarchy following and keeps that theme active across restarts.
+Choose any of the 95 included themes from the searchable, light/dark-filterable library under **Settings → Appearance**, including Tokyo Night (the default), Azure Glow, Catppuccin, Everforest, Rosé Pine, Gruvbox, Nord, Dracula, Solarized, and Omarchy Light. Selecting a bundled theme turns off Omarchy following and keeps that theme active across restarts. While **Follow system light/dark mode** is on, the selection instead changes the theme family Strata switches within.
 
 ### Custom themes
 

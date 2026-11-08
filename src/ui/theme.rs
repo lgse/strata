@@ -29,6 +29,7 @@ mod omarchy_state;
 mod portal_text_scale;
 mod roundness;
 mod source_style;
+mod system_appearance;
 mod watch;
 mod weak_registry;
 
@@ -49,6 +50,7 @@ use listeners::{ThemeListeners, on_change};
 use omarchy_state::{OmarchyRefresh, OmarchyState, is_omarchy_theme_event};
 pub(super) use source_style::{new_source_buffer, source_languages};
 use source_style::{resolved_source_palette, stage_source_style_scheme};
+use system_appearance::SystemAppearance;
 use watch::{read_user_stylesheet, user_stylesheet_path};
 
 // Read by the test modules through their `super::*` globs.
@@ -182,6 +184,7 @@ pub struct ThemeManager {
     base_roundness: Cell<Option<CornerRoundness>>,
     themes: RefCell<Vec<Theme>>,
     preferences: Rc<PreferenceManager>,
+    system_appearance: SystemAppearance,
     omarchy_available: Cell<bool>,
     omarchy_state: RefCell<Option<OmarchyState>>,
     omarchy_monitors: RefCell<Vec<(PathBuf, LoadHandle)>>,
@@ -216,23 +219,20 @@ impl ThemeManager {
     fn load() -> Rc<Self> {
         let preferences = PreferenceManager::shared();
         let themes = merge_builtin_and_custom_themes(builtins(), load_custom_themes());
+        let system_appearance = SystemAppearance::read();
         let omarchy = OmarchyRefresh::read();
         if let Some(state) = &omarchy.state {
             preferences.set_active_omarchy_theme(&state.name);
         }
-        let omarchy_available = omarchy
-            .state
-            .as_ref()
-            .and_then(|state| state.tokens(OmarchyVariant::Lighter))
-            .is_some();
         preferences.normalize_loaded_theme_selection(
             |id| themes.iter().any(|theme| theme.id == id),
-            omarchy_available,
+            system_appearance.is_available(),
+            has_omarchy_theme(omarchy.state.as_ref()),
         );
         let manager = Rc::new(Self::new(
             preferences,
             themes,
-            omarchy_available,
+            system_appearance,
             omarchy.state,
         ));
         manager.start(&omarchy.directories, omarchy.theme_directory.as_deref());
@@ -242,9 +242,10 @@ impl ThemeManager {
     fn new(
         preferences: Rc<PreferenceManager>,
         themes: Vec<Theme>,
-        omarchy_available: bool,
+        system_appearance: SystemAppearance,
         omarchy_state: Option<OmarchyState>,
     ) -> Self {
+        let omarchy_available = has_omarchy_theme(omarchy_state.as_ref());
         let appearance = AppearancePreferences::read(&preferences);
         Self {
             provider: gtk::CssProvider::new(),
@@ -259,6 +260,7 @@ impl ThemeManager {
             base_roundness: Cell::new(None),
             themes: RefCell::new(themes),
             preferences,
+            system_appearance,
             omarchy_available: Cell::new(omarchy_available),
             omarchy_state: RefCell::new(omarchy_state),
             omarchy_monitors: RefCell::new(Vec::new()),
@@ -297,6 +299,7 @@ impl ThemeManager {
         self.apply_density();
         self.apply_selected();
         self.monitor_text_scaling();
+        self.monitor_system_appearance();
         portal_text_scale::follow_if_portals_disabled();
         self.monitor_omarchy(omarchy_directories, omarchy_theme);
         self.monitor_custom_themes(themes_directory().is_dir());
@@ -341,8 +344,13 @@ impl ThemeManager {
             return;
         }
         self.preview.take();
-        let changed = self.follows_omarchy() || self.selected_id() != id;
-        self.preferences.set_theme_selection("theme", Some(id));
+        let mode = if self.follows_system_appearance() {
+            "system"
+        } else {
+            "theme"
+        };
+        let changed = self.preferences.theme_mode() != mode || self.selected_id() != id;
+        self.preferences.set_theme_selection(mode, Some(id));
         if !changed {
             // Re-selecting the current theme restores it after a live preview.
             self.apply_selected();
@@ -459,7 +467,7 @@ impl ThemeManager {
         {
             return tokens;
         }
-        self.starter_tokens()
+        self.current_tokens().unwrap_or_else(azure_tokens)
     }
 
     pub fn starter_tokens(&self) -> ThemeTokens {
@@ -610,7 +618,7 @@ impl ThemeManager {
     }
 
     pub(in crate::ui) fn current_tokens(&self) -> Option<ThemeTokens> {
-        let id = self.preferences.selected_theme_id();
+        let id = self.effective_theme_id();
         self.themes
             .borrow()
             .iter()
@@ -685,6 +693,10 @@ impl ThemeManager {
         self.apply_density();
         self.theme_listeners.notify(self);
     }
+}
+
+fn has_omarchy_theme(state: Option<&OmarchyState>) -> bool {
+    state.is_some_and(|state| state.tokens(OmarchyVariant::Lighter).is_some())
 }
 
 fn default_danger() -> String {

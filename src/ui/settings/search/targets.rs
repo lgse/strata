@@ -237,6 +237,12 @@ pub(super) const TARGETS: &[Target] = &[
         aliases: "encrypted luks password udiskie automount usb volume desktop integration omarchy",
     },
     Target {
+        id: "system-light-dark-mode",
+        page: "theme",
+        title: "Follow system light/dark mode",
+        aliases: "light dark mode day night appearance color scheme",
+    },
+    Target {
         id: "omarchy",
         page: "theme",
         title: "Follow Omarchy",

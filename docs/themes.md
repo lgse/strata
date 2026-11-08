@@ -2,6 +2,16 @@
 
 Strata styles the interface with nine semantic color tokens. Bundled themes are the fallback on any Linux desktop; Tokyo Night is the default, and Azure Glow is used when a saved theme ID is not recognized. Settings presents all 95 bundled themes in one searchable, light/dark-filterable scrolling catalog.
 
+## System light/dark mode
+
+**Follow system light/dark mode** follows only the desktop's light/dark preference; it never loads the desktop's GTK theme, icon theme, or accent color. It reads the `color-scheme` key from `org.gnome.desktop.interface` without writing it. `prefer-dark` selects a curated family's dark theme; `default`, `prefer-light`, and unexpected values select its light theme. Changes apply live to the GTK base variant, Strata tokens, interface and file icons, document views, source highlighting, previews, and open settings pages.
+
+The saved `theme` remains the family anchor. The effective selection can therefore be its paired theme, and Settings shows that effective palette as both **Current theme** and the selected catalog card. Clicking a catalog card while following the system changes the anchor and keeps following enabled. A custom theme file that overrides a paired stable ID participates in the same family. Unpaired bundled and custom IDs deliberately resolve to themselves for both appearances.
+
+Curated pairs cover Atelier Cave, Dune, Forest, Heath, Lakeside and Seaside; Ayu; Catppuccin Mocha/Latte; Classic; Everforest Hard and Soft/Medium; Flexoki; GitHub default and high contrast; Google; Grayscale; Gruvbox Hard and Material Medium; Horizon; Material Darker/Lighter; Neovim; Nord; One; Oxocarbon; PaperColor; Rosé Pine/Dawn; Solarized; and Tomorrow/Night.
+
+The serialized theme `mode` accepts `"theme"`, `"system"`, and `"omarchy"`. If that schema or key is unavailable, Strata hides the switch and repairs a saved `"system"` mode to `"theme"` at startup. Light/dark mode following and Omarchy following are mutually exclusive.
+
 Tinted Base16 entries map colors to Strata tokens as follows: `base00` to background, `base01` to surface, `base05` to text, `base0D` to accent, `base08` to danger, `base02` to muted and highlight, `base03` to border, and `base04` to dim text. A few bundled entries override the mapped foreground values so body text stays readable: text is at least 4.5:1 on background and 3:1 on surface; the catalog comments each override next to the value. Where the upstream dim text is also unreadable, loading the bundled theme lifts it to the same floors, stopping as soon as they are met so it stays dimmer than text. Source revision and licensing details are recorded in [`THIRD_PARTY_LICENSES.md`](../THIRD_PARTY_LICENSES.md).
 
 ## GTK CSS precedence

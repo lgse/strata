@@ -413,13 +413,20 @@ impl PreferenceManager {
     pub(in crate::ui) fn normalize_loaded_theme_selection(
         &self,
         theme_is_known: impl Fn(&str) -> bool,
+        system_available: bool,
         omarchy_available: bool,
     ) {
         let mut preferences = self.preferences.borrow_mut();
         if !theme_is_known(&preferences.theme) {
             preferences.theme = "azure-glow".to_owned();
         }
-        if preferences.mode == "omarchy" && !omarchy_available {
+        let mode_available = match preferences.mode.as_str() {
+            "theme" => true,
+            "system" => system_available,
+            "omarchy" => omarchy_available,
+            _ => false,
+        };
+        if !mode_available {
             preferences.mode = "theme".to_owned();
         } else if !settings_path().is_file() && omarchy_available {
             preferences.mode = "omarchy".to_owned();
