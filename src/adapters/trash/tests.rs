@@ -13,6 +13,96 @@ fn unique_fixture_root(label: &str) -> std::path::PathBuf {
 }
 
 #[test]
+fn delete_error_after_removal_counts_as_deleted() {
+    let root = tempfile::tempdir().expect("fixture");
+    PrivateContext::new().block_on(async {
+        for double_delete in [false, true] {
+            let path = root.path().join("removed");
+            std::fs::write(&path, b"remove").expect("file");
+            let file = gio::File::for_path(&path);
+            let info = file
+                .query_info_future(
+                    "standard::display-name",
+                    gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                    glib::Priority::DEFAULT,
+                )
+                .await
+                .expect("file info");
+            file.delete_future(glib::Priority::DEFAULT)
+                .await
+                .expect("first deletion");
+            let error = if double_delete {
+                let error = file
+                    .delete_future(glib::Priority::DEFAULT)
+                    .await
+                    .expect_err("second deletion");
+                assert!(error.matches(gio::IOErrorEnum::NotFound));
+                error
+            } else {
+                glib::Error::new(gio::IOErrorEnum::Failed, "delete failed after removal")
+            };
+            let mut outcome = EmptyTrashOutcome {
+                deleted: 0,
+                failed: 0,
+                errors: Vec::new(),
+            };
+            outcome.record_deletion(&file, &info, Err(error)).await;
+            assert_eq!((outcome.deleted, outcome.failed), (1, 0));
+            assert!(outcome.errors.is_empty());
+            assert!(!path.exists());
+        }
+    });
+}
+
+#[test]
+fn delete_errors_without_confirmed_absence_remain_failures() {
+    let root = tempfile::tempdir().expect("fixture");
+    std::fs::write(root.path().join("present"), b"keep").expect("file");
+    std::fs::create_dir(root.path().join("directory")).expect("directory");
+    std::fs::write(root.path().join("directory/child"), b"keep").expect("child");
+    std::os::unix::fs::symlink("missing", root.path().join("dangling")).expect("symlink");
+
+    PrivateContext::new().block_on(async {
+        let probe_error = gio::File::for_path(root.path().join("present/child"))
+            .query_info_future(
+                "standard::type",
+                gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                glib::Priority::DEFAULT,
+            )
+            .await
+            .expect_err("a regular file cannot contain a child");
+        assert!(!probe_error.matches(gio::IOErrorEnum::NotFound));
+
+        for (name, code) in [
+            ("present", gio::IOErrorEnum::Failed),
+            ("directory", gio::IOErrorEnum::Failed),
+            ("present/child", gio::IOErrorEnum::Failed),
+            ("dangling", gio::IOErrorEnum::Failed),
+            ("missing", gio::IOErrorEnum::Cancelled),
+        ] {
+            let file = gio::File::for_path(root.path().join(name));
+            let info = gio::FileInfo::new();
+            info.set_display_name(name);
+            let error = glib::Error::new(code, "original delete error");
+            let expected = format!("{name}: {error}");
+            let mut outcome = EmptyTrashOutcome {
+                deleted: 0,
+                failed: 0,
+                errors: Vec::new(),
+            };
+            outcome.record_deletion(&file, &info, Err(error)).await;
+            assert_eq!((outcome.deleted, outcome.failed), (0, 1), "{name}");
+            assert_eq!(outcome.errors, [expected]);
+        }
+    });
+
+    assert!(root.path().join("present").is_file());
+    assert!(root.path().join("directory/child").is_file());
+    assert!(root.path().join("dangling").is_symlink());
+    assert!(!root.path().join("missing").exists());
+}
+
+#[test]
 fn empty_trash_deletes_every_top_level_entry_in_bounded_batches() {
     let root = unique_fixture_root("empty-trash-streaming");
     std::fs::create_dir_all(&root).expect("the trash fixture should be created");
