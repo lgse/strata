@@ -65,21 +65,23 @@ outgrows the window; selecting a tab brings it into view without a scrollbar.
 Drag a tab label to reorder tabs; an accent-colored insertion line shows where
 it will land. Sidebar locations offer **Open in New Tab** in their context menu
 and open in a new tab on middle-click, as do the folders in the path bar.
-Dragging a sidebar location or folders
-from a file view marks on the strip where new tabs will open; drop there to
-create tabs at that position. **+** also accepts these drags, and is the drop
-target when a single tab leaves the strip hidden. Escape cancels the drag.
-Folder-only drags from a file view open tabs even over an existing tab header;
-they never move or copy the folders into that tab. Opening sidebar locations
-also leaves files and sidebar pins unchanged. These tab actions are not offered
-in file choosers.
+Dragging a sidebar location marks on the strip where a new tab will open;
+drop there to create a tab at that position. Folders dragged from a file view
+open in new tabs when dropped onto unused tab-bar space or **+**, not onto an
+existing tab. **+** also accepts sidebar drags and is the drop target when a
+single tab leaves the strip hidden. Opening folders in new tabs leaves their
+files and sidebar pins unchanged. These tab actions are not offered in file
+choosers.
 
-Drop files (or a mixed selection of files and folders) from a listing on a tab
-to transfer into its current directory, or hover there during a file drag to
-switch tabs and choose a folder in its listing. Existing copy/move modifiers
-and conflict handling apply. Escape cancels a file drag before it dismisses
-anything else: nothing transfers on release, and the selection, preview, and
-filter stay as they were.
+Drop files or folders from a listing onto an existing tab to transfer them into
+its current directory, or hover there during the drag to switch tabs and choose
+a folder in its listing. Files, folders, and mixed selections use the same
+transfer behavior. Existing copy/move modifiers, conflict handling, and undo
+apply. Escape cancels a drag before it dismisses anything else: nothing transfers
+on release, and the selection, preview, and filter stay as they were.
+On X11, Escape may not cancel after a drag hover switches tabs
+([#2091](https://github.com/lgse/strata/issues/2091)); move away from drop targets
+before releasing if cancellation does not end the drag.
 
 ## Input precedence
 
