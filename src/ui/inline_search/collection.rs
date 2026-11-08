@@ -476,7 +476,7 @@ fn install_result_interactions(
     let gesture_selection_for_press = gesture_selection.clone();
     let pointer_for_press = pointer_activation.clone();
     let focus_items_for_press = focus_items.clone();
-    click.connect_pressed(move |gesture, _, _, _| {
+    click.connect_pressed(move |gesture, count, x, y| {
         let Some(item) = weak_item.upgrade() else {
             return;
         };
@@ -486,6 +486,7 @@ fn install_result_interactions(
         }
         let modifiers = gesture.current_event_state();
         pointer_for_press.press(modifiers);
+        pointer_for_press.claim_double_press(gesture, count, (x, y));
         let previous = gesture_selection_for_press
             .borrow()
             .clone()

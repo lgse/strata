@@ -21,8 +21,8 @@ use crate::{
 };
 
 use super::super::{
-    MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH, SidebarView, animate_sidebar, build_appearance_menu,
-    pin_status, sidebar_rail_width,
+    MIN_SIDEBAR_WIDTH, SidebarView, animate_sidebar, build_appearance_menu, pin_status,
+    sidebar_rail_width, sidebar_split,
 };
 
 pub(super) struct Header {
@@ -276,14 +276,7 @@ fn browser_split(
     preview: &PreviewDrawer,
     preferences: &Rc<PreferenceManager>,
 ) -> gtk::Paned {
-    let content = gtk::Paned::new(gtk::Orientation::Horizontal);
-    content.add_css_class("sidebar-split");
-    // Wide handles keep GTK's mouse hit area inside the divider allocation.
-    content.set_wide_handle(true);
-    content.set_shrink_start_child(false);
-    content.set_resize_start_child(false);
-    content.set_position(SIDEBAR_WIDTH);
-    content.set_vexpand(true);
+    let content = sidebar_split();
     sidebar.widget.set_size_request(MIN_SIDEBAR_WIDTH, -1);
     browser.add_marquee_origin(
         &sidebar.widget,

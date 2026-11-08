@@ -104,10 +104,9 @@ impl SidebarToggle {
     /// accessible name stays the control's own so it can be found in any mode.
     pub(crate) fn describe(&self, mode: SidebarMode) {
         let keys = Keys::One(SIDEBAR.shown());
-        self.set_tooltip_text(Some(&super::shortcut_reference::with_keys(
-            mode.next().step_message(),
-            keys,
-        )));
+        let next_step = super::shortcut_reference::with_keys(mode.next().step_message(), keys);
+        self.set_tooltip_text(Some(&next_step));
+        super::accessibility::set_description(self, Some(&next_step));
         super::accessibility::set_label(
             self,
             &super::shortcut_reference::with_keys("Toggle sidebar (%{keys})", keys),

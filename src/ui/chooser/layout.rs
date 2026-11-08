@@ -283,20 +283,15 @@ impl ChooserPanes {
         let sidebar = build_sidebar(view.clone(), theme.clone(), true);
         sidebar.schedule_after_first_paint(window);
         bind_chooser_sidebar_modes(&sidebar, sidebar_toggle, theme);
-        let content = gtk::Paned::new(gtk::Orientation::Horizontal);
-        content.set_wide_handle(false);
-        content.set_position(SIDEBAR_WIDTH);
+        let content = crate::ui::window::sidebar_split();
         sidebar.widget.set_size_request(MIN_SIDEBAR_WIDTH, -1);
         crate::ui::window::bind_sidebar_text_size(&content, &sidebar);
-        content.set_shrink_start_child(false);
-        content.set_resize_start_child(false);
         content.set_start_child(Some(&sidebar.widget));
         if confined {
             sidebar.widget.set_visible(false);
             sidebar_toggle.set_visible(false);
         }
         content.set_end_child(Some(&view.widget()));
-        content.set_vexpand(true);
         let toggled_sidebar = sidebar.widget.clone();
         sidebar_toggle.connect_toggled(move |toggle| {
             toggled_sidebar.set_visible(toggle.is_active());

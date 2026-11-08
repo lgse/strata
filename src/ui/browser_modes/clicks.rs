@@ -81,9 +81,10 @@ impl PreviewClick {
         widget: &impl IsA<gtk::Widget>,
         item: &gtk::ListItem,
         rename_label: &impl IsA<gtk::Widget>,
-    ) {
+    ) -> gtk::GestureClick {
         let click = gtk::GestureClick::new();
         click.set_button(1);
+        click.set_propagation_phase(gtk::PropagationPhase::Capture);
         let clicked_item = item.downgrade();
         let rename_label = rename_label.as_ref().downgrade();
         pointer::connect_click_release(&click, item, move |gesture, press_count, x, y| {
@@ -103,7 +104,8 @@ impl PreviewClick {
             };
             self.released(&release, &clicked, &rename_label);
         });
-        widget.add_controller(click);
+        widget.add_controller(click.clone());
+        click
     }
 
     fn clicked_entry(&self, item: &glib::WeakRef<gtk::ListItem>) -> Option<ClickedEntry> {
@@ -135,25 +137,26 @@ impl PreviewClick {
             position,
             entry,
         } = clicked;
-        let is_directory = entry.is_directory();
         if should_activate_filtered_pointer(release.press_count, &self.filter_query) {
             release.gesture.set_state(gtk::EventSequenceState::Claimed);
             browser.select(self.depth, *position);
             self.open_filtered(clicked);
-        } else if should_activate_pointer_click(
-            release.press_count,
-            is_directory,
-            self.activation.get(),
-        ) {
-            if !browser.is_chooser_mode() || is_directory {
-                release.gesture.set_state(gtk::EventSequenceState::Claimed);
-                browser.activate_in_place(self.depth, *position);
-            }
+        } else if self.activates_on_release(release, clicked) {
+            release.gesture.set_state(gtk::EventSequenceState::Claimed);
+            browser.activate_in_place(self.depth, *position);
         } else if self.starts_slow_rename(release, clicked) {
             self.schedule_rename(release, rename_label, *position);
         } else if self.previews_on_click(release.press_count, entry) {
             browser.preview(self.depth, *position);
         }
+    }
+
+    fn activates_on_release(&self, release: &Release, clicked: &ClickedEntry) -> bool {
+        let directory = clicked.entry.is_directory();
+        let chooser_allows =
+            release.press_count == 2 || directory || !clicked.browser.is_chooser_mode();
+        chooser_allows
+            && should_activate_pointer_click(release.press_count, directory, self.activation.get())
     }
 
     /// A filtered listing opens folders and follows the file click rules on one press.
@@ -239,7 +242,7 @@ pub(super) fn install_preview_click(
     position_map: Option<(SourceIndexMap, gio::ListModel)>,
     filter_query: Rc<RefCell<String>>,
     slow_click: Rc<SlowClickRename>,
-) {
+) -> gtk::GestureClick {
     PreviewClick {
         browser,
         state: weak_state,
@@ -250,7 +253,7 @@ pub(super) fn install_preview_click(
         filter_query,
         slow_click,
     }
-    .install(widget, item, rename_label);
+    .install(widget, item, rename_label)
 }
 
 fn should_activate_pointer_click(
@@ -263,7 +266,7 @@ fn should_activate_pointer_click(
     } else {
         activation.files
     };
-    press_count == 1 && configured == ClickCount::One
+    press_count == 2 || (press_count == 1 && configured == ClickCount::One)
 }
 
 /// Control and Shift clicks that edit the selection, and middle clicks that open in new.
@@ -303,8 +306,9 @@ impl SelectionClick {
         );
         let item = item.downgrade();
         let weak_state_for_cancel = self.state.clone();
-        click.connect_pressed(move |gesture, _, x, y| {
+        click.connect_pressed(move |gesture, count, x, y| {
             self.pressed(gesture, &item, &sequence, (x, y));
+            sequence.claim_double_press(gesture, count, (x, y));
         });
         click.connect_cancel(move |_, _| {
             if let Some(state) = weak_state_for_cancel.upgrade() {

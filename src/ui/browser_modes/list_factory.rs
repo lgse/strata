@@ -80,7 +80,7 @@ impl ListFactory {
             self.depth,
         );
         let slow_click = Rc::new(super::SlowClickRename::default());
-        install_preview_click(
+        let activation_click = install_preview_click(
             &row.widget,
             item,
             &row.name,
@@ -104,6 +104,7 @@ impl ListFactory {
             self.positions.clone(),
             slow_click.clone(),
         );
+        activation_click.group_with(&content_click);
         install_list_drag_drop(
             &row.widget,
             item,

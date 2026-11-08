@@ -41,9 +41,8 @@ fn shell_width(rail: bool) -> i32 {
     }
 }
 
-/// The rail cannot be resized, so its divider stays thin and keeps the plain cursor.
+/// Keep the confined hit region in rail mode too; only its cursor changes.
 fn apply_rail_to_paned(paned: &gtk::Paned, rail: bool) {
-    paned.set_wide_handle(!rail);
     if let Some(handle) = paned_separator(paned) {
         handle.set_cursor_from_name(if rail {
             Some("default")

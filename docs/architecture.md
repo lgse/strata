@@ -140,7 +140,11 @@ beside the columns. Presses on controls, including disabled ones and drag handle
 preview header, never start a marquee, and neither do presses on a viewport's own
 scrollbars, including overlay scrollbars drawn over blank row space. Click
 activation and automatic preview wait for release and reject cancelled gestures, drag motion,
-and recycled items. Marquees anchor and cache mapped item geometry in scroll-content
+and recycled items. `PointerSequence::claim_double_press` keeps the second press in the
+application-owned row's gesture group, shared with its drag source and release activation;
+GTK's item widget must not activate or claim that press before drag intent is known.
+Browser and chooser sidebar splits share the same confined handle configuration, including
+in compact rail mode. Marquees anchor and cache mapped item geometry in scroll-content
 coordinates, independent of native GtkScrollable or GtkViewport layout. Edge and wheel scrolling
 refresh selection after layout/paint, even without pointer motion; unmapped rows cannot
 overwrite cached geometry with stale allocations. The visible band stays clipped to the
