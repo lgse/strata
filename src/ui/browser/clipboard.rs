@@ -264,8 +264,6 @@ pub(crate) fn clear_active_drag() {
 
 pub(crate) const SPRING_LOAD_NAVIGATE_DELAY: Duration = Duration::from_millis(750);
 
-type OfferFilter = Box<dyn Fn(&gtk::gdk::Drop) -> bool>;
-
 /// Reuses one classification for cursor feedback and the eventual transfer.
 pub(crate) struct FileDropState {
     destination: Rc<dyn Fn() -> Option<Location>>,
@@ -273,7 +271,6 @@ pub(crate) struct FileDropState {
     sources: RefCell<Option<Rc<[Location]>>>,
     classification: RefCell<Option<DropClassification>>,
     spring_load: RefCell<Option<SpringLoadPending>>,
-    offer_filter: RefCell<Option<OfferFilter>>,
 }
 
 struct SpringLoadPending {
@@ -304,7 +301,6 @@ impl FileDropState {
             sources: RefCell::new(None),
             classification: RefCell::new(None),
             spring_load: RefCell::new(None),
-            offer_filter: RefCell::new(None),
         }
     }
 
@@ -312,18 +308,8 @@ impl FileDropState {
         (self.destination)()
     }
 
-    /// Narrows the offers this target accepts beyond the shared rules.
-    pub(crate) fn filter_offers(&self, filter: impl Fn(&gtk::gdk::Drop) -> bool + 'static) {
-        self.offer_filter.replace(Some(Box::new(filter)));
-    }
-
     pub(super) fn accepts(&self, target: &gtk::DropTarget, offered: &gtk::gdk::Drop) -> bool {
         content_drop::accepts_offer(target, offered, self.destination().as_ref())
-            && self
-                .offer_filter
-                .borrow()
-                .as_ref()
-                .is_none_or(|filter| filter(offered))
     }
 
     // Repeated motion must not postpone navigation; recycled rows must not open stale destinations.
