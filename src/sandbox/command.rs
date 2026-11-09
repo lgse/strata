@@ -277,6 +277,13 @@ impl SandboxCommand<'_> {
             .arg(self.executable)
             .arg("/app/strata");
         command.arg("--ro-bind").arg(self.input).arg(&sandbox_input);
+        if self.operation.is_media() || matches!(self.operation, ParseOperation::AudioCover) {
+            command.args([
+                "--setenv",
+                runtime::PRLIMIT_VARIABLE,
+                &runtime::current().prlimit,
+            ]);
+        }
         if self.operation.is_media() {
             self.bind_media_devices(&mut command);
             command.arg("--");

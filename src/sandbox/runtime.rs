@@ -14,7 +14,7 @@ mod tests;
 
 const PATH_VARIABLE: &str = "STRATA_SANDBOX_PATH";
 const ROOT_VARIABLE: &str = "STRATA_SANDBOX_ROOT";
-const PRLIMIT_VARIABLE: &str = "STRATA_SANDBOX_PRLIMIT";
+pub(super) const PRLIMIT_VARIABLE: &str = "STRATA_SANDBOX_PRLIMIT";
 const GDK_PIXBUF_MODULE_FILE_VARIABLE: &str = "STRATA_SANDBOX_GDK_PIXBUF_MODULE_FILE";
 
 /// A launch-time root is less trusted than a packager's build-time root: it

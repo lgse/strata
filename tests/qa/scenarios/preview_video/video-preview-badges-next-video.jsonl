@@ -23,3 +23,14 @@
 {"expect":{"not":{"preview":"Preview unavailable"}}}
 {"key":"space"}
 {"wait":{"preview":null},"message":"the preview to close"}
+{"restart":{"env":{"STRATA_SANDBOX_PRLIMIT":"/usr/bin/false"}},"modes":["columns"],"variants":["mp4"]}
+{"select_with_keyboard":"alpha.$extension","modes":["columns"],"variants":["mp4"]}
+{"key":"space","modes":["columns"],"variants":["mp4"]}
+{"wait":{"preview":"Unable to play this media preview"},"message":"media decoding must honor the configured failing limiter rather than use prlimit from PATH","modes":["columns"],"variants":["mp4"]}
+{"restart":{"env":{"STRATA_SANDBOX_PRLIMIT":"/usr/bin/prlimit"}},"modes":["columns"],"variants":["mp4"]}
+{"select_with_keyboard":"alpha.$extension","modes":["columns"],"variants":["mp4"]}
+{"key":"space","modes":["columns"],"variants":["mp4"]}
+{"wait":{"present":{"role":"button","name":"Play or pause","within":{"preview":true}}},"message":"the player returns after restoring the valid limiter","modes":["columns"],"variants":["mp4"]}
+{"key":"ctrl+alt+space","modes":["columns"],"variants":["mp4"]}
+{"wait":{"present":{"role":"label","name":"0:01","within":{"preview":true}}},"message":"the restored limiter allows decoded video playback to advance","modes":["columns"],"variants":["mp4"]}
+{"expect":{"not":{"preview":"Preview unavailable"}},"modes":["columns"],"variants":["mp4"]}

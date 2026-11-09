@@ -251,7 +251,15 @@ fn media_previews_use_bounded_streaming_instead_of_driver_wide_resource_limits()
         .arguments();
     let joined = arguments.join(" ");
 
-    assert_no_argument(&arguments, &[runtime::current().prlimit.as_str()]);
+    let prlimit = runtime::current().prlimit.as_str();
+    assert!(has_window(
+        &arguments,
+        ["--setenv", runtime::PRLIMIT_VARIABLE, prlimit]
+    ));
+    assert!(
+        !arguments.windows(2).any(|args| args == ["--", prlimit]),
+        "the helper limits each decoder, not the accelerated helper's address space"
+    );
     assert_contains_none(
         &joined,
         &[
@@ -269,6 +277,19 @@ fn media_previews_use_bounded_streaming_instead_of_driver_wide_resource_limits()
             "preview-media /input.mkv /dev/stdout",
         ],
     );
+}
+
+#[test]
+fn audio_artwork_forwards_prlimit_and_keeps_the_outer_resource_limits() {
+    let arguments = Sandbox::new("/fixtures/covered.m4a", ParseOperation::AudioCover).arguments();
+    let prlimit = runtime::current().prlimit.as_str();
+    for window in [
+        ["--setenv", runtime::PRLIMIT_VARIABLE, prlimit],
+        ["--", prlimit, "--as=2147483648"],
+    ] {
+        assert!(has_window(&arguments, window), "{window:?}");
+    }
+    assert_contains_all(&arguments.join(" "), &[SOFTWARE_LIMITS]);
 }
 
 #[test]

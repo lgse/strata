@@ -48,6 +48,18 @@ a value embedded **when compiling Strata**, then the default.
 | `STRATA_SANDBOX_PRLIMIT` | `/usr/bin/prlimit` | Absolute resource-limit launcher path inside the sandbox |
 | `STRATA_SANDBOX_GDK_PIXBUF_MODULE_FILE` | Unset | Optional absolute gdk-pixbuf `loaders.cache` path passed to helpers |
 
+The absolute resource limiter is used both for one-shot helpers and for each
+FFmpeg media decoder; its directory need not also appear in the sandbox `PATH`.
+Waveform and storyboard helpers lower their scheduling priority directly, before
+probing or spawning decoders, without requiring a `nice` executable. This affects
+only the disposable background helper and its descendants, not the application
+or interactive playback.
+
+Older prebuilt releases, including 1.2.0, still look up `prlimit` and `nice` by name
+for media. When wrapping those binaries, include the `util-linux` and `coreutils`
+binary directories in `STRATA_SANDBOX_PATH` as well as configuring the absolute
+limiter. Repackaging the prebuilt binary with those paths requires no source build.
+
 For example, a Nix package can compile with:
 
 ```sh
@@ -81,8 +93,9 @@ Launch-time values are validated before use. Every path must be absolute and
 free of `..` components, and a launch-time `STRATA_SANDBOX_ROOT` must be `/usr`,
 `/nix/store`, or `/gnu/store`, or a directory inside one of them. A value
 that fails validation is logged and ignored, and the embedded or default value
-stays in effect. The launch-time variables are read by the host only; the
-sandbox still starts with a cleared environment.
+stays in effect. The sandbox still starts with a cleared environment. Media
+helpers receive only the resolved, validated `STRATA_SANDBOX_PRLIMIT` value so
+their per-decoder limits use the same configured executable as the host launcher.
 
 These settings apply to one-shot, pooled browser, media, and RAR extraction
 sandboxes. They do not change host-side trusted bubblewrap lookup, namespace

@@ -126,6 +126,8 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
         start_tick,
         secret_fd,
     };
+    // Decoders inherit the helper's lowered priority.
+    media::lower_background_priority(operation);
     if let Some(result) = operations::write(&request) {
         return result;
     }
