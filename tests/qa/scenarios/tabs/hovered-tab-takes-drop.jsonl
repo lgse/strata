@@ -1,4 +1,4 @@
-{"scenario":"hovered-tab-takes-drop","modes":["columns","icons","list"],"variants":[{"id":"file","vars":{"entry":"todo.txt","payload":"todo.txt","contents":"todo\n"}},{"id":"folder","vars":{"entry":"pictures","payload":"pictures/photo.txt","contents":"photo\n"}}],"layout":"us","mutation":null,"known_bug":null,"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":3,"score":38,"note":"File and folder drags hover-activate a tab before dropping into a subfolder; sole GUI guard of the tab-hover route"},"cost":{"columns-file":1.0,"icons-file":1.0,"list-file":1.1,"columns-folder":1.0,"icons-folder":1.0,"list-folder":1.0}}
+{"scenario":"hovered-tab-takes-drop","modes":["columns","icons","list"],"variants":[{"id":"file","vars":{"entry":"todo.txt","payload":"todo.txt","contents":"todo\n"}},{"id":"folder","vars":{"entry":"pictures","payload":"pictures/photo.txt","contents":"photo\n"}}],"layout":"us","mutation":null,"known_bug":null,"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":3,"score":52,"note":"File/folder hover-switch, Escape without transfer, then a fresh drag; sole cancellation guard after switching tabs"},"cost":{"columns-file":1.0,"icons-file":1.0,"list-file":1.1,"columns-folder":1.0,"icons-folder":1.0,"list-folder":1.0}}
 {"fs":{"path":"documents/projects","mkdir":true}}
 {"key":"ctrl+t"}
 {"wait":{"present":{"role":"page tab","name":"$root","states":["selected"]}},"message":"the new root tab is ready before pointer navigation"}
@@ -14,6 +14,14 @@
 {"drag":{"from":{"entry":"$entry","dir":"$root"},"to":{"role":"page tab","name":"documents"}},"release":false}
 {"move":{"role":"page tab","name":"documents"},"variants":["folder"]}
 {"wait":{"state":{"target":{"role":"page tab","name":"documents"},"selected":true}},"message":"hovering a $entry drag activates the existing destination tab"}
+{"key":"Escape"}
+{"button_up":1}
+{"during":{"all":[{"file":{"path":"$fixture/$payload","exists":true}},{"file":{"path":"$fixture/documents/$entry","exists":false}}]},"ms":500,"message":"Escape after hover-switching cancels $entry without transferring it when the mouse is released"}
+{"key":"ctrl+shift+1"}
+{"wait":{"all":[{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}},{"selected":["$entry"],"dir":"$root"}]},"message":"returning to the source after cancellation preserves its selection"}
+{"drag":{"from":{"entry":"$entry","dir":"$root"},"to":{"role":"page tab","name":"documents"}},"release":false}
+{"move":{"role":"page tab","name":"documents"},"variants":["folder"]}
+{"wait":{"state":{"target":{"role":"page tab","name":"documents"},"selected":true}},"message":"a fresh drag can still hover-activate the destination after cancellation"}
 {"move":{"entry":"projects"}}
 {"button_up":1}
 {"fs":{"path":"documents/projects/$payload","text":"$contents"},"message":"$entry arrives intact in the subfolder after hover-switching tabs"}

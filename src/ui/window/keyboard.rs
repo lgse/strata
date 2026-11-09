@@ -107,6 +107,18 @@ pub(super) fn accepts_input(root: &glib::WeakRef<gtk::Widget>) -> bool {
         .is_some_and(|root| root.is_mapped() && root.can_target())
 }
 
+fn window_owns_key(press: &KeyPress) -> bool {
+    super::composition::is_tab_shortcut(press)
+        || (press.is(ESCAPE_ANY)
+            && [
+                crate::ui::browser::active_file_drag_source(),
+                super::pinned_drop::active_drag_source(),
+            ]
+            .into_iter()
+            .flatten()
+            .any(|source| source.drag().is_some()))
+}
+
 fn connect_key_presses(
     keys: &gtk::EventControllerKey,
     root: &gtk::Widget,
@@ -122,7 +134,9 @@ fn connect_key_presses(
         if dispatcher.cancel_pending_bookmark(press) {
             return Propagation::Stop;
         }
-        if tab_scoped && super::composition::is_tab_shortcut(press) {
+        // New tabs install their controller ahead of the window's controller.
+        // Leave drag cancellation to the window before Escape clears tab selection.
+        if tab_scoped && window_owns_key(press) {
             return Propagation::Proceed;
         }
         let Some(browser) = weak_browser.upgrade() else {
