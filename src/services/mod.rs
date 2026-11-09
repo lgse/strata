@@ -58,8 +58,8 @@ pub use file_source::{
 };
 pub(crate) use file_source::{
     INVALID_NAME_REASON, UNEXPECTED_SYSTEM_ERROR, describes_refused_credentials, error_detail,
-    gio_backend_error_message, gio_error_detail, gio_error_message, io_error_detail,
-    io_error_message, sanitize_failure_message, system_error_text,
+    gio_backend_error_message, gio_device_error_message, gio_error_detail, gio_error_message,
+    io_error_detail, io_error_message, sanitize_failure_message, system_error_text,
 };
 pub use install_source::{InstallSource, ManagedInstall};
 pub(crate) use install_source::{ensure_self_managed, installed_executable};

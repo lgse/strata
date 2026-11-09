@@ -294,7 +294,7 @@ impl ViewState {
                 show_error_dialog(
                     &self.overlay,
                     &crate::i18n::tr("Unable to mount volume"),
-                    &error.to_string(),
+                    &crate::services::gio_device_error_message(&error),
                 );
             }
         }

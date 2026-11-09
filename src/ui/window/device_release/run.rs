@@ -68,7 +68,7 @@ pub(in crate::ui::window) fn decide_gio(
             safe_to_remove: false,
         },
         Err(error) => {
-            let mut message = crate::services::gio_error_message(&error);
+            let mut message = crate::services::gio_device_error_message(&error);
             if let Some(progress) = progress.map(str::trim).filter(|line| !line.is_empty()) {
                 message.push('\n');
                 message.push_str(progress);

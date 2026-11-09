@@ -11,6 +11,12 @@ use gtk::{gio, prelude::*};
 
 use crate::adapters::MountTable;
 
+mod held;
+mod probe_cache;
+
+pub(super) use held::{is_exclusively_held, is_system_loop};
+use probe_cache::ProbeCache;
+
 pub(super) fn block_device_from_mount_table(table: &MountTable, path: &Path) -> Option<PathBuf> {
     table
         .source_for(path)
@@ -557,15 +563,8 @@ pub(super) fn encrypted_device_is_locked(
     }
 }
 
-#[derive(Default)]
-struct CryptoHints {
-    known: RefCell<HashMap<String, BlockCryptoHint>>,
-    pending: RefCell<HashSet<String>>,
-    monitor: OnceCell<gio::VolumeMonitor>,
-}
-
 thread_local! {
-    static CRYPTO_HINTS: CryptoHints = CryptoHints::default();
+    static CRYPTO_HINTS: ProbeCache<BlockCryptoHint> = ProbeCache::default();
 }
 
 pub(super) fn block_crypto_hint(unix_device: &str) -> BlockCryptoHint {
@@ -576,56 +575,7 @@ fn block_crypto_hint_with(
     unix_device: &str,
     probe: fn(&str) -> BlockCryptoHint,
 ) -> BlockCryptoHint {
-    CRYPTO_HINTS.with(|hints| {
-        hints.monitor.get_or_init(|| {
-            let monitor = gio::VolumeMonitor::get();
-            let recheck = move || recheck_crypto_hints(probe);
-            monitor.connect_volume_added(move |_, _| recheck());
-            monitor.connect_volume_removed(move |_, _| recheck());
-            monitor.connect_volume_changed(move |_, _| recheck());
-            monitor.connect_drive_connected(move |_, _| recheck());
-            monitor.connect_drive_disconnected(move |_, _| recheck());
-            monitor.connect_drive_changed(move |_, _| recheck());
-            monitor
-        });
-    });
-    let known = CRYPTO_HINTS.with(|hints| hints.known.borrow().get(unix_device).cloned());
-    known.unwrap_or_else(|| {
-        probe_crypto_hint(unix_device.to_owned(), probe);
-        BlockCryptoHint::default()
-    })
-}
-
-fn recheck_crypto_hints(probe: fn(&str) -> BlockCryptoHint) {
-    let devices: Vec<String> =
-        CRYPTO_HINTS.with(|hints| hints.known.borrow().keys().cloned().collect());
-    for device in devices {
-        probe_crypto_hint(device, probe);
-    }
-}
-
-fn probe_crypto_hint(unix_device: String, probe: fn(&str) -> BlockCryptoHint) {
-    if !CRYPTO_HINTS.with(|hints| hints.pending.borrow_mut().insert(unix_device.clone())) {
-        return;
-    }
-    gtk::glib::MainContext::default().spawn_local(async move {
-        let device = unix_device.clone();
-        let hint = gio::spawn_blocking(move || probe(&device))
-            .await
-            .unwrap_or_default();
-        let changed = CRYPTO_HINTS.with(|hints| {
-            hints.pending.borrow_mut().remove(&unix_device);
-            let seen = hints
-                .known
-                .borrow_mut()
-                .insert(unix_device, hint.clone())
-                .unwrap_or_default();
-            seen != hint
-        });
-        if changed {
-            super::device_release::refresh_sidebars();
-        }
-    });
+    probe_cache::cached(&CRYPTO_HINTS, unix_device, probe)
 }
 
 fn probe_block_crypto(unix_device: &str) -> BlockCryptoHint {

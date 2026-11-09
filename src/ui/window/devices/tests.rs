@@ -641,3 +641,28 @@ fn a_device_check_refused_while_its_mount_stalls_never_hides_the_device() {
         },
     );
 }
+
+#[test]
+fn a_loop_the_user_attached_is_not_system_plumbing() {
+    for (class, should_automount, system) in [
+        (Some("loop"), false, true),
+        (Some("loop"), true, false),
+        (Some("device"), false, false),
+        (None, false, false),
+    ] {
+        assert_eq!(
+            is_system_loop(class, should_automount),
+            system,
+            "{class:?} automount {should_automount}"
+        );
+    }
+}
+
+#[test]
+fn a_device_that_cannot_be_probed_is_not_reported_as_held() {
+    assert!(!held::exclusive_open_is_refused("/definitely/not/a/device"));
+    let free = tempfile::NamedTempFile::new().expect("temp file");
+    assert!(!held::exclusive_open_is_refused(
+        free.path().to_str().expect("utf-8")
+    ));
+}

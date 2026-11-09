@@ -47,6 +47,17 @@ pub(in crate::ui) fn gio_volume_unix_device(volume: &gio::Volume) -> Option<glib
     volume.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str())
 }
 
+/// An unmounted volume the system holds cannot be mounted, so it gets no row.
+pub(super) fn gio_volume_is_system_held(volume: &gio::Volume) -> bool {
+    if volume.get_mount().is_some() {
+        return false;
+    }
+    let class = volume.identifier(gio::VOLUME_IDENTIFIER_KIND_CLASS.as_str());
+    devices::is_system_loop(class.as_deref(), volume.should_automount())
+        || gio_volume_unix_device(volume)
+            .is_some_and(|device| devices::is_exclusively_held(&device))
+}
+
 pub(crate) fn gio_volume_is_encrypted(volume: &gio::Volume) -> bool {
     gio_icons_are_encrypted(
         &volume.icon(),
