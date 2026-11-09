@@ -259,13 +259,22 @@ pub(crate) fn describes_refused_credentials(message: &str) -> bool {
     .any(|reason| message.contains(reason))
 }
 
-/// A device held by the system fails as generic `G_IO_ERROR_FAILED` whose text
-/// is the backend's own ("Device or resource busy"); show the plain reason.
-pub(crate) fn busy_reason(message: &str) -> Option<&'static str> {
-    message
-        .to_ascii_lowercase()
-        .contains("busy")
-        .then_some("The item is in use")
+/// [`gio_error_message`] for mount, unmount and eject failures. UDisks and
+/// eject(1) report a busy device as `G_IO_ERROR_FAILED`, with the cause only
+/// in the system's own text.
+pub(crate) fn gio_device_error_message(error: &glib::Error) -> String {
+    if error.matches(gtk::gio::IOErrorEnum::Failed) && describes_busy_device(error.message()) {
+        return crate::i18n::tr("The item is in use");
+    }
+    gio_error_message(error)
+}
+
+/// Whole phrases, because these messages also carry device labels and mount paths.
+fn describes_busy_device(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    ["resource busy", "mount point busy", "target is busy"]
+        .iter()
+        .any(|reason| message.contains(reason))
 }
 
 fn gio_error_reason(error: &glib::Error) -> Option<&'static str> {

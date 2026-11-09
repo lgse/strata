@@ -291,13 +291,10 @@ impl ViewState {
         } else {
             self.finish_unlock_slot(&mount.waited.keys);
             if !mount_error_is_cancelled(&error) {
-                let message = crate::services::busy_reason(error.message())
-                    .map(crate::i18n::tr)
-                    .unwrap_or_else(|| error.to_string());
                 show_error_dialog(
                     &self.overlay,
                     &crate::i18n::tr("Unable to mount volume"),
-                    &message,
+                    &crate::services::gio_device_error_message(&error),
                 );
             }
         }

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    LocationValidationError, UriCredentials, backend_unavailable_message, busy_reason,
-    error_detail_in, io_error_message, sanitize_uri_credentials, validate_uri_credentials,
+    LocationValidationError, UriCredentials, backend_unavailable_message, error_detail_in,
+    gio_device_error_message, io_error_message, sanitize_uri_credentials, validate_uri_credentials,
 };
 
 #[test]
@@ -275,14 +275,20 @@ fn default_fill_reports_unsupported_synchronously() {
 }
 
 #[test]
-fn busy_failures_read_as_a_plain_reason() {
+fn busy_device_failures_read_as_in_use() {
+    use gtk::{gio::IOErrorEnum, glib::Error};
+    for busy in [
+        "Error ejecting /dev/sr0: eject: cannot open /dev/sr0: Device or resource busy",
+        "Error mounting /dev/loop0 at /run/media/me/live: /dev/loop0 already mounted or mount point busy",
+    ] {
+        assert_eq!(
+            gio_device_error_message(&Error::new(IOErrorEnum::Failed, busy)),
+            "The item is in use"
+        );
+    }
+    let labelled = "Error mounting /dev/sdb1 at /run/media/me/BUSYBOX: wrong fs type";
     assert_eq!(
-        busy_reason("Error ejecting /dev/sr0: eject: cannot open /dev/sr0: Device or resource busy"),
-        Some("The item is in use")
+        gio_device_error_message(&Error::new(IOErrorEnum::Failed, labelled)),
+        labelled
     );
-    assert_eq!(
-        busy_reason("/dev/loop0 already mounted or mount point busy"),
-        Some("The item is in use")
-    );
-    assert_eq!(busy_reason("No such file or folder"), None);
 }
