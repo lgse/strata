@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    LocationValidationError, UriCredentials, backend_unavailable_message, error_detail_in,
-    io_error_message, sanitize_uri_credentials, validate_uri_credentials,
+    LocationValidationError, UriCredentials, backend_unavailable_message, busy_reason,
+    error_detail_in, io_error_message, sanitize_uri_credentials, validate_uri_credentials,
 };
 
 #[test]
@@ -272,4 +272,17 @@ fn default_fill_reports_unsupported_synchronously() {
             outcome: MetadataOutcome::Unsupported,
         }]
     ));
+}
+
+#[test]
+fn busy_failures_read_as_a_plain_reason() {
+    assert_eq!(
+        busy_reason("Error ejecting /dev/sr0: eject: cannot open /dev/sr0: Device or resource busy"),
+        Some("The item is in use")
+    );
+    assert_eq!(
+        busy_reason("/dev/loop0 already mounted or mount point busy"),
+        Some("The item is in use")
+    );
+    assert_eq!(busy_reason("No such file or folder"), None);
 }

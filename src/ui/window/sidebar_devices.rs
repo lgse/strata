@@ -49,7 +49,12 @@ impl SidebarState {
         let mounts = self.mounts_without_volumes(&volumes);
         let password_drives =
             orphaned_password_drives(&volumes, &self.volume_monitor.connected_drives());
-        let listed = volumes.len() + mounts.len() + password_drives.len();
+        let listed = volumes
+            .iter()
+            .filter(|volume| !self.hides_volume(volume))
+            .count()
+            + mounts.len()
+            + password_drives.len();
         if listed == 0 && !device_release::any_pending() {
             return;
         }
@@ -227,6 +232,18 @@ impl SidebarState {
 
     /// A local-only sidebar lists only volumes that are, or would mount as, local paths.
     fn hides_volume(&self, volume: &gio::Volume) -> bool {
+        if super::devices::is_unmounted_loop_device(
+            gio_volume_unix_device(volume).as_deref(),
+            volume.get_mount().is_some(),
+        ) {
+            return true;
+        }
+        if volume.get_mount().is_none()
+            && gio_volume_unix_device(volume)
+                .is_some_and(|device| super::devices::block_device_is_busy(&device))
+        {
+            return true;
+        }
         if !self.local_only {
             return false;
         }

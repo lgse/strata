@@ -42,6 +42,47 @@ pub(super) fn label_identity(uuid: Option<&str>, root_uri: Option<&str>) -> Opti
         })
 }
 
+/// A loop device node name: `loop0`, or a partition such as `loop0p1`.
+pub(super) fn is_loop_device_name(name: &str) -> bool {
+    let Some(rest) = name.strip_prefix("loop") else {
+        return false;
+    };
+    let (digits, partition) = match rest.split_once('p') {
+        Some((digits, partition)) => (digits, Some(partition)),
+        None => (rest, None),
+    };
+    let number = |text: &str| !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit());
+    number(digits) && partition.is_none_or(number)
+}
+
+/// An unmounted loop device is system plumbing — the live rootfs squashfs sits
+/// on one — not user media, so Devices hides it instead of offering a mount
+/// that cannot succeed. A loop the user set up is already automounted by gvfs
+/// and stays listed as its mount.
+pub(super) fn is_unmounted_loop_device(unix_device: Option<&str>, has_mount: bool) -> bool {
+    !has_mount
+        && unix_device.is_some_and(|device| {
+            device
+                .rsplit('/')
+                .next()
+                .is_some_and(is_loop_device_name)
+        })
+}
+
+/// A device the kernel already holds — the live medium backing the rootfs, for
+/// one — is busy even when the volume monitor shows no mount. `O_EXCL` on a
+/// block device is mount(8)'s own "already mounted or mount point busy" test,
+/// so a volume that fails it is hidden rather than offered as mountable.
+pub(super) fn block_device_is_busy(unix_device: &str) -> bool {
+    use std::os::unix::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_EXCL | libc::O_NONBLOCK)
+        .open(unix_device)
+        .err()
+        .is_some_and(|error| error.raw_os_error() == Some(libc::EBUSY))
+}
+
 pub(super) fn device_identity(
     unix_device: Option<&str>,
     uuid: Option<&str>,

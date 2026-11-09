@@ -641,3 +641,26 @@ fn a_device_check_refused_while_its_mount_stalls_never_hides_the_device() {
         },
     );
 }
+
+#[test]
+fn unmounted_loop_devices_are_not_user_media() {
+    assert!(is_loop_device_name("loop0"));
+    assert!(is_loop_device_name("loop10"));
+    assert!(is_loop_device_name("loop0p1"));
+    assert!(!is_loop_device_name("loop"));
+    assert!(!is_loop_device_name("loopx"));
+    assert!(!is_loop_device_name("vda2"));
+    assert!(is_unmounted_loop_device(Some("/dev/loop0"), false));
+    assert!(is_unmounted_loop_device(Some("/dev/loop0p1"), false));
+    assert!(!is_unmounted_loop_device(Some("/dev/loop0"), true));
+    assert!(!is_unmounted_loop_device(Some("/dev/sr0"), false));
+    assert!(!is_unmounted_loop_device(Some("/dev/vda2"), false));
+    assert!(!is_unmounted_loop_device(None, false));
+}
+
+#[test]
+fn busy_probe_is_quiet_for_devices_we_can_open() {
+    assert!(!block_device_is_busy("/definitely/not/a/device"));
+    let free = tempfile::NamedTempFile::new().expect("temp file");
+    assert!(!block_device_is_busy(free.path().to_str().expect("utf-8")));
+}

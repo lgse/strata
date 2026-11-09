@@ -259,6 +259,15 @@ pub(crate) fn describes_refused_credentials(message: &str) -> bool {
     .any(|reason| message.contains(reason))
 }
 
+/// A device held by the system fails as generic `G_IO_ERROR_FAILED` whose text
+/// is the backend's own ("Device or resource busy"); show the plain reason.
+pub(crate) fn busy_reason(message: &str) -> Option<&'static str> {
+    message
+        .to_ascii_lowercase()
+        .contains("busy")
+        .then_some("The item is in use")
+}
+
 fn gio_error_reason(error: &glib::Error) -> Option<&'static str> {
     use gtk::gio::IOErrorEnum;
     Some(match error.kind::<IOErrorEnum>() {
