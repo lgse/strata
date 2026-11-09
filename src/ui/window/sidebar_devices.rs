@@ -22,8 +22,8 @@ use super::{
     drive_dialogs::PropertiesTarget,
     gio_devices::{
         gio_mount_is_encrypted, gio_volume_is_encrypted, gio_volume_is_locked,
-        gio_volume_unix_device, mount_placement, orphaned_password_drives,
-        password_drive_placement, volume_placement,
+        gio_volume_is_system_held, gio_volume_unix_device, mount_placement,
+        orphaned_password_drives, password_drive_placement, volume_placement,
     },
     launch::navigate_to_gio_file,
     sidebar,
@@ -232,16 +232,7 @@ impl SidebarState {
 
     /// A local-only sidebar lists only volumes that are, or would mount as, local paths.
     fn hides_volume(&self, volume: &gio::Volume) -> bool {
-        if super::devices::is_unmounted_loop_device(
-            gio_volume_unix_device(volume).as_deref(),
-            volume.get_mount().is_some(),
-        ) {
-            return true;
-        }
-        if volume.get_mount().is_none()
-            && gio_volume_unix_device(volume)
-                .is_some_and(|device| super::devices::block_device_is_busy(&device))
-        {
+        if gio_volume_is_system_held(volume) {
             return true;
         }
         if !self.local_only {

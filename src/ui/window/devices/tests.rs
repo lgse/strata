@@ -643,24 +643,26 @@ fn a_device_check_refused_while_its_mount_stalls_never_hides_the_device() {
 }
 
 #[test]
-fn unmounted_loop_devices_are_not_user_media() {
-    assert!(is_loop_device_name("loop0"));
-    assert!(is_loop_device_name("loop10"));
-    assert!(is_loop_device_name("loop0p1"));
-    assert!(!is_loop_device_name("loop"));
-    assert!(!is_loop_device_name("loopx"));
-    assert!(!is_loop_device_name("vda2"));
-    assert!(is_unmounted_loop_device(Some("/dev/loop0"), false));
-    assert!(is_unmounted_loop_device(Some("/dev/loop0p1"), false));
-    assert!(!is_unmounted_loop_device(Some("/dev/loop0"), true));
-    assert!(!is_unmounted_loop_device(Some("/dev/sr0"), false));
-    assert!(!is_unmounted_loop_device(Some("/dev/vda2"), false));
-    assert!(!is_unmounted_loop_device(None, false));
+fn a_loop_the_user_attached_is_not_system_plumbing() {
+    for (class, should_automount, system) in [
+        (Some("loop"), false, true),
+        (Some("loop"), true, false),
+        (Some("device"), false, false),
+        (None, false, false),
+    ] {
+        assert_eq!(
+            is_system_loop(class, should_automount),
+            system,
+            "{class:?} automount {should_automount}"
+        );
+    }
 }
 
 #[test]
-fn busy_probe_is_quiet_for_devices_we_can_open() {
-    assert!(!block_device_is_busy("/definitely/not/a/device"));
+fn a_device_that_cannot_be_probed_is_not_reported_as_held() {
+    assert!(!held::exclusive_open_is_refused("/definitely/not/a/device"));
     let free = tempfile::NamedTempFile::new().expect("temp file");
-    assert!(!block_device_is_busy(free.path().to_str().expect("utf-8")));
+    assert!(!held::exclusive_open_is_refused(
+        free.path().to_str().expect("utf-8")
+    ));
 }
