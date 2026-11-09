@@ -305,7 +305,7 @@ fn measure_entry_reads_no_unset_optional_attributes() {
         false,
         false,
         move |_, _, message| {
-            // GIO handlers are process-wide; parallel tests do not measure this fixture.
+            // GIO log handlers are process-wide; ignore other tests' threads.
             if std::thread::current().id() == measuring_thread
                 && (message.contains("standard::") || message.contains("gfileinfo.c"))
             {
