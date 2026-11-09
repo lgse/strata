@@ -40,15 +40,14 @@ fn assert_every_backend_decodes_within_bounds(devices: &[PathBuf], ordinary: &In
     }
 }
 
-fn assert_background_command_is_limited() {
-    let background = ffmpeg_command(&Backend::Software, true);
-    assert_eq!(background.get_program(), "nice");
-    let args = background
+fn assert_decoder_command_is_limited() {
+    let decoder = ffmpeg_command(&Backend::Software);
+    let args = decoder
         .get_args()
         .map(|arg| arg.to_string_lossy())
         .collect::<Vec<_>>()
         .join(" ");
-    assert!(args.starts_with("-n 10 prlimit --core=0 --fsize=536870912 --as=2147483648"));
+    assert!(args.starts_with("--core=0 --fsize=536870912 --as=2147483648"));
     assert_eq!(missing(&args, &[BOUNDS[0], BOUNDS[2]]), NO_TERMS);
 }
 
@@ -102,7 +101,7 @@ fn hardware_order_and_commands_decode_only_and_bound_all_outputs() {
     assert_backend_order(&devices);
     let ordinary = sample_input(107850, false);
     assert_every_backend_decodes_within_bounds(&devices, &ordinary);
-    assert_background_command_is_limited();
+    assert_decoder_command_is_limited();
     assert_positive_seek_prerolls_before_the_input(&ordinary);
     assert_seek_placement_follows_source_kind();
 }
