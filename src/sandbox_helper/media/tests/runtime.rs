@@ -9,6 +9,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+const TEST_NAME: &str = "sandbox_helper::media::tests::runtime::media_runtime_overrides_decode_without_prlimit_or_nice_on_path";
+const HELPER_REQUEST: &str = "STRATA_TEST_MEDIA_RUNTIME_REQUEST";
+
 struct Runtime {
     _directory: tempfile::TempDir,
     input: PathBuf,
@@ -123,16 +126,26 @@ impl Runtime {
     fn decode(&self, operation: &str, value: &str) {
         fs::write(&self.limits_log, []).expect("clear limiter log");
         fs::write(&self.priority_log, []).expect("clear priority log");
+        let input = if operation == "audio-cover" {
+            &self.covered
+        } else {
+            &self.input
+        };
+        let arguments = [
+            operation,
+            input.to_str().expect("fixture input path"),
+            self.output.to_str().expect("fixture output path"),
+            value,
+            "software",
+        ];
+        // CI relocates test executables without the separately built application.
         wait(
-            Command::new(env!("CARGO_BIN_EXE_strata"))
-                .args(["--preview-helper", operation])
-                .arg(if operation == "audio-cover" {
-                    &self.covered
-                } else {
-                    &self.input
-                })
-                .arg(&self.output)
-                .args([value, "software"])
+            Command::new(std::env::current_exe().expect("test executable"))
+                .args(["--exact", TEST_NAME, "--nocapture"])
+                .env(
+                    HELPER_REQUEST,
+                    serde_json::to_string(&arguments).expect("helper request"),
+                )
                 .env("PATH", &self.bin)
                 .env("STRATA_SANDBOX_PRLIMIT", &self.limiter)
                 .stdout(Stdio::null()),
@@ -164,6 +177,11 @@ impl Runtime {
 
 #[test]
 fn media_runtime_overrides_decode_without_prlimit_or_nice_on_path() {
+    if let Ok(request) = std::env::var(HELPER_REQUEST) {
+        let arguments: Vec<String> = serde_json::from_str(&request).expect("helper request");
+        crate::sandbox_helper::run(&arguments).expect("media helper with configured runtime");
+        return;
+    }
     let runtime = Runtime::new();
     let priority = rustix::process::getpriority_process(None).expect("test priority");
     for (operation, value, magic, background) in [

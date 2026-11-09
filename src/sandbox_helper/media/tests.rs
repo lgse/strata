@@ -7,6 +7,7 @@ use std::{io::Cursor, os::unix::net::UnixStream, thread};
 mod audio;
 mod commands;
 mod playback;
+mod runtime;
 
 fn probe(path: &Path, size: MediaPreviewSize, start_tick: u32) -> io::Result<Input> {
     super::probe(path, size, start_tick, ProbeMode::Playback)
