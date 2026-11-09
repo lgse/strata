@@ -107,16 +107,16 @@ pub(super) fn accepts_input(root: &glib::WeakRef<gtk::Widget>) -> bool {
         .is_some_and(|root| root.is_mapped() && root.can_target())
 }
 
+/// The sidebar or file drag that Escape cancels at window level.
+pub(super) fn active_item_drag() -> Option<gtk::gdk::Drag> {
+    super::pinned_drop::active_drag_source()
+        .and_then(|source| source.drag())
+        .or_else(|| crate::ui::browser::active_file_drag_source()?.drag())
+}
+
 fn window_owns_key(press: &KeyPress) -> bool {
     super::composition::is_tab_shortcut(press)
-        || (press.is(ESCAPE_ANY)
-            && [
-                crate::ui::browser::active_file_drag_source(),
-                super::pinned_drop::active_drag_source(),
-            ]
-            .into_iter()
-            .flatten()
-            .any(|source| source.drag().is_some()))
+        || (press.is(ESCAPE_ANY) && active_item_drag().is_some())
 }
 
 fn connect_key_presses(
