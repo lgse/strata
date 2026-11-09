@@ -126,7 +126,7 @@
   "Watch network folders": "Hálózati mappák figyelése",
   "Autoplay media previews": "Médiaelőnézetek automatikus lejátszása",
   "Video preview start": "Videóelőnézet kezdőpontja",
-  "Percent of a video's length to open it at; 0 starts at the beginning. A video you already previewed resumes where you left it.": "A videó hosszának hány százalékánál nyíljon meg; a 0 az elejéről indítja. A korábban már előnézetben megnyitott videó ott folytatódik, ahol abbahagyta.",
+  "Percent of a video's length to open it at; 0 starts at the beginning. A video you already previewed resumes where you left it.": "Videó megnyitása a teljes hosszának ennyi százalékánál. Ha 0, akkor az elejéről indul a videó. A korábban már előnézetben megnyitott videó ott folytatódik, ahol abbahagyta.",
   "Available release": "Elérhető kiadás",
   "BACK TO": "VISSZA IDE",
   "BITRATE": "BITSEBESSÉG",
