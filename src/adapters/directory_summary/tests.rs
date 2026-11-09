@@ -298,13 +298,17 @@ fn measure_entry_reads_no_unset_optional_attributes() {
     std::fs::create_dir_all(&root).expect("the directory fixture should be created");
     let critical_logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
     let recorded = critical_logs.clone();
+    let measuring_thread = std::thread::current().id();
     let handler = glib::log_set_handler(
         Some("GLib-GIO"),
         glib::LogLevels::LEVEL_CRITICAL,
         false,
         false,
         move |_, _, message| {
-            if message.contains("standard::") || message.contains("gfileinfo.c") {
+            // GIO log handlers are process-wide; ignore other tests' threads.
+            if std::thread::current().id() == measuring_thread
+                && (message.contains("standard::") || message.contains("gfileinfo.c"))
+            {
                 recorded
                     .lock()
                     .expect("the critical log should be lockable")

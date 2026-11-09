@@ -10,7 +10,7 @@ use std::{
 
 use crate::{
     media::{self, AUDIO_BYTES, FRAME_TIMEOUT, Frame, Header, TimedReader},
-    sandbox::{Cancellation, MediaPreviewBackend, gpu_devices, numbered_name},
+    sandbox::{Cancellation, MediaPreviewBackend, gpu_devices, numbered_name, runtime},
     services::MediaPreviewSize,
 };
 
@@ -269,14 +269,15 @@ fn metadata(
     })
 }
 
-fn ffmpeg_command(backend: &Backend, background: bool) -> Command {
-    let mut command = if background {
-        let mut command = Command::new("nice");
-        command.args(["-n", "10", "prlimit"]);
-        command
-    } else {
-        Command::new("prlimit")
-    };
+pub(super) fn lower_background_priority(operation: &str) {
+    if matches!(operation, "audio-peaks" | "video-storyboard") {
+        let priority = rustix::process::getpriority_process(None).unwrap_or(0);
+        let _priority = rustix::process::setpriority_process(None, (priority + 10).min(19));
+    }
+}
+
+fn ffmpeg_command(backend: &Backend) -> Command {
+    let mut command = Command::new(&runtime::current().prlimit);
     command.args(["--core=0", "--fsize=536870912"]);
     if *backend == Backend::Software {
         command.arg("--as=2147483648");
@@ -313,7 +314,7 @@ pub(super) fn run_peaks(input: &Path, output: &Path) -> Result<(), String> {
     if duration_us >= media::MAX_DURATION_US {
         return Err("The audio duration is unknown".into());
     }
-    let mut child = ffmpeg_command(&Backend::Software, true)
+    let mut child = ffmpeg_command(&Backend::Software)
         .arg("-i")
         .arg(input)
         .arg("-map")
@@ -397,7 +398,7 @@ pub(super) fn run_storyboard(input: &Path, output: &Path, cell_edge: u32) -> Res
     );
     for index in storyboard::subdivision_order(sheet.count) {
         let seconds = sheet.cell_time_us(index) as f64 / 1_000_000.0;
-        let mut child = ffmpeg_command(&Backend::Software, true)
+        let mut child = ffmpeg_command(&Backend::Software)
             .args(["-noaccurate_seek", "-skip_frame", "nokey", "-ss"])
             .arg(format!("{seconds:.6}"))
             .arg("-i")
@@ -465,7 +466,7 @@ pub(super) fn cover(input: &Path, size: u32) -> Result<Vec<u8>, String> {
     let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
     let path = directory.path().join("cover.png");
     let output = bounded_output(
-        ffmpeg_command(&Backend::Software, false)
+        ffmpeg_command(&Backend::Software)
             .arg("-i")
             .arg(input)
             .arg("-map")
@@ -531,7 +532,7 @@ enum Track {
 }
 
 fn command(path: &Path, input: &Input, backend: &Backend, track: Track) -> Command {
-    let mut command = ffmpeg_command(backend, false);
+    let mut command = ffmpeg_command(backend);
     match backend {
         Backend::VaApi(device) => {
             command

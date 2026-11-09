@@ -67,8 +67,8 @@ pub(super) fn sync_keycap(keycap: &gtk::Label, visible: bool) {
     let visible = visible && !keycap.text().is_empty();
     if let Some(icon) = keycap.prev_sibling() {
         if visible && icon.is_visible() {
-            // Matching the icon's width keeps the place name from shifting.
-            keycap.set_width_request(icon.width());
+            // Preserve the icon's slot so neither the name nor later rows shift.
+            keycap.set_size_request(icon.width(), icon.height());
         }
         icon.set_visible(!visible);
     }

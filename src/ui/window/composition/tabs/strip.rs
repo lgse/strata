@@ -263,8 +263,7 @@ impl TabStrip {
             .drag_source
             .upgrade()
             .and_then(|source| source.drag())
-            .or_else(|| crate::ui::window::pinned_drop::active_drag_source()?.drag())
-            .or_else(|| crate::ui::browser::active_file_drag_source()?.drag());
+            .or_else(crate::ui::window::keyboard::active_item_drag);
         let Some(drag) = drag else {
             return false;
         };
