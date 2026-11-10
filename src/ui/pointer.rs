@@ -91,7 +91,8 @@ pub(super) fn hits_name_label(surface: &gtk::Widget, label: &gtk::Widget, x: f64
     true
 }
 
-/// The full Name column, including row padding, uses content-only hit testing.
+/// List drags start only on the icon or rendered filename. Other columns and
+/// unused Name space remain selection origins, regardless of row selection.
 pub(super) fn hits_list_item_content(row: &gtk::Widget, x: f64, y: f64) -> bool {
     let in_name = std::iter::successors(row.first_child(), |cell| cell.next_sibling())
         .find(|cell| cell.has_css_class("list-name-cell"))
@@ -99,7 +100,7 @@ pub(super) fn hits_list_item_content(row: &gtk::Widget, x: f64, y: f64) -> bool 
         .is_some_and(|bounds| {
             x >= f64::from(bounds.x()) && x < f64::from(bounds.x() + bounds.width())
         });
-    !in_name || hits_item_content(row, x, y)
+    in_name && hits_item_content(row, x, y)
 }
 
 pub(super) fn hits_scrollbar(surface: &gtk::Widget, x: f64, y: f64) -> bool {
