@@ -9,8 +9,9 @@
 use std::rc::Rc;
 
 use rune::{Cx, El, KeyEvent, Keybind, Tx, col};
-use strata_components::header::{
-    self, Header, HeaderLabels, WindowAction, WindowButtons, WindowChrome,
+use strata_components::{
+    context_menu::ContextMenu,
+    header::{self, Header, HeaderLabels, WindowAction, WindowButtons, WindowChrome},
 };
 use strata_core::{i18n::tr, model::Location};
 use strata_desktop::settings::sort_preferences;
@@ -24,6 +25,7 @@ use strata_platform::csd::{self, Csd};
 use crate::{
     columns::{self, Columns, Hands, Ids},
     events::{Change, Inbox},
+    menus::Menu,
     settings::Saved,
     startup::UiThread,
 };
@@ -61,6 +63,8 @@ pub(crate) struct App {
     pub(crate) look: Look,
     pub(crate) browser: Rc<Browser>,
     pub(crate) columns: Columns,
+    /// The context menu, while one is open.
+    pub(crate) menu: Menu,
     settings: Saved,
     events: Inbox,
     /// The browser's active location as of the last `poll`: what the body and the title name.
@@ -88,6 +92,7 @@ impl App {
             look: Look::fallback(true),
             events: Inbox::observing(&browser, ids.clone()),
             columns: Columns::new(saved, ids),
+            menu: Menu::default(),
             settings,
             browser,
             location: None,
@@ -222,6 +227,16 @@ fn bar(app: &App, chrome: &WindowChrome) -> El {
         .build()
 }
 
+/// The context menu's element, with its surfaces in `layer` while it is open.
+fn menu(app: &App, layer: &mut Vec<El>) -> El {
+    ContextMenu::new("menu", |app: &App| &app.menu.state, |app: &mut App| {
+        &mut app.menu.state
+    })
+    .name(app.menu.name())
+    .on_intent(columns::chosen)
+    .build(app, &app.look, layer)
+}
+
 fn body(app: &App) -> El {
     col()
         .key("body")
@@ -242,17 +257,15 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
     cx.reduced_motion(reduced);
     let chrome = app.chrome();
     let bar = csd::header(bar(app, &chrome), &app.csd, csd_of);
+    let mut layer = Vec::new();
+    let menu = menu(app, &mut layer);
+    let content = col().w_full().h_full().child(bar).child(body(app));
     let window = csd::decorate(
-        header::frame(
-            "window-frame",
-            col().w_full().h_full().child(bar).child(body(app)),
-            look,
-            &chrome,
-        ),
+        header::frame("window-frame", content.child(menu), look, &chrome),
         &app.csd,
         csd_of,
     );
-    rune_kit::root(window, []).on_window_focus(|app: &mut App, focused, _: &mut Tx| {
+    rune_kit::root(window, layer).on_window_focus(|app: &mut App, focused, _: &mut Tx| {
         app.active = focused;
     })
 }

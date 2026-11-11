@@ -39,6 +39,7 @@ mod view;
 
 pub(crate) use ids::Ids;
 pub(crate) use listing::{Edit, Load, Row};
+pub(crate) use intents::chosen;
 pub(crate) use selection::Input;
 pub(crate) use view::view;
 
@@ -68,13 +69,14 @@ pub(crate) struct Columns {
     clicks: ClickModes,
     /// The keys the view reads other than by its default, when the saved settings ask.
     keys: Option<KeySettings>,
+    /// "Type to search" is on, so a plain key starts a search and menus hide its hint.
+    typing: bool,
     labels: view::Labels,
 }
 
 /// With "Type to search" off a plain letter starts no search, so `h j k l` are the arrows:
 /// `Context::of` in `src/ui/keys/alias.rs`. On, the view's default passes letters on.
-fn keys(settings: &Preferences) -> Option<KeySettings> {
-    let typing = settings.type_to_search && !settings.tenxer_mode;
+fn keys(typing: bool) -> Option<KeySettings> {
     (!typing).then(|| KeySettings::default().letters(Letters::Arrows))
 }
 
@@ -87,6 +89,8 @@ fn clicks(count: u8) -> ClickCount {
 
 impl Columns {
     pub(crate) fn new(settings: &Preferences, ids: Ids) -> Self {
+        // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
+        let typing = settings.type_to_search && !settings.tenxer_mode;
         Self {
             listings: Listings::translated(),
             state: ColumnsState::new(VIEW, Autoscroll::new()),
@@ -98,7 +102,8 @@ impl Columns {
                 clicks(settings.columns_file_clicks),
                 clicks(settings.columns_folder_clicks),
             ),
-            keys: keys(settings),
+            keys: keys(typing),
+            typing,
             labels: view::Labels::translated(),
         }
     }
@@ -108,8 +113,22 @@ impl Columns {
         self.state.len().min(self.listings.columns.len())
     }
 
+    pub(crate) fn typing(&self) -> bool {
+        self.typing
+    }
+
+    /// The folder column `depth` shows, as its header names it.
+    pub(crate) fn title(&self, depth: usize) -> Option<&str> {
+        self.listings.columns.get(depth).map(Column::title)
+    }
+
+    /// How many rows column `depth` shows, mounted or not.
+    pub(crate) fn rows_shown(&self, depth: usize) -> usize {
+        self.listings.columns.get(depth).map_or(0, Column::len)
+    }
+
     /// The browser's position of entry `id` in column `depth`.
-    fn position(&self, depth: usize, id: EntryId) -> Option<usize> {
+    pub(crate) fn position(&self, depth: usize, id: EntryId) -> Option<usize> {
         self.listings.columns.get(depth)?.position_of(id)
     }
 
@@ -323,14 +342,6 @@ impl Columns {
         (0..)
             .map_while(|depth| self.state.column_key(depth))
             .collect()
-    }
-}
-
-#[cfg(test)]
-impl Columns {
-    /// How many rows column `depth` shows, mounted or not.
-    pub(crate) fn rows_shown(&self, depth: usize) -> usize {
-        self.listings.columns.get(depth).map_or(0, Column::len)
     }
 }
 

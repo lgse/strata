@@ -18,7 +18,7 @@
 use std::rc::Rc;
 
 use strata_components::{
-    collection::selection::Position,
+    collection::selection::{AnchorRule, Position},
     contract::{EntryId, EntrySource},
 };
 use strata_fs::app::Browser;
@@ -181,6 +181,29 @@ impl Columns {
         if let Some(position) = self.position(depth, id).filter(|_| !ranging) {
             self.mirror.follow(browser, depth, position, false);
         }
+    }
+
+    /// Selects every row of column `depth`, as the menu's Select All does: Ctrl+A in the
+    /// Columns view, whose cursor goes to the last entry (`select_all` in
+    /// `src/ui/browser/view_state.rs`, through GTK's selection model).
+    pub(crate) fn select_all(&mut self, depth: usize) {
+        let (Some(column), Some(state)) = (
+            self.listings.columns.get(depth),
+            self.state.column_mut(depth),
+        ) else {
+            return;
+        };
+        let Some(last) = column.len().checked_sub(1) else {
+            return;
+        };
+        let selection = &mut state.collection.selection;
+        let anchor = match selection.anchor() {
+            Some(_) => AnchorRule::Keep,
+            None => AnchorRule::Move,
+        };
+        selection.select_all(column);
+        selection.move_cursor(column, last, anchor);
+        state.collection.note_selection(column);
     }
 
     /// The pointer is over the view at `at`, in window points.

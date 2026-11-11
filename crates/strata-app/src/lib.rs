@@ -16,6 +16,7 @@ mod columns;
 mod events;
 mod host;
 mod launch;
+mod menus;
 #[cfg(feature = "qa")]
 mod qa;
 mod settings;

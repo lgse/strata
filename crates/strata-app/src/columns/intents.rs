@@ -6,11 +6,15 @@ use rune::Tx;
 use strata_components::{
     collection::element::{Activation, Intent},
     columns::ColumnsIntent,
-    contract::EntryId,
+    context_menu::{MenuIntent, MenuTarget},
+    contract::{EntryId, Point, Rect},
 };
 
 use super::Input;
-use crate::shell::{self, App};
+use crate::{
+    menus::{self, EntryTarget, FolderTarget, Wired},
+    shell::{self, App},
+};
 
 impl App {
     /// Whether the browser's focused item is `position` of column `depth`.
@@ -63,13 +67,58 @@ impl App {
         }
     }
 
-    fn collection(&self, depth: usize, intent: Intent) {
+    /// The menu of entry `id` in column `depth`, or of the selection it is part of
+    /// (`context_entries` in `src/ui/browser/context_menu.rs`).
+    fn entry_menu(&mut self, depth: usize, id: EntryId, at: Point) {
+        let position = self.columns.position(depth, id);
+        let Some(entry) = position.and_then(|position| self.browser.entry_at(depth, position))
+        else {
+            return;
+        };
+        let selected = self.browser.selected_entries();
+        let within = selected
+            .iter()
+            .any(|other| other.location == entry.location);
+        let entries = if within { selected } else { vec![entry.clone()] };
+        let model = menus::entry(&EntryTarget {
+            entry: &entry,
+            entries: &entries,
+            can_trash: self.browser.can_trash_at(depth),
+            can_delete: self.browser.can_delete_at(depth),
+            typing: self.columns.typing(),
+        });
+        self.menu.show(depth, entry.display_name, MenuTarget::Entry(id), at, model);
+    }
+
+    /// The menu of column `depth`'s folder: a press on its empty space or its header.
+    fn folder_menu(&mut self, depth: usize, at: Point) {
+        let Some(title) = self.columns.title(depth).map(str::to_owned) else {
+            return;
+        };
+        let model = menus::folder(&FolderTarget {
+            has_entries: self.columns.rows_shown(depth) > 0,
+            hidden_shown: self.browser.preferences().show_hidden,
+            typing: self.columns.typing(),
+        });
+        self.menu.show(depth, title, MenuTarget::Background, at, model);
+    }
+
+    fn context_menu(&mut self, depth: usize, target: Option<EntryId>, anchor: Rect) {
+        let at = Point::new(anchor.x, anchor.y);
+        match target {
+            Some(id) => self.entry_menu(depth, id, at),
+            None => self.folder_menu(depth, at),
+        }
+    }
+
+    fn collection(&mut self, depth: usize, intent: Intent) {
         match intent {
             Intent::Activate { id, how } => self.activate(depth, id, how),
             Intent::Clicked { id } => self.clicked(depth, id),
             // V9 opens the editor here.
             Intent::BeginRename { .. } => tracing::debug!(depth, "the view asked for a rename"),
-            // Context menus, drags and new tabs are interface the slice leaves out. Up and
+            Intent::ContextMenu { target, anchor } => self.context_menu(depth, target, anchor),
+            // Drags and new tabs are interface the slice leaves out. Up and
             // Down at a column's edge have nowhere to go without a header to focus: the view
             // has selected the cursor's entry alone again, as the browser does there.
             _ => {}
@@ -96,9 +145,34 @@ pub(super) fn heard(app: &mut App, intent: ColumnsIntent, tx: &mut Tx) {
         ColumnsIntent::Cursor { .. }
         | ColumnsIntent::Selection { .. }
         | ColumnsIntent::Active { .. } => {}
-        // `LeftOfRoot` is the sidebar's, which the slice has not. `Width`, `HeaderMenu` and
-        // `Dropped` are saved widths, menus and drag and drop: out of the slice.
+        ColumnsIntent::HeaderMenu { depth, anchor } => {
+            app.folder_menu(depth, Point::new(anchor.x, anchor.y));
+        }
+        // `LeftOfRoot` is the sidebar's, which the slice has not. `Width` and `Dropped` are
+        // saved widths and drag and drop: out of the slice.
         _ => {}
+    }
+    shell::settle(app, tx);
+}
+
+/// A row of the open menu was chosen. The menu has closed, and the keyboard is back in the
+/// view.
+pub(crate) fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
+    let MenuIntent::Activate { target, action } = intent;
+    let depth = app.menu.depth();
+    match menus::wired(&action) {
+        // `open_context_entry` in `src/ui/browser/context_menu/item_menu.rs`.
+        Some(Wired::Open) => {
+            if let Some(id) = target.entry() {
+                app.activate(depth, id, Activation::Click);
+            }
+        }
+        // V9 opens the editor here.
+        Some(Wired::Rename) => tracing::debug!(depth, "the menu asked for a rename"),
+        Some(Wired::SelectAll) => app.columns.select_all(depth),
+        Some(Wired::Refresh) => app.browser.retry_column(depth),
+        Some(Wired::ToggleHidden) => app.browser.toggle_hidden(),
+        None => tracing::debug!(%action, "a menu row for a part this interface has not"),
     }
     shell::settle(app, tx);
 }
