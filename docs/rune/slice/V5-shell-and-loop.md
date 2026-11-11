@@ -6,7 +6,7 @@
 | Depends on | V4b |
 | Unblocks | V6 |
 | Owns | `crates/strata-app`, `crates/strata-rune`, `strata-platform`'s `glib_loop`, the start-up sequence in `strata-fs`, the settings store ([V5b](V5b-settings-store.md)) |
-| Commits | `651ea8bfb` (start-up), `b5218acd5` (`glib_loop`), `7bbab97e8` (the two crates), `ce3b5b83d` (the settings store), `a8f13eef9` (reading the settings), `679fb74c9` (one catalog string) |
+| Commits | `651ea8bfb` (start-up), `b5218acd5` (`glib_loop`), `7bbab97e8` (the two crates), `ce3b5b83d` (the settings store), `a8f13eef9` (reading the settings), `679fb74c9` (one catalog string). After the record: a refactor of `glib_loop`'s helper thread into smaller functions, for code health, with its tests and the two compositor tests rerun |
 
 `strata-rune [DIRECTORY]` opens a Rune window with Strata's header on a directory. Strata's
 `Browser` lives on its UI thread, and GLib work reaches it whether the window shows or is

@@ -88,29 +88,34 @@ fn setup(probe: &mut Probe, waker: Waker) {
     });
 }
 
+/// Logs how long after the thread's call this `poll` ran.
+fn answer_waker(probe: &Probe) {
+    if let Some(called) = probe.called.lock().expect("called").take() {
+        ran(called);
+    }
+}
+
+/// Logs how late the timer is, and asks for the next one.
+fn answer_timer(probe: &mut Probe, tx: &mut Tx) {
+    let now = Instant::now();
+    // Rune counts a deadline from its own clock, read before this function's, so a wake can
+    // come a moment early. Anything else that runs `poll` comes here too, and must not end
+    // the chain.
+    if let Some(due) = probe.due.filter(|due| now + EARLY < *due) {
+        tx.wake_after(due - now);
+        return;
+    }
+    if let Some(due) = probe.due {
+        ran(due);
+    }
+    probe.due = Some(now + period());
+    tx.wake_after(period());
+}
+
 fn poll(probe: &mut Probe, _: f64, tx: &mut Tx) -> bool {
     match probe.mode {
-        Mode::Waker => {
-            if let Some(called) = probe.called.lock().expect("called").take() {
-                ran(called);
-            }
-        }
-        Mode::Timer => {
-            let now = Instant::now();
-            match probe.due {
-                // Rune counts a deadline from its own clock, read before this function's, so
-                // a wake can come a moment early. Anything else that runs `poll` comes here
-                // too, and must not end the chain.
-                Some(due) if now + EARLY < due => tx.wake_after(due - now),
-                due => {
-                    if let Some(due) = due {
-                        ran(due);
-                    }
-                    probe.due = Some(now + period());
-                    tx.wake_after(period());
-                }
-            }
-        }
+        Mode::Waker => answer_waker(probe),
+        Mode::Timer => answer_timer(probe, tx),
         Mode::Update => {}
     }
     false

@@ -34,10 +34,46 @@ struct Shared {
     changed: Condvar,
 }
 
+/// Where a wait the thread is serving stands.
+enum Standing {
+    Current,
+    Replaced,
+    Stopped,
+}
+
 impl Shared {
     /// Nothing behind the lock can be left half-written, so a poisoned lock is still good.
     fn lock(&self) -> MutexGuard<'_, Asked> {
         self.asked.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Blocks until the interface thread asks for a wait, and returns it with its number.
+    /// `None` once the loop ends.
+    fn next_wait(&self) -> Option<(Wait, u64)> {
+        let mut asked = self.lock();
+        loop {
+            if asked.stop {
+                return None;
+            }
+            if let Some(wait) = asked.wait.take() {
+                return Some((wait, asked.asked));
+            }
+            asked = self
+                .changed
+                .wait(asked)
+                .unwrap_or_else(PoisonError::into_inner);
+        }
+    }
+
+    fn standing_of(&self, serving: u64) -> Standing {
+        let asked = self.lock();
+        if asked.stop {
+            Standing::Stopped
+        } else if asked.asked == serving {
+            Standing::Current
+        } else {
+            Standing::Replaced
+        }
     }
 }
 
@@ -94,51 +130,53 @@ impl Drop for Waiter {
     }
 }
 
+/// How the thread's wait for one answer of the context ended.
+enum Served {
+    /// What the context waits for came.
+    Came,
+    /// The interface thread asked again first, so it has dispatched since.
+    Replaced,
+    Stopped,
+}
+
 fn run(shared: &Shared, mut interrupted: UnixStream, notify: &dyn Fn()) {
-    loop {
-        let (mut wait, serving) = {
-            let mut asked = shared.lock();
-            loop {
-                if asked.stop {
-                    return;
-                }
-                if let Some(wait) = asked.wait.take() {
-                    break (wait, asked.asked);
-                }
-                asked = shared
-                    .changed
-                    .wait(asked)
-                    .unwrap_or_else(PoisonError::into_inner);
-            }
-        };
-        let deadline = u64::try_from(wait.timeout)
-            .ok()
-            .map(|millis| Instant::now() + Duration::from_millis(millis));
-        wait.fds.push(glib::ffi::GPollFD {
-            fd: interrupted.as_raw_fd(),
-            events: glib::ffi::G_IO_IN as u16,
-            revents: 0,
-        });
-        loop {
-            let came = poll(&mut wait.fds, deadline);
-            let mut drained = [0; 64];
-            while matches!(interrupted.read(&mut drained), Ok(read) if read > 0) {}
-            let asked = shared.lock();
-            if asked.stop {
-                return;
-            }
-            // A newer wait means the interface thread has dispatched since: serve that one.
-            if asked.asked != serving {
-                break;
-            }
-            drop(asked);
-            if came {
-                notify();
-                break;
-            }
-            // Only an interruption came, written for a wait this one already replaced.
+    while let Some((wait, serving)) = shared.next_wait() {
+        match serve(shared, wait, serving, &mut interrupted) {
+            Served::Came => notify(),
+            Served::Replaced => {}
+            Served::Stopped => return,
         }
     }
+}
+
+/// Polls for `wait`, the one numbered `serving`, until it comes, a newer one replaces it, or
+/// the loop ends.
+fn serve(shared: &Shared, mut wait: Wait, serving: u64, interrupted: &mut UnixStream) -> Served {
+    let deadline = u64::try_from(wait.timeout)
+        .ok()
+        .map(|millis| Instant::now() + Duration::from_millis(millis));
+    wait.fds.push(glib::ffi::GPollFD {
+        fd: interrupted.as_raw_fd(),
+        events: glib::ffi::G_IO_IN as u16,
+        revents: 0,
+    });
+    loop {
+        let came = poll(&mut wait.fds, deadline);
+        drain(interrupted);
+        match shared.standing_of(serving) {
+            Standing::Stopped => return Served::Stopped,
+            Standing::Replaced => return Served::Replaced,
+            Standing::Current if came => return Served::Came,
+            // Only an interruption came, written for a wait this one already replaced.
+            Standing::Current => {}
+        }
+    }
+}
+
+/// Reads away the interruptions written so far, so the next poll waits again.
+fn drain(interrupted: &mut UnixStream) {
+    let mut bytes = [0; 64];
+    while matches!(interrupted.read(&mut bytes), Ok(read) if read > 0) {}
 }
 
 /// Blocks until `deadline` or until one of `fds` is ready. Returns whether what the context
