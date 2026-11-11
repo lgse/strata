@@ -8,9 +8,11 @@
 #
 #   status = "required"  passes on both targets; ./scripts/qa-parity.sh runs it on each.
 #   status = "pending"   does not pass on the Rune target yet. It carries a reason, one of
-#                        harness, component, rune, platform, toolkit or deviation, and a
-#                        blocker that names what someone can act on: a step, a work package,
-#                        a Rune request or an owner ruling.
+#                        harness, component, rune, platform, toolkit, deviation or scope,
+#                        and a blocker that names what someone can act on: a step, a work
+#                        package, a Rune request or an owner ruling. scope is a part of the
+#                        interface the slice leaves out: its blocker names the part's work
+#                        package and the first step that needs it.
 #
 # A run moves to "required" only once it has passed on both targets.
 

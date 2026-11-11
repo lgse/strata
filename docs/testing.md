@@ -783,8 +783,9 @@ by (`docs/rune/slice/README.md`), each as one of:
 
 - `status = "required"`: passes on both targets, and `qa-parity.sh` runs it.
 - `status = "pending"`: does not pass on Rune yet, with a `reason` (`harness`,
-  `component`, `rune`, `platform`, `toolkit` or `deviation`) and a `blocker`
-  that names what someone can act on.
+  `component`, `rune`, `platform`, `toolkit`, `deviation` or `scope`) and a
+  `blocker` that names what someone can act on. `scope` is a run that needs a
+  part of the interface the slice leaves out.
 
 The runner's unit tests fail when a Columns run of the set is missing from the
 ledger, listed twice, gone, under the wrong gate, or pending without a reason

@@ -44,7 +44,9 @@ pub(crate) enum Status {
     Pending,
 }
 
-/// Why a pending run does not pass on the Rune target yet.
+/// Why a pending run does not pass on the Rune target yet. `Scope` is a part of the
+/// interface the slice leaves out; `Component` is a component that lacks or differs in a
+/// behaviour (`docs/rune/slice/README.md`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Reason {
@@ -54,6 +56,7 @@ pub(crate) enum Reason {
     Platform,
     Toolkit,
     Deviation,
+    Scope,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]

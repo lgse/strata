@@ -113,6 +113,19 @@ pub(crate) fn a_ledger_entry_with_an_unknown_gate_status_reason_or_field_does_no
     }
     let unknown_gate = entry("moves", "columns-arrows", "G4", REQUIRED);
     assert!(Ledger::parse(&unknown_gate).is_err(), "{unknown_gate}");
+    for reason in [
+        "harness",
+        "component",
+        "rune",
+        "platform",
+        "toolkit",
+        "deviation",
+        "scope",
+    ] {
+        let rest = format!("status = \"pending\"\nreason = \"{reason}\"\nblocker = \"x\"");
+        let coded = entry("moves", "columns-arrows", "G1", &rest);
+        assert!(Ledger::parse(&coded).is_ok(), "{coded}");
+    }
 }
 
 pub(crate) fn the_target_picks_the_binary_and_only_rune_is_told_the_layout() {
