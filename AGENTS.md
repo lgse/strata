@@ -185,6 +185,16 @@ pass before merge.
 - Keep lasting behavior and test guidance in maintained documentation; put task checklists, test results, and review history in the issue or PR instead.
 - Pull request titles must pass `.github/workflows/pr-title.yml`; do not bypass or weaken the Conventional Commit title check.
 
+## Workspace crates
+
+- Code that needs no GTK lives in the crates under `crates/`; the root package is the GTK
+  application. Follow `docs/workspace.md` for the layering, which `cargo deny check`
+  enforces, and for how visibility, translations and log targets work across crates.
+- Never add `gtk4`, `gdk4`, `sourceview5` or `gstreamer` to a crate under `crates/`.
+- Test-only code that another crate's tests use is gated with
+  `#[cfg(any(test, feature = "test-support"))]`; a `tests` module is never compiled
+  outside tests. Run tests with `--all-features`.
+
 ## Test organization
 
 - Do not place test implementations inline with production code.
