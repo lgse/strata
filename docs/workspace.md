@@ -83,10 +83,12 @@ fails: Cargo gives a dependency the features of every package in the run, Rune t
   link took more than two gigabytes of memory, and Cargo ran 23 at once. The old repository
   turned debug info off for all dependencies in its dev profile; that setting was not
   carried over, because it would change the GTK application's debug builds too.
-- **The pinned test image and CI run the GTK lane only.** The image has no Vulkan driver,
-  which the Rune goldens need. Formatting, the dependency policy and spelling cover the
-  whole workspace in CI. Compiling, linting and testing the Rune side is a local step until
-  a CI job for it exists.
+- **CI runs the GTK lane only, and the pinned test image builds one Rune binary.** The
+  image has no Vulkan driver, which the Rune goldens need. `./scripts/qa-parity.sh` builds
+  `strata-rune` with its `qa` feature there, for the QA runner's Rune target, and the image
+  holds both lanes' dependencies, each built in its own cargo run. Formatting, the
+  dependency policy and spelling cover the whole workspace in CI. Compiling, linting and
+  testing the Rune side is a local step until a CI job for it exists.
 - **The GTK application builds with the features it had before the Rune side joined.** Its
   lane selects the packages it always did.
 - **An editor that checks the whole workspace reports the fontconfig errors.** Point it at
@@ -171,9 +173,10 @@ The root build script compiles the resource bundle.
 5. If it depends on Rune or on a Rune-side crate, add it to `RUNE_SIDE` in
    `scripts/lanes.py` and give it the Rune side's `clippy.toml`.
 
-For a shared crate the test image needs no change: its dependency stage stubs every crate
-directly under `crates/` from its manifest. That stage does not load the workspace as it is
-now. It copies no manifest for `strata-test-peer`, which sits deeper, and it deletes the
-example sources `strata-gallery`'s manifest names. Until the stage handles both, the image
-publisher fails on `strata-next`. The base image the quality and QA runs use is keyed by
-`tests/container/` alone and is not affected.
+The test image needs no change for a new crate. Its dependency stage takes every
+`Cargo.toml` under `crates/`, at any depth, and `tests/container/stub-workspace.py` writes
+an empty file for each target a manifest names, so the stage loads whatever the root
+manifest's `members` list. The stage never builds the two lanes in one cargo run. The base
+image is keyed by `tests/container/` alone, so a new crate does not change it: the crates it
+adds to `Cargo.lock` are fetched on first use until the environment next changes
+([testing.md](testing.md#the-images-dependencies)).

@@ -137,7 +137,8 @@ for 0.22.10 and `toml` 1.1.6 for 1.2.1. Seven packages only the Rune side uses f
    The publisher workflow fails on `strata-next` until `tests/container/Dockerfile` and
    `.dockerignore` handle both. That is an image change, which the slice rules reserve. The
    base image the quality and QA runs use is keyed by `tests/container/` alone and still
-   resolves.
+   resolves. Since done, on the owner's ruling on decision 12:
+   [V9b](V9b-test-image-and-exit-check.md#the-test-image-decision-12).
 3. **A `rune` job in CI.** CI checks the Rune side's formatting, dependency policy and
    spelling. Nothing there compiles, lints or tests it. A job needs a Vulkan adapter for
    the goldens; the old repository's CI used lavapipe.

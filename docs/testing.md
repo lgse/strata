@@ -132,6 +132,13 @@ STRATA_CONTAINER_ENGINE=podman python3 scripts/image_base.py build
 ./scripts/qa.sh
 ```
 
+The build makes the recipe's `dependencies` stage, the one the publisher pushes
+as the base: the environment, and the Cargo dependencies described under
+[The image's dependencies](#the-images-dependencies). It needs the network, for
+Arch's archive, GNOME's sources, crates.io and Rune's repository. From nothing
+it takes about five minutes on four cores; with the environment's layers
+already built, two.
+
 The recipe is `tests/container/Dockerfile`: a digest-pinned Arch Linux base, the
 dated 2026-09-11 Arch package snapshot, GTK 4.22.5, GLib 2.88.3, GStreamer
 1.28.7, and Rust 1.99.1. Pacman verifies the snapshot's signed packages. The
@@ -178,6 +185,58 @@ sandbox. Neither engine uses privileged mode or mounts desktop sockets.
 Updating the image inputs is an intentional rendering
 environment change and requires reviewing the visual baselines.
 
+#### The image's dependencies
+
+The base holds the third-party crates a run needs, so a first run in a new
+checkout fetches nothing. The recipe's last stage loads the workspace's
+manifests alone, with an empty file for each target
+(`tests/container/stub-workspace.py`), and leaves under
+`/opt/strata-dependencies`:
+
+- `cargo/`: a Cargo home with every crate `Cargo.lock` names, fetched, for both
+  lanes of [the workspace](workspace.md#two-lanes) and every feature;
+- `build/`: a target directory with the third-party crates of the two QA
+  builds, compiled, each in a cargo run of its own as the scripts build them:
+  `cargo test --features qa,invariant-checks --test qa` for the application,
+  and `cargo build -p strata-rune --features qa`;
+- `lock.sha256` and `cache-path`: the `Cargo.lock` they were fetched for, and
+  the cache they were built for.
+
+Nothing of Strata's own is in it. The stage removes what the stubs built with
+`cargo clean -p` for each workspace package, and fails if anything named for
+one is left.
+
+`scripts/qa.sh`, `scripts/qa-parity.sh`, `scripts/qa-drive.sh` and
+`scripts/quality.sh` run `scripts/dependency_seed.py` in the container before
+Cargo. It prints one `Dependencies:` line saying what it did:
+
+| The run's cache | What happens |
+| --- | --- |
+| Cargo has fetched into it before: `cargo/registry` or `cargo/git` exists | Nothing is copied. A warm cache is never reseeded or replaced |
+| Empty, and it is `target/qa-container` | The fetched and the compiled crates are copied in, 4 GB. The run then compiles Strata's own crates only |
+| Empty, and it is another cache, such as `target/quality-container` | The fetched crates are copied in, 1.2 GB. The cache compiles its own: Cargo's fingerprints hold the path of a crate's sources, so compiled crates are fresh only where they were built |
+| Empty, and the base holds no dependencies | Nothing is copied, and Cargo fetches what it needs, as before |
+
+- **`Cargo.lock` ahead of the image.** The base is published once for each set
+  of environment inputs, so its crates are those of the `Cargo.lock` of that
+  day. When the two differ, the seeding prints `Dependencies: WARNING:
+  Cargo.lock has moved past the image.` with both digests, copies what the
+  image has, and Cargo fetches and builds the difference from the network.
+  The run still works; only the crates that changed are fetched.
+- **A copy cut short** is made again: it is written beside the cache and moved
+  in, `cargo/registry` last, and that directory is what marks a cache as
+  fetched.
+- **A seeded Cargo home is not cleaned by Cargo.** It carries a `config.toml`
+  with `cache.auto-clean-frequency = "never"`. Cargo otherwise deletes the
+  crates a command did not use for a month, and a base outlives that: the first
+  run from an older base would delete most of what was copied.
+- **`./scripts/quality.sh fmt` and a CI shard copy nothing.** Neither compiles.
+
+To check that a run needs no network, give the scripts an engine that cuts it
+off, as the proof in `docs/rune/slice/V9b-test-image-and-exit-check.md` does:
+a wrapper that adds `--network none` to `docker run`, named by
+`STRATA_CONTAINER_ENGINE`.
+
 ### Shared environment for formatting, lint, and Rust tests
 
 `./scripts/quality.sh` runs all three quality phases in the same verified build
@@ -202,9 +261,10 @@ separate from the QA cache and native builds. Its Actions cache is keyed by envi
 Cargo manifests, and source revision, with same-environment/manifest restoration.
 Only successful quality builds on main pushes save caches; PR consumers cannot
 populate main's cache. These are compilation caches, not evidence of passing tests;
-the aggregate gate separately requires all test shards to pass. Cold quality
-compilation includes test-only and all-feature dependencies, so the published
-dependency layers are not a full quality hit.
+the aggregate gate separately requires all test shards to pass. An empty quality
+cache takes the image's fetched crates and compiles them itself: the image's
+compiled crates are the QA builds', made for `target/qa-container`, and cold
+quality compilation adds test-only and all-feature dependencies.
 
 The Rust suite runs with `--all-targets --all-features --locked`, over the application and
 the shared crates, inside private
@@ -1075,9 +1135,13 @@ bundle described in "Replies and failure artifacts".
 `Publish the pinned test image` (`test-image.yml`) publishes
 `ghcr.io/lgse/strata-test-image` from trusted main when the image inputs, Cargo
 manifests, or `.dockerignore` change, or on manual dispatch. The image holds the
-pinned GUI/font environment, Rust, and compiled locked Cargo dependencies. A
-stub application warms the dependencies; it and its fingerprints are removed,
-and no tested application binary is published.
+pinned GUI/font environment, Rust, and the locked Cargo dependencies of both
+lanes, fetched, with the QA builds' compiled
+([The image's dependencies](#the-images-dependencies)). A stub of every
+workspace crate stands in for Strata's sources; what it built is removed, and
+no tested application binary is published. The workflow watches
+`crates/*/Cargo.toml`: a change to a manifest deeper than that, such as
+`strata-test-peer`'s, publishes only when `Cargo.lock` changes with it.
 
 Tags include SHA256 input identifiers, architecture, UID, and GID. Environment
 inputs are independent of application source; the build identifier additionally
@@ -1087,7 +1151,9 @@ Existing publications are checked before rebuilding. A separate
 `base-<environment-inputs>-linux-amd64-1001-1001` tag is the reusable
 environment that `scripts/image_base.py` pulls and CI's quality and QA jobs
 run. It is published once per environment input set and is not retagged on
-ordinary Cargo changes. GHCR storage is independent of Actions cache eviction;
+ordinary Cargo changes, so the dependencies a run seeds from are those of the
+commit that changed the environment; a later `Cargo.lock` fetches its
+difference on first use. GHCR storage is independent of Actions cache eviction;
 retain tags needed by supported revisions rather than treating them as
 disposable per-run artifacts.
 

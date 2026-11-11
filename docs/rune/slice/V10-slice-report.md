@@ -51,7 +51,8 @@ Also record:
 - which owner decisions were made during the slice, and by what ruling, and which are
   open: 23 to 26 are V9's, and undo (23) decides seven of G3's runs;
 - where each package's evidence is: the verification worktree's `target/v3-…` to
-  `target/v9-61a7d6224/`, each named in its package's record;
+  `target/v9-61a7d6224/` and V9b's three `target/v9b-…/`, each named in its package's
+  record;
 - each stop condition and whether it was hit;
 - the hand check of the windowed binary on Hyprland (decision 7): what was tried, on which
   compositor, and what was seen. It is the only evidence in the slice from a real
@@ -96,7 +97,10 @@ quotes those lines from the run it names. A flaky run's failed bundle is in
 `target/qa-parity/allowance/<scenario>/<run>/`.
 
 A run takes about 14 minutes with a warm cache: under two for the gates and the whole
-suite, one for the Rune patches and 11 for the GTK ones.
+suite, one for the Rune patches and 11 for the GTK ones. Its first line is the seeding's,
+`Dependencies: …`: with the verification worktree's warm cache it says the cache is reused.
+The base it runs in depends on whether V9b's image commit is checked out: the key is
+`4fa6c8cf…` with it and `9229afdf…` without, and the environment is the same in both.
 
 **The command can still exit 1 for the flaky run.** The allowance holds only if the run
 passes alone, and at V9b's commits it passed alone once in nine tries. When

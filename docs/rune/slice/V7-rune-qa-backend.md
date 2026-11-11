@@ -162,6 +162,10 @@ request upstream: a public entry for a key press with its physical code and base
 
 ## The image: nothing changed, and why
 
+This section is V7's finding and is kept as it was written. The owner has since chosen the
+third of its three ways forward, and [V9b](V9b-test-image-and-exit-check.md#the-test-image-decision-12)
+built it: the stage loads the workspace, and the scripts seed their caches from it.
+
 The owner ruled on 2026-11-11 to add the Rune side to the test image's dependency stage
 rather than fetch on first use. The work stopped on that part, as instructed, because of
 what the scripts and the workflows turned out to do. Nothing under `tests/container/`

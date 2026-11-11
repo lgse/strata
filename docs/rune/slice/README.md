@@ -9,8 +9,7 @@ and a new Rune binary, and both pass.
   `Browser`: keyboard navigation, selection, and inline rename with filesystem checks.
 - **Command:** `./scripts/qa-parity.sh slice`, run in the pinned QA container.
 
-Source: the slice plan of 2026-11-09. Status below is as of 2026-11-11, after V9 and the
-exit-check part of V9b.
+Source: the slice plan of 2026-11-09. Status below is as of 2026-11-11, after V9b.
 
 ## Exit check
 
@@ -58,7 +57,7 @@ G2 and 33 under G3.
 | V7 | [Rune QA backend](V7-rune-qa-backend.md) | V3, V6 | Done: `4de69a313` to `e97b84e0b`. The image's dependency stage was not changed (decision 12) | Gate G1 passes on both targets |
 | V8 | [Read-path parity](V8-read-path-parity.md) | V7 | Done: `dc1f7ed9c` to its record. Gate G2 passes with 23 of 42 runs `required`. One part stopped: the Appearance popover is not mounted | Gate G2: ledger complete, required runs pass three times running |
 | V9 | [Rename parity](V9-rename-parity.md) | V8 | Done: `3ba9a1f312ae2b9163c9dde892af88b866bf4bbe` to its record. Gate G3 passes with 13 of 33 runs `required`; 17 are `scope` pending, 2 `platform`, 1 `rune` | Gate G3: same bar, with fs checks |
-| V9b | [Test image and exit check](V9b-test-image-and-exit-check.md) | V9 | The exit check: done, `37b63862f` and `481392c68`, with decision 27's condition back with the owner. The image: not landed yet | The exit command passes or fails for the slice's reasons only, and checks all four items; a run fetches no crate on first use |
+| V9b | [Test image and exit check](V9b-test-image-and-exit-check.md) | V9 | The exit check: done, `37b63862f` and `481392c68`, with decision 27's condition back with the owner. The image: done, `50124f6e2` and `7c3d69d3f`, validated in a base built here, and not pushed until the owner says: the push changes the base's key | The exit command passes or fails for the slice's reasons only, and checks all four items; a run fetches no crate on first use |
 | V10 | [Slice report](V10-slice-report.md) | V9b | Not started | Report committed; the exit command passes |
 
 V3 can run beside V4b, V5 and V6. V4b is not in the slice plan: it is the import stage of
@@ -143,9 +142,19 @@ the runner's 35 tests) and 2 ignored, 3 of 3 Rune patches and 21 of 21 GTK patch
 Once it exits 1 for the flaky run, which failed in the suite and again alone, with every
 other part passing. Each branch of the allowance was rehearsed against a stand-in for the
 whole suite. `./scripts/quality.sh` in all three phases: 3,958 tests, V9's 3,956 and two
-new runner tests. The scripts' own tests: 249. On the host nothing was run: no file of the
-Rune side changed. [V9b](V9b-test-image-and-exit-check.md#done-when-and-the-evidence) has
-the figures and names the artifacts.
+new runner tests. The scripts' own tests: 249. Its image part, at `7c3d69d3f`, in the base
+built here from the new recipe, keyed `4fa6c8cf…`: from an empty cache and with no network,
+one QA scenario, `./scripts/qa-parity.sh g1` on both targets and `./scripts/quality.sh
+clippy` each build and pass on the image's dependencies alone; a warm cache is reused and
+not reseeded; a lockfile one crate ahead of the image is said loudly and fetches that
+crate. Then, with the verification worktree's warm caches: `./scripts/quality.sh` in all
+three phases (3,958 tests), the full GTK QA suite (793 passed, 2 ignored),
+`./scripts/qa-mutation.sh` with the 21 patches that apply, all caught, and
+`./scripts/qa-parity.sh slice`, which exits 0 with every part passing. The scripts' own
+tests: 269. The publisher's build was timed from nothing on four cores: 4 min 46 s. On the
+host nothing was run: no file of the Rune side changed. Nothing was pushed, so no workflow
+has run on any of it. [V9b](V9b-test-image-and-exit-check.md#done-when-and-the-evidence)
+has the figures and names the artifacts.
 
 ### What the exit command lets stand
 
@@ -346,7 +355,7 @@ Work halts and is reported when any of these holds.
 | 9 | `gstreamer` in `strata-platform` against the `AGENTS.md` rule | V4b | Settled: the rule stands, and the `media-audio` shim was not imported |
 | 10 | Import history: squash or keep | V4b | Settled: squashed |
 | 11 | Who owns cursor and selection: `Browser` or the component | V6 | Settled on 2026-11-11 by the probe, as the owner ruled: the view interprets input and `Browser` holds the result. The key expectations of the ten G2 Columns runs V6 could drive in process are all met that way. [V6](V6-columns-adapter.md#decision-11-who-owns-the-cursor-and-the-selection) |
-| 12 | The test image's dependency stage, which no longer loads the workspace | Before the publisher is needed again | Open, and wider. The owner ruled on 2026-11-11 to add the Rune side to the stage. V7 found that no run reads the stage, that the Rune lane builds in the pinned base as it is, and that any edit to the Dockerfile changes the base's key and breaks the green build job until the publisher passes. Nothing was changed. [V7](V7-rune-qa-backend.md#the-image-nothing-changed-and-why) has the three ways forward |
+| 12 | The test image's dependency stage, which no longer loads the workspace | Before the publisher is needed again | Settled on 2026-11-11, twice. The owner first ruled to add the Rune side to the stage. V7 found that no run reads the stage and that any edit to the Dockerfile changes the base's key, and put [three ways forward](V7-rune-qa-backend.md#the-image-nothing-changed-and-why) back. The owner chose the largest, knowing its risk to CI: fix the stage so the publisher passes, and have the scripts seed their caches from the image's dependencies. Built in [V9b](V9b-test-image-and-exit-check.md#the-test-image-decision-12), and not pushed: the push changes the base's key, and its order is in that record |
 | 13 | A `rune` job in CI, with a Vulkan adapter for the goldens | After the slice | Open, and deferred: the owner ruled on 2026-11-11 that it waits until after the slice, with decision 18. New from V4b. V7 did without one: parity runs locally through `./scripts/qa-parity.sh`, and the Rune side is still checked locally |
 | 14 | `[profile.dev.package."*"] debug = false` for the workspace | Any time | Open. New from V4b |
 | 15 | A home for the `media-audio` shim | The component plan's phase 5 | Open. New from V4b |
