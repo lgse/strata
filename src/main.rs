@@ -223,7 +223,7 @@ fn main() -> gtk::glib::ExitCode {
     let mode = launch_mode(&arguments);
     match mode {
         LaunchMode::BrowserWorker => {
-            return match sandbox::browser::run() {
+            return match sandbox::browser::run(sandbox_helper::browser_render) {
                 Ok(()) => gtk::glib::ExitCode::SUCCESS,
                 Err(error) => {
                     eprintln!("Browser helper failed: {error}");

@@ -54,7 +54,9 @@ pub(super) fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
             data.len() as u64 <= metadata::MAX_METADATA_BYTES
                 && serde_json::from_slice::<serde_json::Value>(data).is_ok()
         }
-        ParseOperation::ArchiveList { .. } => crate::adapters::archive_payload_valid(data),
+        ParseOperation::ArchiveList { .. } => {
+            crate::sandbox::archive_listing::archive_payload_valid(data)
+        }
         _ if operation.is_media() => false,
         _ => fits_image_limits(&operation, data),
     }
@@ -133,8 +135,10 @@ impl OutputError {
 
 pub(super) fn archive_output_error(error: &OutputError) -> String {
     match error {
-        OutputError::Oversize => crate::adapters::ARCHIVE_TOO_LARGE_MESSAGE.to_owned(),
-        _ => crate::adapters::INVALID_ARCHIVE.to_owned(),
+        OutputError::Oversize => {
+            crate::sandbox::archive_listing::ARCHIVE_TOO_LARGE_MESSAGE.to_owned()
+        }
+        _ => crate::sandbox::archive_listing::INVALID_ARCHIVE.to_owned(),
     }
 }
 

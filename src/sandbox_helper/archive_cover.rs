@@ -9,7 +9,7 @@ use quick_xml::{
 
 use crate::sandbox::CoverFormat;
 
-pub(crate) const MAX_INPUT_BYTES: u64 = 128 * 1024 * 1024;
+use crate::sandbox::MAX_ARCHIVE_COVER_INPUT_BYTES as MAX_INPUT_BYTES;
 pub(super) const MAX_ENTRIES: usize = 4096;
 pub(super) const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_XML_BYTES: u64 = 256 * 1024;

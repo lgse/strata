@@ -63,7 +63,7 @@ fn staged_secrets_are_inherited_only_when_explicitly_mapped_to_stdin() {
 #[test]
 fn archive_operation_debug_redacts_the_password() {
     let operation = ParseOperation::ArchiveList {
-        format: crate::services::ArchiveFormat::Zip,
+        format: crate::model::ArchiveFormat::Zip,
         password: Some(crate::services::SecretString::new(
             "strata-security-repro-password".to_owned(),
         )),
@@ -78,7 +78,7 @@ fn archive_operation_debug_redacts_the_password() {
         "a present password must render redacted-but-present, got {rendered:?}"
     );
     let operation = ParseOperation::ArchiveList {
-        format: crate::services::ArchiveFormat::Zip,
+        format: crate::model::ArchiveFormat::Zip,
         password: None,
     };
     let rendered = format!("{operation:?}");

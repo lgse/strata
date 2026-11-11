@@ -3,10 +3,13 @@
 
 use std::path::Path;
 
-use super::MAX_RASTER_INPUT_BYTES;
-use crate::services::{
-    ArchiveFormat, MediaPreviewSize, ModelFormat, ModelRender, SecretString,
-    model_preview::MAX_MODEL_INPUT_BYTES,
+use super::{MAX_ARCHIVE_COVER_INPUT_BYTES, MAX_RASTER_INPUT_BYTES};
+use crate::{
+    model::ArchiveFormat,
+    services::{
+        MediaPreviewSize, ModelFormat, ModelRender, SecretString,
+        model_preview::MAX_MODEL_INPUT_BYTES,
+    },
 };
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -321,9 +324,7 @@ impl ParseOperation {
                 Some(MAX_MODEL_INPUT_BYTES)
             }
             Self::PreviewModel(_) | Self::ThumbnailModel(_) => None,
-            Self::ThumbnailCover(_) | Self::PreviewCover(_) => {
-                Some(crate::sandbox_helper::archive_cover::MAX_INPUT_BYTES)
-            }
+            Self::ThumbnailCover(_) | Self::PreviewCover(_) => Some(MAX_ARCHIVE_COVER_INPUT_BYTES),
             Self::InspectImage | Self::ConvertImage => {
                 Some(crate::services::image_conversion::MAX_INPUT_BYTES)
             }

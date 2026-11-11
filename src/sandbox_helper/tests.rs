@@ -938,7 +938,7 @@ fn archive_list_reports_corrupt_input_without_crashing() {
     std::fs::write(&input, b"not an archive at all").expect("write junk");
     let output = archive_list_output(&directory, &input, "zip", None);
     match decoded_archive_list(&output) {
-        Err(message) => assert_eq!(message, crate::adapters::INVALID_ARCHIVE),
+        Err(message) => assert_eq!(message, crate::sandbox::archive_listing::INVALID_ARCHIVE),
         Ok(_) => panic!("corrupt input must not list"),
     }
 }

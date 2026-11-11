@@ -18,6 +18,7 @@ use crate::services::{ModelPreviewStage, model_preview::MAX_MODEL_INPUT_BYTES};
 
 #[cfg(feature = "rar")]
 pub(crate) mod archive;
+pub(crate) mod archive_listing;
 pub(crate) mod browser;
 pub(crate) mod media;
 pub(crate) mod metadata;
@@ -57,6 +58,7 @@ const ADDRESS_SPACE_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 pub(crate) const FILE_SIZE_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
 const TEMPORARY_STORAGE_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_RASTER_INPUT_BYTES: u64 = 512 * 1024 * 1024;
+pub(crate) const MAX_ARCHIVE_COVER_INPUT_BYTES: u64 = 128 * 1024 * 1024;
 pub(crate) const MAX_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
 pub(crate) const MAX_TEXT_LAYER_BYTES: u64 = 8 * 1024 * 1024;
 
@@ -121,7 +123,7 @@ pub(crate) fn parse_with_progress(
     let cancellation = request.cancellation;
     match parse_sandboxed(request, progress) {
         Err(error) if archive && hides_archive_failure(cancellation, &error) => {
-            Err(crate::adapters::ARCHIVE_PREVIEW_FAILED_MESSAGE.to_owned())
+            Err(archive_listing::ARCHIVE_PREVIEW_FAILED_MESSAGE.to_owned())
         }
         result => result,
     }
@@ -133,8 +135,8 @@ fn hides_archive_failure(cancellation: &Cancellation, message: &str) -> bool {
 }
 
 fn is_archive_contract_message(message: &str) -> bool {
-    message == crate::adapters::INVALID_ARCHIVE
-        || message == crate::adapters::ARCHIVE_TOO_LARGE_MESSAGE
+    message == archive_listing::INVALID_ARCHIVE
+        || message == archive_listing::ARCHIVE_TOO_LARGE_MESSAGE
         || message == "Preview cancelled"
         || message == crate::services::file_activity::HELD_FOR_OPERATION
 }
@@ -342,7 +344,7 @@ fn read_output_data(operation: &ParseOperation, output: &Path) -> Result<Vec<u8>
     })?;
     if !valid_output(operation.clone(), &data) {
         return Err(if is_archive {
-            crate::adapters::INVALID_ARCHIVE.to_owned()
+            archive_listing::INVALID_ARCHIVE.to_owned()
         } else {
             "The preview renderer produced invalid image data".to_owned()
         });

@@ -3,16 +3,21 @@
 use std::{
     io::{self, Write},
     os::unix::net::UnixStream,
+    path::Path,
 };
 
 use super::{
     process,
-    wire::{self, Operation},
+    wire::{self, Operation, Response},
 };
+
+/// Decodes one input for the worker. The binary that hosts the worker supplies it, because
+/// the decoders link native libraries that this launcher does not.
+pub(crate) type Decoder = fn(&Path, Operation) -> Response;
 
 /// This process parses only the private control protocol, never media. Decoders
 /// receive a source on stdin and a one-way output pipe, not the control socket.
-pub(crate) fn run() -> Result<(), String> {
+pub(crate) fn run(decoder: Decoder) -> Result<(), String> {
     restrict_mutations()?;
     let socket = UnixStream::from(rustix::io::dup(std::io::stdin()).map_err(|e| e.to_string())?);
     rustix::io::fcntl_setfd(&socket, rustix::io::FdFlags::CLOEXEC).map_err(|e| e.to_string())?;
@@ -39,7 +44,7 @@ pub(crate) fn run() -> Result<(), String> {
                 process::exit(
                     redirected
                         .map_err(|e| e.to_string())
-                        .and_then(|()| isolated_job(operation)),
+                        .and_then(|()| isolated_job(operation, decoder)),
                 );
             }
         };
@@ -79,7 +84,7 @@ pub(super) fn probe_status(result: &io::Result<()>) -> i32 {
     }
 }
 
-fn isolated_job(operation: Operation) -> Result<(), String> {
+fn isolated_job(operation: Operation, decoder: Decoder) -> Result<(), String> {
     process::namespaces().map_err(|e| e.to_string())?;
     match process::fork().map_err(|e| e.to_string())? {
         Some(child) => {
@@ -89,11 +94,11 @@ fn isolated_job(operation: Operation) -> Result<(), String> {
                 Err("Decoder exited unsuccessfully".into())
             }
         }
-        None => process::exit(decode(operation)),
+        None => process::exit(decode(operation, decoder)),
     }
 }
 
-fn decode(operation: Operation) -> Result<(), String> {
+fn decode(operation: Operation, decoder: Decoder) -> Result<(), String> {
     rustix::process::setsid().map_err(|e| e.to_string())?;
     rustix::mount::mount(
         "proc",
@@ -107,7 +112,7 @@ fn decode(operation: Operation) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
     isolate_job().map_err(|e| e.to_string())?;
     protect_input(&["/tmp", "/dev/shm", "/dev/null"])?;
-    crate::sandbox_helper::browser_render(std::path::Path::new("/proc/1/fd/0"), operation)
+    decoder(Path::new("/proc/1/fd/0"), operation)
         .write(&mut std::io::stdout())
         .map_err(|e| e.to_string())
 }

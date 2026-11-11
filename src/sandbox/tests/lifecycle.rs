@@ -69,7 +69,7 @@ fn archive_parse_infra_failures_report_renderer_failure() {
     let error = parse(
         Path::new("does-not-need-to-exist.zip"),
         ParseOperation::ArchiveList {
-            format: crate::services::ArchiveFormat::Zip,
+            format: crate::model::ArchiveFormat::Zip,
             password: None,
         },
         0,
@@ -78,7 +78,10 @@ fn archive_parse_infra_failures_report_renderer_failure() {
     )
     .err()
     .expect("missing archive input must fail");
-    assert_eq!(error, crate::adapters::ARCHIVE_PREVIEW_FAILED_MESSAGE);
+    assert_eq!(
+        error,
+        crate::sandbox::archive_listing::ARCHIVE_PREVIEW_FAILED_MESSAGE
+    );
 
     let error = parse(
         Path::new("does-not-need-to-exist.png"),

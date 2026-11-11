@@ -15,7 +15,7 @@ fn png(width: u32, height: u32) -> Vec<u8> {
 #[test]
 fn archive_listings_accept_only_valid_listing_payloads() {
     let operation = ParseOperation::ArchiveList {
-        format: crate::services::ArchiveFormat::Tar,
+        format: crate::model::ArchiveFormat::Tar,
         password: None,
     };
     let payload = serde_json::json!({
@@ -52,7 +52,7 @@ fn archive_listings_accept_only_valid_listing_payloads() {
 fn archive_output_failures_map_to_archive_errors_not_image_errors() {
     assert_eq!(
         archive_output_error(&OutputError::Oversize),
-        crate::adapters::ARCHIVE_TOO_LARGE_MESSAGE
+        crate::sandbox::archive_listing::ARCHIVE_TOO_LARGE_MESSAGE
     );
     for error in [
         OutputError::Missing,
@@ -62,7 +62,7 @@ fn archive_output_failures_map_to_archive_errors_not_image_errors() {
     ] {
         assert_eq!(
             archive_output_error(&error),
-            crate::adapters::INVALID_ARCHIVE
+            crate::sandbox::archive_listing::INVALID_ARCHIVE
         );
     }
     for (error, message) in [

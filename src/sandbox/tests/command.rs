@@ -309,7 +309,7 @@ fn archive_listings_execute_inside_the_bounded_sandbox_without_leaking_secrets()
     let joined = Sandbox::new(
         "/home/alice/Downloads/untrusted.zip",
         ParseOperation::ArchiveList {
-            format: crate::services::ArchiveFormat::Zip,
+            format: crate::model::ArchiveFormat::Zip,
             password: Some(crate::services::SecretString::new("s3cret".to_owned())),
         },
     )
