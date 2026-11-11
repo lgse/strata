@@ -1,3 +1,8 @@
+# One workspace for the GTK app and the crates extracted from it. The root package stays
+# the GTK app; extracted crates join under crates/.
+[workspace]
+resolver = "3"
+
 [package]
 name = "strata"
 version = "1.2.1"
@@ -8,6 +13,9 @@ license = "MIT"
 repository = "https://github.com/LGSE/strata"
 keywords = ["file-manager", "gtk4", "linux", "wayland"]
 categories = ["filesystem", "gui"]
+
+[lints]
+workspace = true
 
 [features]
 default = ["rar"]
@@ -111,13 +119,13 @@ rust-i18n-support = { version = "4.2.4", features = ["codegen"] }
 lto = true
 codegen-units = 1
 
-[lints.rust]
+[workspace.lints.rust]
 unsafe_code = "deny"
 unsafe_op_in_unsafe_fn = "deny"
 unused_must_use = "deny"
 unused_unsafe = "deny"
 
-[lints.clippy]
+[workspace.lints.clippy]
 allow_attributes = "deny"
 allow_attributes_without_reason = "deny"
 dbg_macro = "deny"
