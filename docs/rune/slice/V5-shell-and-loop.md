@@ -172,6 +172,10 @@ All on 2026-11-11. The pinned-image runs are from the worktree at
   Clippy passes on both lanes with warnings denied, and `mise run compile-features` passes
   with `glib-loop` alone.
 - **Catalogs.** `./scripts/test-headless.py i18n::` passes with the new string.
+- **CI on `strata-next`.** At `da519dd97` the build job and the policy job pass. The test
+  and QA jobs do not run for a push to this branch, as before. The image publisher fails
+  on the same missing manifest as before the package (decision 12); it names
+  `strata-app` first now, because that crate sorts first.
 
 Not run: `./scripts/qa-mutation.sh`, the rest of `mise run test-platform`, and anything on
 a real desktop. The mutation patches touch no file this package changed. The other
