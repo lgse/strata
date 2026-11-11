@@ -213,28 +213,18 @@ impl ThemeManager {
                 }
                 return;
             };
+            // Subscribed before the read so a change between the two is not lost.
             let changes = settings.receive_color_scheme_changed().await;
-            if let Some(manager) = weak.upgrade() {
-                if changes.is_ok() {
-                    manager.set_portal_available();
-                }
-            } else {
+            // The proxy and the subscription succeed without a portal; only the read fails.
+            let scheme = settings.color_scheme().await;
+            let Some(manager) = weak.upgrade() else {
                 return;
+            };
+            match scheme {
+                Ok(scheme) => manager.set_portal_scheme(scheme),
+                Err(_) => manager.set_portal_unavailable(),
             }
-            match settings.color_scheme().await {
-                Ok(scheme) => {
-                    if let Some(manager) = weak.upgrade() {
-                        manager.set_portal_scheme(scheme);
-                    }
-                }
-                Err(_) if changes.is_err() => {
-                    if let Some(manager) = weak.upgrade() {
-                        manager.set_portal_unavailable();
-                    }
-                    return;
-                }
-                Err(_) => {}
-            }
+            drop(manager);
             let Ok(mut changes) = changes else {
                 return;
             };
@@ -243,9 +233,6 @@ impl ThemeManager {
                     return;
                 };
                 manager.set_portal_scheme(scheme);
-            }
-            if let Some(manager) = weak.upgrade() {
-                manager.set_portal_unavailable();
             }
         });
     }
@@ -266,18 +253,6 @@ impl ThemeManager {
         self.system_appearance.portal_scheme.set(Some(scheme));
         self.reapply_system_appearance_if_changed(before);
         if availability_changed {
-            self.theme_listeners.notify(self);
-        }
-    }
-
-    #[cfg(not(test))]
-    fn set_portal_available(&self) {
-        if self
-            .system_appearance
-            .portal
-            .replace(PortalAvailability::Available)
-            != PortalAvailability::Available
-        {
             self.theme_listeners.notify(self);
         }
     }

@@ -227,6 +227,12 @@ impl ThemeManager {
     fn load(startup: PortalStartup) -> Rc<Self> {
         let preferences = PreferenceManager::shared();
         let themes = merge_builtin_and_custom_themes(builtins(), load_custom_themes());
+        // Startup blocks on the portal only when its value picks the first palette.
+        let startup = if preferences.theme_mode() == "system" {
+            startup
+        } else {
+            PortalStartup::AsyncOnly
+        };
         let system_appearance = SystemAppearance::read(startup);
         let omarchy = OmarchyRefresh::read();
         if let Some(state) = &omarchy.state {
