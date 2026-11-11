@@ -215,7 +215,7 @@ struct StreamingShare {
     release: RefCell<Option<Box<dyn FnOnce()>>>,
 }
 
-impl FileSource for Rc<StreamingShare> {
+impl FileSource for StreamingShare {
     fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
         RemoteShare.validate_location(location)
     }
@@ -254,7 +254,7 @@ fn normal_filter_slash_waits_for_a_folder_still_listing() {
                 let share = Rc::new(StreamingShare::default());
                 let source = share.clone();
                 let fixture = KeyboardFixture::with_parts(Rc::new(TextPreview), || {
-                    BrowserView::new(Rc::new(source), crate::ui::browser::PeekBehavior::default())
+                    BrowserView::new(source, crate::ui::browser::PeekBehavior::default())
                 });
                 fixture.view.set_view_mode(mode);
                 let browser = fixture.view.browser();

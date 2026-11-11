@@ -18,11 +18,16 @@ csv = "1.4.0"
 docx-rs = { version = "0.4.22", default-features = false }
 fitparser = "0.11.0"
 flate2 = "1.1.10"
+frizbee = "0.13"
 futures-channel = "0.3.31"
+futures-lite = "2.6.1"
 gdk-pixbuf = "0.22.0"
 gio = { version = "0.22.9", features = ["v2_72"] }
+gio-unix = "0.22.8"
 glib = "0.22.9"
+glib-build-tools = "0.22.8"
 html5gum = { version = "0.9", default-features = false }
+ignore = "0.4.23"
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
 kamadak-exif = "0.6.1"
 landlock = "0.4.7"
@@ -33,6 +38,7 @@ poppler = { package = "poppler-rs", version = "0.26.0" }
 pulldown-cmark = { version = "0.13", default-features = false }
 quick-xml = "0.41.0"
 resvg = { version = "0.48.1", default-features = false, features = ["text", "system-fonts"] }
+ring = "0.17.14"
 rquickjs = "0.13.0"
 rust-i18n = "4.2.4"
 rust-i18n-support = { version = "4.2.4", features = ["codegen"] }
@@ -40,16 +46,20 @@ rustix = { version = "1.1.4", features = ["fs", "process", "event", "net", "moun
 seccompiler = "0.5.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sevenz-rust2 = "0.22.2"
 tar = "0.4.46"
 tempfile = "3.27.0"
 toml = "1.1"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.20"
+unicode-normalization = "0.1.25"
 unrar = "0.5.8"
 unrar_sys = "0.5.8"
+ureq = { version = "~3.4", features = ["json"] }
 zip = "9.0.4"
 
 strata-core = { path = "crates/strata-core", default-features = false }
+strata-fs = { path = "crates/strata-fs", default-features = false }
 strata-preview = { path = "crates/strata-preview", default-features = false }
 strata-test-support = { path = "crates/strata-test-support" }
 
@@ -69,7 +79,7 @@ workspace = true
 
 [features]
 default = ["rar"]
-rar = ["strata-core/rar", "strata-preview/rar"]
+rar = ["strata-core/rar", "strata-fs/rar", "strata-preview/rar"]
 # The scripted `--qa` launch mode and its in-process X or Wayland input. Never in releases.
 qa = [
     "dep:x11rb",
@@ -80,14 +90,19 @@ qa = [
     "dep:xkbcommon",
 ]
 # Exact but slow consistency checks; tests and QA builds turn them on.
-invariant-checks = []
+invariant-checks = ["strata-fs/invariant-checks"]
 # Test hooks and test-only items of the workspace crates. The unit tests need it. It is a
 # feature rather than a dev-dependency so that the binary the QA scenarios drive, which
 # `cargo test --test qa` builds without it, carries no test hooks.
-test-support = ["strata-core/test-support", "strata-preview/test-support"]
+test-support = [
+    "strata-core/test-support",
+    "strata-fs/test-support",
+    "strata-preview/test-support",
+]
 
 [dependencies]
 strata-core.workspace = true
+strata-fs.workspace = true
 strata-preview.workspace = true
 ashpd = { version = "=0.13.13", default-features = false, features = ["backend", "file_chooser", "async-io", "tracing"] }
 async-io = "2.6.0"
@@ -95,23 +110,22 @@ cairo-rs.workspace = true
 flate2.workspace = true
 fontconfig-sys = { package = "yeslogic-fontconfig-sys", version = "6.0.1" }
 futures-channel.workspace = true
-futures-lite = "2.6.1"
+futures-lite.workspace = true
 gdk-pixbuf.workspace = true
 gdk4-wayland = { version = "0.11.4", features = ["v4_12"] }
 gdk4-x11 = { version = "0.11.4", features = ["v4_10"] }
 gio.workspace = true
-gio-unix = "0.22.8"
+gio-unix.workspace = true
 glib.workspace = true
 gstreamer = { version = "0.25.3", features = ["v1_20"] }
 gstreamer-app = { version = "0.25.2", features = ["v1_20"] }
 gtk = { package = "gtk4", version = "0.11.4", features = ["v4_12"] }
 hex = "0.4.3"
-ignore = "0.4.23"
 image.workspace = true
 libc.workspace = true
 pango.workspace = true
 pangocairo = "0.22.0"
-ring = "0.17.14"
+ring.workspace = true
 resvg.workspace = true
 rust-i18n.workspace = true
 rustix.workspace = true
@@ -119,23 +133,19 @@ serde.workspace = true
 serde_json.workspace = true
 serde_norway = "0.9"
 sha2 = "0.11.0"
-sevenz-rust2 = "0.22.2"
 sourceview5 = { version = "0.11.2", features = ["gtk_v4_12"] }
 tar.workspace = true
 tempfile.workspace = true
 toml.workspace = true
 tracing.workspace = true
-tracing-subscriber.workspace = true
-unicode-normalization = "0.1.25"
 # The update downloader implements `ureq::unversioned` transport traits, which
 # may change in a minor release.
-ureq = { version = "~3.4", features = ["json"] }
+ureq.workspace = true
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
 zstd = "0.14.3"
 zip.workspace = true
 x11rb = { version = "0.14.0", default-features = false, features = ["xkb", "xtest"], optional = true }
 regex = { version = "1.13.1", optional = true }
-frizbee = "0.13"
 wayland-client = { version = "0.31.15", optional = true }
 wayland-protocols-misc = { version = "0.3.12", features = ["client"], optional = true }
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"], optional = true }
@@ -152,7 +162,7 @@ required-features = ["qa"]
 harness = false
 
 [build-dependencies]
-glib-build-tools = "0.22.8"
+glib-build-tools.workspace = true
 
 [profile.release]
 # Whole-program optimization for the hot listing/sort/insert paths. Build

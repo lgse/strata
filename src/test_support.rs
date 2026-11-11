@@ -2,16 +2,15 @@
 
 #![cfg(test)]
 
-pub(crate) mod operations;
 pub(crate) mod parked;
 pub(crate) mod widgets;
 
 use std::time::Duration;
 
 use gtk::glib;
+pub(crate) use strata_fs::test_support::operations;
 pub(crate) use strata_test_support::{
-    ASYNC_MAIN_CONTEXT_DEFAULT, Gate, MainContextGuard, PrivateContext, TestMutex, capture_logs,
-    captured_event, create_empty_file, distinct_device_dirs, serve_http_once, temp_base,
+    ASYNC_MAIN_CONTEXT_DEFAULT, Gate, PrivateContext, capture_logs, captured_event, serve_http_once,
 };
 
 pub(crate) fn texture_has_visible_pixels(texture: &gtk::gdk::Texture) -> bool {

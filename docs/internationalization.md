@@ -141,7 +141,7 @@ such as "Could not open “%{path}”: %{error}", use `services::io_error_detail
 localized reason: they lower-case the first letter in French, Spanish, Italian,
 Brazilian Portuguese, Russian and Vietnamese, and leave acronyms such as "HTTP"
 alone. Network failures go through `NetworkError`
-(`src/services/network_error.rs`), which reduces a `ureq` error to
+(`crates/strata-fs/src/services/network_error.rs`), which reduces a `ureq` error to
 language-neutral data: an HTTP status, an English catalog reason, or
 untranslatable library text. Store that value, not a formatted sentence, in
 caches or anywhere else it may be shown later, and localize it with `message()`

@@ -83,6 +83,7 @@ fn module_filters_follow_code_into_the_extracted_crates() {
         ("strata_preview::sandbox::media", Level::DEBUG, false),
         ("strata_preview::sandbox::media", Level::INFO, true),
         ("strata_core::storage", Level::INFO, true),
+        ("strata_fs::sandbox::browser", Level::DEBUG, true),
     ] {
         assert_eq!(
             targets.would_enable(target, &level),

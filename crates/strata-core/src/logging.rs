@@ -35,7 +35,7 @@ impl<W: Write> Write for PipeSafeWriter<W> {
 }
 
 /// The crates split out of the application. Their modules logged under `strata::…` before.
-const EXTRACTED_CRATES: [&str; 2] = ["strata_core", "strata_preview"];
+const EXTRACTED_CRATES: [&str; 3] = ["strata_core", "strata_fs", "strata_preview"];
 
 /// Repeats each `strata::module` directive for the crates that module may live in now, so a
 /// filter written against the application's module path keeps selecting the same code.

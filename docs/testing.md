@@ -61,17 +61,17 @@ because a crate's `#[cfg(test)]` code is invisible to another crate's tests. A p
 `cargo test` stops with an error that says so. The QA runner builds without the
 feature, so the application the scenarios drive carries no test hooks.
 
-Controller regressions live under `src/app/browser/tests/`, grouped by navigation,
+Controller regressions live under `crates/strata-fs/src/app/browser/tests/`, grouped by navigation,
 location input, selection, monitor updates, preferences, operations, undo, metadata,
 staging, event dispatch, and archive activation. Add cases to the matching owner
-rather than to `src/app/browser/tests.rs`, which holds shared source/provider
+rather than to `crates/strata-fs/src/app/browser/tests.rs`, which holds shared source/provider
 fixtures. Existing adjacent feature test modules retain their ownership. For
 example, `./scripts/test-headless.py app::browser::tests::undo::` selects undo
 history/claim regressions; `app::browser::tests::metadata::` selects metadata-fill
 and sort-terminal regressions. Keep distinct input routes and lifecycle cases
 separate even when they share fixtures.
 
-Local-operation regressions have owners under `src/adapters/local_operations/tests/`
+Local-operation regressions have owners under `crates/strata-fs/src/adapters/local_operations/tests/`
 for path resolution, copying, moving, replacement, conflicts, progress, naming,
 paste results, undo, deletion, and restore safety. Shared fixtures and the manual
 deletion benchmarks remain in the parent `tests.rs`; keep the benchmark names

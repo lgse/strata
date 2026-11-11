@@ -1,7 +1,7 @@
-diff --git a/src/app/browser/selection.rs b/src/app/browser/selection.rs
+diff --git a/crates/strata-fs/src/app/browser/selection.rs b/crates/strata-fs/src/app/browser/selection.rs
 index edd7f93b..36047a93 100644
---- a/src/app/browser/selection.rs
-+++ b/src/app/browser/selection.rs
+--- a/crates/strata-fs/src/app/browser/selection.rs
++++ b/crates/strata-fs/src/app/browser/selection.rs
 @@ -195,6 +195,9 @@ impl Browser {
      }
  

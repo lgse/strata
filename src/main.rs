@@ -10,11 +10,8 @@ rust_i18n::i18n!(
 #[cfg(all(test, not(feature = "test-support")))]
 compile_error!("the unit tests need the test-support feature: pass --all-features");
 
-mod adapters;
-mod app;
 mod assets;
 mod build_info;
-mod child_environment;
 mod portal;
 mod portal_setup;
 #[cfg(feature = "qa")]
@@ -25,9 +22,8 @@ mod test_support;
 mod ui;
 mod util;
 
-use strata_core::{error_text, i18n, logging, metrics, model, storage, trusted_command};
-#[cfg(feature = "rar")]
-use strata_preview::rar_extraction;
+use strata_core::{i18n, logging, metrics, model, storage, trusted_command};
+use strata_fs::{adapters, app, child_environment};
 use strata_preview::{media, sandbox, sandbox_helper};
 
 use std::{

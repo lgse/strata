@@ -230,10 +230,10 @@ instead.
 | Focused column stays put while mirroring folders and files | Manual check below (wide and narrow windows), with captures |
 | Folder hands the right pane to the child column, file takes it back | `tests/qa/scenarios/quick_preview/columns-keyboard-opens-preview.jsonl`, `preview-hides-on-folder.jsonl` |
 | Dismissed preview ignores mirroring until reopened | `src/ui/preview/tests.rs::an_explicit_close_blocks_automatic_previews_until_reopened` |
-| Opening or reopening a folder by click focuses its column, for one or two clicks | `tests/qa/scenarios/click_modes/clicking-open-folder-focuses-column.jsonl`, `src/app/browser/tests/navigation.rs::activating_an_open_folder_focuses_its_column_without_closing_it` |
+| Opening or reopening a folder by click focuses its column, for one or two clicks | `tests/qa/scenarios/click_modes/clicking-open-folder-focuses-column.jsonl`, `crates/strata-fs/src/app/browser/tests/navigation.rs::activating_an_open_folder_focuses_its_column_without_closing_it` |
 | Deleting the focused entry mirrors what takes its place, for any input | `tests/qa/scenarios/entry_management/trashing-open-folder-opens-next.jsonl` |
 | Reveals leave a viewport-filling column alone and fully reveal a clipped one that fits | `src/ui/browser/columns/tests.rs::reveal_column_does_not_move_an_already_visible_active_column`, `reveal_shows_a_fitting_column_whole_and_leaves_a_filling_one_alone` |
-| Pointer preview closes deeper columns first | `src/app/browser/tests/navigation.rs::previewing_a_file_in_a_parent_column_closes_deeper_columns_before_requesting` |
+| Pointer preview closes deeper columns first | `crates/strata-fs/src/app/browser/tests/navigation.rs::previewing_a_file_in_a_parent_column_closes_deeper_columns_before_requesting` |
 | A plain click on a file closes deeper columns whether or not it previews | `tests/qa/scenarios/click_modes/file-click-closes-deeper-column.jsonl` |
 | Automatic width, minimum, and session manual minimum | `tests/qa/scenarios/quick_preview/column-preview-fills-free-space.jsonl` |
 | A column boundary resizes the left column from either side, even when it is clipped | Manual check: the GUI scenario was removed in #1601 after keyboard-navigation timing flakes |
