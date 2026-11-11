@@ -21,5 +21,6 @@ pub mod adapters;
 pub mod app;
 pub mod child_environment;
 pub mod services;
+pub mod startup;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;

@@ -22,7 +22,7 @@ mod util;
 
 use strata_core::{i18n, logging, metrics, model, storage, trusted_command};
 use strata_desktop::{build_info, portal_setup};
-use strata_fs::{adapters, app, child_environment};
+use strata_fs::{adapters, app, child_environment, startup};
 use strata_preview::{media, sandbox, sandbox_helper};
 
 use std::{
@@ -242,10 +242,9 @@ fn main() -> gtk::glib::ExitCode {
             }
             restart_with_local_vfs_if_gvfs_is_unresponsive();
             let _volumes = gio::VolumeMonitor::get();
-            adapters::mount_watch::start();
             ui::read_install_facts();
             leave_launch_folder();
-            util::ui_thread::mark();
+            startup::claim_ui_thread();
             return portal::run(
                 #[cfg(feature = "qa")]
                 None,
@@ -296,10 +295,9 @@ fn main() -> gtk::glib::ExitCode {
         }
         restart_with_local_vfs_if_gvfs_is_unresponsive();
         let _volumes = gio::VolumeMonitor::get();
-        adapters::mount_watch::start();
         ui::read_install_facts();
         leave_launch_folder();
-        util::ui_thread::mark();
+        startup::claim_ui_thread();
         return portal::run(qa_session);
     }
     #[cfg(feature = "qa")]
@@ -425,10 +423,8 @@ fn main() -> gtk::glib::ExitCode {
     if let Some(session) = qa_session {
         session.attach(&application);
     }
-    adapters::mount_watch::start();
     ui::read_install_facts();
-    util::ui_thread::mark();
-    util::ui_thread::stalls::start();
+    startup::claim_watched_ui_thread();
     application.run_with_args_os(&application_arguments)
 }
 
