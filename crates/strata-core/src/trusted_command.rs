@@ -8,7 +8,7 @@ use std::{
 };
 
 // NixOS setuid wrappers must take precedence over store symlinks.
-pub(crate) const SEARCH_ROOTS: &[&str] = &[
+pub const SEARCH_ROOTS: &[&str] = &[
     "/run/wrappers/bin",
     "/usr/bin",
     "/usr/sbin",
@@ -19,7 +19,7 @@ pub(crate) const SEARCH_ROOTS: &[&str] = &[
 ];
 
 // NixOS wrappers are regular files, not store symlinks.
-pub(crate) const TRUST_ROOTS: &[&str] = &[
+pub const TRUST_ROOTS: &[&str] = &[
     "/usr/bin",
     "/usr/sbin",
     "/bin",
@@ -39,7 +39,7 @@ const CONFIGURED_SEARCH_PATH: &str = match option_env!("STRATA_TRUSTED_COMMAND_P
 #[cfg(test)]
 mod tests;
 
-pub(crate) fn resolve(name: &str) -> Result<PathBuf, String> {
+pub fn resolve(name: &str) -> Result<PathBuf, String> {
     let trust: Vec<&Path> = TRUST_ROOTS.iter().copied().map(Path::new).collect();
     let search = search_roots(SEARCH_ROOTS, CONFIGURED_SEARCH_PATH, &trust);
     let search: Vec<&Path> = search.iter().map(PathBuf::as_path).collect();
@@ -51,7 +51,7 @@ pub(crate) fn resolve(name: &str) -> Result<PathBuf, String> {
 /// it, none writable by group or others, as with packages installed under
 /// `/opt` or `/usr/lib`. Such a match returns the target itself, because the
 /// links leading to it are not checked. Only integration requirements use this.
-pub(crate) fn resolve_installed(name: &str) -> Result<PathBuf, String> {
+pub fn resolve_installed(name: &str) -> Result<PathBuf, String> {
     let trust: Vec<&Path> = TRUST_ROOTS.iter().copied().map(Path::new).collect();
     let search = search_roots(SEARCH_ROOTS, CONFIGURED_SEARCH_PATH, &trust);
     let search: Vec<&Path> = search.iter().map(PathBuf::as_path).collect();
@@ -113,11 +113,11 @@ fn search_roots(fixed: &[&str], configured: &str, trust_roots: &[&Path]) -> Vec<
         .collect()
 }
 
-pub(crate) fn command(name: &str) -> Result<Command, String> {
+pub fn command(name: &str) -> Result<Command, String> {
     Ok(Command::new(resolve(name)?))
 }
 
-pub(crate) fn resolve_in(
+pub fn resolve_in(
     name: &str,
     search_roots: &[&Path],
     trust_roots: &[&Path],

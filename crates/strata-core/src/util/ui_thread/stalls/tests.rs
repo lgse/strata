@@ -40,7 +40,7 @@ fn a_blocked_ui_thread_is_reported_with_its_call_and_path_until_it_runs_again() 
         0,
     )
     .expect("fifo");
-    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+    let _serial = strata_test_support::ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .expect("default context lock");
     let context = glib::MainContext::default();

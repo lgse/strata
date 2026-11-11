@@ -68,7 +68,7 @@ pub fn record_stage(stage: &str, elapsed_ms: u64) {
 }
 
 #[expect(dead_code, reason = "frame-clock plumbing lands with Task 11")]
-pub fn record_input_latency(elapsed_ms: u64) {
+pub(crate) fn record_input_latency(elapsed_ms: u64) {
     tracing::debug!(elapsed_ms, "input event to presented frame");
 }
 

@@ -7,7 +7,9 @@ mod document;
 pub(crate) mod document_media;
 pub(crate) mod docx;
 mod dropped_content;
-pub(crate) mod file_activity;
+pub(crate) use strata_core::file_activity;
+#[cfg(test)]
+mod file_activity_tests;
 pub(crate) mod file_providers;
 mod file_source;
 pub(crate) mod image_conversion;

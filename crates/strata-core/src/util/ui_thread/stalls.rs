@@ -17,7 +17,7 @@ const PING_INTERVAL: Duration = Duration::from_millis(100);
 const AT_FDCWD: i32 = -100;
 const POLLED_SHOWN: u64 = 4;
 
-pub(crate) fn start() {
+pub fn start() {
     let Some(limit) = limit(std::env::var(VARIABLE).ok().as_deref()) else {
         return;
     };

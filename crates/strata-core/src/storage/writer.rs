@@ -19,7 +19,7 @@ const EXIT_FLUSH_WAIT: Duration = Duration::from_secs(10);
 type Job = Box<dyn FnOnce() + Send>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Policy {
+pub enum Policy {
     State,
     Config,
 }
@@ -56,7 +56,7 @@ struct Queue {
     submitted: u64,
 }
 
-pub(crate) struct Writer {
+pub struct Writer {
     queue: Mutex<Queue>,
     wake: Condvar,
     idle: Condvar,
@@ -64,7 +64,7 @@ pub(crate) struct Writer {
 }
 
 impl Writer {
-    pub(crate) fn start(name: &str) -> &'static Self {
+    pub fn start(name: &str) -> &'static Self {
         let writer: &'static Self = Box::leak(Box::new(Self {
             queue: Mutex::default(),
             wake: Condvar::new(),
@@ -196,7 +196,7 @@ impl Writer {
         self.wake.notify_one();
     }
 
-    pub(crate) fn run<T: Send + 'static>(
+    pub fn run<T: Send + 'static>(
         &self,
         job: impl FnOnce() -> T + Send + 'static,
     ) -> oneshot::Receiver<T> {
@@ -237,7 +237,7 @@ impl Writer {
         receive
     }
 
-    pub(crate) fn flush(&self, wait: Duration) -> bool {
+    pub fn flush(&self, wait: Duration) -> bool {
         let deadline = Instant::now() + wait;
         let mut queue = self.lock();
         while queue.running || !queue.tasks.is_empty() {
@@ -254,12 +254,12 @@ impl Writer {
         true
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fn submitted(&self) -> u64 {
         self.lock().submitted
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn hold(&self) -> Held {
         let (started, wait_started) = std::sync::mpsc::channel();
         let (release, released) = std::sync::mpsc::channel::<()>();
@@ -272,8 +272,8 @@ impl Writer {
     }
 }
 
-#[cfg(test)]
-pub(crate) struct Held(
+#[cfg(any(test, feature = "test-support"))]
+pub struct Held(
     #[expect(dead_code, reason = "dropping it releases the writer")] std::sync::mpsc::Sender<()>,
 );
 
@@ -282,13 +282,11 @@ fn shared() -> &'static Writer {
     SHARED.get_or_init(|| Writer::start("strata-settings"))
 }
 
-pub(crate) fn run<T: Send + 'static>(
-    job: impl FnOnce() -> T + Send + 'static,
-) -> oneshot::Receiver<T> {
+pub fn run<T: Send + 'static>(job: impl FnOnce() -> T + Send + 'static) -> oneshot::Receiver<T> {
     shared().run(job)
 }
 
-pub(crate) fn save(
+pub fn save(
     path: PathBuf,
     contents: Option<Vec<u8>>,
     policy: Policy,
@@ -298,7 +296,7 @@ pub(crate) fn save(
     shared().save(path, contents, policy, failure)
 }
 
-pub(crate) fn save_produced(
+pub fn save_produced(
     path: PathBuf,
     policy: Policy,
     failure: &'static str,
@@ -310,7 +308,7 @@ pub(crate) fn save_produced(
 
 /// Like [`save`], with contents made on the writer thread together with a lock that
 /// stays held until the file is replaced.
-pub(crate) fn save_locked(
+pub fn save_locked(
     path: PathBuf,
     policy: Policy,
     produce: impl FnOnce() -> io::Result<(Vec<u8>, Option<fs::File>)> + Send + 'static,
@@ -323,7 +321,7 @@ pub(crate) fn save_locked(
     )
 }
 
-pub(crate) fn reread<T: Send + 'static>(
+pub fn reread<T: Send + 'static>(
     path: PathBuf,
     parse: impl FnOnce(&str) -> io::Result<T> + Send + 'static,
 ) -> oneshot::Receiver<io::Result<Option<T>>> {
@@ -331,29 +329,29 @@ pub(crate) fn reread<T: Send + 'static>(
     writer.run(move || writer.reread(&path, parse))
 }
 
-pub(crate) fn note(path: &Path, stamp: Option<FileStamp>) {
+pub fn note(path: &Path, stamp: Option<FileStamp>) {
     shared().note(path, stamp);
 }
 
-pub(crate) fn flush(wait: Duration) -> bool {
+pub fn flush(wait: Duration) -> bool {
     ui_thread::assert_off();
     shared().flush(wait)
 }
 
-pub(crate) fn flush_at_exit() {
+pub fn flush_at_exit() {
     let _exit = ui_thread::allow(ui_thread::Exception::ExitFlush);
     if !flush(EXIT_FLUSH_WAIT) {
         tracing::warn!("quitting before Strata's own files finished saving");
     }
 }
 
-#[cfg(test)]
-pub(crate) fn hold() -> Held {
+#[cfg(any(test, feature = "test-support"))]
+pub fn hold() -> Held {
     shared().hold()
 }
 
-#[cfg(test)]
-pub(crate) fn settle() {
+#[cfg(any(test, feature = "test-support"))]
+pub fn settle() {
     let context = glib::MainContext::default();
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {

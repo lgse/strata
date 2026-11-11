@@ -33,7 +33,7 @@ fn is_context_key(key: &str) -> bool {
 
 #[test]
 fn english_context_keys_have_english_text() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("data/locales");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/locales");
     let mut checked = 0;
     for folder in [&root, &root.join("messages")] {
         for (key, value) in catalog(&folder.join("en.json")) {
@@ -55,7 +55,7 @@ fn catalogs_cover_all_languages_and_preserve_interpolation() {
             .collect::<BTreeSet<_>>(),
         LOCALES.into_iter().map(String::from).collect()
     );
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("data/locales");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/locales");
     for folder in [&root, &root.join("messages")] {
         let english = catalog(&folder.join("en.json"));
         assert!(!english.is_empty());

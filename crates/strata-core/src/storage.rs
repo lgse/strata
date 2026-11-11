@@ -9,7 +9,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-pub(crate) mod writer;
+pub mod writer;
 
 static NEXT_TEMP_FILE: AtomicU64 = AtomicU64::new(0);
 
@@ -17,18 +17,18 @@ static NEXT_TEMP_FILE: AtomicU64 = AtomicU64::new(0);
 /// the way a symlink loop would.
 const MAX_LINK_HOPS: usize = 8;
 
-pub(crate) const DOWNLOAD_PREFIX: &str = "strata-download-";
+pub const DOWNLOAD_PREFIX: &str = "strata-download-";
 
 // The shared temp directory is listable by every local user, and tempfile and
 // `File::create` follow the umask (typically 0755/0644).
-pub(crate) fn private_download_dir() -> io::Result<tempfile::TempDir> {
+pub fn private_download_dir() -> io::Result<tempfile::TempDir> {
     tempfile::Builder::new()
         .prefix(DOWNLOAD_PREFIX)
         .permissions(fs::Permissions::from_mode(0o700))
         .tempdir()
 }
 
-pub(crate) fn create_private_file(path: &Path) -> io::Result<fs::File> {
+pub fn create_private_file(path: &Path) -> io::Result<fs::File> {
     fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -54,7 +54,7 @@ struct Destination {
 
 /// `Display` is English for logs and tests; [`Self::message`] is for the UI.
 #[derive(Debug)]
-pub(crate) enum DestinationError {
+pub enum DestinationError {
     NonRegular {
         path: PathBuf,
     },
@@ -119,7 +119,7 @@ impl std::error::Error for DestinationError {
 
 impl DestinationError {
     /// Localized, standalone text for the UI.
-    pub(crate) fn message(&self) -> String {
+    pub fn message(&self) -> String {
         match self {
             Self::NonRegular { path } => rust_i18n::t!(
                 "The destination “%{path}” is not a regular file",
@@ -167,19 +167,19 @@ impl DestinationError {
     }
 }
 
-pub(crate) fn config_directory() -> PathBuf {
+pub fn config_directory() -> PathBuf {
     glib::user_config_dir().join("strata")
 }
 
-pub(crate) fn state_directory() -> PathBuf {
+pub fn state_directory() -> PathBuf {
     glib::user_state_dir().join("strata")
 }
 
 /// Tells this process's last write or read of a file apart from another
 /// process's later write.
-pub(crate) type FileStamp = (u64, i64, i64, u64);
+pub type FileStamp = (u64, i64, i64, u64);
 
-pub(crate) fn stamp_of(metadata: &fs::Metadata) -> FileStamp {
+pub fn stamp_of(metadata: &fs::Metadata) -> FileStamp {
     (
         metadata.ino(),
         metadata.mtime(),
@@ -188,11 +188,11 @@ pub(crate) fn stamp_of(metadata: &fs::Metadata) -> FileStamp {
     )
 }
 
-pub(crate) fn file_stamp(path: &Path) -> Option<FileStamp> {
+pub fn file_stamp(path: &Path) -> Option<FileStamp> {
     fs::metadata(path).ok().map(|metadata| stamp_of(&metadata))
 }
 
-pub(crate) fn atomic_write_config_unless_changed(
+pub fn atomic_write_config_unless_changed(
     path: &Path,
     contents: &[u8],
     expected: Option<FileStamp>,
@@ -205,7 +205,7 @@ pub(crate) fn atomic_write_config_unless_changed(
     )
 }
 
-pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
+pub fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
     atomic_write_with(path, LinkPolicy::Reject, |file| file.write_all(contents))
 }
 
@@ -214,7 +214,7 @@ pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
 /// in its own directory while the links stay untouched; every link and the
 /// target must belong to the effective user. An existing destination keeps
 /// its permission bits, and a new one is created owner-only.
-pub(crate) fn atomic_write_config(path: &Path, contents: &[u8]) -> io::Result<()> {
+pub fn atomic_write_config(path: &Path, contents: &[u8]) -> io::Result<()> {
     atomic_write_with(path, LinkPolicy::FollowUserOwned, |file| {
         file.write_all(contents)
     })

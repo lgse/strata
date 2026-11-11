@@ -2,7 +2,7 @@
 
 use std::{cell::Cell, marker::PhantomData};
 
-pub(crate) mod stalls;
+pub mod stalls;
 
 thread_local! {
     static MARKED: Cell<bool> = const { Cell::new(false) };
@@ -10,22 +10,22 @@ thread_local! {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum Exception {
+pub enum Exception {
     Startup,
     ExitFlush,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     TestSetup,
 }
 
-pub(crate) fn mark() {
+pub fn mark() {
     MARKED.set(true);
 }
 
-pub(crate) fn is_current() -> bool {
+pub fn is_current() -> bool {
     MARKED.get() || glib::MainContext::default().is_owner()
 }
 
-pub(crate) fn assert_off() {
+pub fn assert_off() {
     debug_assert!(
         ALLOWED.get() > 0 || !is_current(),
         "file calls must not run on the UI thread"
@@ -33,12 +33,12 @@ pub(crate) fn assert_off() {
 }
 
 #[must_use]
-pub(crate) struct Allowed {
+pub struct Allowed {
     _exception: Exception,
     _thread: PhantomData<*const ()>,
 }
 
-pub(crate) fn allow(exception: Exception) -> Allowed {
+pub fn allow(exception: Exception) -> Allowed {
     ALLOWED.set(ALLOWED.get() + 1);
     Allowed {
         _exception: exception,

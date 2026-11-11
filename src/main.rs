@@ -12,12 +12,7 @@ mod app;
 mod assets;
 mod build_info;
 mod child_environment;
-mod error_text;
-mod i18n;
-mod logging;
 mod media;
-mod metrics;
-mod model;
 mod portal;
 mod portal_setup;
 #[cfg(feature = "qa")]
@@ -27,12 +22,12 @@ mod rar_extraction;
 mod sandbox;
 mod sandbox_helper;
 mod services;
-mod storage;
 #[cfg(test)]
 mod test_support;
-mod trusted_command;
 mod ui;
 mod util;
+
+use strata_core::{error_text, i18n, logging, metrics, model, storage, trusted_command};
 
 use std::{
     cell::OnceCell, ffi::OsString, ops::ControlFlow, os::unix::process::CommandExt, process::Stdio,

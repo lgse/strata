@@ -297,3 +297,49 @@ pub fn distinct_device_dirs(name: &str) -> Option<(tempfile::TempDir, tempfile::
     }
     dirs
 }
+
+/// Names the one test an isolated child runs.
+const ISOLATED_CHILD: &str = "STRATA_ISOLATED_GTK_TEST";
+
+/// Runs the test `name` in a process of its own, with a home and XDG folders it can discard.
+/// The child is this test executable started again for that one test: `prepare` runs there
+/// first, and `run` follows unless `prepare` returns false. Process-wide state the test
+/// changes, such as the locale or an initialized toolkit, ends with the child.
+pub fn isolated_test(
+    name: &str,
+    extra_env: impl IntoIterator<Item = (impl AsRef<std::ffi::OsStr>, impl AsRef<std::ffi::OsStr>)>,
+    prepare: impl FnOnce() -> bool,
+    run: impl FnOnce(),
+) {
+    if std::env::var(ISOLATED_CHILD).as_deref() == Ok(name) {
+        if prepare() {
+            run();
+        }
+        return;
+    }
+    let extra_env: Vec<(std::ffi::OsString, std::ffi::OsString)> = extra_env
+        .into_iter()
+        .map(|(key, value)| (key.as_ref().to_owned(), value.as_ref().to_owned()))
+        .collect();
+    // Child processes still share the display's clipboard and pointer grabs.
+    static DISPLAY: TestMutex = TestMutex::new();
+    let _display = DISPLAY.lock().expect("display lock");
+    let sandbox = tempfile::tempdir().expect("isolated preferences");
+    let home = sandbox.path().join("home");
+    std::fs::create_dir_all(&home).expect("isolated home");
+    let mut command = std::process::Command::new(std::env::current_exe().expect("test executable"));
+    command
+        // The parent already selected this exact case, including explicit --ignored runs.
+        .args(["--exact", name, "--nocapture", "--include-ignored"])
+        .env(ISOLATED_CHILD, name)
+        .env("HOME", home)
+        .env("XDG_STATE_HOME", sandbox.path().join("state"))
+        .env("XDG_CONFIG_HOME", sandbox.path().join("config"))
+        .env("XDG_CACHE_HOME", sandbox.path().join("cache"))
+        .env("XDG_DATA_HOME", sandbox.path().join("data"));
+    for (key, value) in extra_env {
+        command.env(key, value);
+    }
+    let status = command.status().expect("isolated test starts");
+    assert!(status.success(), "{name} failed");
+}

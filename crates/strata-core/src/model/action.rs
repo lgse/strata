@@ -8,7 +8,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-pub(crate) mod examples;
+pub mod examples;
 
 pub const ACTION_SCHEMA_VERSION: u32 = 1;
 
@@ -459,7 +459,7 @@ pub struct ActionInput {
 pub const FOLDER_CONTENT_TYPE: &str = "inode/directory";
 
 impl ActionInput {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn file(name: impl Into<std::ffi::OsString>, content_type: Option<&str>) -> Self {
         Self {
             kind: InputKind::File,
@@ -476,7 +476,7 @@ impl ActionInput {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn extension(&self) -> Option<String> {
         let extension = extension_bytes(&self.name)?;
         std::str::from_utf8(extension)

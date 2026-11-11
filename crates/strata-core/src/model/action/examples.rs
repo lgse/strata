@@ -2,9 +2,9 @@
 
 use super::{ActionRuntime, ExecutionMode};
 
-const CONTEXT_API: &str = include_str!("../../../data/actions/context-api.txt");
+const CONTEXT_API: &str = include_str!("../../../../../data/actions/context-api.txt");
 
-pub(crate) struct ActionExample {
+pub struct ActionExample {
     pub name: &'static str,
     pub category: &'static str,
     pub description: &'static str,
@@ -38,7 +38,7 @@ impl ActionExample {
             ExampleSource::Python(source) => source.to_owned(),
             ExampleSource::Rename(source) => format!(
                 "{source}\n{}",
-                include_str!("../../../data/actions/rename-engine.py")
+                include_str!("../../../../../data/actions/rename-engine.py")
             ),
         };
         format!(
@@ -48,7 +48,7 @@ impl ActionExample {
     }
 }
 
-pub(crate) const ACTION_EXAMPLES: &[ActionExample] = &[
+pub const ACTION_EXAMPLES: &[ActionExample] = &[
     ActionExample {
         name: "Log selected paths",
         category: "Files",
@@ -58,7 +58,9 @@ pub(crate) const ACTION_EXAMPLES: &[ActionExample] = &[
         extensions: &[],
         folders: true,
         mode: ExecutionMode::WholeSelection,
-        source: ExampleSource::Python(include_str!("../../../data/actions/examples/starter.py")),
+        source: ExampleSource::Python(include_str!(
+            "../../../../../data/actions/examples/starter.py"
+        )),
     },
     ActionExample {
         name: "Batch rename",
@@ -69,7 +71,9 @@ pub(crate) const ACTION_EXAMPLES: &[ActionExample] = &[
         extensions: &[],
         folders: false,
         mode: ExecutionMode::WholeSelection,
-        source: ExampleSource::Rename(include_str!("../../../data/actions/examples/rename.py")),
+        source: ExampleSource::Rename(include_str!(
+            "../../../../../data/actions/examples/rename.py"
+        )),
     },
     ActionExample {
         name: "Lowercase file names",
@@ -80,7 +84,9 @@ pub(crate) const ACTION_EXAMPLES: &[ActionExample] = &[
         extensions: &[],
         folders: false,
         mode: ExecutionMode::WholeSelection,
-        source: ExampleSource::Rename(include_str!("../../../data/actions/examples/lowercase.py")),
+        source: ExampleSource::Rename(include_str!(
+            "../../../../../data/actions/examples/lowercase.py"
+        )),
     },
     ActionExample {
         name: "Count lines",
@@ -94,7 +100,7 @@ pub(crate) const ACTION_EXAMPLES: &[ActionExample] = &[
         folders: false,
         mode: ExecutionMode::WholeSelection,
         source: ExampleSource::Bash(include_str!(
-            "../../../data/actions/examples/count-lines.sh"
+            "../../../../../data/actions/examples/count-lines.sh"
         )),
     },
     ActionExample {
@@ -106,7 +112,9 @@ pub(crate) const ACTION_EXAMPLES: &[ActionExample] = &[
         extensions: &[],
         folders: false,
         mode: ExecutionMode::PerItem,
-        source: ExampleSource::Python(include_str!("../../../data/actions/examples/checksums.py")),
+        source: ExampleSource::Python(include_str!(
+            "../../../../../data/actions/examples/checksums.py"
+        )),
     },
     ActionExample {
         name: "Convert images to WebP",
@@ -117,7 +125,7 @@ pub(crate) const ACTION_EXAMPLES: &[ActionExample] = &[
         extensions: &["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"],
         folders: false,
         mode: ExecutionMode::PerItem,
-        source: ExampleSource::Python(include_str!("../../../data/actions/examples/webp.py")),
+        source: ExampleSource::Python(include_str!("../../../../../data/actions/examples/webp.py")),
     },
     ActionExample {
         name: "Resize images to 1024px",
@@ -128,7 +136,9 @@ pub(crate) const ACTION_EXAMPLES: &[ActionExample] = &[
         extensions: &["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"],
         folders: false,
         mode: ExecutionMode::PerItem,
-        source: ExampleSource::Python(include_str!("../../../data/actions/examples/resize.py")),
+        source: ExampleSource::Python(include_str!(
+            "../../../../../data/actions/examples/resize.py"
+        )),
     },
     ActionExample {
         name: "Strip EXIF metadata",
@@ -139,7 +149,9 @@ pub(crate) const ACTION_EXAMPLES: &[ActionExample] = &[
         extensions: &["jpg", "jpeg", "png", "tif", "tiff", "webp"],
         folders: false,
         mode: ExecutionMode::PerItem,
-        source: ExampleSource::Bash(include_str!("../../../data/actions/examples/strip-exif.sh")),
+        source: ExampleSource::Bash(include_str!(
+            "../../../../../data/actions/examples/strip-exif.sh"
+        )),
     },
     ActionExample {
         name: "Convert videos to MP4",
@@ -150,7 +162,7 @@ pub(crate) const ACTION_EXAMPLES: &[ActionExample] = &[
         extensions: &["mp4", "mkv", "mov", "webm", "avi", "m4v"],
         folders: false,
         mode: ExecutionMode::PerItem,
-        source: ExampleSource::Python(include_str!("../../../data/actions/examples/mp4.py")),
+        source: ExampleSource::Python(include_str!("../../../../../data/actions/examples/mp4.py")),
     },
     ActionExample {
         name: "Extract MP3 audio",
@@ -163,6 +175,6 @@ pub(crate) const ACTION_EXAMPLES: &[ActionExample] = &[
         ],
         folders: false,
         mode: ExecutionMode::PerItem,
-        source: ExampleSource::Python(include_str!("../../../data/actions/examples/mp3.py")),
+        source: ExampleSource::Python(include_str!("../../../../../data/actions/examples/mp3.py")),
     },
 ];

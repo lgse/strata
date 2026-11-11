@@ -20,10 +20,10 @@ use futures_channel::oneshot;
 
 use crate::model::Location;
 
-pub(crate) const HELD_FOR_OPERATION: &str = "This item is being changed by a file operation.";
+pub const HELD_FOR_OPERATION: &str = "This item is being changed by a file operation.";
 
 #[derive(Debug)]
-pub(crate) struct Refused;
+pub struct Refused;
 
 impl fmt::Display for Refused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -45,7 +45,7 @@ impl From<Refused> for String {
     }
 }
 
-pub(crate) fn is_refusal(error: &io::Error) -> bool {
+pub fn is_refusal(error: &io::Error) -> bool {
     error.get_ref().is_some_and(|inner| inner.is::<Refused>())
 }
 
@@ -168,12 +168,12 @@ fn registry() -> MutexGuard<'static, Registry> {
     REGISTRY.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-pub(crate) struct Hold {
+pub struct Hold {
     id: u64,
     stopped: Arc<AtomicBool>,
 }
 
-pub(crate) fn hold<P: AsRef<Path>>(
+pub fn hold<P: AsRef<Path>>(
     paths: impl IntoIterator<Item = P>,
     stop: impl Fn() + Send + Sync + 'static,
 ) -> Result<Hold, Refused> {
@@ -202,11 +202,11 @@ pub(crate) fn hold<P: AsRef<Path>>(
 }
 
 impl Hold {
-    pub(crate) fn stopped(&self) -> bool {
+    pub fn stopped(&self) -> bool {
         self.stopped.load(Ordering::Acquire)
     }
 
-    pub(crate) fn settle<T, E: From<Refused>>(&self, result: Result<T, E>) -> Result<T, E> {
+    pub fn settle<T, E: From<Refused>>(&self, result: Result<T, E>) -> Result<T, E> {
         match result {
             Err(_) if self.stopped() => Err(Refused.into()),
             result => result,
@@ -232,12 +232,12 @@ fn hold_real(path: &Path) -> io::Result<Hold> {
     Ok(hold([path, &real], || {})?)
 }
 
-pub(crate) struct HeldFile {
+pub struct HeldFile {
     file: File,
     hold: Hold,
 }
 
-pub(crate) fn open(path: &Path) -> io::Result<HeldFile> {
+pub fn open(path: &Path) -> io::Result<HeldFile> {
     crate::util::ui_thread::assert_off();
     let hold = hold_real(path)?;
     Ok(HeldFile {
@@ -255,12 +255,12 @@ impl Read for HeldFile {
     }
 }
 
-pub(crate) struct Listing {
+pub struct Listing {
     entries: Option<fs::ReadDir>,
     hold: Hold,
 }
 
-pub(crate) fn list(folder: &Path) -> io::Result<Listing> {
+pub fn list(folder: &Path) -> io::Result<Listing> {
     let hold = hold_real(folder)?;
     Ok(Listing {
         entries: Some(fs::read_dir(folder)?),
@@ -269,7 +269,7 @@ pub(crate) fn list(folder: &Path) -> io::Result<Listing> {
 }
 
 impl Listing {
-    pub(crate) fn stopped(&self) -> bool {
+    pub fn stopped(&self) -> bool {
         self.hold.stopped()
     }
 }
@@ -288,9 +288,9 @@ impl Iterator for Listing {
 }
 
 #[derive(Default)]
-pub(crate) struct OperationScope {
-    pub(crate) roots: Vec<PathBuf>,
-    pub(crate) folders: Vec<PathBuf>,
+pub struct OperationScope {
+    pub roots: Vec<PathBuf>,
+    pub folders: Vec<PathBuf>,
 }
 
 struct Registered {
@@ -305,9 +305,9 @@ fn folder_key(folder: &Location) -> Option<PathBuf> {
         .or_else(|| folder.uri_value().map(PathBuf::from))
 }
 
-pub(crate) struct Activity(u64);
+pub struct Activity(u64);
 
-pub(crate) fn begin(scope: OperationScope) -> Activity {
+pub fn begin(scope: OperationScope) -> Activity {
     let mut registry = registry();
     let id = registry.id();
     registry.register(&scope);
@@ -322,7 +322,7 @@ pub(crate) fn begin(scope: OperationScope) -> Activity {
 }
 
 impl Activity {
-    pub(crate) fn include(&self, scope: OperationScope) {
+    pub fn include(&self, scope: OperationScope) {
         let mut registry = registry();
         registry.register(&scope);
         if let Some(operation) = registry.operations.get_mut(&self.0) {
@@ -331,7 +331,7 @@ impl Activity {
         }
     }
 
-    pub(crate) fn include_folder(&self, folder: &Location) {
+    pub fn include_folder(&self, folder: &Location) {
         if let Some(folder) = folder_key(folder) {
             self.include(OperationScope {
                 roots: Vec::new(),
@@ -340,7 +340,7 @@ impl Activity {
         }
     }
 
-    pub(crate) fn include_trees(&self, trees: impl IntoIterator<Item = Location>) {
+    pub fn include_trees(&self, trees: impl IntoIterator<Item = Location>) {
         let trees: Vec<PathBuf> = trees
             .into_iter()
             .filter_map(|tree| folder_key(&tree))
@@ -354,7 +354,7 @@ impl Activity {
         }
     }
 
-    pub(crate) fn fence<P: Into<PathBuf>>(&self, paths: impl IntoIterator<Item = P>) -> Fence {
+    pub fn fence<P: Into<PathBuf>>(&self, paths: impl IntoIterator<Item = P>) -> Fence {
         let paths: BTreeSet<PathBuf> = paths.into_iter().map(Into::into).collect();
         let mut registry = registry();
         for path in &paths {
@@ -373,7 +373,7 @@ impl Activity {
 }
 
 impl Activity {
-    pub(crate) fn end(&self) {
+    pub fn end(&self) {
         let mut registry = registry();
         let Some(Registered { scope, trees }) = registry.operations.remove(&self.0) else {
             return;
@@ -403,10 +403,10 @@ impl Drop for Activity {
     }
 }
 
-pub(crate) struct Fence(u64);
+pub struct Fence(u64);
 
 impl Fence {
-    pub(crate) fn stop_reads(&self) {
+    pub fn stop_reads(&self) {
         let stops: Vec<Stop> = {
             let registry = registry();
             let Some(barrier) = registry.barriers.get(&self.0) else {
@@ -424,7 +424,7 @@ impl Fence {
         }
     }
 
-    pub(crate) fn drained(&self) -> impl Future<Output = ()> + Send + 'static {
+    pub fn drained(&self) -> impl Future<Output = ()> + Send + 'static {
         let (sender, receiver) = oneshot::channel();
         let settled = {
             let mut registry = registry();
@@ -457,31 +457,31 @@ impl Drop for Fence {
     }
 }
 
-pub(crate) fn is_changing(path: &Path) -> bool {
+pub fn is_changing(path: &Path) -> bool {
     let registry = registry();
     registry.roots.covers(path) || registry.fenced.covers(path)
 }
 
-pub(crate) fn is_releasing() -> bool {
+pub fn is_releasing() -> bool {
     !registry().barriers.is_empty()
 }
 
 /// Direct writes and recursive merges stay distinct so consumers can leave unrelated
 /// descendants alone when invalidating metadata.
-pub(crate) struct EndedOperation {
-    pub(crate) roots: HashSet<PathBuf>,
-    pub(crate) folders: HashSet<PathBuf>,
-    pub(crate) trees: HashSet<PathBuf>,
+pub struct EndedOperation {
+    pub roots: HashSet<PathBuf>,
+    pub folders: HashSet<PathBuf>,
+    pub trees: HashSet<PathBuf>,
 }
 
-pub(crate) enum Notice<'a> {
+pub enum Notice<'a> {
     Releasing(&'a [PathBuf]),
     Lifted(&'a [PathBuf]),
     Ended(&'a EndedOperation),
 }
 
 impl Notice<'_> {
-    pub(crate) fn covers(&self, path: &Path) -> bool {
+    pub fn covers(&self, path: &Path) -> bool {
         match self {
             Self::Releasing(roots) | Self::Lifted(roots) => {
                 roots.iter().any(|root| path.starts_with(root))
@@ -502,9 +502,9 @@ thread_local! {
     static NEXT_OBSERVER: Cell<u64> = const { Cell::new(0) };
 }
 
-pub(crate) struct Subscription(u64, PhantomData<Rc<()>>);
+pub struct Subscription(u64, PhantomData<Rc<()>>);
 
-pub(crate) fn observe(observer: impl Fn(&Notice<'_>) + 'static) -> Subscription {
+pub fn observe(observer: impl Fn(&Notice<'_>) + 'static) -> Subscription {
     let id = NEXT_OBSERVER.with(|next| {
         next.set(next.get() + 1);
         next.get()
@@ -519,7 +519,7 @@ impl Drop for Subscription {
     }
 }
 
-pub(crate) fn notify(notice: &Notice<'_>) {
+pub fn notify(notice: &Notice<'_>) {
     let observers: Vec<Observer> = OBSERVERS
         .try_with(|observers| observers.borrow().values().cloned().collect())
         .unwrap_or_default();
@@ -528,16 +528,16 @@ pub(crate) fn notify(notice: &Notice<'_>) {
     }
 }
 
-pub(crate) fn is_active_in(folder: &Path) -> bool {
+pub fn is_active_in(folder: &Path) -> bool {
     let registry = registry();
     registry.folders.contains(folder) || registry.trees.covers(folder)
 }
 
-pub(crate) fn is_active_at(folder: &Location) -> bool {
+pub fn is_active_at(folder: &Location) -> bool {
     folder_key(folder).is_some_and(|folder| is_active_in(&folder))
 }
 
-pub(crate) fn in_use_within(folder: &Path) -> bool {
+pub fn in_use_within(folder: &Path) -> bool {
     let below = |path: &Path| path != folder && path.starts_with(folder);
     let registry = registry();
     registry
@@ -550,6 +550,3 @@ pub(crate) fn in_use_within(folder: &Path) -> bool {
                 && !roots.iter().any(|root| folder.starts_with(root))
         })
 }
-
-#[cfg(test)]
-mod tests;

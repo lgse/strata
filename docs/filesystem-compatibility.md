@@ -1362,7 +1362,7 @@ about to close, and otherwise leaves the file where it is and says which program
 
 ### Releasing Strata's own reads
 
-`src/services/file_activity.rs` registers the reads Strata holds and the operations that run. Every
+`crates/strata-core/src/file_activity.rs` registers the reads Strata holds and the operations that run. Every
 read of a user's file goes through it, on a worker: previews and thumbnails with their sandboxes,
 media playback, waveform and storyboard decodes, metadata probes, the small in-process reads
 (content sniffing, text, Markdown images), and background listings (item counts, folder art,
@@ -1551,7 +1551,7 @@ still recognises those names and classes them as possible originals.
 
 - **By the whole name.** A known prefix followed by a UUID, or for the two older stage prefixes the
   6-character suffix older builds used. `.strata-copy-notes` or an unknown `.strata-x-<uuid>` is an
-  ordinary file. The table is `src/model/hidden_names.rs`.
+  ordinary file. The table is `crates/strata-core/src/model/hidden_names.rs`.
 - **From the listing Strata makes anyway**, in memory, with no extra scan or file call; a folder
   nobody opens is never looked at.
 - **Where the user looks.** In a browser window, not the portal chooser, in a folder the view shows
@@ -1655,7 +1655,7 @@ probe only costs that probe its answer.
 | `.strata-replacement-*` with 6 characters | released builds' Replace stage | a copy, or after an exchange the original | **may be the user's original**; Restore as "Recovered item" |
 | `.strata-compression-*` with 6 characters, `.strata-symlink-*` | released builds' archive and symbolic link stages | a copy | an incomplete copy |
 
-The prefixes live in `src/model/hidden_names.rs`. Strata never deletes or renames by itself a name
+The prefixes live in `crates/strata-core/src/model/hidden_names.rs`. Strata never deletes or renames by itself a name
 that may hold user data.
 
 ## Changes made elsewhere
@@ -1807,7 +1807,7 @@ waits off the interface thread and bounds how many workers they can hold.
 
 ### Off the interface thread
 
-The GTK main thread is marked at start (`src/util/ui_thread.rs`), and every seam that touches the
+The GTK main thread is marked at start (`crates/strata-core/src/util/ui_thread.rs`), and every seam that touches the
 disk asserts that it runs elsewhere, also outside main-loop dispatch: the syscall seam, the probes,
 mount-table reads and the settings writer. What the interface needs from the disk it asks of a
 worker:

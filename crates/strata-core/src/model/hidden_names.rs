@@ -6,7 +6,7 @@ use std::{
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum HiddenName {
+pub enum HiddenName {
     Probe,
     Copy,
     Extraction,
@@ -19,7 +19,7 @@ pub(crate) enum HiddenName {
 }
 
 impl HiddenName {
-    pub(crate) const fn prefix(self) -> &'static str {
+    pub const fn prefix(self) -> &'static str {
         match self {
             Self::Probe => ".strata-probe-",
             Self::Copy => ".strata-copy-",
@@ -33,7 +33,7 @@ impl HiddenName {
         }
     }
 
-    pub(crate) fn fresh(self) -> OsString {
+    pub fn fresh(self) -> OsString {
         OsString::from(format!(
             "{}{}",
             self.prefix(),
@@ -43,7 +43,7 @@ impl HiddenName {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Leftover {
+pub enum Leftover {
     Probe,
     IncompleteCopy,
     MaybeOriginal,
@@ -53,7 +53,7 @@ pub(crate) enum Leftover {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ForeignLeftover {
+pub enum ForeignLeftover {
     Nfs,
     Fuse,
     Smb,
@@ -141,7 +141,7 @@ const FOREIGN_LEFTOVERS: [(&str, Suffix, ForeignLeftover); 4] = [
     ),
 ];
 
-pub(crate) fn classify(name: &OsStr) -> Option<Leftover> {
+pub fn classify(name: &OsStr) -> Option<Leftover> {
     let name = name.as_bytes();
     if !name.starts_with(STRATA) {
         return None;
@@ -149,7 +149,7 @@ pub(crate) fn classify(name: &OsStr) -> Option<Leftover> {
     find(&LEFTOVERS, name)
 }
 
-pub(crate) fn foreign_leftover(name: &OsStr) -> Option<ForeignLeftover> {
+pub fn foreign_leftover(name: &OsStr) -> Option<ForeignLeftover> {
     find(&FOREIGN_LEFTOVERS, name.as_bytes())
 }
 

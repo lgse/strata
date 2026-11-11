@@ -3060,7 +3060,6 @@ dependencies = [
  "ring",
  "rquickjs",
  "rust-i18n",
- "rust-i18n-support",
  "rustix",
  "rustls",
  "seccompiler",
@@ -3070,6 +3069,7 @@ dependencies = [
  "sevenz-rust2",
  "sha2",
  "sourceview5",
+ "strata-core",
  "strata-test-support",
  "tar",
  "tempfile",
@@ -3089,6 +3089,26 @@ dependencies = [
  "zbus",
  "zip 9.1.3",
  "zstd",
+]
+
+[[package]]
+name = "strata-core"
+version = "0.0.0"
+dependencies = [
+ "futures-channel",
+ "gio",
+ "glib",
+ "libc",
+ "rust-i18n",
+ "rust-i18n-support",
+ "rustix",
+ "serde",
+ "serde_json",
+ "strata-test-support",
+ "tempfile",
+ "toml 1.1.6+spec-1.1.0",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::HashMap, sync::LazyLock};
 
 use serde::{Deserialize, Serialize};
 
 /// The saved choice is separate from the process locale: changes apply on restart.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-pub(crate) enum Language {
+pub enum Language {
     #[serde(rename = "en")]
     English,
     #[serde(rename = "fr")]
@@ -119,7 +119,7 @@ fn resolve_locale(language: &str, lc_all: &str, lc_messages: &str, lang: &str) -
         .unwrap_or("en")
 }
 
-pub(crate) fn detected_locale() -> &'static str {
+pub fn detected_locale() -> &'static str {
     let get = |name| std::env::var(name).unwrap_or_default();
     resolve_locale(
         &get("LANGUAGE"),
@@ -133,17 +133,21 @@ mod compiled {
     include!(concat!(env!("OUT_DIR"), "/catalogs.rs"));
 }
 
+type Tables = HashMap<&'static str, HashMap<&'static str, &'static str>>;
+
 /// Translation backend over the tables that build.rs generates from `data/locales`.
-pub(crate) struct Catalogs(HashMap<&'static str, HashMap<&'static str, &'static str>>);
+pub struct Catalogs(&'static Tables);
 
 impl Catalogs {
-    pub(crate) fn compiled() -> Self {
-        Self(
+    /// Every crate's `i18n!` names this backend, so they all read one set of tables.
+    pub fn compiled() -> Self {
+        static TABLES: LazyLock<Tables> = LazyLock::new(|| {
             compiled::CATALOGS
                 .iter()
                 .map(|&(locale, messages)| (locale, messages.iter().copied().collect()))
-                .collect(),
-        )
+                .collect()
+        });
+        Self(&TABLES)
     }
 }
 
@@ -171,20 +175,20 @@ impl rust_i18n::Backend for Catalogs {
 
 /// English source messages are keys; missing translations retain readable English.
 /// Call only at presentation boundaries, never for paths, protocol values or user content.
-pub(crate) fn tr(message: &str) -> String {
+pub fn tr(message: &str) -> String {
     rust_i18n::t!(message).into_owned()
 }
 
-pub(crate) fn quoted(name: &str) -> String {
+pub fn quoted(name: &str) -> String {
     rust_i18n::t!("“%{name}”", name = name).into_owned()
 }
 
 /// Joins already translated items with the language's list separator.
-pub(crate) fn list(items: impl IntoIterator<Item = String>) -> String {
+pub fn list(items: impl IntoIterator<Item = String>) -> String {
     list_in(&rust_i18n::locale(), items)
 }
 
-pub(crate) fn join_sentences(first: &str, second: &str) -> String {
+pub fn join_sentences(first: &str, second: &str) -> String {
     join_sentences_in(&rust_i18n::locale(), first, second)
 }
 
@@ -205,7 +209,7 @@ fn join_sentences_in(locale: &str, first: &str, second: &str) -> String {
 }
 
 /// Uppercases the first character, for lower-case list fragments that start a sentence.
-pub(crate) fn capitalize_first(text: String) -> String {
+pub fn capitalize_first(text: String) -> String {
     let mut chars = text.chars();
     match chars.next() {
         Some(first) if !first.is_uppercase() => first.to_uppercase().chain(chars).collect(),
@@ -240,11 +244,11 @@ fn plural_category(locale: &str, count: u64) -> &'static str {
     }
 }
 
-pub(crate) fn count(kind: &str, count: usize) -> String {
+pub fn count(kind: &str, count: usize) -> String {
     count_u64(kind, count as u64)
 }
 
-pub(crate) fn count_u64(kind: &str, count: u64) -> String {
+pub fn count_u64(kind: &str, count: u64) -> String {
     count_in(&rust_i18n::locale(), kind, count)
 }
 
@@ -292,7 +296,7 @@ fn group_digits(locale: &str, digits: &str) -> String {
 }
 
 /// Formats a whole number with the language's digit grouping.
-pub(crate) fn integer(value: u64) -> String {
+pub fn integer(value: u64) -> String {
     integer_in(&rust_i18n::locale(), value)
 }
 
@@ -301,7 +305,7 @@ fn integer_in(locale: &str, value: u64) -> String {
 }
 
 /// A whole percentage such as "42%", spaced as the language writes it.
-pub(crate) fn percent(value: usize) -> String {
+pub fn percent(value: usize) -> String {
     percent_in(&rust_i18n::locale(), value)
 }
 
@@ -315,7 +319,7 @@ fn percent_in(locale: &str, value: usize) -> String {
 }
 
 /// Formats `value` with exactly `decimals` fraction digits in the language's notation.
-pub(crate) fn decimal(value: f64, decimals: usize) -> String {
+pub fn decimal(value: f64, decimals: usize) -> String {
     decimal_in(&rust_i18n::locale(), value, decimals)
 }
 
@@ -364,7 +368,7 @@ fn rounded_size_and_unit(bytes: u64, unit_count: usize) -> (f64, usize) {
 
 /// The one shared byte-size presentation: decimal units, at most one fraction
 /// digit, and the language's decimal separator and unit symbols.
-pub(crate) fn file_size(bytes: u64) -> String {
+pub fn file_size(bytes: u64) -> String {
     file_size_in(&rust_i18n::locale(), bytes)
 }
 
@@ -380,7 +384,7 @@ fn file_size_in(locale: &str, bytes: u64) -> String {
 }
 
 /// A byte rate such as "1.5 MB/s".
-pub(crate) fn transfer_rate(bytes_per_second: u64) -> String {
+pub fn transfer_rate(bytes_per_second: u64) -> String {
     transfer_rate_in(&rust_i18n::locale(), bytes_per_second)
 }
 
@@ -394,7 +398,7 @@ fn transfer_rate_in(locale: &str, bytes_per_second: u64) -> String {
 }
 
 /// A compact whole-second duration such as "45s", "2m 5s" or "1h 3m".
-pub(crate) fn duration(seconds: u64) -> String {
+pub fn duration(seconds: u64) -> String {
     duration_in(&rust_i18n::locale(), seconds)
 }
 

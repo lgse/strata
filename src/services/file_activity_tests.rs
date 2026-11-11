@@ -2,6 +2,7 @@
 
 use std::{
     io::Read,
+    path::Path,
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -11,10 +12,10 @@ use std::{
     time::Duration,
 };
 
-use super::*;
 use crate::{
+    model::Location,
     sandbox::{self, Cancellation, MediaPreviewBackend, ParseOperation},
-    services::{ArchiveFormat, DocumentMedia, document_media, read_head_sample},
+    services::{ArchiveFormat, DocumentMedia, document_media, file_activity::*, read_head_sample},
 };
 
 const LONG: Duration = Duration::from_secs(10);

@@ -19,8 +19,10 @@ fn utc_date(year: i32, month: i32, day: i32, hour: i32, minute: i32) -> glib::Da
 
 #[test]
 fn dates_follow_the_app_language_without_installed_system_locales() {
-    crate::test_support::gtk_test(
+    strata_test_support::isolated_test(
         "util::tests::dates_follow_the_app_language_without_installed_system_locales",
+        std::iter::empty::<(&str, &str)>(),
+        || true,
         || {
             let modified = utc_date(2026, 9, 7, 14, 30);
             let now = utc_date(2026, 9, 9, 14, 30);

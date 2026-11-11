@@ -7,7 +7,7 @@ mod tests;
 
 /// Localized text for an I/O failure. An unrecognized OS error gets a generic reason and its
 /// system text is logged; errors built by Strata or a library keep their own message.
-pub(crate) fn io_error_message(error: &std::io::Error) -> String {
+pub fn io_error_message(error: &std::io::Error) -> String {
     if let Some(link) = error
         .get_ref()
         .and_then(|inner| inner.downcast_ref::<crate::storage::DestinationError>())
@@ -24,15 +24,15 @@ pub(crate) fn io_error_message(error: &std::io::Error) -> String {
     }
 }
 
-pub(crate) const UNEXPECTED_SYSTEM_ERROR: &str = "An unexpected system error occurred";
+pub const UNEXPECTED_SYSTEM_ERROR: &str = "An unexpected system error occurred";
 
 /// [`io_error_message`] for the `%{error}` slot after a colon; see [`error_detail`].
-pub(crate) fn io_error_detail(error: &std::io::Error) -> String {
+pub fn io_error_detail(error: &std::io::Error) -> String {
     error_detail(io_error_message(error))
 }
 
 /// The English catalog message for a recognized I/O failure.
-pub(crate) fn io_error_reason(error: &std::io::Error) -> Option<&'static str> {
+pub fn io_error_reason(error: &std::io::Error) -> Option<&'static str> {
     use std::io::ErrorKind;
     // These errnos have no stable `ErrorKind`.
     match error.raw_os_error() {
@@ -71,7 +71,7 @@ pub(crate) fn io_error_reason(error: &std::io::Error) -> Option<&'static str> {
 }
 
 /// System text without the errno suffix or a tempfile path, which can name internal staging files.
-pub(crate) fn system_error_text(error: &std::io::Error) -> String {
+pub fn system_error_text(error: &std::io::Error) -> String {
     let text = error.to_string();
     let text = match error.get_ref() {
         Some(_) => text
@@ -88,7 +88,7 @@ pub(crate) fn system_error_text(error: &std::io::Error) -> String {
 /// Adapts a standalone, capitalized error reason for a `…: %{error}` slot. French, Spanish,
 /// Italian, Portuguese, Hungarian, Russian and Vietnamese continue in lower case after a colon;
 /// German capitalizes nouns, and English and CJK keep the text as is.
-pub(crate) fn error_detail(text: String) -> String {
+pub fn error_detail(text: String) -> String {
     error_detail_in(&rust_i18n::locale(), text)
 }
 
