@@ -19,6 +19,7 @@ mod launch;
 mod menus;
 #[cfg(feature = "qa")]
 mod qa;
+mod rename;
 mod settings;
 mod shell;
 mod startup;

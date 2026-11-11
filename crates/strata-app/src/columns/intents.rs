@@ -13,6 +13,7 @@ use strata_components::{
 use super::Input;
 use crate::{
     menus::{self, EntryTarget, FolderTarget, Opening, Wired},
+    rename,
     shell::{self, App},
 };
 
@@ -127,13 +128,19 @@ impl App {
         }
     }
 
-    fn collection(&mut self, depth: usize, intent: Intent) {
+    fn collection(&mut self, depth: usize, intent: Intent, tx: &mut Tx) {
         match intent {
             Intent::Activate { id, how } => self.activate(depth, id, how),
             Intent::Clicked { id } => self.clicked(depth, id),
-            // V9 opens the editor here.
-            Intent::BeginRename { .. } => tracing::debug!(depth, "the view asked for a rename"),
-            Intent::ContextMenu { target, anchor } => self.context_menu(depth, target, anchor),
+            // A slow second click on the entry.
+            Intent::BeginRename { id } => rename::begin_on(self, depth, id, tx),
+            // A press with any button outside the field commits an open rename in the GTK
+            // view. The press that opens a menu leaves Rune's field the keyboard, so the edit
+            // is ended here.
+            Intent::ContextMenu { target, anchor } => {
+                rename::commit(self, tx);
+                self.context_menu(depth, target, anchor);
+            }
             // Drags and new tabs are interface the slice leaves out. Up and
             // Down at a column's edge have nowhere to go without a header to focus: the view
             // has selected the cursor's entry alone again, as the browser does there.
@@ -154,7 +161,7 @@ pub(super) fn heard(app: &mut App, intent: ColumnsIntent, tx: &mut Tx) {
     };
     app.columns.publish(&app.browser, Some(input));
     match intent {
-        ColumnsIntent::Collection { depth, intent } => app.collection(depth, intent),
+        ColumnsIntent::Collection { depth, intent } => app.collection(depth, intent, tx),
         ColumnsIntent::EnterFolder { depth, id } => app.enter(depth, id),
         ColumnsIntent::CloseFrom(depth) => app.browser.close_column(depth),
         // Published above, and with it the active column a key moved the keyboard to.
@@ -162,6 +169,7 @@ pub(super) fn heard(app: &mut App, intent: ColumnsIntent, tx: &mut Tx) {
         | ColumnsIntent::Selection { .. }
         | ColumnsIntent::Active { .. } => {}
         ColumnsIntent::HeaderMenu { depth, anchor } => {
+            rename::commit(app, tx);
             app.folder_menu(depth, Point::new(anchor.x, anchor.y));
         }
         // `LeftOfRoot` is the sidebar's, which the slice has not. `Width` and `Dropped` are
@@ -183,8 +191,15 @@ pub(crate) fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
                 app.activate(depth, id, Activation::Click);
             }
         }
-        // V9 opens the editor here.
-        Some(Wired::Rename) => tracing::debug!(depth, "the menu asked for a rename"),
+        // `rename_context_entry` in `src/ui/browser/context_menu/focus.rs`: the entry is
+        // selected alone, and then renamed as F2 renames it.
+        Some(Wired::Rename) => {
+            if let Some(id) = target.entry() {
+                app.columns.select_only((depth, id), &app.look, tx);
+                shell::publish(app);
+                rename::begin_on(app, depth, id, tx);
+            }
+        }
         Some(Wired::SelectAll) => app.columns.select_all(depth),
         Some(Wired::Refresh) => app.browser.retry_column(depth),
         Some(Wired::ToggleHidden) => app.browser.toggle_hidden(),

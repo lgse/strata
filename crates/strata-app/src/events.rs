@@ -14,7 +14,10 @@ use std::{cell::RefCell, collections::VecDeque, ops::Range, rc::Rc};
 
 use strata_components::contract::EntryId;
 use strata_core::model::{FileEntry, Location, ViewPreferences};
-use strata_fs::app::{Browser, BrowserEvent};
+use strata_fs::{
+    app::{Browser, BrowserEvent},
+    services::OperationRequestId,
+};
 
 use crate::columns::{Edit, Ids, Load, Row};
 
@@ -52,6 +55,19 @@ pub(crate) struct Landed {
     pub(crate) position: usize,
     /// A deletion moved it, which mirrors whatever the last input was.
     pub(crate) by_removal: bool,
+}
+
+/// How a rename the browser was asked for ended.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Answer {
+    Completed(OperationRequestId),
+    /// A later operation took its place: it may still land, and nothing waits for it.
+    Abandoned(OperationRequestId),
+    /// No request when the browser refused the name before it started an operation.
+    Failed {
+        request: Option<OperationRequestId>,
+        message: String,
+    },
 }
 
 /// What a `BrowserEvent` asks of the interface.
@@ -100,6 +116,13 @@ pub(crate) enum Change {
     },
     /// The browser's sort or hidden-files choice changed: the saved settings follow it.
     View(ViewPreferences),
+    /// One of the browser's operations gave an entry another location, and so another id.
+    /// It comes before the listing shows it: what the view holds by the old id moves first.
+    Moved {
+        from: EntryId,
+        to: EntryId,
+    },
+    Rename(Answer),
 }
 
 #[derive(Default)]
@@ -272,10 +295,39 @@ impl Reader<'_> {
     }
 
     fn read(&mut self, event: &BrowserEvent) {
-        let read = self.read_columns(event) || self.read_rows(event) || self.read_load(event);
+        let read = self.read_columns(event)
+            || self.read_rows(event)
+            || self.read_load(event)
+            || self.read_rename(event);
         if !read {
             self.read_selection(event);
         }
+    }
+
+    /// The events that say what a rename did. False when `event` is not one.
+    fn read_rename(&mut self, event: &BrowserEvent) -> bool {
+        let change = match event {
+            BrowserEvent::ItemRelocated { from, to, .. } => Change::Moved {
+                from: self.ids.of(from),
+                to: self.ids.of(to),
+            },
+            BrowserEvent::RenameCompleted { request_id } => {
+                Change::Rename(Answer::Completed(*request_id))
+            }
+            BrowserEvent::RenameAbandoned { request_id } => {
+                Change::Rename(Answer::Abandoned(*request_id))
+            }
+            BrowserEvent::RenameFailed {
+                request_id,
+                message,
+            } => Change::Rename(Answer::Failed {
+                request: *request_id,
+                message: message.clone(),
+            }),
+            _ => return false,
+        };
+        self.changes.push(change);
+        true
     }
 
     /// The events that open, close and move columns. False when `event` is not one.
@@ -421,8 +473,7 @@ impl Reader<'_> {
             //   the one that changes what shows.
             // - `NavigationStarting` asks a view to save what it shows; the slice restores
             //   no scroll position.
-            // - The rename events (`RenameCompleted`, `RenameAbandoned`, `RenameFailed`,
-            //   `EntryCreated`) and `ItemRelocated` are V9's.
+            // - `EntryCreated` is New Folder's and New File's, which the slice leaves out.
             // - `NavigationRejected`, `ColumnNotResponding`, the peek, preview, open and
             //   extract requests, folder counts, sort choices and every transfer, deletion
             //   and restore event belong to interface the slice leaves out

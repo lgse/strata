@@ -26,6 +26,7 @@ use crate::{
     columns::{self, Columns, Hands, Ids},
     events::{Change, Inbox},
     menus::Menu,
+    rename::{self, Rename},
     settings::Saved,
     startup::UiThread,
 };
@@ -65,6 +66,8 @@ pub(crate) struct App {
     pub(crate) columns: Columns,
     /// The context menu, while one is open.
     pub(crate) menu: Menu,
+    /// The inline rename editor, and the rename the browser has not answered.
+    pub(crate) rename: Rename,
     settings: Saved,
     events: Inbox,
     /// The browser's active location as of the last `poll`: what the body and the title name.
@@ -93,6 +96,7 @@ impl App {
             events: Inbox::observing(&browser, ids.clone()),
             columns: Columns::new(saved, ids),
             menu: Menu::default(),
+            rename: Rename::translated(),
             settings,
             browser,
             location: None,
@@ -123,6 +127,7 @@ impl App {
                 self.settings.store_view(view);
                 return false;
             }
+            Change::Rename(answer) => rename::answered(self, answer, tx),
             change => self.columns.apply(
                 change,
                 &mut Hands {
@@ -260,6 +265,8 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
     let chrome = app.chrome();
     let bar = csd::header(bar(app, &chrome), &app.csd, csd_of);
     let mut layer = Vec::new();
+    // The editor's message, over the rows and under a menu.
+    layer.extend(rename::editor().message(app, look));
     let menu = menu(app, &mut layer);
     let content = col().w_full().h_full().child(bar).child(body(app));
     let window = csd::decorate(
@@ -275,7 +282,8 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
 /// Rune's `poll` hook: what the browser's observers queued, then the view's own timers.
 pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let settled = settle(app, tx);
-    columns::view(app).tick(app, clock, tx) | settled
+    let ticked = columns::view(app).tick(app, clock, tx);
+    rename::tick(app, tx) | ticked | settled
 }
 
 /// Hands the browser what the view changed. A host calls it before it lets GLib dispatch, so
@@ -315,28 +323,34 @@ fn apply_queued(app: &mut App, tx: &mut Tx) -> bool {
     changed
 }
 
-/// Chords, as Rune spells them, and what they ask of the browser.
-type WindowKey = (&'static str, fn(&Rc<Browser>));
+/// Chords, as Rune spells them, and what each does.
+type WindowKey = (&'static str, fn(&mut App, &mut Tx));
 
-/// The window's own keys and what each asks of the browser. Shift may be held with a
-/// history key, as `history_jump` in `src/ui/window/keyboard/items.rs` lets it.
-const WINDOW_KEYS: [WindowKey; 5] = [
-    // `HIDDEN_FILES` in `src/ui/keys/bindings/window.rs`.
-    ("ctrl+h, ctrl+.", |browser| browser.toggle_hidden()),
+/// The window's own keys. Shift may be held with a history key, as `history_jump` in
+/// `src/ui/window/keyboard/items.rs` lets it.
+const WINDOW_KEYS: [WindowKey; 7] = [
+    // `HIDDEN_FILES`, `RENAME` and `REFRESH` in `src/ui/keys/bindings/window.rs`. F5 reads
+    // every column again in the Columns view (`refresh_browser`).
+    ("ctrl+h, ctrl+.", |app, _| app.browser.toggle_hidden()),
+    ("f2, ctrl+r", rename::begin_focused),
+    ("f5", |app, _| app.browser.refresh_all()),
     // `HISTORY_BACK`, `HISTORY_FORWARD`, `PARENT_FOLDER` and `HOME_FOLDER` in
     // `src/ui/keys/bindings/navigation.rs`.
-    ("alt+left, alt+shift+left", |browser| browser.back()),
-    ("alt+right, alt+shift+right", |browser| browser.forward()),
-    ("alt+up, alt+shift+up", |browser| browser.parent()),
-    ("alt+home, alt+shift+home", |browser| {
-        browser.navigate(Location::local(crate::launch::home_directory()));
+    ("alt+left, alt+shift+left", |app, _| app.browser.back()),
+    ("alt+right, alt+shift+right", |app, _| app.browser.forward()),
+    ("alt+up, alt+shift+up", |app, _| app.browser.parent()),
+    ("alt+home, alt+shift+home", |app, _| {
+        app.browser
+            .navigate(Location::local(crate::launch::home_directory()));
     }),
 ];
 
-/// The window's keys: what the focused element passed on.
+/// The window's keys: what the focused element passed on. While the rename field has the
+/// keyboard they wait, as the GTK window's do: a key the field passes on is not a shortcut.
 pub(crate) fn on_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
     let bound = WINDOW_KEYS
         .iter()
+        .filter(|_| !app.rename.state.has_keyboard())
         .find(|(keys, _)| Keybind::new(keys).matches_tx(event, tx));
     let Some((_, act)) = bound else {
         // Nothing the view reads changed: no commit for a key that is not the window's.
@@ -344,7 +358,7 @@ pub(crate) fn on_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
         return false;
     };
     publish(app);
-    act(&app.browser);
+    act(app, tx);
     settle(app, tx);
     true
 }

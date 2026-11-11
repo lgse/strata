@@ -30,6 +30,7 @@ use strata_kit::look::Look;
 
 use crate::events::{Added, Change, Marks, Moved};
 
+mod editing;
 mod ids;
 mod intents;
 mod listing;
@@ -65,6 +66,9 @@ pub(crate) struct Columns {
     held: Vec<u64>,
     /// The cursor the child column last followed, or was told of: its column and entry.
     followed: Option<(usize, EntryId)>,
+    /// Entries a rename gave another id, each as its old id and its new one, until the
+    /// listing shows the change.
+    moving: Vec<(EntryId, EntryId)>,
     mirror: Mirror,
     clicks: ClickModes,
     /// The keys the view reads other than by its default, when the saved settings ask.
@@ -97,6 +101,7 @@ impl Columns {
             ids,
             held: Vec::new(),
             followed: None,
+            moving: Vec::new(),
             mirror: Mirror::new(settings.columns_mirror_selection),
             clicks: ClickModes::new(
                 clicks(settings.columns_file_clicks),
@@ -150,6 +155,7 @@ impl Columns {
                 from_depth,
                 columns,
             } => self.relocate(from_depth, columns, hands),
+            Change::Moved { from, to } => self.moved(from, to),
             within => self.apply_within(within, hands),
         }
     }
@@ -264,6 +270,7 @@ impl Columns {
             return;
         };
         column.apply(edit);
+        self.arrived(depth);
         match marks {
             Some(marks) => self.settle(depth, &marks, hands),
             None => self.sync(depth, hands.tx),

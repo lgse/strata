@@ -21,6 +21,7 @@ use crate::{
 mod history;
 mod keys;
 mod letters;
+mod rename;
 mod saved;
 
 const MODULE: &str = "columns::tests";
@@ -226,6 +227,10 @@ fn key_event(chord: &str) -> KeyEvent {
         ("Page_Down", Key::PageDown),
         ("Return", Key::Enter),
         ("Escape", Key::Escape),
+        ("Tab", Key::Tab),
+        ("BackSpace", Key::Backspace),
+        ("F2", Key::Function(2)),
+        ("F5", Key::Function(5)),
         ("period", Key::Text(".".to_owned())),
     ];
     let key = named

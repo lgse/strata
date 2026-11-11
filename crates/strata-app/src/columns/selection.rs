@@ -53,7 +53,7 @@ impl Columns {
     }
 
     /// The active column and its cursor: what the GTK views call the focused item.
-    fn focused(&self) -> Option<(usize, EntryId)> {
+    pub(super) fn focused(&self) -> Option<(usize, EntryId)> {
         let depth = self.state.active();
         (depth < self.open())
             .then(|| self.cursor(depth))
