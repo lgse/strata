@@ -12,33 +12,89 @@ use rune::ElementInfo;
 use strata_components::collection::element::LABEL;
 use strata_qa::Rect;
 
-use super::tree::{NameLabel, Snapshot};
+use super::tree::{Drawn, DrawnColumn, DrawnRow, NameLabel, Snapshot};
 use crate::{host::offscreen::Offscreen, shell::App};
 
 /// How long one settle keeps turning a host that never comes to rest. The GTK harness waits
 /// this long for a frame.
 const SETTLE_LIMIT: Duration = Duration::from_millis(250);
 
+fn rect(element: &ElementInfo) -> Rect {
+    let [x, y, width, height] = element.rect.map(f64::from);
+    Rect {
+        x,
+        y,
+        width,
+        height,
+    }
+}
+
+/// The elements above `element`, the nearest first.
+fn above<'a>(
+    elements: &'a [ElementInfo],
+    element: &ElementInfo,
+) -> impl Iterator<Item = &'a ElementInfo> {
+    std::iter::successors(element.parent, |index| elements.get(*index)?.parent)
+        .filter_map(|index| elements.get(index))
+}
+
 /// The names the view draws in rows, each with the keys of the elements around it.
 fn name_labels(elements: &[ElementInfo]) -> Vec<NameLabel> {
     let drawn = |element: &&ElementInfo| !element.exiting && element.key.as_deref() == Some(LABEL);
     let label = |element: &ElementInfo| {
-        let above = std::iter::successors(element.parent, |index| elements.get(*index)?.parent)
-            .filter_map(|index| elements.get(index)?.key.clone())
-            .collect();
-        let [x, y, width, height] = element.rect.map(f64::from);
         Some(NameLabel {
-            above,
+            above: above(elements, element)
+                .filter_map(|outer| outer.key.clone())
+                .collect(),
             text: element.text.clone()?,
-            bounds: Rect {
-                x,
-                y,
-                width,
-                height,
-            },
+            bounds: rect(element),
         })
     };
     elements.iter().filter(drawn).filter_map(label).collect()
+}
+
+/// The column whose list is keyed `list`, as drawn: its rows are the keyed, named elements
+/// directly under the list's rows, and its pane the nearest named element around the list.
+fn drawn_column(elements: &[ElementInfo], list: &str) -> Option<DrawnColumn> {
+    let keyed = |element: &ElementInfo, key: &str| element.key.as_deref() == Some(key);
+    let at = elements
+        .iter()
+        .position(|element| !element.exiting && keyed(element, list))?;
+    let pane = above(elements, &elements[at]).find(|outer| outer.label.is_some())?;
+    let inside = |element: &&ElementInfo| {
+        above(elements, element).any(|outer| std::ptr::eq(outer, &elements[at]))
+    };
+    let row = |element: &ElementInfo| {
+        let key = element.key.clone().filter(|key| key.starts_with("row-"))?;
+        Some(DrawnRow {
+            key,
+            name: element.label.clone()?,
+            selected: element.item_selected,
+            bounds: rect(element),
+        })
+    };
+    let rows = elements.iter().filter(|element| !element.exiting);
+    Some(DrawnColumn {
+        list: list.to_owned(),
+        name: elements[at].label.clone().unwrap_or_default(),
+        bounds: rect(&elements[at]),
+        pane: rect(pane),
+        rows: rows.filter(inside).filter_map(row).collect(),
+    })
+}
+
+/// What the snapshot reads beside the accessibility tree.
+fn drawn(host: &Offscreen) -> Drawn {
+    let elements = host.elements();
+    let lists = host.app().columns.list_keys();
+    Drawn {
+        columns: lists
+            .iter()
+            .filter_map(|list| drawn_column(&elements, list))
+            .collect(),
+        labels: name_labels(&elements),
+        lists,
+    }
 }
 
 pub(super) struct Stage {
@@ -66,11 +122,7 @@ impl Stage {
         let host = &self.host;
         self.seen
             .get_or_insert_with(|| {
-                Rc::new(Snapshot::read(
-                    &host.tree(),
-                    &host.app().columns.list_keys(),
-                    &name_labels(&host.elements()),
-                ))
+                Rc::new(Snapshot::read(&host.tree(), &drawn(host)))
             })
             .clone()
     }

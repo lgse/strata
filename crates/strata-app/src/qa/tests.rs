@@ -268,3 +268,60 @@ fn a_click_on_a_rows_name_label_lands_on_the_name_the_view_draws() {
         },
     );
 }
+
+/// `selection/right-click-selects-entry`, both variants, step for step, and the rows
+/// `dialogs_and_menus/entry-menu-named-actions` and `pane-menu-directory-actions` read.
+#[test]
+fn a_right_click_opens_the_entrys_menu_and_escape_gives_the_keyboard_back() {
+    staged(
+        "a_right_click_opens_the_entrys_menu_and_escape_gives_the_keyboard_back",
+        None,
+        |backend| {
+            let folder = launched(&backend);
+            let root = Location::local(folder.path()).display_name();
+            let kept = Remembered::default();
+            let wait = |predicate: Value| json!({ "wait": predicate });
+            for (target, previous) in [("todo.txt", "readme.md"), ("documents", "archive")] {
+                for step in [
+                    json!({ "select": { "entry": "readme.md", "dir": root } }),
+                    wait(json!({ "focused": "readme.md" })),
+                    json!({ "click": { "entry": target, "dir": root }, "button": 3 }),
+                    wait(json!({ "menu_items": {} })),
+                    wait(json!({ "selected": [target], "dir": root })),
+                    json!({ "expect": { "description": {
+                        "target": { "menu_item": "Copy" }, "text": "Ctrl+C" } } }),
+                    json!({ "key": "Escape" }),
+                    wait(json!({ "menu_items": null })),
+                    wait(json!({ "focused": target })),
+                    json!({ "expect": { "panes": [root] } }),
+                    json!({ "key": "Up" }),
+                    wait(json!({ "focused": previous })),
+                    wait(json!({ "selected": [previous], "dir": root })),
+                ] {
+                    passes(&backend, &kept, &step);
+                }
+            }
+
+            passes(&backend, &kept, &json!({ "click": { "entry": "todo.txt" }, "button": 3 }));
+            let file = json!({ "wait": { "menu_items": { "in_order": [
+                "Open", "Open With…", "Quick preview", "Cut", "Copy", "Duplicate", "Rename",
+                "Move to…", "Copy to…", "Compress…", "Customize…", "Copy path", "Copy name",
+                "Properties", "Move to Trash", "Permanently delete"
+            ] } } });
+            passes(&backend, &kept, &file);
+            passes(&backend, &kept, &json!({ "key": "Escape" }));
+            passes(&backend, &kept, &wait(json!({ "menu_items": null })));
+
+            passes(&backend, &kept, &json!({ "click": { "background": true }, "button": 3 }));
+            let pane = json!({ "wait": { "menu_items": { "in_order": [
+                "New Folder", "New File", "Paste", "Open With…", "Open in Terminal",
+                "Select All", "Refresh", "Customize…", "Properties"
+            ] } } });
+            passes(&backend, &kept, &pane);
+            // A row that is wired runs: Show Hidden Files, by its name.
+            passes(&backend, &kept, &json!({ "click": { "menu_item": "Show Hidden Files" } }));
+            passes(&backend, &kept, &wait(json!({ "menu_items": null })));
+            passes(&backend, &kept, &wait(json!({ "entry": ".hidden.txt", "dir": root })));
+        },
+    );
+}

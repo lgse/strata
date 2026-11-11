@@ -38,6 +38,40 @@ pub(super) struct NameLabel {
     pub(super) bounds: Rect,
 }
 
+/// A row as the view draws it.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct DrawnRow {
+    pub(super) key: String,
+    pub(super) name: String,
+    pub(super) selected: bool,
+    pub(super) bounds: Rect,
+}
+
+/// A column as the view draws it: its list, the group around it, and its rows. Behind an
+/// open menu Rune's accessibility tree holds only the menu, since a menu is modal, while
+/// the GTK tree keeps the panes, and scenarios read a pane's selection with its menu open.
+/// The snapshot then presents each column from what is drawn: names, selection and boxes.
+/// A drawn element carries no description, so those rows have none.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct DrawnColumn {
+    /// The key of the column's list.
+    pub(super) list: String,
+    pub(super) name: String,
+    pub(super) bounds: Rect,
+    /// The group around the list, which the view names by the folder.
+    pub(super) pane: Rect,
+    pub(super) rows: Vec<DrawnRow>,
+}
+
+/// What the snapshot is read from beside the accessibility tree.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(super) struct Drawn {
+    /// The keys of the entry lists the Columns adapter shows, one for each column.
+    pub(super) lists: Vec<String>,
+    pub(super) columns: Vec<DrawnColumn>,
+    pub(super) labels: Vec<NameLabel>,
+}
+
 /// One node as Rune reports it.
 #[derive(Debug, Default)]
 pub(super) struct Seen {
@@ -95,6 +129,17 @@ fn texts(node: &Value, field: &str) -> Vec<String> {
         .collect()
 }
 
+/// What a node says beside its name. A menu row's shortcut is what Rune reports as its
+/// keyboard shortcut and the GTK menu as its description, where scenarios read it.
+fn description(node: &Value) -> String {
+    let described = text(node, "description");
+    let menu_row = node["role"].as_str().is_some_and(|role| role.starts_with("menu-item"));
+    if described.is_empty() && menu_row {
+        return text(node, "shortcut");
+    }
+    described
+}
+
 fn bounds(node: &Value) -> Option<Rect> {
     let [x, y, width, height] = node["bounds"].as_array()?.as_slice() else {
         return None;
@@ -108,22 +153,70 @@ fn bounds(node: &Value) -> Option<Rect> {
 }
 
 impl Snapshot {
-    /// Reads `tree`, the nested JSON of `Runtime::accessibility_json`. `lists` are the keys of
-    /// the entry lists the Columns adapter shows, one for each column, and `labels` the names
-    /// the view draws in rows.
-    pub(super) fn read(tree: &Value, lists: &[String], labels: &[NameLabel]) -> Self {
+    /// Reads `tree`, the nested JSON of `Runtime::accessibility_json`, and what the view
+    /// draws that the tree leaves out.
+    pub(super) fn read(tree: &Value, drawn: &Drawn) -> Self {
         let mut snapshot = Self::default();
         if tree.is_object() {
             snapshot.add(tree, None, "window".to_owned());
         }
         snapshot.focus = snapshot.keyboard_focus();
-        for list in lists {
+        for column in &drawn.columns {
+            snapshot.add_hidden_column(column);
+        }
+        for list in &drawn.lists {
             snapshot.mark_column(list);
         }
-        for label in labels {
+        for label in &drawn.labels {
             snapshot.add_label(label);
         }
         snapshot
+    }
+
+    fn push(&mut self, parent: usize, segment: &str, seen: Seen) -> usize {
+        let index = self.nodes.len();
+        let path = self.nodes[parent].node.as_ref().map(|node| node.0.to_string());
+        let node = Node(Rc::from(format!("{}/{segment}", path.unwrap_or_default()).as_str()));
+        self.index.insert(node.clone(), index);
+        self.nodes.push(Seen {
+            node: Some(node),
+            parent: Some(parent),
+            ..seen
+        });
+        self.nodes[parent].children.push(index);
+        index
+    }
+
+    /// Presents a column the tree left out, under the window, as the tree would hold it.
+    fn add_hidden_column(&mut self, column: &DrawnColumn) {
+        let listed = |seen: &Seen| seen.key.as_deref() == Some(column.list.as_str());
+        if self.nodes.is_empty() || self.nodes.iter().any(listed) {
+            return;
+        }
+        let named = |role: &str, bounds: Rect| Seen {
+            role: role.to_owned(),
+            name: column.name.clone(),
+            bounds: Some(bounds),
+            ..Seen::default()
+        };
+        let pane = self.push(0, &format!("@pane-{}", column.list), named("group", column.pane));
+        let list = Seen {
+            key: Some(column.list.clone()),
+            ..named("list-box", column.bounds)
+        };
+        let list = self.push(pane, &column.list, list);
+        for row in &column.rows {
+            let state = if row.selected { "selected" } else { "unselected" };
+            let seen = Seen {
+                role: "list-box-option".to_owned(),
+                key: Some(row.key.clone()),
+                name: row.name.clone(),
+                states: vec![state.to_owned()],
+                bounds: Some(row.bounds),
+                ..Seen::default()
+            };
+            self.push(list, &row.key, seen);
+        }
     }
 
     /// Presents a row's drawn name as a `label` under the entry it is in.
@@ -136,21 +229,13 @@ impl Snapshot {
         let Some(row) = label.above.iter().find_map(entry) else {
             return;
         };
-        let Some(path) = self.nodes[row].node.as_ref().map(|node| node.0.to_string()) else {
-            return;
-        };
-        let index = self.nodes.len();
-        let node = Node(Rc::from(format!("{path}/@label").as_str()));
-        self.index.insert(node.clone(), index);
-        self.nodes.push(Seen {
-            node: Some(node),
-            parent: Some(row),
+        let seen = Seen {
             role: "label".to_owned(),
             name: label.text.clone(),
             bounds: Some(label.bounds),
             ..Seen::default()
-        });
-        self.nodes[row].children.push(index);
+        };
+        self.push(row, "@label", seen);
     }
 
     fn add(&mut self, value: &Value, parent: Option<usize>, path: String) -> usize {
@@ -164,7 +249,7 @@ impl Snapshot {
             role: text(value, "role"),
             key: value["key"].as_str().map(str::to_owned),
             name: text(value, "name"),
-            description: text(value, "description"),
+            description: description(value),
             value: value["value"].as_str().map(str::to_owned),
             number: value["range"][0].as_f64(),
             states: texts(value, "states"),
