@@ -6,25 +6,26 @@ use gtk::{glib, prelude::*};
 use serde_json::json;
 
 use super::{
-    Controller, Outcome, POLL_INTERVAL, REVEAL_SCROLL_ATTEMPTS, WHEEL_REVEAL_CLICKS,
-    driver::Input,
-    protocol::{self, Check, Failure, Orientation, Predicate, Target},
-    settle, state,
+    Outcome, POLL_INTERVAL, REVEAL_SCROLL_ATTEMPTS, WHEEL_REVEAL_CLICKS,
+    backend::Gtk,
+    protocol::{self, Backend as _, Check, Failure, Orientation, Predicate, Scope, Target},
+    state,
     targets::{self, LookupError},
 };
 
-impl Controller {
+impl Gtk {
     async fn presented_control(
         &self,
-        input: &Input<'_>,
+        scope: &Scope<'_, Self>,
         target: &Target,
         message: String,
     ) -> Result<(gtk::Widget, gtk::Widget), Outcome> {
+        let injector = self.injector().map_err(Outcome::error)?;
         let wanted = protocol::Wanted::of(target)
             .map_err(|error| Outcome::error(error.message().to_owned()))?;
         let deadline = Instant::now() + protocol::DEFAULT_WAIT;
         let node = loop {
-            if let Some(node) = wanted.find_presented(input.backend, input.window.upcast_ref()) {
+            if let Some(node) = wanted.find_presented(self, &scope.window) {
                 break node;
             }
             if Instant::now() >= deadline {
@@ -33,11 +34,7 @@ impl Controller {
                     actual: json!(false),
                     message: Some(message),
                 };
-                return Err(Outcome::timed_out(
-                    state::dump(input.window),
-                    failure,
-                    protocol::DEFAULT_WAIT,
-                ));
+                return Err(scope.timed_out(failure, protocol::DEFAULT_WAIT));
             }
             glib::timeout_future(POLL_INTERVAL).await;
         };
@@ -47,9 +44,9 @@ impl Controller {
         // A page just shown can report a box before its layout lands, which the
         // slower AT-SPI reads never see; aim only at one a painted frame keeps.
         loop {
-            let before = targets::extents(&node, input.injector).map(|rect| rect.pixels());
-            settle(Some(input.window)).await;
-            let after = targets::extents(&node, input.injector).map(|rect| rect.pixels());
+            let before = targets::extents(&node, injector).map(|rect| rect.pixels());
+            self.settle(&scope.window).await;
+            let after = targets::extents(&node, injector).map(|rect| rect.pixels());
             match (before, after) {
                 (Ok(before), Ok(after)) if before == after && after[2] > 0 && after[3] > 0 => break,
                 (_, Err(LookupError::Broken(error))) => return Err(Outcome::error(error)),
@@ -64,10 +61,14 @@ impl Controller {
         Ok((node, scroll))
     }
 
-    pub(super) async fn reveal_control(&self, input: &Input<'_>, target: &Target) -> Outcome {
+    pub(super) async fn reveal_control(&self, scope: &Scope<'_, Self>, target: &Target) -> Outcome {
+        let injector = match self.injector() {
+            Ok(injector) => injector,
+            Err(error) => return Outcome::error(error),
+        };
         let name = control_name(target);
         let (node, scroll) = match self
-            .presented_control(input, target, format!("{name} control"))
+            .presented_control(scope, target, format!("{name} control"))
             .await
         {
             Ok(found) => found,
@@ -76,8 +77,8 @@ impl Controller {
         let deadline = Instant::now() + protocol::DEFAULT_WAIT;
         loop {
             let (bounds, viewport) = match (
-                targets::extents(&node, input.injector),
-                targets::extents(&scroll, input.injector),
+                targets::extents(&node, injector),
+                targets::extents(&scroll, injector),
             ) {
                 (Ok(bounds), Ok(viewport)) => (bounds.pixels(), viewport.pixels()),
                 (Err(LookupError::Broken(error)), _) | (_, Err(LookupError::Broken(error))) => {
@@ -100,11 +101,7 @@ impl Controller {
                     actual: json!({ "bounds": bounds, "viewport": viewport }),
                     message: Some(format!("reachable {name} control")),
                 };
-                return Outcome::timed_out(
-                    state::dump(input.window),
-                    failure,
-                    protocol::DEFAULT_WAIT,
-                );
+                return scope.timed_out(failure, protocol::DEFAULT_WAIT);
             }
             let [view_x, view_y, view_width, view_height] = viewport;
             let at = (view_x + view_width - 16, view_y + view_height.div_euclid(2));
@@ -119,18 +116,23 @@ impl Controller {
             let steps = (distance as f64 / view_height as f64).trunc() as i64 * 3;
             let clicks = steps.clamp(1, 12);
             #[expect(clippy::cast_sign_loss, reason = "clamped to 1..=12")]
-            let wheeled = input.wheel_at(at, clicks as u32, below > 0, &[]).await;
+            let wheeled = scope.wheel_at(at, clicks as u32, below > 0, &[]).await;
             if let Err(error) = wheeled {
                 return Outcome::error(error);
             }
             glib::timeout_future(POLL_INTERVAL).await;
         }
-        self.settle_target(input, &presented(target), protocol::DEFAULT_WAIT, None)
+        scope
+            .settle_target(&presented(target), protocol::DEFAULT_WAIT, None)
             .await
     }
 
     /// `Strata.reveal`, whose `scroll_into_view` GTK's bridge declines.
-    pub(super) async fn reveal(&self, input: &Input<'_>, target: &Target) -> Outcome {
+    pub(super) async fn reveal(&self, scope: &Scope<'_, Self>, target: &Target) -> Outcome {
+        let injector = match self.injector() {
+            Ok(injector) => injector,
+            Err(error) => return Outcome::error(error),
+        };
         let criteria = match target {
             Target::Role {
                 role,
@@ -144,17 +146,16 @@ impl Controller {
             other => other.to_json().to_string(),
         };
         let (node, scroll) = match self
-            .presented_control(input, target, format!("a control matching {criteria}"))
+            .presented_control(scope, target, format!("a control matching {criteria}"))
             .await
         {
             Ok(found) => found,
             Err(outcome) => return outcome,
         };
         let visible = || -> Result<bool, String> {
-            let rect = |widget: &gtk::Widget| {
-                targets::extents(widget, input.injector).map(|rect| rect.pixels())
-            };
-            match (rect(&node), rect(&scroll), rect(input.window.upcast_ref())) {
+            let rect =
+                |widget: &gtk::Widget| targets::extents(widget, injector).map(|rect| rect.pixels());
+            match (rect(&node), rect(&scroll), rect(&scope.window)) {
                 (Ok(bounds), Ok(pane), Ok(window)) => Ok(state::on_screen(bounds, window)
                     && bounds[1] >= pane[1]
                     && bounds[1] + bounds[3] <= pane[1] + pane[3]),
@@ -169,7 +170,7 @@ impl Controller {
             Ok(true) => return Outcome::default(),
             Ok(false) => {}
         }
-        let window = match protocol::screen_rect(input.backend, input.window.upcast_ref()) {
+        let window = match protocol::screen_rect(self, &scope.window) {
             Ok(window) => window.pixels(),
             Err(error) => return Outcome::error(error.message().to_owned()),
         };
@@ -181,17 +182,17 @@ impl Controller {
             match visible() {
                 Err(error) => return Outcome::error(error),
                 Ok(true) => {
-                    return self
-                        .settle_target(input, &presented(target), protocol::DEFAULT_WAIT, None)
+                    return scope
+                        .settle_target(&presented(target), protocol::DEFAULT_WAIT, None)
                         .await;
                 }
                 Ok(false) => {}
             }
-            let below = match targets::extents(&node, input.injector) {
+            let below = match targets::extents(&node, injector) {
                 Ok(rect) => rect.pixels()[1] > centre.1,
                 Err(error) => return Outcome::error(error.message().to_owned()),
             };
-            if let Err(error) = input
+            if let Err(error) = scope
                 .wheel_at(centre, WHEEL_REVEAL_CLICKS, below, &[])
                 .await
             {
@@ -204,7 +205,7 @@ impl Controller {
         };
         let deadline = Instant::now() + protocol::DEFAULT_WAIT;
         loop {
-            match input.check(&on_screen) {
+            match scope.check(&on_screen) {
                 Err(error) => return Outcome::error(error),
                 Ok(Ok(())) => return Outcome::default(),
                 Ok(Err(mut failure)) if Instant::now() >= deadline => {
@@ -213,11 +214,7 @@ impl Controller {
                         targets::role_name(&node),
                         python_repr(&targets::accessible_name(&node))
                     ));
-                    return Outcome::timed_out(
-                        state::dump(input.window),
-                        failure,
-                        protocol::DEFAULT_WAIT,
-                    );
+                    return scope.timed_out(failure, protocol::DEFAULT_WAIT);
                 }
                 Ok(Err(_)) => glib::timeout_future(POLL_INTERVAL).await,
             }
@@ -266,7 +263,7 @@ fn python_repr(text: &str) -> String {
 }
 
 pub(super) fn set_scrollbar(
-    window: &gtk::Window,
+    window: &gtk::Widget,
     orientation: Orientation,
     value: f64,
 ) -> Result<(), String> {
@@ -274,7 +271,7 @@ pub(super) fn set_scrollbar(
         Orientation::Horizontal => gtk::Orientation::Horizontal,
         Orientation::Vertical => gtk::Orientation::Vertical,
     };
-    let scrollbar = targets::presented(window.upcast_ref())
+    let scrollbar = targets::presented(window)
         .into_iter()
         .find_map(|widget| {
             widget

@@ -6,9 +6,7 @@ use std::{collections::HashMap, fmt::Write as _};
 
 use gtk::{graphene, prelude::*};
 
-pub(crate) use super::protocol::{
-    FieldState, Observation, empty_app_state, inside, middle_visible, on_screen,
-};
+pub(crate) use super::protocol::{FieldState, empty_app_state, inside, on_screen};
 use super::{backend::Gtk, protocol::EntryRow, targets};
 use crate::ui::accessibility_qa::{self as names, Mark};
 

@@ -9,14 +9,14 @@ use std::{
     time::Duration,
 };
 
-use gtk::{glib, prelude::*};
+use gtk::{gdk, glib, prelude::*};
 
 use super::{
     Sample,
-    input::Injector,
+    input::{Event, Injector},
     protocol::{
-        Backend, EntryRow, FieldState, Labels, Mark, Orientation, Predicate, Rect, Scope, Scroll,
-        States, Verdict,
+        Backend, Chord, Command, EntryRow, FieldState, Labels, Mark, Modifier, Orientation,
+        Outcome, Predicate, Rect, Scope, Scroll, States, Verdict,
     },
     state, targets,
 };
@@ -35,6 +35,8 @@ pub(super) struct Gtk {
     pub(super) main: glib::WeakRef<gtk::Window>,
     /// Captures, text measurements and instants that GTK's own steps keep under a name.
     pub(super) samples: RefCell<HashMap<String, Sample>>,
+    /// Owns the clipboard a `clipboard_set` set, until the `clipboard` read closes it.
+    pub(super) clipboard: RefCell<Option<gdk::Display>>,
 }
 
 impl Gtk {
@@ -44,6 +46,7 @@ impl Gtk {
             injector: OnceCell::new(),
             main: glib::WeakRef::new(),
             samples: RefCell::default(),
+            clipboard: RefCell::default(),
         }
     }
 
@@ -279,5 +282,83 @@ impl Backend for Gtk {
 
     fn check(&self, scope: &Scope<'_, Self>, predicate: &Predicate) -> Option<Verdict> {
         self.check_own(scope, predicate).transpose()
+    }
+
+    fn begin(&self, window: &gtk::Widget) -> Result<(), String> {
+        let injector = self.injector()?;
+        if injector.logging() {
+            let origin = window
+                .downcast_ref::<gtk::Window>()
+                .and_then(NativeExt::surface)
+                .ok_or_else(|| "the window has no surface".to_owned())
+                .and_then(|surface| injector.surface_origin(&surface))?;
+            injector.set_log_origin(origin);
+        }
+        Ok(())
+    }
+
+    fn adopt(&self, window: &gtk::Widget) {
+        self.main.set(window.downcast_ref::<gtk::Window>());
+    }
+
+    async fn resize(
+        &self,
+        window: &gtk::Widget,
+        width: u16,
+        height: Option<u16>,
+    ) -> Result<(), String> {
+        let injector = self.injector()?;
+        let height = height.map_or_else(
+            || u16::try_from(window.height()).map_err(|error| error.to_string()),
+            Ok,
+        );
+        window
+            .downcast_ref::<gtk::Window>()
+            .and_then(NativeExt::surface)
+            .ok_or_else(|| "the window has no surface".to_owned())
+            .and_then(|surface| injector.resize(&surface, width, height?))
+    }
+
+    async fn chord(&self, window: &gtk::Widget, chord: &Chord) -> Result<(), String> {
+        self.press(window, chord).await
+    }
+
+    async fn text_input(&self, window: &gtk::Widget, character: char) -> Result<(), String> {
+        self.type_character(window, character).await
+    }
+
+    async fn hold(&self, window: &gtk::Widget, modifiers: &[Modifier]) -> Result<(), String> {
+        self.hold_keys(window, modifiers).await.map(|_| ())
+    }
+
+    async fn release(&self, window: &gtk::Widget, modifiers: &[Modifier]) {
+        if let Ok(held) = self.modifier_keycodes(modifiers) {
+            self.release_keys(window, &held).await;
+        }
+    }
+
+    async fn key(&self, name: &str, pressed: bool) -> Result<(), String> {
+        let keycode = self.named_keycode(name)?;
+        self.injector()?.send(Event::Key { keycode, pressed })
+    }
+
+    async fn pointer_move(&self, x: i16, y: i16) -> Result<(), String> {
+        self.injector()?.send(Event::Motion { x, y })
+    }
+
+    fn pointer_position(&self) -> Result<(i16, i16), String> {
+        self.injector()?.pointer_position()
+    }
+
+    async fn button(&self, number: u8, pressed: bool) -> Result<(), String> {
+        self.injector()?.send(Event::Button { number, pressed })
+    }
+
+    fn activate(&self, node: &gtk::Widget) -> bool {
+        node.activate()
+    }
+
+    async fn command(&self, scope: &Scope<'_, Self>, command: &Command) -> Option<Outcome> {
+        self.command_own(scope, command).await
     }
 }

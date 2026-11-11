@@ -5,18 +5,13 @@ mod check;
 mod clipboard;
 mod criticals;
 mod dispatch;
-mod driver;
 mod input;
 mod keyboard;
-mod note;
 mod observe;
-mod onscreen;
-mod pointer;
 mod reveal;
 mod samples;
 mod state;
 mod targets;
-mod waits;
 
 use std::{
     cell::RefCell,
@@ -36,7 +31,9 @@ use serde_json::{Value, json};
 use self::{
     backend::{Gtk, Host},
     input::Injector,
-    protocol::{Capture, LOCATE_TIMEOUT, Outcome, POLL_INTERVAL, Remembered, Reply},
+    protocol::{
+        Capture, EVENT_GAP, Outcome, POLL_INTERVAL, REVEAL_SCROLL_ATTEMPTS, Remembered, Reply,
+    },
 };
 
 /// The release workflow and QA job grep for its `usage: strata --qa` prefix;
@@ -47,26 +44,8 @@ pub(crate) const PEEK_LABEL: &str = "Folder peek";
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
 const READY_POLL: Duration = Duration::from_millis(5);
 const FRAME_TIMEOUT: Duration = Duration::from_millis(250);
-/// A layout change from the press makes GTK synthesize motion a frame later, and a
-/// release it has not read yet would cancel the click.
-const BUTTON_HOLD: Duration = Duration::from_millis(100);
-/// Keeps two clicks inside GTK's 400 ms double-click time; nothing may settle between them.
-const DOUBLE_CLICK_GAP: Duration = Duration::from_millis(90);
-/// Outside the double-click time, so a drag after a selecting click is no double-click.
-const SEPARATE_CLICK_GAP: Duration = Duration::from_millis(600);
-const EVENT_GAP: Duration = Duration::from_millis(20);
-const POINTER_GAP: Duration = Duration::from_millis(50);
-/// A click can land before GTK maps the row for input, so it clicks again after this long.
-const SELECT_RETRY_AFTER: Duration = Duration::from_secs(4);
-const SETTLE_SAMPLES: usize = 3;
-const MENU_RETRY_AFTER: Duration = Duration::from_secs(1);
-const KEYBOARD_SELECT_STEPS: usize = 40;
 const PANIC_EXIT: i32 = 70;
-const REVEAL_SCROLL_ATTEMPTS: usize = 12;
 const WHEEL_REVEAL_CLICKS: u32 = 3;
-const ARRIVAL_ATTEMPTS: usize = 5;
-/// Approach a point in two steps so GTK sees enter and motion, not a teleport.
-const APPROACH_OFFSET: i16 = 6;
 const DROP_SAMPLE_DELAYS: [Duration; 3] = [
     Duration::from_millis(60),
     Duration::from_millis(120),
@@ -149,7 +128,6 @@ impl Session {
             protocol: self.protocol,
             previous: None,
             kept: Remembered::default(),
-            clipboard: RefCell::default(),
         };
         // GLib would keep a panic in the task's join handle and leave the
         // runner waiting; report it and exit instead.
@@ -190,8 +168,6 @@ struct Controller {
     protocol: File,
     previous: Option<Value>,
     kept: Remembered<Gtk>,
-    /// Owns the clipboard a `clipboard_set` set, until the `clipboard` read closes it.
-    clipboard: RefCell<Option<gdk::Display>>,
 }
 
 #[derive(Clone)]
@@ -226,7 +202,7 @@ impl Controller {
         if started {
             while let Some(line) = commands.next().await {
                 let outcome = match protocol::parse_command(&line) {
-                    Ok(command) => self.execute(command).await,
+                    Ok(command) => protocol::execute(&self.backend, &self.kept, command).await,
                     Err(error) => Outcome::error(error),
                 };
                 self.reply(outcome);

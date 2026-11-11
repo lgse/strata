@@ -2,7 +2,11 @@
 
 //! A toolkit that is only a tree in memory, so the engine can be tested without a display.
 
-use super::super::{Backend, FieldState, Labels, Mark, Orientation, Rect, Scroll, States};
+use std::cell::{Cell, RefCell};
+
+use super::super::{
+    Backend, Chord, FieldState, Labels, Mark, Modifier, Orientation, Rect, Scroll, States,
+};
 
 #[derive(Clone, Default)]
 pub(super) struct Node {
@@ -22,6 +26,9 @@ pub(super) struct Fake {
     nodes: Vec<Node>,
     parents: Vec<Option<usize>>,
     pub(super) focus: Option<usize>,
+    /// Every input event and action, in the order the engine sent them.
+    pub(super) sent: RefCell<Vec<String>>,
+    pointer: Cell<(i16, i16)>,
 }
 
 pub(super) const WINDOW: usize = 0;
@@ -195,4 +202,70 @@ impl Backend for Fake {
     async fn settle(&self, _window: &usize) {}
 
     async fn sleep(&self, _time: std::time::Duration) {}
+
+    fn adopt(&self, _window: &usize) {}
+
+    async fn resize(
+        &self,
+        _window: &usize,
+        _width: u16,
+        _height: Option<u16>,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn chord(&self, _window: &usize, chord: &Chord) -> Result<(), String> {
+        self.sent.borrow_mut().push(format!("chord {}", chord.key));
+        Ok(())
+    }
+
+    async fn text_input(&self, _window: &usize, character: char) -> Result<(), String> {
+        self.sent.borrow_mut().push(format!("type {character}"));
+        Ok(())
+    }
+
+    async fn hold(&self, _window: &usize, modifiers: &[Modifier]) -> Result<(), String> {
+        if !modifiers.is_empty() {
+            self.sent.borrow_mut().push(format!("hold {modifiers:?}"));
+        }
+        Ok(())
+    }
+
+    async fn release(&self, _window: &usize, modifiers: &[Modifier]) {
+        if !modifiers.is_empty() {
+            self.sent
+                .borrow_mut()
+                .push(format!("release {modifiers:?}"));
+        }
+    }
+
+    async fn key(&self, name: &str, pressed: bool) -> Result<(), String> {
+        self.sent.borrow_mut().push(format!("key {name} {pressed}"));
+        Ok(())
+    }
+
+    async fn pointer_move(&self, x: i16, y: i16) -> Result<(), String> {
+        self.pointer.set((x, y));
+        self.sent.borrow_mut().push(format!("move {x} {y}"));
+        Ok(())
+    }
+
+    fn pointer_position(&self) -> Result<(i16, i16), String> {
+        Ok(self.pointer.get())
+    }
+
+    async fn button(&self, number: u8, pressed: bool) -> Result<(), String> {
+        let state = if pressed { "down" } else { "up" };
+        self.sent
+            .borrow_mut()
+            .push(format!("button {number} {state}"));
+        Ok(())
+    }
+
+    fn activate(&self, node: &usize) -> bool {
+        self.sent
+            .borrow_mut()
+            .push(format!("activate {}", self.nodes[*node].name));
+        true
+    }
 }

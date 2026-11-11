@@ -12,9 +12,9 @@ use super::{
     Sample,
     backend::Gtk,
     observe::{footer_fill, theme_accent},
-    protocol::{self, Check, Failure, LookupError, Predicate, Scope, Target, pixels},
+    protocol::{self, Aim, Check, Failure, LookupError, Predicate, Scope, Target, pixels},
     samples::grab,
-    targets::{self, Aim},
+    targets,
 };
 
 impl Gtk {

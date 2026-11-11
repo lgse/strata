@@ -8,6 +8,7 @@ mod pixels;
 mod predicates;
 mod scanning;
 mod snapshot;
+mod stepping;
 mod targeting;
 
 use super::Predicate;

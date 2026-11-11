@@ -4,8 +4,8 @@
 
 use gtk::prelude::*;
 
-pub(crate) use super::protocol::{Aim, LookupError, Rect};
-use super::{input::Injector, protocol::Located as Found};
+use super::input::Injector;
+pub(crate) use super::protocol::{LookupError, Rect};
 
 mod fields;
 mod lookup;
@@ -18,8 +18,6 @@ pub(crate) use self::{
     naming::{accessible_description, accessible_name, role_name},
     states::states,
 };
-
-pub(crate) type Located = Found<gtk::Widget>;
 
 /// The box GTK computes for a widget, whether or not it is mapped: a page just shown has
 /// one before its first frame.

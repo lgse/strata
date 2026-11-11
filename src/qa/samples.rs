@@ -6,26 +6,24 @@ use gtk::glib;
 use serde_json::{Value, json};
 
 use super::{
-    Controller, DROP_SAMPLE_DELAYS, DROP_SAMPLE_DRIFT, DROP_SAMPLE_LIMIT, DROP_SAMPLE_RECOVERY,
-    Outcome, Sample,
+    DROP_SAMPLE_DELAYS, DROP_SAMPLE_DRIFT, DROP_SAMPLE_LIMIT, DROP_SAMPLE_RECOVERY, Outcome,
+    Sample,
     backend::Gtk,
-    driver::Input,
     input::{self, Event, Injector},
     protocol::{
-        Failure,
+        Failure, Scope,
         pixels::{self, Capture},
     },
 };
 
-impl Controller {
+impl Gtk {
     pub(super) fn measure_text(
         &self,
-        input: &Input<'_>,
+        scope: &Scope<'_, Self>,
         kept: &str,
     ) -> Result<Result<(f64, u64), Failure>, String> {
-        let injector = input.injector;
-        let rect = input.kept_box(kept)?;
-        let capture = grab_on_screen(injector, rect.pixels())?;
+        let rect = scope.kept_box(kept)?;
+        let capture = grab_on_screen(self.injector()?, rect.pixels())?;
         Ok(match pixels::text_position(&capture) {
             (Some(position), contrast) => Ok((position, contrast)),
             (None, _) => Err(Failure {
@@ -37,34 +35,26 @@ impl Controller {
     }
 
     /// Grabs at the exact delays rather than polling, measuring only after all are taken.
-    pub(super) async fn drop_samples(
-        &self,
-        input: &Input<'_>,
-        kept: &str,
-        resting: &str,
-        dragging: &str,
-        escape: bool,
-        name: String,
-    ) -> Outcome {
+    pub(super) async fn drop_samples(&self, scope: &Scope<'_, Self>, drop: &Drop<'_>) -> Outcome {
         let measured = (|| {
             Ok::<_, String>((
-                input.kept_box(kept)?,
-                self.backend.text_sample(resting)?.0,
-                self.backend.text_sample(dragging)?.1,
+                scope.kept_box(drop.kept)?,
+                self.text_sample(drop.resting)?.0,
+                self.text_sample(drop.dragging)?.1,
+                self.injector()?,
             ))
         })();
-        let (rect, resting_position, dragging_contrast) = match measured {
+        let (rect, resting_position, dragging_contrast, injector) = match measured {
             Ok(measured) => measured,
             Err(error) => return Outcome::error(error),
         };
         let released = Instant::now();
-        self.backend
-            .samples
+        self.samples
             .borrow_mut()
-            .insert(name, Sample::Instant(released));
+            .insert(drop.name.to_owned(), Sample::Instant(released));
         let mut events = Vec::new();
-        if escape {
-            match input::keysym("Escape").and_then(|keysym| input.injector.keycode(keysym)) {
+        if drop.escape {
+            match input::keysym("Escape").and_then(|keysym| injector.keycode(keysym)) {
                 Ok((keycode, _)) => {
                     events.push(Event::Key {
                         keycode,
@@ -83,7 +73,7 @@ impl Controller {
             pressed: false,
         });
         for event in events {
-            if let Err(error) = input.injector.send(event) {
+            if let Err(error) = injector.send(event) {
                 return Outcome::error(error);
             }
         }
@@ -92,7 +82,7 @@ impl Controller {
             if let Some(remaining) = (released + delay).checked_duration_since(Instant::now()) {
                 glib::timeout_future(remaining).await;
             }
-            match grab_on_screen(input.injector, rect.pixels()) {
+            match grab_on_screen(injector, rect.pixels()) {
                 Ok(capture) => grabs.push((released.elapsed(), capture)),
                 Err(error) => return Outcome::error(error),
             }
@@ -128,6 +118,15 @@ impl Controller {
         }
         Outcome::default()
     }
+}
+
+/// The fields of a `drop_samples` step.
+pub(super) struct Drop<'a> {
+    pub(super) kept: &'a str,
+    pub(super) resting: &'a str,
+    pub(super) dragging: &'a str,
+    pub(super) escape: bool,
+    pub(super) name: &'a str,
 }
 
 impl Gtk {

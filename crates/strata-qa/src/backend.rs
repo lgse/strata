@@ -4,7 +4,9 @@
 
 use std::{path::PathBuf, time::Duration};
 
-use crate::{FieldState, Orientation, Predicate, Rect, Scope, Verdict};
+use crate::{
+    Chord, Command, FieldState, Modifier, Orientation, Outcome, Predicate, Rect, Scope, Verdict,
+};
 
 /// What the application says a node is for, where its role and name do not.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -156,6 +158,50 @@ pub trait Backend {
     async fn settle(&self, window: &Self::Node);
     /// Lets the application run for this long.
     async fn sleep(&self, time: Duration);
+
+    /// Called before each step that needs a window; an error ends the step.
+    fn begin(&self, _window: &Self::Node) -> Result<(), String> {
+        Ok(())
+    }
+    /// Makes `window` the one later steps act on.
+    fn adopt(&self, window: &Self::Node);
+    /// Sets the window's size; without a height, it keeps the one it has.
+    async fn resize(
+        &self,
+        window: &Self::Node,
+        width: u16,
+        height: Option<u16>,
+    ) -> Result<(), String>;
+
+    /// Presses and releases a key with its modifiers held, leaving the application the time
+    /// it needs between the events. `window` is the one whose frames are waited for.
+    async fn chord(&self, window: &Self::Node, chord: &Chord) -> Result<(), String>;
+    /// Types one character, whether or not the keyboard layout has a key for it.
+    async fn text_input(&self, window: &Self::Node, character: char) -> Result<(), String>;
+    /// Presses the modifiers in order and keeps them down. On an error none stays down.
+    async fn hold(&self, window: &Self::Node, modifiers: &[Modifier]) -> Result<(), String>;
+    /// Releases the modifiers `hold` pressed, last first.
+    async fn release(&self, window: &Self::Node, modifiers: &[Modifier]);
+    /// Sends one key event by key or modifier name and waits for nothing.
+    async fn key(&self, name: &str, pressed: bool) -> Result<(), String>;
+
+    /// Sends one pointer motion to a point on the screen and waits for nothing.
+    async fn pointer_move(&self, x: i16, y: i16) -> Result<(), String>;
+    fn pointer_position(&self) -> Result<(i16, i16), String>;
+    /// Sends one button event and waits for nothing. Buttons 4 and 5 are one wheel click up
+    /// and down, as X numbers them.
+    async fn button(&self, number: u8, pressed: bool) -> Result<(), String>;
+    /// Runs the node's default action; false when it has none.
+    fn activate(&self, node: &Self::Node) -> bool;
+
+    /// A step only this toolkit can run. `None` when it cannot, and the reply then says the
+    /// step is not supported.
+    async fn command(&self, _scope: &Scope<'_, Self>, _command: &Command) -> Option<Outcome>
+    where
+        Self: Sized,
+    {
+        None
+    }
 
     /// A predicate only this toolkit can answer: one that reads screen pixels, say. `None`
     /// when it cannot, and the reply then says the predicate is not supported.

@@ -9,7 +9,6 @@ use std::{
     collections::HashMap,
     fs::File,
     io::Write as _,
-    time::Instant,
 };
 
 use gtk::{gdk, glib::translate::IntoGlib, prelude::*};
@@ -33,7 +32,6 @@ pub(crate) struct Injector {
     keymap: Keymap,
     log: Option<RefCell<File>>,
     log_origin: Cell<(i16, i16)>,
-    last_release: Cell<Option<Instant>>,
 }
 
 pub(crate) const INPUT_LOG_VARIABLE: &str = "STRATA_INPUT_LOG";
@@ -89,7 +87,6 @@ impl Injector {
             keymap,
             log,
             log_origin: Cell::new((0, 0)),
-            last_release: Cell::new(None),
         })
     }
 
@@ -99,14 +96,6 @@ impl Injector {
 
     pub(crate) fn set_log_origin(&self, origin: (i16, i16)) {
         self.log_origin.set(origin);
-    }
-
-    pub(crate) fn last_release(&self) -> Option<Instant> {
-        self.last_release.get()
-    }
-
-    pub(crate) fn record_release(&self) {
-        self.last_release.set(Some(Instant::now()));
     }
 
     pub(crate) fn keycode(&self, keysym: u32) -> Result<(u8, bool), String> {

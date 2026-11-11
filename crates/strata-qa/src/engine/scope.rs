@@ -2,7 +2,11 @@
 
 //! One window and what earlier steps kept: where a step looks things up.
 
-use std::{cell::RefCell, collections::HashMap, time::Instant};
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
 use super::{
     LOCATE_TIMEOUT, POLL_INTERVAL,
@@ -10,7 +14,7 @@ use super::{
     locate::{Kept, Located, focused, locate, presented_target},
     scan::{Scene, scan},
 };
-use crate::{Aim, At, Backend, Boxes, FieldRef, LookupError, Rect, Target};
+use crate::{Aim, At, Backend, Boxes, Failure, FieldRef, LookupError, Outcome, Rect, Target};
 
 /// The nodes `remember` keeps under a name.
 pub type Memory<B> = HashMap<String, <B as Backend>::Kept>;
@@ -21,6 +25,8 @@ pub struct Remembered<B: Backend> {
     pub fields: RefCell<Memory<B>>,
     pub nodes: RefCell<Memory<B>>,
     pub boxes: RefCell<Boxes>,
+    /// When a click or a wheel turn last let its button go: a drag keeps clear of it.
+    pub(super) last_release: Cell<Option<Instant>>,
 }
 
 impl<B: Backend> Default for Remembered<B> {
@@ -29,6 +35,7 @@ impl<B: Backend> Default for Remembered<B> {
             fields: RefCell::default(),
             nodes: RefCell::default(),
             boxes: RefCell::default(),
+            last_release: Cell::new(None),
         }
     }
 }
@@ -144,6 +151,20 @@ impl<B: Backend> Scope<'_, B> {
                 Err(LookupError::Missing(_)) => self.backend.sleep(POLL_INTERVAL).await,
             }
         }
+    }
+
+    /// Lets the window paint a frame, then waits out what is left of `gap`.
+    pub async fn pause(&self, gap: Duration) {
+        let started = Instant::now();
+        self.backend.settle(&self.window).await;
+        if let Some(remaining) = gap.checked_sub(started.elapsed()) {
+            self.backend.sleep(remaining).await;
+        }
+    }
+
+    /// The reply of a step that gave up waiting: the failure, with the window's tree.
+    pub fn timed_out(&self, failure: Failure, timeout: Duration) -> Outcome {
+        Outcome::timed_out(self.backend.dump(&self.window), failure, timeout)
     }
 
     /// The first drawn node, in tree order, that reports itself focused.
