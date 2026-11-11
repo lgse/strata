@@ -9,13 +9,14 @@ use super::{
     Controller, Sample,
     driver::Input,
     observe::{
-        self, child_processes, evaluate, footer_fill, hit_path, list_sections, number_json,
-        preferences, scroll_value, theme_accent, visible_rows, visible_top,
+        self, child_processes, evaluate, footer_fill, hit_path, list_sections, preferences,
+        scroll_value, theme_accent, visible_rows, visible_top,
     },
-    pixels,
-    protocol::{Check, Direction, Failure, FieldRef, PointAxis, Predicate, Target},
+    protocol::{
+        Check, Direction, Failure, FieldRef, PointAxis, Predicate, Target, number_json, pixels,
+    },
     samples::grab,
-    state::{self, FieldState},
+    state,
     targets::{self, Aim, Kept, LookupError},
 };
 
@@ -56,7 +57,7 @@ impl Controller {
             Check::Field(check) => {
                 let field = input
                     .field(&check.field())?
-                    .and_then(|field| FieldState::read(&field));
+                    .and_then(|field| state::read_field(&field));
                 verdict(state::field_matches(check, field.as_ref()), json!(field))
             }
             Check::Pref(check) => {

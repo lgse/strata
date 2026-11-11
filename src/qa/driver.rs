@@ -11,7 +11,7 @@ use super::{
     LOCATE_TIMEOUT, POLL_INTERVAL, REVEAL_SCROLL_ATTEMPTS,
     input::{Event, Injector},
     pointer::Aimed,
-    protocol::{At, FieldRef, Target},
+    protocol::{At, FieldRef, Target, coordinate},
     settle, state,
     targets::{self, Aim, Boxes, Kept, LookupError, Memory, Rect},
 };
@@ -262,16 +262,4 @@ impl Input<'_> {
                 targets::states(widget).focused && state::rendered_bounds(widget).is_some()
             })
     }
-}
-
-pub(super) fn coordinate(value: f64) -> Result<i16, String> {
-    let value = value.floor();
-    if value < f64::from(i16::MIN) || value > f64::from(i16::MAX) {
-        return Err(format!("the target lies outside the screen at {value}"));
-    }
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "the range was checked just above"
-    )]
-    Ok(value as i16)
 }

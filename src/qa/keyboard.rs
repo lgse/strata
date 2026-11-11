@@ -161,7 +161,7 @@ impl Input<'_> {
                     message: Some(message),
                 };
                 return Err(Outcome::timed_out(
-                    self.window,
+                    state::dump(self.window),
                     failure,
                     protocol::DEFAULT_WAIT,
                 ));

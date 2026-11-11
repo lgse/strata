@@ -3,10 +3,8 @@
 use serde_json::json;
 
 use super::super::{
-    onscreen::{travel, wheel_clicks},
-    pointer::step_towards,
-    protocol::{At, Axis, Command, EntryPart, EntryTarget, Offset, Target, parse_command},
-    targets::Rect,
+    At, Axis, Command, EntryPart, EntryTarget, Offset, Rect, Target, parse_command, step_towards,
+    travel, wheel_clicks,
 };
 
 #[test]

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Capture {
-    pub(crate) x: i64,
-    pub(crate) y: i64,
-    pub(crate) width: usize,
-    pub(crate) height: usize,
-    pub(crate) pixels: Vec<[u8; 3]>,
+pub struct Capture {
+    pub x: i64,
+    pub y: i64,
+    pub width: usize,
+    pub height: usize,
+    pub pixels: Vec<[u8; 3]>,
 }
 
 impl Capture {
@@ -16,13 +16,13 @@ impl Capture {
 }
 
 /// PIL's `convert("L")`: ITU-R 601-2 luma in 16-bit fixed point.
-pub(crate) fn luma([red, green, blue]: [u8; 3]) -> u8 {
+pub fn luma([red, green, blue]: [u8; 3]) -> u8 {
     let weighted =
         u32::from(red) * 19_595 + u32::from(green) * 38_470 + u32::from(blue) * 7_471 + 0x8000;
     u8::try_from(weighted >> 16).unwrap_or(u8::MAX)
 }
 
-pub(crate) fn text_position(capture: &Capture) -> (Option<f64>, u64) {
+pub fn text_position(capture: &Capture) -> (Option<f64>, u64) {
     let mut weights = Vec::with_capacity(capture.height);
     for row in 0..capture.height {
         let mut values: Vec<u8> = (0..capture.width)
@@ -55,11 +55,7 @@ pub(crate) fn text_position(capture: &Capture) -> (Option<f64>, u64) {
     (Some(position), contrast)
 }
 
-pub(crate) fn differs_beside_pointer(
-    before: &Capture,
-    after: &Capture,
-    pointer: (i64, i64),
-) -> bool {
+pub fn differs_beside_pointer(before: &Capture, after: &Capture, pointer: (i64, i64)) -> bool {
     if (before.width, before.height) != (after.width, after.height) {
         return true;
     }

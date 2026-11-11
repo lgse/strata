@@ -77,18 +77,6 @@ pub(super) fn list_sections(root: &gtk::Widget) -> Vec<(String, Vec<String>)> {
     sections
 }
 
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "only whole numbers well inside the i64 range are converted"
-)]
-pub(super) fn number_json(number: f64) -> Value {
-    if number.fract() == 0.0 && number.abs() < 1e15 {
-        json!(number as i64)
-    } else {
-        json!(number)
-    }
-}
-
 /// Outer error: a broken lookup or malformed number; inner: not there yet, so a wait keeps polling.
 pub(super) fn evaluate(input: &Input<'_>, expr: &Expr) -> Result<Result<f64, String>, String> {
     let pair = |items: &[Expr; 2]| -> Result<Result<(f64, f64), String>, String> {

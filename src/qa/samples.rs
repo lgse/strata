@@ -10,8 +10,10 @@ use super::{
     Outcome, Sample,
     driver::Input,
     input::{self, Event, Injector},
-    pixels::{self, Capture},
-    protocol::Failure,
+    protocol::{
+        Failure,
+        pixels::{self, Capture},
+    },
     targets::Rect,
 };
 

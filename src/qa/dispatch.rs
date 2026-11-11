@@ -10,10 +10,10 @@ use super::{
     clipboard::{abridged, own_clipboard, private_display, read_clipboard},
     driver::Input,
     input::Event,
-    note::{Shape, note},
-    observe::{evaluate, number_json, preferences, scroll_target, visible_rows, visible_top},
+    note::note,
+    observe::{evaluate, preferences, scroll_target, visible_rows, visible_top},
     pointer::{AfterPress, Aimed, DragEnds},
-    protocol::{self, Accessor, Command, Failure, Predicate, Query, Target},
+    protocol::{self, Accessor, Command, Failure, Predicate, Query, Shape, Target, number_json},
     reveal::set_scrollbar,
     samples::grab,
     settle, state,
@@ -275,7 +275,7 @@ impl Controller {
                                 actual: Value::Null,
                                 message,
                             };
-                            return Outcome::timed_out(&window, failure, timeout);
+                            return Outcome::timed_out(state::dump(&window), failure, timeout);
                         }
                         Ok(Value::Null) => glib::timeout_future(POLL_INTERVAL).await,
                         Ok(result) => {
@@ -407,7 +407,11 @@ impl Controller {
                                     actual: json!(before.as_ref().map(targets::accessible_name)),
                                     message: message.clone(),
                                 };
-                                return Outcome::timed_out(input.window, failure, *timeout);
+                                return Outcome::timed_out(
+                                    state::dump(input.window),
+                                    failure,
+                                    *timeout,
+                                );
                             }
                             glib::timeout_future(POLL_INTERVAL).await;
                         }
@@ -642,12 +646,12 @@ impl Controller {
                                     actual: json!(format!("held for {steady} of {samples} polls")),
                                     message,
                                 };
-                                return Outcome::timed_out(&window, failure, timeout);
+                                return Outcome::timed_out(state::dump(&window), failure, timeout);
                             }
                         }
                         Ok(Err(mut failure)) if Instant::now() >= deadline => {
                             failure.message = message;
-                            return Outcome::timed_out(&window, failure, timeout);
+                            return Outcome::timed_out(state::dump(&window), failure, timeout);
                         }
                         Ok(Err(_)) => steady = 0,
                     }
@@ -753,7 +757,7 @@ impl Controller {
                                 "selected table text on the private display clipboard".to_owned(),
                             ),
                         };
-                        Outcome::timed_out(&window, failure, protocol::DEFAULT_WAIT)
+                        Outcome::timed_out(state::dump(&window), failure, protocol::DEFAULT_WAIT)
                     }
                 }
             }

@@ -4,8 +4,7 @@ use serde_json::json;
 
 use super::{
     super::{
-        protocol::FieldCheck,
-        state::{self, EntryObservation, FieldState, Observation, PaneObservation},
+        self as state, EntryObservation, FieldCheck, FieldState, Observation, PaneObservation,
     },
     predicate,
 };
@@ -393,7 +392,7 @@ fn a_created_editor_starts_beside_the_pane_and_ends_inside_the_window() {
 
 #[test]
 fn a_box_is_inside_another_on_the_axes_asked_for() {
-    use super::super::protocol::PointAxis;
+    use super::super::PointAxis;
     let viewport = [200, 100, 400, 300];
     assert!(state::inside([210, 110, 100, 20], viewport, None));
     assert!(!state::inside([210, 390, 100, 20], viewport, None));

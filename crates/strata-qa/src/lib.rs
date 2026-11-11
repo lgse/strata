@@ -3,6 +3,9 @@
 //! The protocol of the scripted QA mode: what a step, a target and a predicate are, and how
 //! each is parsed. The application and the runner in `tests/qa.rs` both use it, so the runner
 //! rejects a malformed step when it loads a scenario instead of the process rejecting it mid-run.
+//!
+//! It also holds what the application's side decides without a toolkit: the snapshot a reply
+//! reports and the predicates that read it, screen geometry, and pixel measurement.
 
 use std::time::Duration;
 
@@ -13,13 +16,20 @@ mod checks;
 mod chord;
 mod command;
 mod expr;
+mod geometry;
 mod matchers;
 mod offset;
+mod outcome;
+pub mod pixels;
 mod predicate;
+mod scroll;
+mod shape;
+mod snapshot;
 mod target;
 
 pub use self::{
-    checks::*, chord::*, command::*, expr::*, matchers::*, offset::*, predicate::*, target::*,
+    checks::*, chord::*, command::*, expr::*, geometry::*, matchers::*, offset::*, outcome::*,
+    pixels::Capture, predicate::*, scroll::*, shape::*, snapshot::*, target::*,
 };
 
 pub const DEFAULT_WAIT: Duration = Duration::from_millis(15_000);
@@ -62,3 +72,6 @@ pub fn changed_keys(previous: Option<&Value>, current: &Value) -> Vec<String> {
         .map(|(key, _)| key.clone())
         .collect()
 }
+
+#[cfg(test)]
+mod tests;

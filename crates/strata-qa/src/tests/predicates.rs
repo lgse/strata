@@ -3,10 +3,7 @@
 use serde_json::json;
 
 use super::{
-    super::{
-        note::Shape,
-        protocol::{Change, Check, Names, Predicate, Target, TextMatch},
-    },
+    super::{Change, Check, Names, Predicate, Shape, Target, TextMatch},
     predicate,
 };
 
@@ -121,7 +118,7 @@ fn screen_and_footer_predicates_parse_and_are_read_live() {
 
 #[test]
 fn numbers_compare_and_parse_from_their_operations() {
-    use super::super::protocol::{CompareOp, Expr, Measure};
+    use super::super::{CompareOp, Expr, Measure};
     assert!(CompareOp::AtMost.holds(2.0, 2.0));
     assert!(!CompareOp::Less.holds(2.0, 2.0));
     assert!(CompareOp::Unequal.holds(560.0, 412.0));

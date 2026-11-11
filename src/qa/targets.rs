@@ -6,7 +6,8 @@ use std::collections::HashMap;
 
 use gtk::{glib, prelude::*};
 
-use super::{input::Injector, protocol::At, state};
+pub(crate) use super::protocol::{Aim, Boxes, LookupError, Rect};
+use super::{input::Injector, state};
 
 mod fields;
 mod locate;
@@ -31,40 +32,6 @@ pub(crate) use self::{
 
 pub(crate) type Memory = HashMap<String, glib::WeakRef<gtk::Widget>>;
 
-pub(crate) type Boxes = HashMap<String, Rect>;
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct Rect {
-    pub(crate) x: f64,
-    pub(crate) y: f64,
-    pub(crate) width: f64,
-    pub(crate) height: f64,
-}
-
-impl Rect {
-    pub(crate) fn centre(&self) -> (f64, f64) {
-        (
-            self.x + (self.width / 2.0).floor(),
-            self.y + (self.height / 2.0).floor(),
-        )
-    }
-
-    pub(crate) fn point(&self, at: Option<&At>) -> (f64, f64) {
-        match at {
-            None => self.centre(),
-            Some(at) => (
-                at.x.resolve(self.x, self.width),
-                at.y.resolve(self.y, self.height),
-            ),
-        }
-    }
-
-    /// Whole pixels, as AT-SPI reports extents; sub-pixel drift is not movement.
-    pub(crate) fn pixels(&self) -> [i64; 4] {
-        [self.x, self.y, self.width, self.height].map(|value| value.floor() as i64)
-    }
-}
-
 #[derive(Clone, Debug)]
 pub(crate) struct Located {
     pub(crate) widget: gtk::Widget,
@@ -72,29 +39,8 @@ pub(crate) struct Located {
     pub(crate) point: (f64, f64),
 }
 
-/// `Missing` is accepted by `absent` and the patient lookups; `Broken` is always an error.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum LookupError {
-    Missing(String),
-    Broken(String),
-}
-
-impl LookupError {
-    pub(crate) fn message(&self) -> &str {
-        match self {
-            Self::Missing(message) | Self::Broken(message) => message,
-        }
-    }
-}
-
 fn missing(message: impl Into<String>) -> LookupError {
     LookupError::Missing(message.into())
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Aim {
-    Point,
-    DragOrigin,
 }
 
 #[derive(Clone, Copy)]

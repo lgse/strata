@@ -34,7 +34,7 @@ impl Controller {
                     message: Some(message),
                 };
                 return Err(Outcome::timed_out(
-                    input.window,
+                    state::dump(input.window),
                     failure,
                     protocol::DEFAULT_WAIT,
                 ));
@@ -100,7 +100,11 @@ impl Controller {
                     actual: json!({ "bounds": bounds, "viewport": viewport }),
                     message: Some(format!("reachable {name} control")),
                 };
-                return Outcome::timed_out(input.window, failure, protocol::DEFAULT_WAIT);
+                return Outcome::timed_out(
+                    state::dump(input.window),
+                    failure,
+                    protocol::DEFAULT_WAIT,
+                );
             }
             let [view_x, view_y, view_width, view_height] = viewport;
             let at = (view_x + view_width - 16, view_y + view_height.div_euclid(2));
@@ -209,7 +213,11 @@ impl Controller {
                         targets::role_name(&node),
                         python_repr(&targets::accessible_name(&node))
                     ));
-                    return Outcome::timed_out(input.window, failure, protocol::DEFAULT_WAIT);
+                    return Outcome::timed_out(
+                        state::dump(input.window),
+                        failure,
+                        protocol::DEFAULT_WAIT,
+                    );
                 }
                 Ok(Err(_)) => glib::timeout_future(POLL_INTERVAL).await,
             }

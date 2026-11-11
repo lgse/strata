@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::super::{
-    observe::catalog_accent,
-    pixels::{self, Capture},
-};
+use super::super::pixels::{self, Capture};
 
 fn capture(width: usize, height: usize, pixels: Vec<[u8; 3]>) -> Capture {
     Capture {
@@ -70,14 +67,4 @@ fn hover_feedback_ignores_only_the_pointer_square() {
         pointer
     ));
     assert!(!pixels::differs_beside_pointer(&before, &before, pointer));
-}
-
-#[test]
-fn the_theme_accent_is_read_from_the_catalog_entry_with_the_theme_id() {
-    let catalog = "[[themes]]\nid = \"dark\"\naccent = \"#2ccceb\"\n\n\
-                   [[themes]]\nid = \"light\"\naccent = \"#010203\"\n";
-    assert_eq!(catalog_accent(catalog, "light"), Ok([1, 2, 3]));
-    assert_eq!(catalog_accent(catalog, "dark"), Ok([0x2c, 0xcc, 0xeb]));
-    assert!(catalog_accent(catalog, "missing").is_err());
-    assert!(catalog_accent("[[themes]]\nid = \"x\"\naccent = \"teal\"\n", "x").is_err());
 }

@@ -8,9 +8,12 @@ use serde_json::json;
 use super::{
     APPROACH_OFFSET, ARRIVAL_ATTEMPTS, BUTTON_HOLD, DOUBLE_CLICK_GAP, EVENT_GAP, LOCATE_TIMEOUT,
     Outcome, POINTER_GAP, POLL_INTERVAL, SELECT_RETRY_AFTER, SEPARATE_CLICK_GAP,
-    driver::{Input, coordinate},
+    driver::Input,
     input::Event,
-    protocol::{self, At, EntryTarget, Failure, Modifier, Predicate, PressCheck, Target},
+    protocol::{
+        self, At, EntryTarget, Failure, Modifier, Predicate, PressCheck, Target, coordinate,
+        step_towards,
+    },
     settle, state,
     targets::{self, Aim},
 };
@@ -368,11 +371,4 @@ impl Input<'_> {
             self.injector.pointer_position()?
         ))
     }
-}
-
-/// Python's floor division, so both harnesses visit the same pixels.
-pub(super) fn step_towards(from: i16, to: i16, step: u32, steps: u32) -> i16 {
-    let travelled =
-        ((i64::from(to) - i64::from(from)) * i64::from(step)).div_euclid(i64::from(steps));
-    i16::try_from(i64::from(from) + travelled).unwrap_or(to)
 }

@@ -10,7 +10,6 @@ mod keyboard;
 mod note;
 mod observe;
 mod onscreen;
-mod pixels;
 mod pointer;
 mod reveal;
 mod samples;
@@ -36,9 +35,8 @@ use serde_json::{Value, json};
 
 use self::{
     input::Injector,
-    pixels::Capture,
-    protocol::{Failure, Reply},
-    targets::{Boxes, Memory},
+    protocol::{Boxes, Capture, Outcome, Reply},
+    targets::Memory,
 };
 
 /// The release workflow and QA job grep for its `usage: strata --qa` prefix;
@@ -219,34 +217,6 @@ enum Sample {
     Pixels(Capture),
     Text { position: f64, contrast: u64 },
     Instant(Instant),
-}
-
-#[derive(Default)]
-struct Outcome {
-    result: Value,
-    failures: Vec<Failure>,
-    error: Option<String>,
-}
-
-impl Outcome {
-    fn error(error: String) -> Self {
-        Self {
-            error: Some(error),
-            ..Self::default()
-        }
-    }
-
-    fn from(result: Result<(), String>) -> Self {
-        result.map_or_else(Self::error, |()| Self::default())
-    }
-
-    fn timed_out(window: &gtk::Window, failure: Failure, timeout: Duration) -> Self {
-        Self {
-            result: json!({ "tree": state::dump(window) }),
-            failures: vec![failure],
-            error: Some(format!("timed out after {} ms", timeout.as_millis())),
-        }
-    }
 }
 
 impl Controller {

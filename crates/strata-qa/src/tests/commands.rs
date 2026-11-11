@@ -6,12 +6,9 @@ use serde_json::json;
 
 use super::{
     super::{
-        input,
-        protocol::{
-            Accessor, At, Check, Chord, ClipboardContent, ClipboardOffer, ClipboardOffers, Command,
-            EntryTarget, Modifier, Offset, Predicate, Presence, Query, StateName, Target,
-            TextMatch, changed_keys, parse_command,
-        },
+        Accessor, At, Check, Chord, ClipboardContent, ClipboardOffer, ClipboardOffers, Command,
+        EntryTarget, Modifier, Offset, Predicate, Presence, Query, StateName, Target, TextMatch,
+        changed_keys, parse_command,
     },
     predicate,
 };
@@ -279,14 +276,6 @@ fn a_trailing_plus_is_the_plus_key() {
             key: "+".to_owned(),
         })
     );
-}
-
-#[test]
-fn single_characters_are_latin1_or_unicode_keysyms() {
-    assert_eq!(input::keysym("j"), Ok(0x6a));
-    assert_eq!(input::keysym("é"), Ok(0xe9));
-    assert_eq!(input::keysym("о"), Ok(0x0100_043e));
-    assert!(input::keysym("NotAKey").is_err());
 }
 
 #[test]

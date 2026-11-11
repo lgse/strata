@@ -10,7 +10,7 @@ use super::{
     driver::Input,
     pointer::Aimed,
     protocol::{self, At, Failure, Modifier, Predicate, Repeat, StateName, Target},
-    settle,
+    settle, state,
     targets::{self, Aim, LookupError},
 };
 
@@ -64,7 +64,11 @@ impl Controller {
                 Ok(Ok(())) => return Outcome::default(),
                 Ok(Err(mut failure)) if Instant::now() >= deadline => {
                     failure.message = message;
-                    return Outcome::timed_out(input.window, failure, protocol::DEFAULT_WAIT);
+                    return Outcome::timed_out(
+                        state::dump(input.window),
+                        failure,
+                        protocol::DEFAULT_WAIT,
+                    );
                 }
                 Ok(Err(_)) => {}
             }
@@ -124,7 +128,7 @@ impl Controller {
                     ),
                     message: Some("the target to stop moving".to_owned()),
                 };
-                return Outcome::timed_out(input.window, failure, timeout);
+                return Outcome::timed_out(state::dump(input.window), failure, timeout);
             }
             glib::timeout_future(POLL_INTERVAL).await;
         }
@@ -155,7 +159,7 @@ impl Controller {
                 }
                 Ok(Err(mut failure)) if repeat.tries.is_none() && Instant::now() >= deadline => {
                     failure.message.clone_from(&repeat.message);
-                    return Outcome::timed_out(input.window, failure, repeat.timeout);
+                    return Outcome::timed_out(state::dump(input.window), failure, repeat.timeout);
                 }
                 Ok(Err(_)) => {}
             }
