@@ -21,9 +21,9 @@
 # only a failed run's. Shares target/qa-container with qa.sh: one QA script at a time.
 #
 # The ledger's allowances are slice's alone. A run it names as flaky may fail in the whole
-# GTK suite if it then passes alone: slice prints both results, and keeps the failed run's
-# artifacts in target/qa-parity/allowance. Every allowance used or refused is listed when
-# slice ends.
+# GTK suite: slice says so and keeps the failed run's artifacts in
+# target/qa-parity/allowance. Any other failure there fails slice. Every allowance used or
+# refused is listed when slice ends.
 set -euo pipefail
 
 unset DISPLAY WAYLAND_DISPLAY NOTIFY_SOCKET
@@ -113,21 +113,15 @@ code=0
     runner=(cargo test --locked --features qa,invariant-checks --test qa)
     "${runner[@]}" --no-run
     failed=0
-    # A flaky run that failed in the whole GTK suite, alone: the allowance holds if it passes.
-    alone() {
-      local kept="/workspace/target/qa-parity/allowance/$1" output
-      echo "== ALLOWANCE: $1 failed in the whole GTK suite; the ledger names it flaky, so it runs again alone =="
-      rm -rf "$kept"
+    # A run the ledger names as flaky failed in the whole GTK suite. It does not fail slice
+    # and is not run again: alone it fails more often than in the suite, so a rerun says
+    # nothing (docs/rune/slice/README.md, decision 27). Its bundle is kept and it is noted.
+    allowed() {
+      local kept="/workspace/target/qa-parity/allowance/$1"
       mkdir -p "$(dirname "$kept")"
       cp -a "/workspace/target/qa-artifacts/$1" "$kept" 2>/dev/null || true
-      output="$(mktemp)"
-      STRATA_QA_TARGET=gtk "${runner[@]}" -- --include-ignored --exact "$1" 2>&1 | tee "$output"
-      if ((PIPESTATUS[0] == 0)) && grep -Fxq "PASS $1" "$output"; then
-        echo "ALLOWANCE USED: $1 failed in the whole GTK suite and passed alone." | tee -a "$notes"
-      else
-        echo "ALLOWANCE REFUSED: $1 failed in the whole GTK suite and again alone." | tee -a "$notes"
-        return 1
-      fi
+      echo "ALLOWANCE USED: $1 failed in the whole GTK suite; the ledger names it flaky before the slice." \
+        | tee -a "$notes"
     }
     for target in $targets; do
       echo "== $selection on $target: $# $status run(s) =="
@@ -155,10 +149,10 @@ code=0
       if ! grep -Eq "^(PASS|KNOWN BUG) " "$output"; then
         failed=1
       elif ((code != 0)); then
-        # Only the runs the ledger names as flaky may fail here, and each must pass alone.
+        # Only the runs the ledger names as flaky may fail here.
         refusal="$(mktemp)"
-        if again="$(python3 scripts/qa_parity.py slice --failed-in "$output" 2> "$refusal")"; then
-          for name in $again; do alone "$name" || failed=1; done
+        if flaky="$(python3 scripts/qa_parity.py slice --failed-in "$output" 2> "$refusal")"; then
+          for name in $flaky; do allowed "$name"; done
         else
           tee -a "$notes" < "$refusal"
           failed=1

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """Reads the parity ledger for scripts/qa-parity.sh: the runs a selection names, and the
-failures its allowances let `slice` look at again."""
+failures of the whole GTK suite its allowances let `slice` pass over."""
 
 from __future__ import annotations
 
@@ -15,8 +15,9 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 LEDGER = REPOSITORY / "tests/qa/parity/slice.toml"
 GATES = {"g1": ("G1",), "g2": ("G2",), "g3": ("G3",), "slice": ("G1", "G2", "G3")}
 STATUSES = ("required", "pending")
-# The runner's line for a failed test, tests/qa/harness.rs.
+# The runner's line for a failed test and its closing count of them, tests/qa/harness.rs.
 FAILED = re.compile(r"^test (\S+) \.\.\. FAILED\b")
+RESULT = re.compile(r"^test result: FAILED\. \d+ passed; (\d+) failed;")
 
 
 def selected(ledger: dict, selection: str, status: str, scenario: str | None = None) -> list[str]:
@@ -49,11 +50,17 @@ def failed_tests(log: str) -> list[str]:
     return [match[1] for line in log.splitlines() if (match := FAILED.match(line.rstrip()))]
 
 
-def excused(ledger: dict, log: str) -> tuple[list[str], list[str]]:
-    """A failed whole-suite log, sorted: the flaky runs to run again alone, and the rest.
+def counted_failures(log: str) -> int | None:
+    """How many tests the runner's closing line says failed; none if it never got there."""
 
-    The rest fails `slice` whatever a rerun would do. A log that names no failed test is not
-    excused either: the suite failed some other way, and the caller treats that as failure.
+    counts = [int(match[1]) for line in log.splitlines() if (match := RESULT.match(line.rstrip()))]
+    return counts[-1] if counts else None
+
+
+def excused(ledger: dict, log: str) -> tuple[list[str], list[str]]:
+    """A failed whole-suite log, sorted: the flaky runs that failed, and every other test.
+
+    The flaky runs do not fail `slice`; anything else does.
     """
 
     allowed = flaky(ledger)
@@ -62,19 +69,32 @@ def excused(ledger: dict, log: str) -> tuple[list[str], list[str]]:
             [name for name in failed if name not in allowed])
 
 
-def report_excused(ledger: dict, log: Path) -> int:
-    """Prints the flaky runs to run again; exits 1 when the failure is not theirs alone."""
+def refusal(ledger: dict, log: str) -> str | None:
+    """Why a failed whole-suite log fails `slice`, or nothing when the allowance covers it.
 
-    again, others = excused(ledger, log.read_text(encoding="utf-8", errors="replace"))
+    It covers a suite that ran to its end and failed for the ledger's flaky runs alone. A
+    suite that names no failed test, or whose closing count is not the tests it named, failed
+    some other way: a build error, or a runner that stopped part way.
+    """
+
+    passed_over, others = excused(ledger, log)
     if others:
-        print(f"NO ALLOWANCE: {', '.join(others)} failed in the whole GTK suite; "
-              "nothing is run again.", file=sys.stderr)
+        return f"{', '.join(others)} failed in the whole GTK suite, and no allowance names them."
+    if not passed_over:
+        return "the whole GTK suite failed without naming a failed test."
+    if counted_failures(log) != len(passed_over):
+        return "the whole GTK suite did not end with a count of the failures it named."
+    return None
+
+
+def report_excused(ledger: dict, log: Path) -> int:
+    """Prints the flaky runs that failed; exits 1 when the failure is not theirs alone."""
+
+    text = log.read_text(encoding="utf-8", errors="replace")
+    if reason := refusal(ledger, text):
+        print(f"NO ALLOWANCE: {reason}", file=sys.stderr)
         return 1
-    if not again:
-        print("NO ALLOWANCE: the whole GTK suite failed without naming a failed test.",
-              file=sys.stderr)
-        return 1
-    for name in again:
+    for name in excused(ledger, text)[0]:
         print(name)
     return 0
 
@@ -92,7 +112,7 @@ def main(arguments: list[str] | None = None) -> int:
     parser.add_argument("--ledger", type=Path, default=LEDGER)
     parser.add_argument("--failed-in", type=Path, metavar="LOG",
                         help="instead of a selection's runs: the flaky runs that failed in this "
-                             "log of the whole GTK suite, or exit 1 if anything else failed")
+                             "log of the whole GTK suite, or exit 1 if it failed any other way")
     args = parser.parse_args(arguments)
     if args.failed_in:
         return report_excused(load(args.ledger), args.failed_in)

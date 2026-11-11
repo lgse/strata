@@ -109,8 +109,13 @@ new-folder/columns failed:
 failures:
     new-folder/columns
 
-test result: FAILED. 790 passed; 1 failed; 2 ignored; 0 measured; 0 filtered out; finished in 66.60s
+test result: FAILED. 790 passed; {failed} failed; 2 ignored; 0 measured; 0 filtered out; finished in 66.60s
 """
+
+
+def suite_log(*others, failed=None):
+    more = "\n".join(f"test {other} ... FAILED <0.004s>" for other in others)
+    return SUITE_LOG.format(more=more, failed=1 + len(others) if failed is None else failed)
 
 
 class FlakyAllowanceTests(unittest.TestCase):
@@ -125,14 +130,27 @@ class FlakyAllowanceTests(unittest.TestCase):
         # The allowances are no runs of a gate.
         self.assertEqual(selected(self.ledger, "slice", "required"), selected(bare, "slice", "required"))
 
-    def test_only_a_flaky_run_is_run_again_and_any_other_failure_stands(self):
-        alone = SUITE_LOG.format(more="")
-        self.assertEqual(qa_parity.excused(self.ledger, alone), (["new-folder/columns"], []))
+    def test_the_flaky_run_alone_is_passed_over_and_any_other_failure_stands(self):
+        self.assertIsNone(qa_parity.refusal(self.ledger, suite_log()))
+        self.assertEqual(qa_parity.excused(self.ledger, suite_log()), (["new-folder/columns"], []))
         for other in ("escape-clears-selection/list", "new-folder/list",
                       "the_parity_ledger_accounts_for_every_columns_run_of_the_slices_set"):
-            log = SUITE_LOG.format(more=f"test {other} ... FAILED <0.004s>")
-            self.assertEqual(qa_parity.excused(self.ledger, log), (["new-folder/columns"], [other]))
-        self.assertEqual(qa_parity.excused(tomllib.loads(LEDGER), alone), ([], ["new-folder/columns"]))
+            with self.subTest(other):
+                self.assertEqual(qa_parity.refusal(self.ledger, suite_log(other)),
+                                 f"{other} failed in the whole GTK suite, and no allowance names them.")
+        self.assertIn("new-folder/columns failed", qa_parity.refusal(tomllib.loads(LEDGER), suite_log()))
+
+    def test_a_suite_that_failed_some_other_way_is_not_passed_over(self):
+        for case, log, reason in (
+            ("a build error names no test", "error: could not compile `strata`\n",
+             "the whole GTK suite failed without naming a failed test."),
+            ("the runner stopped before its result", suite_log().split("\ntest result")[0],
+             "the whole GTK suite did not end with a count of the failures it named."),
+            ("the result counts a failure no line names", suite_log(failed=2),
+             "the whole GTK suite did not end with a count of the failures it named."),
+        ):
+            with self.subTest(case):
+                self.assertEqual(qa_parity.refusal(self.ledger, log), reason)
 
     def run_command(self, log_text):
         with tempfile.TemporaryDirectory() as directory:
@@ -145,17 +163,15 @@ class FlakyAllowanceTests(unittest.TestCase):
                 status = qa_parity.main(["slice", "--ledger", str(ledger), "--failed-in", str(log)])
         return status, printed.getvalue(), errors.getvalue()
 
-    def test_the_command_prints_the_runs_to_run_again_or_refuses_the_whole_failure(self):
-        self.assertEqual(self.run_command(SUITE_LOG.format(more=""))[:2], (0, "new-folder/columns\n"))
-        status, printed, errors = self.run_command(
-            SUITE_LOG.format(more="test escape-clears-selection/list ... FAILED <2.000s>"))
-        self.assertEqual((status, printed), (1, ""))
-        self.assertEqual(errors, "NO ALLOWANCE: escape-clears-selection/list failed in the whole "
-                                 "GTK suite; nothing is run again.\n")
-        # A suite that failed without a failed test, such as a build error, is not excused.
+    def test_the_command_prints_the_flaky_runs_or_refuses_the_whole_failure(self):
+        self.assertEqual(self.run_command(suite_log()), (0, "new-folder/columns\n", ""))
+        self.assertEqual(
+            self.run_command(suite_log("escape-clears-selection/list")),
+            (1, "", "NO ALLOWANCE: escape-clears-selection/list failed in the whole GTK suite, "
+                    "and no allowance names them.\n"))
         status, printed, errors = self.run_command("error: could not compile `strata`\n")
         self.assertEqual((status, printed), (1, ""))
-        self.assertIn("NO ALLOWANCE: the whole GTK suite failed without naming a failed test", errors)
+        self.assertTrue(errors.startswith("NO ALLOWANCE: "), errors)
 
 
 class StalePatchTests(unittest.TestCase):
@@ -224,6 +240,10 @@ class RepositoryTests(unittest.TestCase):
         line = re.search(r'"(test \{\} \.\.\. FAILED[^"\\]*)', harness).group(1)
         self.assertEqual(qa_parity.failed_tests(line.replace("{}", "a/b").replace("{seconds:.3}", "1.000")),
                          ["a/b"])
+        result = re.search(r'"\\n(test result: \{\}\. \{passed\} passed; \{\} failed;)', harness).group(1)
+        self.assertEqual(qa_parity.counted_failures(
+            result.replace("{}", "FAILED", 1).replace("{passed}", "7").replace("{}", "3")), 3)
+        self.assertNotIn("--exact \"$1\"", script, "a flaky run is not run again")
 
     def test_the_committed_ledger_has_gate_g1_required(self):
         with qa_parity.LEDGER.open("rb") as stream:

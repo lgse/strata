@@ -24,10 +24,13 @@
 # document that does not name it.
 #
 #   [[flaky]]        a run outside the set that fails some of the time. When it fails in
-#                    slice's whole-suite part, slice runs it again alone, prints both
-#                    results, and fails only if it fails alone too. An owner ruling.
+#                    slice's whole-suite part, slice says so, keeps its artifacts and
+#                    goes on: the failure does not fail slice. It is not run again,
+#                    because alone it fails more often than in the suite.
 #   [[stale_patch]]  a GTK mutation patch that no longer applies. slice runs every other
 #                    patch, and fails if this one applies again: then its entry goes.
+#
+# Both entries are owner rulings of 2026-11-11 (docs/rune/slice/README.md, decision 27).
 
 [[run]]
 scenario = "alt-up-and-history"
@@ -560,10 +563,10 @@ status = "required"
 [[flaky]]
 scenario = "new-folder-with-selection-groups"
 run = "columns"
-reason = "Flaky since before V3: its wait for the opened folder's column to take focus times out some of the time, in a whole-suite run and alone. The owner ruled on 2026-11-11 that slice names it and no scenario is edited."
+reason = "Flaky since before V3: its wait for the opened folder's column to take focus times out, in two whole-suite runs in five and in eight runs in nine alone. The owner ruled on 2026-11-11 that slice names it and lets it fail there, and that no scenario is edited."
 recorded = "docs/rune/slice/README.md"
 
 [[stale_patch]]
 patch = "cut"
-reason = "Stale since before V3: src/ui/browser/clipboard.rs moved under it on main (#2092). Rebasing it is a GTK-side change of its own."
+reason = "Stale since before V3: src/ui/browser/clipboard.rs moved under it on main (#2092). The owner ruled on 2026-11-11 that this is what 'as before' means for it; rebasing it is a GTK-side change of its own."
 recorded = "docs/rune/slice/README.md"

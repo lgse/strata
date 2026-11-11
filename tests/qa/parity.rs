@@ -74,8 +74,7 @@ pub(crate) struct Entry {
 }
 
 /// A run of the GTK suite that failed some of the time before the slice. When it fails in
-/// the whole suite, `./scripts/qa-parity.sh slice` runs it again alone and fails only if
-/// that fails too.
+/// the whole suite, `./scripts/qa-parity.sh slice` says so and does not fail for it.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Flaky {
