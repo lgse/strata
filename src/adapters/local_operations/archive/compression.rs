@@ -35,7 +35,6 @@ use crate::{
     model::hidden_names::HiddenName,
     services::{ItemIdentity, PlacedSnapshot, ReplacedOriginal, TransferConflict, error_detail},
 };
-use gtk::{gio, glib};
 use rustix::fs::AtFlags;
 use std::{
     ffi::{OsStr, OsString},

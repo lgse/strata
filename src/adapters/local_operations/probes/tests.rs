@@ -5,7 +5,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gtk::gio;
 use rustix::io::Errno;
 
 use super::{

@@ -11,7 +11,7 @@ use crate::{
         ItemIdentity, KeptCause, KeptItem, PlacedSnapshot, ReplacedOriginal, TransferReport,
     },
 };
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 
 use super::{
     owed::{Deletion, Owed},

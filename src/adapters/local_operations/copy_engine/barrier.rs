@@ -10,7 +10,6 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use gtk::glib;
 use rustix::{fs::Mode, io::Errno};
 
 use super::{Mount, data::kernel, stage};

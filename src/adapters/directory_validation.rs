@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 
 use crate::model::Location;
 

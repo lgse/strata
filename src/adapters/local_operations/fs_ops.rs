@@ -15,8 +15,6 @@ use std::{
     time::Duration,
 };
 
-use gtk::gio;
-
 use rustix::{
     fs::{
         Access, AtFlags, FileType, FsWord, Mode, OFlags, RenameFlags, ResolveFlags, SeekFrom,
@@ -265,7 +263,7 @@ pub(in crate::adapters) fn watch(
     file: &gio::File,
     watched: Watched,
     flags: gio::FileMonitorFlags,
-) -> Result<gio::FileMonitor, gtk::glib::Error> {
+) -> Result<gio::FileMonitor, glib::Error> {
     fs().watch(file, watched, flags)
 }
 

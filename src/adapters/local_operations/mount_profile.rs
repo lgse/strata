@@ -15,7 +15,7 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 
 use super::{
     await_cancellable,

@@ -13,7 +13,7 @@ use crate::{
     model::Location,
     services::{LoadHandle, OperationEvent, OperationRequestId},
 };
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 use std::{collections::HashSet, ffi::OsStr, rc::Rc};
 
 pub(super) fn start(

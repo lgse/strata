@@ -267,7 +267,7 @@ pub(super) fn removed(location: &Location) -> LocationChange {
 pub(super) fn pump_until(condition: impl Fn() -> bool) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     while !condition() && std::time::Instant::now() < deadline {
-        gtk::glib::MainContext::default().iteration(true);
+        glib::MainContext::default().iteration(true);
     }
 }
 

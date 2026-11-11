@@ -2,7 +2,7 @@
 
 use std::{future::Future, pin::Pin, rc::Rc};
 
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 
 use super::super::{await_cancellable, next_children};
 use crate::adapters::gio_close;

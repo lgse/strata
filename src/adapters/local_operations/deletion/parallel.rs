@@ -11,7 +11,7 @@ use std::{
 #[cfg(test)]
 use std::{ffi::OsString, os::fd::OwnedFd};
 
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 
 use super::{
     super::{

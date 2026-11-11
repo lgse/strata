@@ -12,11 +12,8 @@ fn untyped_gio_failures_use_localized_catalog_text_instead_of_backend_details() 
         || {
             rust_i18n::set_locale("fr");
             let raw = "Failed to open sftp://alice:secret@host/private?token=hidden";
-            for kind in [
-                gtk::gio::IOErrorEnum::Failed,
-                gtk::gio::IOErrorEnum::InvalidArgument,
-            ] {
-                let error = gtk::glib::Error::new(kind, raw);
+            for kind in [gio::IOErrorEnum::Failed, gio::IOErrorEnum::InvalidArgument] {
+                let error = glib::Error::new(kind, raw);
                 assert_eq!(
                     super::gio_backend_error_message(&error),
                     crate::i18n::tr(super::UNEXPECTED_SYSTEM_ERROR)
@@ -27,14 +24,14 @@ fn untyped_gio_failures_use_localized_catalog_text_instead_of_backend_details() 
                     "application-owned operation errors must retain their detail"
                 );
             }
-            let denied = gtk::glib::Error::new(gtk::gio::IOErrorEnum::PermissionDenied, raw);
+            let denied = glib::Error::new(gio::IOErrorEnum::PermissionDenied, raw);
             assert_eq!(super::gio_error_message(&denied), "Permission refusée");
             assert_eq!(
                 super::gio_backend_error_message(&denied),
                 "Permission refusée"
             );
             let refused = "Failed to mount Windows share: Permission denied";
-            let refused = gtk::glib::Error::new(gtk::gio::IOErrorEnum::Failed, refused);
+            let refused = glib::Error::new(gio::IOErrorEnum::Failed, refused);
             assert_eq!(
                 super::gio_backend_error_message(&refused),
                 "Permission refusée",
@@ -240,7 +237,8 @@ fn default_fill_reports_unsupported_synchronously() {
 
 #[test]
 fn busy_device_failures_read_as_in_use() {
-    use gtk::{gio::IOErrorEnum, glib::Error};
+    use gio::IOErrorEnum;
+    use glib::Error;
     for busy in [
         "Error ejecting /dev/sr0: eject: cannot open /dev/sr0: Device or resource busy",
         "Error mounting /dev/loop0 at /run/media/me/live: /dev/loop0 already mounted or mount point busy",

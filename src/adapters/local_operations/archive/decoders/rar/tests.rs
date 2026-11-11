@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use gtk::glib;
 use std::time::{Duration, UNIX_EPOCH};
 
 #[test]

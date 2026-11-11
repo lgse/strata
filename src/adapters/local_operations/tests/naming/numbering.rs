@@ -369,7 +369,7 @@ fn numbered_names_are_cut_to_the_limit_of_their_mount() {
 
 #[test]
 fn pasted_names_fixed_for_fat_are_planned_after_the_names_kept() {
-    use gtk::gio::FileType::{Directory, Regular};
+    use gio::FileType::{Directory, Regular};
     let sources = [
         "/one/a:b",
         "/two/a_b",

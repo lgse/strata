@@ -5,8 +5,6 @@
 
 use std::path::Path;
 
-use gtk::gio;
-
 use super::{
     fs_ops::{Entry, fs},
     mount_profile::folder_name_rules,

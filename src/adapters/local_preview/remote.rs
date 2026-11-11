@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 use tempfile::NamedTempFile;
 
 use crate::adapters::gio_close::CancelOnDrop;

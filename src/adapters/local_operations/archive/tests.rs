@@ -32,7 +32,6 @@ use crate::{
     },
     test_support::ASYNC_MAIN_CONTEXT_DEFAULT,
 };
-use gtk::glib;
 use rustix::io::Errno;
 use std::{
     cell::RefCell,

@@ -45,7 +45,7 @@ use compression::{
 use decoders::extract_rar;
 use decoders::{extract_7z_from_reader, extract_tar, extract_zip_from_archive};
 use extraction::ArchiveOutcome;
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 use rustix::{
     fs::{AtFlags, FileType, Mode, OFlags},
     io::Errno,

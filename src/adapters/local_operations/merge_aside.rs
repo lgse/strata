@@ -13,7 +13,6 @@ use std::{
     sync::Arc,
 };
 
-use gtk::{gio, glib};
 use rustix::{
     fs::{AtFlags, Mode},
     io::Errno,

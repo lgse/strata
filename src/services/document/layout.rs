@@ -214,7 +214,7 @@ fn decode_document_markup(markup: &str, budget: &LayoutBudget<'_>) -> Result<Sty
 }
 
 fn decode_markup_text(markup: &str) -> Result<String, String> {
-    gtk::pango::parse_markup(markup, '\0')
+    pango::parse_markup(markup, '\0')
         .map(|(_, text, _)| text.to_string())
         .map_err(|_| UNSUPPORTED_STRUCTURE.to_owned())
 }

@@ -354,7 +354,7 @@ pub(crate) fn hold() -> Held {
 
 #[cfg(test)]
 pub(crate) fn settle() {
-    let context = gtk::glib::MainContext::default();
+    let context = glib::MainContext::default();
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         let submitted = shared().submitted();

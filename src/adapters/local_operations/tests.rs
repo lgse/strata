@@ -20,7 +20,7 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 
 use crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT;
 use crate::test_support::temp_base::{BaseNeed, UNNAMED_FILES, base_offers, probed_once};

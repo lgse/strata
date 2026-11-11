@@ -23,7 +23,7 @@ use crate::{
         PlacedSnapshot, Proof, RenameCause, RenamedItem, TransferReport,
     },
 };
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 use std::{
     collections::{HashMap, HashSet},
     ffi::{OsStr, OsString},

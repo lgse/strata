@@ -9,7 +9,7 @@ use std::{
     path::Path,
 };
 
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 
 use super::{
     MAX_LOCAL_IO_WORKERS, await_cancellable,

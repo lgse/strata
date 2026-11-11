@@ -7,8 +7,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gtk::glib;
-
 use crate::{
     app::navigation::LoadState,
     model::Location,

@@ -18,7 +18,7 @@ use crate::{
     model::Location,
     services::{LoadHandle, OperationEvent, PlaceEntryRequest, TypedPath, validate_basename},
 };
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 use rustix::{
     fs::{AtFlags, FileType, Mode},
     io::Errno,

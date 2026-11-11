@@ -168,11 +168,11 @@ impl DestinationError {
 }
 
 pub(crate) fn config_directory() -> PathBuf {
-    gtk::glib::user_config_dir().join("strata")
+    glib::user_config_dir().join("strata")
 }
 
 pub(crate) fn state_directory() -> PathBuf {
-    gtk::glib::user_state_dir().join("strata")
+    glib::user_state_dir().join("strata")
 }
 
 /// Tells this process's last write or read of a file apart from another

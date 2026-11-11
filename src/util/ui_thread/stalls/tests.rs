@@ -8,8 +8,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gtk::glib;
-
 use super::{NAMES, Watched, describe, watch};
 
 fn number_of(name: &str) -> u64 {

@@ -11,7 +11,6 @@ use std::{
 use super::*;
 use crate::test_support::PrivateContext;
 use crate::{model::Location, services::VolumeRelation};
-use gtk::gio;
 
 mod lookup_regressions;
 

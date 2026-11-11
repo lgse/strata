@@ -23,7 +23,7 @@ fn size_sort_waits_for_its_metadata_pass() {
     browser.navigate(Location::local("/fixture"));
     browser.set_sort(0, SortKey::Size, SortDirection::Ascending);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    gtk::glib::MainContext::default().block_on(std::future::poll_fn(|cx| {
+    glib::MainContext::default().block_on(std::future::poll_fn(|cx| {
         let done = events
             .borrow()
             .iter()
@@ -372,9 +372,9 @@ fn metadata_dispatch_coalesces_on_idle_and_reuses_covered_in_flight_requests() {
     let drain_idle = || {
         let done = Rc::new(Cell::new(false));
         let done_for_idle = done.clone();
-        gtk::glib::idle_add_local_once(move || done_for_idle.set(true));
+        glib::idle_add_local_once(move || done_for_idle.set(true));
         while !done.get() {
-            gtk::glib::MainContext::default().iteration(false);
+            glib::MainContext::default().iteration(false);
         }
     };
     for _ in 0..3 {

@@ -74,7 +74,7 @@ impl LocalActionRunner {
 
 // Falls back to the user's cache directory, never a shared temp directory.
 fn runtime_root() -> PathBuf {
-    gtk::glib::user_runtime_dir().join("strata")
+    glib::user_runtime_dir().join("strata")
 }
 
 impl ActionRunner for LocalActionRunner {
@@ -184,7 +184,7 @@ impl RunContext {
     fn working_directory(&self, action_directory: &Path, mode: WorkingDirectory) -> PathBuf {
         match mode {
             WorkingDirectory::Parent => self.parent.clone(),
-            WorkingDirectory::Home => gtk::glib::home_dir(),
+            WorkingDirectory::Home => glib::home_dir(),
             WorkingDirectory::Action => action_directory.to_path_buf(),
         }
     }

@@ -303,7 +303,6 @@ fn a_mount_learned_again_keeps_what_was_learned_of_it_meanwhile() -> Result<(), 
 
 #[test]
 fn a_gvfs_location_is_numbered_within_the_limit_of_its_scheme() {
-    use gtk::gio;
     for (uri, scheme) in [
         ("mtp://Google_Pixel_8/Internal%20storage/DCIM", "mtp"),
         ("smb://nas.local/media/films", "smb"),
@@ -362,7 +361,7 @@ fn what_an_operation_learns_after_its_mount_changed_stays_with_the_operation()
 
 #[test]
 fn items_on_the_gvfs_filesystem_of_a_destination_keep_their_names() {
-    use gtk::glib::GString;
+    use glib::GString;
     let share = || Some(GString::from("smb-share:server=nas,share=media"));
     let destination = super::PasteDestination {
         profile: MountProfile::gvfs("smb"),

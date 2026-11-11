@@ -672,7 +672,7 @@ fn remote_rows_flush_within_the_latency_bound() {
     let start = std::time::Instant::now();
     while column_names(&browser, 0).len() < 2 && start.elapsed() < std::time::Duration::from_secs(5)
     {
-        gtk::glib::MainContext::default().iteration(true);
+        glib::MainContext::default().iteration(true);
     }
     assert_eq!(
         column_names(&browser, 0),

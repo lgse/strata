@@ -12,8 +12,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gtk::glib;
-
 const VARIABLE: &str = "STRATA_UI_STALL_MS";
 const PING_INTERVAL: Duration = Duration::from_millis(100);
 const AT_FDCWD: i32 = -100;

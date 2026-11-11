@@ -753,7 +753,7 @@ fn named_family(name: &str) -> (String, PreviewContent) {
     let content_type = super::guess_content_type(std::path::Path::new(name)).0;
     let mut content = content_family(&content_type);
     if matches!(content, PreviewContent::Unsupported)
-        && gtk::gio::content_type_is_a(&content_type, "text/plain")
+        && gio::content_type_is_a(&content_type, "text/plain")
     {
         content = PreviewContent::Text {
             content: String::new(),

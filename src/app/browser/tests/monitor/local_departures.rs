@@ -24,7 +24,7 @@ enum Departure {
 }
 
 fn pump_for(condition: &dyn Fn() -> bool) {
-    let context = gtk::glib::MainContext::default();
+    let context = glib::MainContext::default();
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() && Instant::now() < deadline {
         while context.iteration(false) {}

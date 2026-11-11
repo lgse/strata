@@ -13,7 +13,7 @@ use std::{
     sync::Arc,
 };
 
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 use rustix::{
     fs::{Access, FileType, Mode, OFlags},
     io::Errno,

@@ -11,7 +11,7 @@ mod tests;
 
 use std::{cell::RefCell, collections::HashSet, path::Path, rc::Rc, time::Duration};
 
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 
 use super::gio_file_for_location;
 use crate::{

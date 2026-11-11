@@ -14,7 +14,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 use rustix::{
     fs::{AtFlags, FileType, Mode},
     io::Errno,

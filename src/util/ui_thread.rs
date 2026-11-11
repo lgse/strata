@@ -2,8 +2,6 @@
 
 use std::{cell::Cell, marker::PhantomData};
 
-use gtk::glib;
-
 pub(crate) mod stalls;
 
 thread_local! {

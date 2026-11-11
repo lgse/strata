@@ -2,8 +2,6 @@
 
 use std::{cell::RefCell, collections::HashMap, path::Path};
 
-use gtk::gio;
-
 use crate::model::{EntryKind, FileEntry};
 
 pub const FOLDER_TYPE_NAME: &str = "Folder";

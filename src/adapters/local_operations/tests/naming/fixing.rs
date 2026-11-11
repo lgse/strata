@@ -117,7 +117,7 @@ fn extension_cuts() -> Vec<Cut> {
 #[test]
 fn cut_names_keep_their_extension_and_whole_clusters() {
     // Pango keeps consonants joined by a virama together from 1.54 on.
-    let joins_conjuncts = gtk::pango::version_check(1, 54, 0).is_none();
+    let joins_conjuncts = pango::version_check(1, 54, 0).is_none();
     for (name, profile, folder, expected) in cluster_cuts().into_iter().chain(extension_cuts()) {
         if name.contains(CONJUNCT) && !joins_conjuncts {
             continue;

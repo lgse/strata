@@ -22,7 +22,7 @@ struct Bookmarks {
 }
 
 fn state_path() -> PathBuf {
-    gtk::glib::user_data_dir().join("strata/letter-bookmarks.json")
+    glib::user_data_dir().join("strata/letter-bookmarks.json")
 }
 
 fn contents(path: &Path) -> io::Result<Option<Vec<u8>>> {
@@ -58,7 +58,7 @@ fn read(path: &Path, letter: char) -> io::Result<Option<PathBuf>> {
 /// Only `file:` URIs name a local folder. A remote URI can still resolve to
 /// a path through a gvfs FUSE mount, which is not local.
 fn local_directory(uri: &str) -> Option<PathBuf> {
-    let (path, host) = gtk::glib::filename_from_uri(uri).ok()?;
+    let (path, host) = glib::filename_from_uri(uri).ok()?;
     host.is_none_or(|host| host == "localhost")
         .then_some(path)
         .filter(|path| path.is_absolute())

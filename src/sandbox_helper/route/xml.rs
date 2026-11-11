@@ -235,7 +235,7 @@ fn coordinate<'a>(mut values: impl Iterator<Item = &'a str>) -> Option<Point> {
 }
 
 fn record_timestamp(route: &mut Route, text: &str) {
-    if let Ok(time) = gtk::glib::DateTime::from_iso8601(text.trim(), None) {
+    if let Ok(time) = glib::DateTime::from_iso8601(text.trim(), None) {
         route.record_timestamp(time.to_unix());
     }
 }

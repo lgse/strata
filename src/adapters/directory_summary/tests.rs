@@ -5,7 +5,6 @@ mod progress;
 
 use super::*;
 use crate::test_support::PrivateContext;
-use gtk::{gio, glib};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::{Duration, Instant};

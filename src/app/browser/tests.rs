@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::prelude::FileExt;
+use gio::prelude::FileExt;
 use std::{
     cell::Cell,
     ffi::{OsStr, OsString},

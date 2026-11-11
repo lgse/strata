@@ -2,7 +2,7 @@
 
 use std::{ffi::OsStr, process::Command};
 
-use gtk::{gio, prelude::*};
+use gio::prelude::*;
 
 use super::{ORIGINAL_GDK_DEBUG, restore_command_from, restore_launch_context_from};
 

@@ -10,7 +10,7 @@ use crate::{
     adapters::volume::{MountSite, MountTable, MountType, mount_watch},
     services::Holder,
 };
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 use rustix::{
     fs::{AtFlags, Mode, OFlags, StatxFlags},
     io::Errno,

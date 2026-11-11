@@ -21,7 +21,6 @@ use crate::{
     test_support::ASYNC_MAIN_CONTEXT_DEFAULT,
 };
 use contents::{CompressedEntry, read_compressed_entries};
-use gtk::glib;
 use policy::assert_seven_z_methods;
 use rustix::io::Errno;
 use std::{

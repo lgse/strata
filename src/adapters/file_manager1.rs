@@ -5,8 +5,6 @@
 //! name directly instead of going through `xdg-open` and `mimeapps.list`, so
 //! without this Strata is skipped even when it owns `inode/directory`.
 
-use gtk::{gio, glib};
-
 use crate::model::Location;
 
 use super::{location_for_file, reveal_target_for_file};

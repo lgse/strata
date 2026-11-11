@@ -7,7 +7,7 @@ use std::{
     rc::Rc,
 };
 
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 
 use super::{
     PREVIEW_CACHE, PreviewCacheKey, pdf_render_size, remote, remote::StagedPreview,

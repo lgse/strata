@@ -2,11 +2,8 @@
 
 use std::{cell::RefCell, ops::Deref, time::Duration};
 
-use gtk::{
-    gio, glib,
-    glib::translate::{IntoGlib, ToGlibPtr},
-    prelude::*,
-};
+use gio::prelude::*;
+use glib::translate::{IntoGlib, ToGlibPtr};
 
 const FIRST_RECHECK: Duration = Duration::from_millis(50);
 const LAST_RECHECK: Duration = Duration::from_secs(1);

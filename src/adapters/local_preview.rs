@@ -11,7 +11,7 @@ mod load;
 mod remote;
 
 use futures_channel::oneshot;
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 use load::{PreviewLoad, RenderFn};
 
 use crate::{

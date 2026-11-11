@@ -22,7 +22,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use gtk::{gio, glib, prelude::FileExt};
+use gio::prelude::FileExt;
 use rustix::{
     fs::{Access, AtFlags, FileType, FsWord, Mode, OFlags, RenameFlags, ResolveFlags, StatxFlags},
     io::Errno,

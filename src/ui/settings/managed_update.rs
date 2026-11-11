@@ -56,7 +56,7 @@ pub(super) async fn launch_aur_update() -> Result<String, String> {
         .ok_or_else(|| crate::i18n::tr("missing AUR package name"))?;
     let uri = format!("https://aur.archlinux.org/packages/{package}");
     let context = gtk::gdk::Display::default()
-        .map(|display| crate::child_environment::launch_context(&display));
+        .map(|display| crate::ui::launch_context::for_display(&display));
     gio::AppInfo::launch_default_for_uri(&uri, context.as_ref())
         .map(|()| crate::i18n::tr("AUR package page opened."))
         .map_err(|error| error.to_string())

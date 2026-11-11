@@ -2,7 +2,7 @@
 
 use std::{cell::RefCell, path::PathBuf};
 
-use gtk::{gio, prelude::*};
+use gio::prelude::*;
 
 use super::{MountTable, mount_is_removable, mount_watch};
 

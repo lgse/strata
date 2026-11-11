@@ -14,8 +14,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gtk::{gio, glib};
-
 use super::{
     copy_engine::{self, Barrier, Manifest, Unlinks},
     delete_moved_sources,

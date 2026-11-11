@@ -57,8 +57,7 @@ impl TableData {
                             .into_iter()
                             .map(|text| DocumentTableCell {
                                 header: index == 0,
-                                markup: gtk::glib::markup_escape_text(&text.replace('\0', "�"))
-                                    .into(),
+                                markup: glib::markup_escape_text(&text.replace('\0', "�")).into(),
                             })
                             .collect(),
                     })

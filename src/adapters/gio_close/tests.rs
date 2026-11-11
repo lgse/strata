@@ -73,10 +73,7 @@ mod probed {
         sync::{Arc, Mutex, OnceLock},
     };
 
-    use gtk::{
-        gio::{self, prelude::*, subclass::prelude::*},
-        glib,
-    };
+    use gio::{prelude::*, subclass::prelude::*};
 
     use super::Probe;
 
@@ -369,14 +366,14 @@ mod probed {
 use probed::{Folder, Item, Listing, Reading};
 
 pub(crate) fn probed_folder(probe: &Arc<Probe>) -> gio::File {
-    use gtk::glib::subclass::prelude::ObjectSubclassIsExt;
+    use glib::subclass::prelude::ObjectSubclassIsExt;
     let folder: Folder = glib::Object::new();
     let _ = folder.imp().probe.set(probe.clone());
     folder.upcast()
 }
 
 pub(crate) fn probed_file(probe: &Arc<Probe>) -> gio::File {
-    use gtk::glib::subclass::prelude::ObjectSubclassIsExt;
+    use glib::subclass::prelude::ObjectSubclassIsExt;
     let file: Item = glib::Object::new();
     let _ = file.imp().probe.set(probe.clone());
     file.upcast()
@@ -430,7 +427,7 @@ enum LetGo {
 }
 
 fn call(kind: Kind, probe: &Arc<Probe>) -> Pin<Box<dyn Future<Output = ()>>> {
-    use gtk::glib::subclass::prelude::ObjectSubclassIsExt;
+    use glib::subclass::prelude::ObjectSubclassIsExt;
     match kind {
         Kind::Listing => {
             let listing: Listing = glib::Object::new();

@@ -18,8 +18,6 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use gtk::glib;
-
 use crate::services::{INCORRECT_ARCHIVE_PASSWORD, TransferReport};
 
 use super::{

@@ -3,7 +3,7 @@
 
 use std::{fs, path::Path};
 
-use gtk::{gio, prelude::*};
+use gio::prelude::*;
 
 use crate::sandbox::PdfRenderSize;
 

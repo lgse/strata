@@ -6,7 +6,7 @@
 
 use std::{collections::HashMap, ffi::OsString, path::PathBuf};
 
-use gtk::{gio, prelude::*};
+use gio::prelude::*;
 
 use super::{
     copy_engine::stage::collision_key,

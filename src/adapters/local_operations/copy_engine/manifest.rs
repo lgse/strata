@@ -19,7 +19,6 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use gtk::glib;
 use ring::digest;
 use rustix::{
     fs::{AtFlags, FileType},

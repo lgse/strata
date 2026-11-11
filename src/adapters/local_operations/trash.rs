@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 use rustix::io::Errno;
 
 use super::{

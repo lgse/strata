@@ -11,7 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gtk::gio::prelude::AppInfoExt;
+use gio::prelude::AppInfoExt;
 use rustix::{
     fs::{AtFlags, Mode, OFlags, StatxFlags},
     io::Errno,

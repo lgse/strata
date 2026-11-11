@@ -11,8 +11,6 @@ use std::{
     os::unix::ffi::{OsStrExt, OsStringExt},
 };
 
-use gtk::pango;
-
 use crate::{
     adapters::volume::{
         NameEncoding, NameLimit, NameProfile, NameRules, PrivateUse, Reserved, Strip,

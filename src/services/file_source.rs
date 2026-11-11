@@ -188,7 +188,7 @@ pub(crate) fn describes_refused_credentials(message: &str) -> bool {
 /// eject(1) report a busy device as `G_IO_ERROR_FAILED`, with the cause only
 /// in the system's own text.
 pub(crate) fn gio_device_error_message(error: &glib::Error) -> String {
-    if error.matches(gtk::gio::IOErrorEnum::Failed) && describes_busy_device(error.message()) {
+    if error.matches(gio::IOErrorEnum::Failed) && describes_busy_device(error.message()) {
         return crate::i18n::tr("The item is in use");
     }
     gio_error_message(error)
@@ -203,7 +203,7 @@ fn describes_busy_device(message: &str) -> bool {
 }
 
 fn gio_error_reason(error: &glib::Error) -> Option<&'static str> {
-    use gtk::gio::IOErrorEnum;
+    use gio::IOErrorEnum;
     Some(match error.kind::<IOErrorEnum>() {
         Some(IOErrorEnum::NotFound) => "No such file or folder",
         Some(IOErrorEnum::PermissionDenied) => "Permission denied",

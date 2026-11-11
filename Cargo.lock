@@ -3050,6 +3050,7 @@ dependencies = [
  "landlock",
  "libc",
  "mermaid-svg",
+ "pango",
  "pangocairo",
  "poppler-rs",
  "pulldown-cmark",

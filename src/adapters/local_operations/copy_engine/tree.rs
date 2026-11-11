@@ -17,7 +17,6 @@ use std::{
     thread,
 };
 
-use gtk::glib;
 use rustix::{
     fs::{AtFlags, FileType, Mode},
     io::Errno,

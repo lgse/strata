@@ -2,8 +2,6 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use gtk::glib;
-
 use crate::{
     app::{BrowserEvent, navigation::LoadState},
     model::Location,

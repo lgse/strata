@@ -7,8 +7,6 @@ use std::{
     thread,
 };
 
-use gtk::gio;
-
 use super::{
     super::{MAX_LOCAL_IO_WORKERS, fs_ops, fs_ops::fs, native_fs::open_local_parent_directory},
     queue::PinnedEntry,

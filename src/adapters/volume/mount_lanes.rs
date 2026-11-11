@@ -20,7 +20,7 @@ use std::{
 };
 
 use futures_channel::oneshot;
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 use rustix::io::Errno;
 
 use super::{MountTable, mount_watch};

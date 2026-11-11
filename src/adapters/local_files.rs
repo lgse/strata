@@ -19,7 +19,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 use rustix::fs::FileType;
 
 use super::local_operations::FolderStamp;

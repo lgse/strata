@@ -21,7 +21,6 @@ use crate::{
     model::Location,
     services::{ArchiveFormat, TransferReport},
 };
-use gtk::glib;
 use std::{
     error::Error,
     ffi::OsStr,

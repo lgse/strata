@@ -16,7 +16,7 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 
 use crate::{
     adapters::{

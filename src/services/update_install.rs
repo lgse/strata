@@ -14,7 +14,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gtk::glib;
 use serde::Deserialize;
 
 use crate::services::{InstallSource, ensure_self_managed, installed_executable};

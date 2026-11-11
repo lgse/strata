@@ -5,7 +5,7 @@ use crate::{
     model::Location,
     services::{OperationEvent, OperationRequestId, TransferReport},
 };
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 
 use super::{await_cancellable, translated_io_error};
 use std::{

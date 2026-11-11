@@ -8,7 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 use rustix::fs::{Mode, OFlags};
 
 use super::fs_ops::fs;

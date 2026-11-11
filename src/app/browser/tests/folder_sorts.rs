@@ -70,7 +70,7 @@ fn save_reported_sorts(browser: &Browser, saved: &SavedSorts) {
 /// Fails instead of blocking when nothing is left to dispatch.
 fn poll_until(condition: impl Fn() -> bool) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    let context = gtk::glib::MainContext::default();
+    let context = glib::MainContext::default();
     while !condition() {
         assert!(std::time::Instant::now() < deadline, "timed out");
         if !context.iteration(false) {

@@ -5,7 +5,7 @@
 
 use std::{ffi::OsStr, process::Command};
 
-use gtk::{gdk, gio, prelude::*};
+use gio::prelude::*;
 
 /// Present only in a process Strata restarted with `no-portals`; empty when
 /// `GDK_DEBUG` was originally unset.
@@ -16,10 +16,8 @@ pub(crate) fn restore_command(command: &mut Command) {
     restore_command_from(command, std::env::var_os(ORIGINAL_GDK_DEBUG).as_deref());
 }
 
-pub(crate) fn launch_context(display: &gdk::Display) -> gdk::AppLaunchContext {
-    let context = display.app_launch_context();
-    restore_launch_context_from(&context, std::env::var_os(ORIGINAL_GDK_DEBUG).as_deref());
-    context
+pub(crate) fn restore_launch_context(context: &impl IsA<gio::AppLaunchContext>) {
+    restore_launch_context_from(context, std::env::var_os(ORIGINAL_GDK_DEBUG).as_deref());
 }
 
 fn restore_command_from(command: &mut Command, original: Option<&OsStr>) {

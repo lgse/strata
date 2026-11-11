@@ -10,7 +10,6 @@ use std::{
 
 use futures_channel::oneshot;
 use futures_lite::future::{block_on, poll_once};
-use gtk::{gio, glib};
 
 use super::{
     Class, Job, LaneKey, Lanes, Progress, Responsiveness, Run, STALLED_AFTER, Target, Unanswered,
