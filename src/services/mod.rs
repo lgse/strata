@@ -1,18 +1,14 @@
 // SPDX-License-Identifier: MIT
 
 pub(crate) mod actions;
-pub(crate) mod camera_preview;
 pub(crate) mod diagnostics;
-mod document;
-pub(crate) mod document_media;
-pub(crate) mod docx;
 mod dropped_content;
 pub(crate) use strata_core::file_activity;
+pub(crate) use strata_preview::services::*;
 #[cfg(test)]
 mod file_activity_tests;
 pub(crate) mod file_providers;
 mod file_source;
-pub(crate) mod image_conversion;
 mod install_source;
 pub(crate) mod integration_catalog;
 mod item_identity;
@@ -20,21 +16,15 @@ pub(crate) mod jobs;
 pub(crate) mod letter_bookmarks;
 mod listeners;
 mod mime_type;
-pub(crate) mod model_preview;
 mod native_fs;
 mod navigation_history;
 mod network_error;
-pub(crate) mod odt;
 mod operations;
 pub(crate) mod package_manager;
 mod path_match;
-mod preview;
 mod release_channel;
 mod remote_download;
-pub(crate) mod route_preview;
-pub(crate) mod rtf;
 mod search;
-pub(crate) mod table;
 mod transfer_action;
 mod update_check;
 mod update_install;
@@ -42,11 +32,6 @@ mod update_install;
 pub use actions::{
     ActionAvailability, ActionCatalog, ActionHandle, ActionLoadFailure, ActionProgram,
     ActionRegistry, ActionScript, ActionWriteRequest, MatchedAction,
-};
-pub(crate) use document::{
-    DocumentBlock, DocumentLayout, DocumentListChildKind, DocumentMedia, DocumentSpan,
-    DocumentSpanStyle, DocumentTableCellLayout, DocumentUnit, DocumentUnitKind, document_kind,
-    has_web_scheme, layout_document, parse_document, parse_markdown,
 };
 pub(crate) use dropped_content::{
     DroppedFile, MAX_DROPPED_FILE_BYTES, WebLink, has_link_extension, save_dropped_files,
@@ -73,8 +58,6 @@ pub use jobs::{
 };
 pub(crate) use listeners::{ListenerGuard, Listeners};
 pub use mime_type::{EntryType, FOLDER_TYPE_NAME, OTHER_TYPE_NAME, entry_type};
-pub use model_preview::{ModelEncoding, ModelFormat, ModelMesh, ModelPalette, ModelView};
-pub(crate) use model_preview::{ModelRender, ModelRenderPurpose};
 pub(crate) use native_fs::{
     is_hidden_name, link_target_kind, listed_kind, native_hidden_names, native_kind, symlink_kind,
 };
@@ -90,19 +73,6 @@ pub use operations::{
     validate_basename,
 };
 pub(crate) use path_match::{PathMatcher, PathQuery};
-pub use preview::{
-    ArchiveDirectory, ArchiveFileEntry, ArchiveNode, ArchivePreviewTree, MediaPreviewSize,
-    ModelPreviewStage, PdfTextLayer, Preview, PreviewContent, PreviewEvent, PreviewProvider,
-    PreviewRequest, PreviewRequestId, SandboxedMedia, SecretString, archive_preview_tree,
-};
-pub(crate) use preview::{
-    INCORRECT_ARCHIVE_PASSWORD, archive_preview_format, bytes_support_named_family, content_family,
-    guess_content_type, has_plain_text_extension, is_extensionless_dotfile, is_image_path,
-    is_media_path, is_model, is_non_executable_extensionless_dotfile, is_raw_video_stream,
-    looks_like_text, model_format, normalize_preview_text, read_head_sample,
-    read_supports_named_family, reconcile_with_sample, refine_reported_content_type,
-    split_archive_name, supports_remote_video,
-};
 pub(crate) use transfer_action::{
     CrossVolumeDropStrategy, DropActionInput, DropCommit, DropOverride, TransferKind,
     VolumeIdentity, VolumeRelation, drop_commit, transferable_drop_sources, volume_relation,

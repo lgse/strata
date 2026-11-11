@@ -21,6 +21,8 @@ pub(crate) use listing::{
 #[cfg(test)]
 mod fixtures;
 #[cfg(test)]
+mod helper_tests;
+#[cfg(test)]
 pub(crate) use fixtures::write_compression_fixture;
 #[cfg(test)]
 mod tests;

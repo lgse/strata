@@ -12,15 +12,10 @@ mod app;
 mod assets;
 mod build_info;
 mod child_environment;
-mod media;
 mod portal;
 mod portal_setup;
 #[cfg(feature = "qa")]
 mod qa;
-#[cfg(feature = "rar")]
-mod rar_extraction;
-mod sandbox;
-mod sandbox_helper;
 mod services;
 #[cfg(test)]
 mod test_support;
@@ -28,6 +23,9 @@ mod ui;
 mod util;
 
 use strata_core::{error_text, i18n, logging, metrics, model, storage, trusted_command};
+#[cfg(feature = "rar")]
+use strata_preview::rar_extraction;
+use strata_preview::{media, sandbox, sandbox_helper};
 
 use std::{
     cell::OnceCell, ffi::OsString, ops::ControlFlow, os::unix::process::CommandExt, process::Stdio,

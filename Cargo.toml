@@ -12,21 +12,45 @@ repository = "https://github.com/LGSE/strata"
 
 # Versions shared by the root package and the crates under crates/.
 [workspace.dependencies]
+cairo-rs = { version = "0.22.9", features = ["pdf", "png"] }
+calamine = "0.38.0"
+csv = "1.4.0"
+docx-rs = { version = "0.4.22", default-features = false }
+fitparser = "0.11.0"
+flate2 = "1.1.10"
 futures-channel = "0.3.31"
+gdk-pixbuf = "0.22.0"
 gio = { version = "0.22.9", features = ["v2_72"] }
 glib = "0.22.9"
+html5gum = { version = "0.9", default-features = false }
+image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
+kamadak-exif = "0.6.1"
+landlock = "0.4.7"
 libc = "0.2"
+mermaid-svg = "0.7.0"
+pango = "0.22.9"
+poppler = { package = "poppler-rs", version = "0.26.0" }
+pulldown-cmark = { version = "0.13", default-features = false }
+quick-xml = "0.41.0"
+resvg = { version = "0.48.1", default-features = false, features = ["text", "system-fonts"] }
+rquickjs = "0.13.0"
 rust-i18n = "4.2.4"
 rust-i18n-support = { version = "4.2.4", features = ["codegen"] }
 rustix = { version = "1.1.4", features = ["fs", "process", "event", "net", "mount", "thread", "stdio", "pipe", "time"] }
+seccompiler = "0.5.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+tar = "0.4.46"
 tempfile = "3.27.0"
 toml = "1.1"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.20"
+unrar = "0.5.8"
+unrar_sys = "0.5.8"
+zip = "9.0.4"
 
 strata-core = { path = "crates/strata-core", default-features = false }
+strata-preview = { path = "crates/strata-preview", default-features = false }
 strata-test-support = { path = "crates/strata-test-support" }
 
 [package]
@@ -45,7 +69,7 @@ workspace = true
 
 [features]
 default = ["rar"]
-rar = ["dep:unrar", "dep:unrar_sys", "strata-core/rar"]
+rar = ["strata-core/rar", "strata-preview/rar"]
 # The scripted `--qa` launch mode and its in-process X or Wayland input. Never in releases.
 qa = [
     "dep:x11rb",
@@ -60,17 +84,15 @@ invariant-checks = []
 
 [dependencies]
 strata-core.workspace = true
+strata-preview.workspace = true
 ashpd = { version = "=0.13.13", default-features = false, features = ["backend", "file_chooser", "async-io", "tracing"] }
 async-io = "2.6.0"
-cairo-rs = { version = "0.22.9", features = ["pdf", "png"] }
-calamine = "0.38.0"
-csv = "1.4.0"
-docx-rs = { version = "0.4.22", default-features = false }
-flate2 = "1.1.10"
+cairo-rs.workspace = true
+flate2.workspace = true
 fontconfig-sys = { package = "yeslogic-fontconfig-sys", version = "6.0.1" }
 futures-channel.workspace = true
 futures-lite = "2.6.1"
-gdk-pixbuf = "0.22.0"
+gdk-pixbuf.workspace = true
 gdk4-wayland = { version = "0.11.4", features = ["v4_12"] }
 gdk4-x11 = { version = "0.11.4", features = ["v4_10"] }
 gio.workspace = true
@@ -80,31 +102,22 @@ gstreamer = { version = "0.25.3", features = ["v1_20"] }
 gstreamer-app = { version = "0.25.2", features = ["v1_20"] }
 gtk = { package = "gtk4", version = "0.11.4", features = ["v4_12"] }
 hex = "0.4.3"
-html5gum = { version = "0.9", default-features = false }
 ignore = "0.4.23"
-image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
-kamadak-exif = "0.6.1"
-landlock = "0.4.7"
+image.workspace = true
 libc.workspace = true
-mermaid-svg = "0.7.0"
-rquickjs = "0.13.0"
-quick-xml = "0.41.0"
-pango = "0.22.9"
+pango.workspace = true
 pangocairo = "0.22.0"
-poppler = { package = "poppler-rs", version = "0.26.0" }
-pulldown-cmark = { version = "0.13", default-features = false }
 ring = "0.17.14"
-resvg = { version = "0.48.1", default-features = false, features = ["text", "system-fonts"] }
+resvg.workspace = true
 rust-i18n.workspace = true
 rustix.workspace = true
-seccompiler = "0.5.0"
 serde.workspace = true
 serde_json.workspace = true
 serde_norway = "0.9"
 sha2 = "0.11.0"
 sevenz-rust2 = "0.22.2"
 sourceview5 = { version = "0.11.2", features = ["gtk_v4_12"] }
-tar = "0.4.46"
+tar.workspace = true
 tempfile.workspace = true
 toml.workspace = true
 tracing.workspace = true
@@ -115,13 +128,10 @@ unicode-normalization = "0.1.25"
 ureq = { version = "~3.4", features = ["json"] }
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
 zstd = "0.14.3"
-zip = "9.0.4"
-unrar = { version = "0.5.8", optional = true }
-unrar_sys = { version = "0.5.8", optional = true }
+zip.workspace = true
 x11rb = { version = "0.14.0", default-features = false, features = ["xkb", "xtest"], optional = true }
 regex = { version = "1.13.1", optional = true }
 frizbee = "0.13"
-fitparser = "0.11.0"
 wayland-client = { version = "0.31.15", optional = true }
 wayland-protocols-misc = { version = "0.3.12", features = ["client"], optional = true }
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"], optional = true }
@@ -131,6 +141,7 @@ xkbcommon = { version = "0.9.0", default-features = false, optional = true }
 # Test-only items of the workspace crates. The feature only adds helpers; it never changes
 # what the application does, because builds that run tests link it into the binary too.
 strata-core = { workspace = true, features = ["test-support"] }
+strata-preview = { workspace = true, features = ["test-support"] }
 strata-test-support.workspace = true
 rustls = { version = "0.23.46", default-features = false, features = ["std", "ring", "tls12"] }
 

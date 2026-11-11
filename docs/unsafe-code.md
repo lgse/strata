@@ -149,7 +149,7 @@ leaked rather than cancelled on the UI thread.
 
 ### Browser sandbox fork boundary
 
-Location: `src/sandbox/browser/process.rs::{fork,namespaces}`
+Location: `crates/strata-preview/src/sandbox/browser/process.rs::{fork,namespaces}`
 
 Reason: reusing a codec-free supervisor's process image avoids per-file helper
 exec and namespace-tool startup while keeping native decoders disposable and
