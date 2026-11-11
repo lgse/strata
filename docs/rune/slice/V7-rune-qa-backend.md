@@ -55,7 +55,7 @@ How each part of `Backend` is answered:
 | `criticals` | GLib's log writer, shared with the GTK application: `strata_core::logging::criticals` |
 | `dump` | A line for each node: Rune's role and key, the AT-SPI role, name, `[selected]`, description, `[focused]` and the box |
 | `command` | `keymap` only |
-| `scroll`, `scroll_position`, `field`, `orientation`, `check` | `None`. The engine replies that the step or predicate is not supported on this target, or finds no scroll pane to turn |
+| `scroll`, `scroll_position`, `field`, `orientation`, `check` | `None`. The engine replies that the step or predicate is not supported on this target, or finds no scroll pane to turn. Since [V9](V9-rename-parity.md#field) `field` is answered |
 
 The host draws at 1200x760, the GTK window's size, with the look's `animations` off.
 

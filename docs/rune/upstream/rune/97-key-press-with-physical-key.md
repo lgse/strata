@@ -7,7 +7,7 @@
 | Affects | `strata-app`'s QA backend (`crates/strata-app/src/qa/`), which drives an offscreen `Runtime` as a window would |
 | Retires | The parity ledger's `rune` blocker on `arrow-keys-move-focus/columns-hjkl-tenxer-ru`: a plain-letter binding under a non-Latin layout |
 | Checked | At `2a44156` (2026-11-11): the repro below was built against the pin and run headless, and its output is the Output block. By source, `Runtime::physical_key_input` is `pub(crate)` (`runtime/input/physical.rs:54`) and only the script player calls it (`tooling.rs:372`); `Runtime::physical_input` is public and queues the physical event "without a logical fallback" (`runtime/input/physical.rs:30–36`); `Runtime::key` queues the logical key with no physical key and no base. |
-| Status | Ready to file (written and run at `2a44156`, 2026-11-11). Entry [44](44-headless-tooling.md) asks for the same entry point among five other things, for scripts; file this one alone if 44 is filed in parts, or fold it into 44's fourth item |
+| Status | Filed on 2026-11-11 as [anomalyco/rune#657](https://github.com/anomalyco/rune/issues/657), by the owner's request, from the text below without its last line, the placeholder link to entry 44. Entry [44](44-headless-tooling.md) asks for the same entry point among five other things, for scripts: when it is filed, link #657 from its fourth item |
 
 Paste from here.
 

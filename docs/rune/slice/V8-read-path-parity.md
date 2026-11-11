@@ -370,6 +370,8 @@ shares that script's parsing and verdicts. `slice` runs them after its runs.
 
 [`docs/rune/upstream/rune/97-key-press-with-physical-key.md`](../upstream/rune/97-key-press-with-physical-key.md),
 `1a70f7726`: a host that owns a `Runtime` cannot send a key press with its physical key.
+It was filed after this package, as
+[anomalyco/rune#657](https://github.com/anomalyco/rune/issues/657).
 Its headless repro was built against the pin and run. No shim is possible without
 patching Rune: the entry that pairs the two is `pub(crate)`.
 
@@ -450,7 +452,7 @@ Not run, and why:
 - **The Appearance popover** (decision 21) and **the Menu key** (decision 22).
 - **18 `scope` runs** wait on parts of the interface, most of them on the location bar,
   the preview and 10xer mode.
-- **The request upstream** for a key press with its physical key is drafted, not filed.
+- **The request upstream** for a key press with its physical key was drafted here and not filed. The owner had it filed on 2026-11-11, as [anomalyco/rune#657](https://github.com/anomalyco/rune/issues/657).
 - **`check menu item` and `radio menu item`** are mapped by name and were not seen live.
 - **A menu row's icon, and Open With…'s lookup state,** are not ported.
 - **Descriptions behind an open menu.** The backend presents those rows without their

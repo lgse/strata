@@ -762,6 +762,17 @@ ignores it, so that run's `screenshot.png` shows an empty screen. A step or
 predicate the Rune backend does not answer replies "… is not supported on this
 target". `docs/rune/slice/V7-rune-qa-backend.md` lists what it answers.
 
+It reads a text field, for the `field` target and predicate, from Rune's
+accessibility tree: the name, the text, and the caret and selection counted in
+characters as on GTK. It reads one while the caret is on the field's first
+line, which is all of a single-line field; on a later line it finds no field.
+Under a layout with dead keys it composes them as a Rune window does, through
+xkbcommon's Compose table: the dead key reaches the application as nothing,
+and the key that completes it as the composed character. A key that breaks a
+sequence off is not swallowed as GTK's input method swallows it, so Escape
+with a dead key pending is an Escape press there
+(`docs/rune/slice/V9-rename-parity.md`).
+
 `./scripts/qa-parity.sh` sets both variables. It builds both binaries in the
 pinned image and runs the runs of a gate on each target:
 

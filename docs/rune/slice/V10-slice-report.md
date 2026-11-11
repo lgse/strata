@@ -22,8 +22,10 @@ The report has six parts. Each number in it names the command that produced it.
 
 1. **The parity matrix.** Each run of the parity set, its result on each target, and the
    pending runs grouped by reason code. There are seven codes since V8: `scope` is a run
-   that needs a part the slice marks Out, and is most of G2's pending runs. Generate it from `tests/qa/parity/slice.toml` and
-   the last three runs' results, not by hand.
+   that needs a part the slice marks Out, and is most of G2's and G3's pending runs. Generate it from `tests/qa/parity/slice.toml` and
+   the last three runs' results, not by hand. After V9 the ledger has 36 `required` runs
+   (1 in G1, 22 in G2, 13 in G3) and 39 pending: 35 `scope`, 3 `platform`, 1 `rune`. Say
+   which required runs pass on Rune for a weaker reason than on GTK: V9 names two.
 2. **Harness reach.** The share of step kinds, targets and predicates the Rune backend
    implements, counted against the protocol in `crates/strata-qa`. And how many of the 351
    scenario files it could run in principle: those whose every step, target and predicate
@@ -33,7 +35,10 @@ The report has six parts. Each number in it names the command that produced it.
    lines from `git diff --stat` between the package's first and last commit.
 4. **Gaps.** Every gap found in strata-components, with its work package id, and every
    Rune draft the slice ran into, with its draft id. Include the ones V0 found: the row
-   description hook, the pane group, and the wake of a covered window.
+   description hook, the pane group, and the wake of a covered window. From V8: C2d, and
+   request 97, since filed as anomalyco/rune#657. From V9: C5a (the editor's focus return
+   in a host-keyed collection), C2e (Left in a column with no cursor) and request 98 (the
+   Escape after a dead key), drafted from the sources and not run in a window.
 5. **Measurements,** on both targets, in the pinned image:
    - launch to first listing;
    - a 10,000-entry listing, from the navigation to the last event. V0 measured 8.9 ms on
@@ -43,7 +48,10 @@ The report has six parts. Each number in it names the command that produced it.
 
 Also record:
 
-- which owner decisions were made during the slice, and by what ruling;
+- which owner decisions were made during the slice, and by what ruling, and which are
+  open: 23 to 26 are V9's, and undo (23) decides seven of G3's runs;
+- where each package's evidence is: the verification worktree's `target/v3-…` to
+  `target/v9-61a7d6224/`, each named in its package's record;
 - each stop condition and whether it was hit;
 - the hand check of the windowed binary on Hyprland (decision 7): what was tried, on which
   compositor, and what was seen. It is the only evidence in the slice from a real
@@ -63,8 +71,8 @@ Run `./scripts/qa-parity.sh slice` in the pinned container. It exits 0 only when
 The fourth means `./scripts/qa.sh` and `./scripts/qa-mutation.sh` in full, after the last
 change to the runner or the engine.
 
-Since V8, `slice` checks the first three: it runs the two Rune mutation patches after the
-whole GTK suite. It does not run `./scripts/qa-mutation.sh`, which is run beside it:
+Since V8, `slice` checks the first three: it runs the Rune mutation patches, three since
+V9, after the whole GTK suite. It does not run `./scripts/qa-mutation.sh`, which is run beside it:
 `cut.patch` does not apply, so a bare run of that script cannot pass until the patch is
 rebased.
 

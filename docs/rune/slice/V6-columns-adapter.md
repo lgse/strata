@@ -189,7 +189,8 @@ copies out of `Browser` what each event changed.
   adapter, and never forgets a pair. A rename gives an entry a new location and so a new
   id; `Browser` says which entry is selected after one, and the adapter writes that to the
   view, so nothing needs `Selection::relocate`. No test renames anything before V9, so
-  that path is unproven. The table only grows: one entry for every location listed in the
+  that path is unproven. [V9](V9-rename-parity.md#ids-the-cursor-and-the-selection-after-a-rename)
+  proved it wrong for a range, and relocates. The table only grows: one entry for every location listed in the
   life of the process.
 - **Hidden entries.** A column holds a row for every entry `Browser` holds, at `Browser`'s
   position, and a list of the positions it shows. A view index goes through that list to
@@ -352,7 +353,7 @@ Not run, and why:
 - **Decision 7.** The owner has not seen the window. Moved to V10 by the owner.
 - **Owner item 17.** The six component differences of decision 11.
 - **Not exercised.** `ColumnsRelocated` (a rename of an open folder) has code and no test:
-  nothing in the slice renames before V9. A remote listing, which publishes through
+  nothing in the slice renames before V9, which tests it. A remote listing, which publishes through
   `EntriesInserted`, is covered by the unit tests of `Column` only.
 - **The settings are still read-only.** Ctrl+. changes what shows and does not save
   `show_hidden`: `strata-rune` saves nothing (V5b). `hidden-files-persist-across-restart`

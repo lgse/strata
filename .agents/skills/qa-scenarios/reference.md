@@ -459,7 +459,10 @@ unchanged: the same steps, targets, predicates, reply keys and snapshot. Input
 goes in at Rune's input layer on an offscreen host with no display, and state
 is read from Rune's accessibility tree, with its roles mapped to the AT-SPI
 names used here. What it does not answer yet replies "… is not supported on
-this target". `./scripts/qa-parity.sh` runs a gate of
+this target". It answers `field` for a text field whose caret is on its first
+line, with offsets in characters as here, and composes dead keys as a Rune
+window does: Escape with a dead key pending reaches the application, where
+GTK's input method takes it. `./scripts/qa-parity.sh` runs a gate of
 `tests/qa/parity/slice.toml` on both targets; see "The Rune target and the
 parity ledger" in `docs/testing.md`. Never write a scenario for one target:
 a run that cannot pass on Rune is `pending` in the ledger, with its reason.

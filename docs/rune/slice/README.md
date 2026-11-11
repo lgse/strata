@@ -9,7 +9,7 @@ and a new Rune binary, and both pass.
   `Browser`: keyboard navigation, selection, and inline rename with filesystem checks.
 - **Command:** `./scripts/qa-parity.sh slice`, run in the pinned QA container.
 
-Source: the slice plan of 2026-11-09. Status below is as of 2026-11-11, after V8.
+Source: the slice plan of 2026-11-09. Status below is as of 2026-11-11, after V9.
 
 ## Exit check
 
@@ -52,7 +52,7 @@ G2 and 33 under G3.
 | V6 | [Columns adapter](V6-columns-adapter.md) | V5 | Done: `90fdcb2f7` to `25d40091f`. The owner's look at the window moved to V10 | Columns shows a real directory with Strata's accessible names |
 | V7 | [Rune QA backend](V7-rune-qa-backend.md) | V3, V6 | Done: `4de69a313` to `e97b84e0b`. The image's dependency stage was not changed (decision 12) | Gate G1 passes on both targets |
 | V8 | [Read-path parity](V8-read-path-parity.md) | V7 | Done: `dc1f7ed9c` to its record. Gate G2 passes with 23 of 42 runs `required`. One part stopped: the Appearance popover is not mounted | Gate G2: ledger complete, required runs pass three times running |
-| V9 | [Rename parity](V9-rename-parity.md) | V8 | Not started | Gate G3: same bar, with fs checks |
+| V9 | [Rename parity](V9-rename-parity.md) | V8 | Done: `3ba9a1f312ae2b9163c9dde892af88b866bf4bbe` to its record. Gate G3 passes with 13 of 33 runs `required`; 17 are `scope` pending, 2 `platform`, 1 `rune` | Gate G3: same bar, with fs checks |
 | V10 | [Slice report](V10-slice-report.md) | V9 | Not started | Report committed; the exit command passes |
 
 V3 can run beside V4b, V5 and V6. V4b is not in the slice plan: it is the import stage of
@@ -113,6 +113,20 @@ test` was not run. The other 19 runs of G2 are pending: 18 `scope` and one `plat
 [V8](V8-read-path-parity.md#done-when-and-the-evidence) has the figures and names the
 artifacts.
 
+**After V9.** At `61a7d6224`, on 2026-11-11, in the pinned image: `./scripts/qa-parity.sh
+g3` three times running, 13 of 13 required runs on GTK and on Rune each time, with every
+`fs` check holding on both; `./scripts/qa-parity.sh g1` and `g2`, 1 and 22 on each target;
+`./scripts/qa-parity.sh mutations`, three Rune patches caught, the rename one at an `fs`
+check; `./scripts/qa.sh` with the 15 `inline_renaming` scenarios the runner starts, 42
+runs; `./scripts/qa-mutation.sh` with that folder's four patches, all caught; and
+`./scripts/quality.sh` in all three phases, 3,956 tests: V7's 3,953 and three new ones for
+the rename rules that moved to `strata-fs`. On the host: `mise run test-rune` with 2,385
+Rune-side tests passing and 253 ignored, and the compositor tests `window::`. The full GTK
+suite and its other mutation patches were not run: the runner and the engine did not
+change. The other 20 runs of G3 are pending: 17 `scope`, two `platform` and one `rune`.
+[V9](V9-rename-parity.md#done-when-and-the-evidence) has the figures and names the
+artifacts.
+
 Three things are open and were so before V3: `cut.patch` no longer applies,
 `new-folder-with-selection-groups/columns` fails more often than not when run alone, and
 `distant-archive-scrolled-into-view/icons` failed once under load.
@@ -124,9 +138,9 @@ application layer. Width comes later; this slice buys the harness and the seams.
 
 | | Items |
 | --- | --- |
-| In | The `strata-rune` binary, with a windowed mode and a `--qa` mode. Columns view fed by `Browser` and the local file source. The default key map, selection and pointer intent, marquee. Inline rename through Strata's rename operation and validation. The hidden-files toggle. The directory argument at launch. The `settings.toml` keys the parity set's `prefs` headers name. Since decision 19 (2026-11-11): the context menus of an entry, of several entries and of a pane, opened by the pointer, with the GTK menus' rows for a local folder. Open, Select All, Refresh and the hidden-files row act; every other row is shown and inert until its part is in |
+| In | The `strata-rune` binary, with a windowed mode and a `--qa` mode. Columns view fed by `Browser` and the local file source. The default key map, selection and pointer intent, marquee. Inline rename through Strata's rename operation and validation. The hidden-files toggle. The directory argument at launch. The `settings.toml` keys the parity set's `prefs` headers name. Since decision 19 (2026-11-11): the context menus of an entry, of several entries and of a pane, opened by the pointer, with the GTK menus' rows for a local folder. Open, Rename, Select All, Refresh and the hidden-files row act; every other row is shown and inert until its part is in. Of the window's keys, F2 and Ctrl+R rename and F5 reads the columns again |
 | Stubbed | The header shell from strata-components' X1 with inert buttons. Default theme only. No sidebar, tabs or location bar unless a required run cannot pass without one, and then only its static form |
-| Out | Icons and List views. Drag and drop, clipboard, preview, search, filter, dialogs other than the rename error, settings UI, portal chooser, 10xer mode. Pixel predicates and visual baselines. Of menus: the Appearance popover, which decision 19 asked for and V8 stopped on ([why](V8-read-path-parity.md#the-appearance-popover-stopped)); the Menu key; the Trash and Recent menus, custom actions and "Send to…" |
+| Out | Icons and List views. Drag and drop, clipboard, preview, search, filter, dialogs other than the rename error, settings UI, portal chooser, 10xer mode. Undo, and naming a new folder or file. Pixel predicates and visual baselines. Of menus: the Appearance popover, which decision 19 asked for and V8 stopped on ([why](V8-read-path-parity.md#the-appearance-popover-stopped)); the Menu key; the Trash and Recent menus, custom actions and "Send to…" |
 
 A run in the parity set that needs something marked Out goes to `pending`, coded `scope`.
 Nobody widens scope to turn a pending run green; the owner widened it once, to menus.
@@ -182,6 +196,11 @@ Known differences belong in the backend, never in a scenario:
   US position types there, as a Rune window would hear it. Non-US runs are required
   (decision 6). Rune's public input API carries no physical key, so a binding on a plain
   letter does not match under a non-Latin layout yet ([V7](V7-rune-qa-backend.md#decision-6-a-layout-on-a-target-with-no-display)).
+  Dead keys are composed as winit composes them for a Rune window, which delivers the
+  Escape that breaks a sequence off, where GTK's input method takes it
+  ([V9](V9-rename-parity.md#the-layout-step)).
+- **Field offsets.** The protocol counts a text field in characters. Rune's tree counts
+  shaped clusters, which the backend turns into characters over the field's text.
 - **Reply timing.** GTK replies once the main context drains. Rune replies once the GLib
   context has nothing pending and the runtime has settled. V0 found `Runtime::frame`
   reports "animating", so the backend settles with `Runtime::settle_all`.
@@ -259,6 +278,7 @@ Work halts and is reported when any of these holds.
 | V0 core probe finds widget types under `Browser` or rename | Not hit |
 | V0 loop probe shows a stall | Not hit, offscreen or in a window. V5 measured a covered Wayland window: a folder change reaches the interface in 102 ms shown and 102 ms covered |
 | V3 changes a reply: the refactored GTK harness cannot reproduce the earlier reply logs | Not hit. Every verdict matches; `app` differs between two runs of the baseline itself, so V7's ledger compares verdicts |
+| G3 has no stop condition. Counted the same way after its first sort | Not hit: 1 of 33, the `rune` run. Two component gaps were found and closed in the components ([V9](V9-rename-parity.md#the-two-component-changes)) |
 | G2 is mostly blocked: more than a third of its runs land as `component` or `rune` pending | Hit on 2026-11-11 as first counted, by V8's table of likely codes: 20 of 42, all of them runs that need a part the slice marks Out. V8 stopped (`dc1f7ed9c`). The owner then ruled such runs `scope` and V8 went on: under that coding the count is 0, with one `rune` blocker named behind a `scope` one. [V8](V8-read-path-parity.md#the-stop-condition) |
 
 ## Owner decisions
@@ -270,7 +290,7 @@ Work halts and is reported when any of these holds.
 | 3 | A software Vulkan driver in the pinned image | V7 | Not needed for the offscreen host |
 | 4 | Which strata-components revision | V4b | Settled: `integration` at `e4f2df1a`. The old repository is frozen there |
 | 5 | GTK's accessible names and AT-SPI role names as the contract | V6 | Settled on 2026-11-11: the component changed. A host describes each row and the view names each column's group. [V6](V6-columns-adapter.md#decision-5-row-descriptions-and-the-pane-group) |
-| 6 | Non-US layout runs: required or pending | V8 | Settled on 2026-11-11: required, against the plan's assumption. V7 built the mechanism: the runner tells a Rune target the layout and the backend types under it. [V7](V7-rune-qa-backend.md#decision-6-a-layout-on-a-target-with-no-display). G2 has one such run, `arrow-keys-move-focus/columns-hjkl-tenxer-ru`: it is `scope` pending for 10xer mode, with the physical key Rune's input lacks named behind it and [the request](../upstream/rune/97-key-press-with-physical-key.md) drafted. G3 has one under `cn-altgr-pinyin`, a layout V7's tests do not cover |
+| 6 | Non-US layout runs: required or pending | V8 | Settled on 2026-11-11: required, against the plan's assumption. V7 built the mechanism: the runner tells a Rune target the layout and the backend types under it. [V7](V7-rune-qa-backend.md#decision-6-a-layout-on-a-target-with-no-display). G2 has one such run, `arrow-keys-move-focus/columns-hjkl-tenxer-ru`: it is `scope` pending for 10xer mode, with the physical key Rune's input lacks named behind it and [the request](../upstream/rune/97-key-press-with-physical-key.md) filed as [anomalyco/rune#657](https://github.com/anomalyco/rune/issues/657). G3 has one step under `cn-altgr-pinyin`, whose dead keys V9 taught the backend to compose: the step passes, and the run is `rune` pending for the Escape after it ([the request](../upstream/rune/98-escape-after-a-dead-key.md), drafted) |
 | 7 | Hand check of the windowed binary on Hyprland | V10 | Open. V6 has landed; the owner moved the check to V10. The compositor tests see the window list its folder, and nothing looks at the picture |
 | 8 | The windowed wake: a tick, or a GLib embedding shim | V5 | Settled on 2026-11-11: the embedding, notified through `AppHandle::update_if`. A `Waker` call never runs `poll` under a covered Wayland window at Rune `2a44156` |
 | 9 | `gstreamer` in `strata-platform` against the `AGENTS.md` rule | V4b | Settled: the rule stands, and the `media-audio` shim was not imported |
@@ -281,12 +301,16 @@ Work halts and is reported when any of these holds.
 | 14 | `[profile.dev.package."*"] debug = false` for the workspace | Any time | Open. New from V4b |
 | 15 | A home for the `media-audio` shim | The component plan's phase 5 | Open. New from V4b |
 | 16 | Move the settings store, against the `AGENTS.md` rule on `src/ui` | V5 | Settled on 2026-11-11: moved. [V5b](V5b-settings-store.md) |
-| 17 | Six key behaviours where the Columns component differs from the GTK view: Return on a folder whose column is open, an arrow at the list's end, a key that leaves the cursor in place, Ctrl+A's cursor, a key that only changes the active column, and Right when the open child column is another folder's. Change the component, or accept each as a `deviation` | V8 | Settled on 2026-11-11 and done in V8 (C2d): the owner ruled that the component changes so all six behave as the GTK view does, whether or not a scenario checks them. Each was read in the GTK code first. [V8](V8-read-path-parity.md#decision-17-the-six-keys) has what GTK does for each and where the change is; two details of the GTK view are left out and named there |
+| 17 | Six key behaviours where the Columns component differs from the GTK view: Return on a folder whose column is open, an arrow at the list's end, a key that leaves the cursor in place, Ctrl+A's cursor, a key that only changes the active column, and Right when the open child column is another folder's. Change the component, or accept each as a `deviation` | V8 | Settled on 2026-11-11 and done in V8 (C2d): the owner ruled that the component changes so all six behave as the GTK view does, whether or not a scenario checks them. Each was read in the GTK code first. [V8](V8-read-path-parity.md#decision-17-the-six-keys) has what GTK does for each and where the change is; two details of the GTK view are left out and named there. V9 found a seventh, Left in a column with no cursor, and changed it under the same ruling (C2e): for the owner to confirm |
 | 18 | Point the usage checks of `release.yml` and `ci.yml` at `strata-rune` | Before a release builds it | Open. New from V7. The binary keeps the `usage: strata --qa` prefix in a `qa` build only; nothing in CI checks that yet |
 | 19 | G2's stop condition was hit by scope: 20 of its 42 runs need a part the slice marks Out. Go on, widen or stop; and how such a run is coded | V8 | Settled on 2026-11-11: go on, and widen the slice to menus, the context menu and the Appearance menu; code such a run `scope`. V8 mounted the context menus, which made the two right-click runs `required`. It stopped on the Appearance popover: that is no menu, its controls are other Out parts' and no work package composes it. [V8](V8-read-path-parity.md#the-appearance-popover-stopped) |
 | 20 | `leftover-click-honors-modifiers/columns` aims at a row's name label, which Rune's tree does not have | V8 | Settled on 2026-11-11: backend-only first. Found: the backend reads the box of the name the collection keys for its hosts from the drawn elements, with no change to the accessibility tree, and the run is `required`. [V8](V8-read-path-parity.md#the-rows-name-label-decision-20) |
 | 21 | The Appearance popover: plan it as a host composition (the view switch, the preview toggle, C20a's sliders, a radio row rune-kit's menu lacks), or leave its five runs `scope` pending until the location bar is in, which they need next anyway | The slice after this one | Open. New from V8 |
-| 22 | The Menu key and Shift+F10 open no menu yet: C2's columns install their own keyboard controller, and C21's `MenuKeys` has to wrap it there | With decision 21, or V9 | Open. New from V8 |
+| 22 | The Menu key and Shift+F10 open no menu yet: C2's columns install their own keyboard controller, and C21's `MenuKeys` has to wrap it there | With decision 21 | Open. New from V8; V9 did not need it |
+| 23 | Undo: seven of G3's runs pass every step before Ctrl+Z and stop there. `Browser` has the undo engine; `strata-app` would bind one key. Wire it in the slice, or leave the seven `scope` pending | V10, or the slice after | Open. New from V9 |
+| 24 | Naming a new folder or file: ten of G3's runs start from New File or Ctrl+Shift+N (two of them after the filter bar). It is `Browser::create_new_file` and `name_new_item` behind the editor V9 wired, with `Naming::NewItem` | The slice after this one | Open. New from V9 |
+| 25 | A rename the browser fails: the plan has the editor open again with the message, which V9 built. The GTK view shows a dialog. Keep the editor, or wait for the dialog (C15) | The slice after this one | Open. New from V9 |
+| 26 | Request 98, the Escape after a dead key, was read from the sources and not run in a window, and has no headless repro. Check it in a window, then file it or drop it | Before it is filed | Open. New from V9 |
 
 ## Risks
 
@@ -303,19 +327,31 @@ Work halts and is reported when any of these holds.
 - **The harness reads the view.** A QA run on the Rune target sees what the Columns view
   shows. It does not see `Browser` holding another cursor or selection, until something
   acts on `Browser`'s: V7 broke what the adapter tells `Browser` and G1 still passed. V6's
-  in-process tests hold the two together; G3's filesystem checks will be the first runs
-  that can.
+  in-process tests hold the two together. G3's runs are the first that can: a rename acts
+  on the entry `Browser` holds, and the runner reads the folder. The rename mutation patch
+  is caught by an `fs` check.
 - **Nearly half of the read-path gate is outside the slice.** 18 of G2's 42 runs are
   `scope` pending after V8. For five it is only a preamble that closes the preview panel;
-  for the rest it is what the run is about. G3 has not been surveyed.
+  for the rest it is what the run is about. In G3 it is 17 of 33: seven stop at undo and
+  ten at a new item.
 - **The harness presents what Rune's tree leaves out.** Since V8 the backend adds two
   things from the drawn elements: a row's name as its `label`, and the panes behind an
   open menu. Both are boxes and names Rune drew, never guesses, but they are the
   backend's reading and not Rune's accessibility tree: a screen reader hears neither.
+- **A field's offsets are a conversion.** Rune's tree places a caret by shaped cluster and
+  the protocol by character. The backend converts by Unicode's grapheme clusters, which is
+  what a shaper clusters by and is not read from Rune. It was checked against a live field
+  on precomposed names; a combining sequence was checked in the conversion alone.
+- **Two of G3's required runs are weak on Rune.** `window-accelerators-leave-rename` with
+  Ctrl+\ and with Ctrl+K passes because `strata-app` binds neither key yet. The guard they
+  are about is held in process with keys it does bind.
 - **Inert rows look live.** The context menus show every row the GTK menus show, and most
   do nothing yet. In the windowed binary that is a menu full of dead rows until their
   parts land.
 - **Two models of selection.** `Browser` and the Columns component each keep a cursor and a
   selection. V6 keeps them in step, with the view interpreting input; its tests check that
   they agree after every key. The component's key rules are its own port of Strata's, and
-  differed from `Browser`'s in six places, which V8 closed (decision 17).
+  differed from `Browser`'s in six places, which V8 closed (decision 17), and in a seventh,
+  which V9 closed. A rename changes an entry's id under a selection the view holds; V9
+  moves what is held to the new id when the listing shows it, and found that without it a
+  range lost its anchor.
