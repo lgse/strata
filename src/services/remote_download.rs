@@ -5,8 +5,7 @@ mod tests;
 
 use std::{
     fs,
-    io::{self, Read, Write},
-    os::unix::fs::{OpenOptionsExt, PermissionsExt},
+    io::{Read, Write},
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -17,6 +16,7 @@ use std::{
 };
 
 use super::{file_source::io_error_detail, network_error::NetworkError};
+pub(crate) use crate::storage::{DOWNLOAD_PREFIX, create_private_file, private_download_dir};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -25,25 +25,6 @@ const STALE_DOWNLOAD_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 const MAX_NAME_BYTES: usize = 255;
 const CHUNK: usize = 64 * 1024;
 const PROGRESS_STRIDE: u64 = 256 * 1024;
-
-pub(crate) const DOWNLOAD_PREFIX: &str = "strata-download-";
-
-// The shared temp directory is listable by every local user, and tempfile and
-// `File::create` follow the umask (typically 0755/0644).
-pub(crate) fn private_download_dir() -> io::Result<tempfile::TempDir> {
-    tempfile::Builder::new()
-        .prefix(DOWNLOAD_PREFIX)
-        .permissions(fs::Permissions::from_mode(0o700))
-        .tempdir()
-}
-
-pub(crate) fn create_private_file(path: &Path) -> io::Result<fs::File> {
-    fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(path)
-}
 
 #[derive(Debug)]
 pub(crate) enum RemoteDownload {

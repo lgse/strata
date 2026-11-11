@@ -150,7 +150,7 @@ fn classifies_common_preview_content_types() {
 
 #[test]
 fn archive_preview_format_detects_previewable_archives() {
-    use super::super::operations::ArchiveFormat;
+    use crate::model::ArchiveFormat;
     use std::ffi::OsStr;
 
     assert_eq!(

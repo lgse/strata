@@ -11,7 +11,9 @@ use std::{
 use gio::prelude::*;
 
 pub mod action;
+mod archive;
 pub mod hidden_names;
+mod load_handle;
 
 pub use action::{
     ACTION_SCHEMA_VERSION, ActionConditions, ActionDefinition, ActionError, ActionInput,
@@ -19,6 +21,8 @@ pub use action::{
     InterpreterFamily, MAX_ACTION_ID_CHARS, MAX_ACTION_NAME_CHARS, MenuPlacement, RunSpec,
     WorkingDirectory, expand_arguments, interpreter_family, suggest_id, valid_action_id,
 };
+pub use archive::ArchiveFormat;
+pub use load_handle::LoadHandle;
 
 /// A browsable destination. Native paths remain byte-safe and URI locations remain explicit.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]

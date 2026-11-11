@@ -15,6 +15,7 @@ pub(crate) use crate::error_text::{
     UNEXPECTED_SYSTEM_ERROR, error_detail, io_error_detail, io_error_message, io_error_reason,
     system_error_text,
 };
+pub use crate::model::LoadHandle;
 use crate::model::{
     FileEntry, GIO_URI_BUILD_FLAGS, GIO_URI_PARSE_FLAGS, Location, MetadataValue,
     uri_contains_credentials,
@@ -575,27 +576,6 @@ pub struct MetadataRequest {
     /// Keep false for full sort passes to avoid probing off-screen media.
     pub include_icon_details: bool,
     pub time_budget: Duration,
-}
-
-/// A cancellable directory load. Dropping it cancels any unfinished provider work.
-pub struct LoadHandle {
-    cancel: Option<Box<dyn FnOnce()>>,
-}
-
-impl LoadHandle {
-    pub fn new(cancel: impl FnOnce() + 'static) -> Self {
-        Self {
-            cancel: Some(Box::new(cancel)),
-        }
-    }
-}
-
-impl Drop for LoadHandle {
-    fn drop(&mut self) {
-        if let Some(cancel) = self.cancel.take() {
-            cancel();
-        }
-    }
 }
 
 pub trait FileSource {

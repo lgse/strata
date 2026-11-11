@@ -17,6 +17,25 @@ static NEXT_TEMP_FILE: AtomicU64 = AtomicU64::new(0);
 /// the way a symlink loop would.
 const MAX_LINK_HOPS: usize = 8;
 
+pub(crate) const DOWNLOAD_PREFIX: &str = "strata-download-";
+
+// The shared temp directory is listable by every local user, and tempfile and
+// `File::create` follow the umask (typically 0755/0644).
+pub(crate) fn private_download_dir() -> io::Result<tempfile::TempDir> {
+    tempfile::Builder::new()
+        .prefix(DOWNLOAD_PREFIX)
+        .permissions(fs::Permissions::from_mode(0o700))
+        .tempdir()
+}
+
+pub(crate) fn create_private_file(path: &Path) -> io::Result<fs::File> {
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LinkPolicy {
     /// Never follow a final-component symlink: caches, state, installers.

@@ -126,7 +126,7 @@ pub(crate) fn convert(
     if cancelled.is_cancelled() {
         return Err("Conversion cancelled".into());
     }
-    let directory = super::remote_download::private_download_dir().map_err(|error| {
+    let directory = crate::storage::private_download_dir().map_err(|error| {
         rust_i18n::t!(
             "Could not create a temporary folder: %{error}",
             error = error
@@ -136,8 +136,8 @@ pub(crate) fn convert(
     let destination = directory
         .path()
         .join(name.file_name().ok_or("Invalid PNG filename")?);
-    let mut file = super::remote_download::create_private_file(&destination)
-        .map_err(|error| error.to_string())?;
+    let mut file =
+        crate::storage::create_private_file(&destination).map_err(|error| error.to_string())?;
     file.write_all(&output.data).map_err(|error| {
         rust_i18n::t!("Could not write the PNG: %{error}", error = error).into_owned()
     })?;

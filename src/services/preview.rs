@@ -10,7 +10,8 @@ use std::{
 
 use crate::model::FileEntry;
 
-use super::{DocumentLayout, LoadHandle, operations::ArchiveFormat};
+use super::DocumentLayout;
+use crate::model::{ArchiveFormat, LoadHandle};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct PreviewRequestId(pub u64);
