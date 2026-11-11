@@ -2,11 +2,11 @@
 
 | | |
 | --- | --- |
-| Status | The exit check: done, with decision 27's condition back with the owner ([why](#what-the-allowance-is-worth)). The image: done and validated here, and not pushed: the push changes the base's key and waits for the owner's word ([the order](#what-a-push-does)) |
+| Status | Done. The exit check: built, then changed once when the owner ruled the flaky run allowed outright ([why](#what-the-allowance-is-worth)). The image: validated here, pushed on 2026-11-11, and published: the build job and the publisher both passed ([what the workflows did](#what-a-push-does)) |
 | Depends on | V9 |
 | Unblocks | V10 |
 | Owns | The allowances in `tests/qa/parity/slice.toml` and their checks in `tests/qa/parity.rs`, the `gtk-mutations` selection of `scripts/qa-parity.sh`, the dependency stage of `tests/container/Dockerfile`, `tests/container/stub-workspace.py`, `scripts/dependency_seed.py` |
-| Commits | The exit check: `37b63862f` (the allowances and the GTK patches in `slice`), `481392c68` (the closing list names a refused failure), `c7aa6dac2` (its record). The image: `50124f6e2` (the seeding), `7c3d69d3f` (the stage), then this record |
+| Commits | The exit check: `37b63862f` (the allowances and the GTK patches in `slice`), `481392c68` (the closing list names a refused failure), `c7aa6dac2` (its record). The image: `50124f6e2` (the seeding), `7c3d69d3f` (the stage), `afead51e6` (its record). Decision 27 as ruled: `033f8fb48`, then this record's last commit |
 
 An infrastructure package, not in the slice plan. The owner's rulings of 2026-11-11 put it
 between V9 and V10 so that V10 runs an exit command it can trust. It has two parts, landed
@@ -26,11 +26,18 @@ and neither was about the slice:
 
 ### The flaky run (decision 27)
 
-The owner ruled on 2026-11-11: a named allowance. The ledger names this one run as flaky
-before the slice. When it fails in `slice`'s whole-suite part, `slice` runs it again alone,
-reports both results, and fails only if the rerun fails. No scenario is edited.
+The owner ruled twice on 2026-11-11.
 
-How it is built:
+- **First: a named allowance, held if the run passes again alone.** The ledger names this
+  one run as flaky before the slice; when it fails in `slice`'s whole-suite part, `slice`
+  runs it again alone, reports both results, and fails only if the rerun fails. That was
+  built at `37b63862f` and `481392c68`, and measured: the rerun
+  [nearly always fails](#what-the-allowance-is-worth).
+- **Then: the named run is allowed outright.** A failure of it in the whole-suite part no
+  longer fails `slice` and needs no passing rerun. Everything else stays as strict as it
+  was. Built at `033f8fb48`.
+
+No scenario is edited under either. How it is built now:
 
 - **The allowance is data.** `tests/qa/parity/slice.toml` has one `[[flaky]]` entry: the
   scenario, the run, the reason, and under `recorded` the document that records the flake,
@@ -39,66 +46,57 @@ How it is built:
   other. So does a gate: the allowance is for the whole-suite part, and the ledger refuses
   an allowance for a run of the parity set.
 - **What `slice` does.** When the whole suite exits nonzero, `scripts/qa_parity.py slice
-  --failed-in <log>` reads the runner's `test … FAILED` lines. If every failed test is a
-  run the ledger names as flaky, it prints them and `slice` runs each alone, with
-  `--exact`. If any other test failed, a runner test included, or the suite failed without
-  naming a test, as a build error does, nothing is run again and `slice` fails.
-- **What it prints.** Before the rerun: `== ALLOWANCE: <run> failed in the whole GTK suite;
-  the ledger names it flaky, so it runs again alone ==`. After it, one of `ALLOWANCE USED:
-  <run> failed in the whole GTK suite and passed alone.` and `ALLOWANCE REFUSED: <run>
-  failed in the whole GTK suite and again alone.` A failure it will not run again is
-  `NO ALLOWANCE: <tests> failed in the whole GTK suite; nothing is run again.` Each of
-  those lines is repeated when the command ends, under `== allowances, from
-  tests/qa/parity/slice.toml ==`, with the stale patch's line below. The last line is
-  always `== slice exits <status> ==`.
-- **What counts as passing alone.** The rerun must exit 0 and print `PASS <run>`. A rerun
-  that ran no test is refused.
-- **What it keeps.** The failed run's bundle is copied to
-  `target/qa-parity/allowance/<scenario>/<run>/` before the rerun replaces it in
-  `target/qa-artifacts/`. The lines are also in `target/qa-parity/allowances.txt`. Both are
-  emptied when `slice` starts.
+  --failed-in <log>` reads the runner's `test … FAILED` lines and its closing `test
+  result:` line. If every failed test is a run the ledger names as flaky, and the closing
+  count is the number of tests named, `slice` notes each and goes on. Otherwise `slice`
+  fails: another test failed, a runner test included; or the suite named no failed test,
+  as a build error does; or the runner stopped before its closing line, or counted a
+  failure it did not name.
+- **There is no rerun.** The first ruling's rerun is gone. It cost 19 s each time and its
+  result said nothing: the run fails alone whether or not anything has regressed.
+- **What it prints.** `ALLOWANCE USED: <run> failed in the whole GTK suite; the ledger
+  names it flaky before the slice.` A failure it does not cover is `NO ALLOWANCE: <tests>
+  failed in the whole GTK suite, and no allowance names them.`, or `NO ALLOWANCE:` with
+  one of the other two reasons. Each line is repeated when the command ends, under
+  `== allowances, from tests/qa/parity/slice.toml ==`, with the stale patch's line below.
+  The last line is always `== slice exits <status> ==`.
+- **What it keeps.** The failed run's bundle is copied from `target/qa-artifacts/` to
+  `target/qa-parity/allowance/<scenario>/<run>/`. The lines are also in
+  `target/qa-parity/allowances.txt`. Both are emptied when `slice` starts.
 
 ### What the allowance is worth
 
-Less than the ruling assumed. It was made on the understanding that the run mostly passes
-alone. At these commits it mostly fails alone, so the rerun usually refuses the allowance
-it was meant to grant.
+The first ruling was made on the understanding that the run mostly passes alone. At these
+commits it mostly fails alone, so a rerun refused the allowance it was meant to grant.
+These are the figures the second ruling rests on.
 
 | How the run was started | Passed | Where |
 | --- | --- | --- |
-| In the whole GTK suite | 3 of 5 | Passed: `qa-parity-slice-1.log` at `37b63862f`, `qa-full.log` and `qa-parity-slice.log` at `7c3d69d3f`. Failed: `qa-parity-slice.log` at `481392c68`, and `qa-full.log` at this record's commit |
+| In the whole GTK suite | 3 of 5 | Passed: `qa-parity-slice-1.log` at `37b63862f`, `qa-full.log` and `qa-parity-slice.log` at `7c3d69d3f`. Failed: `qa-parity-slice.log` at `481392c68`, and `qa-full.log` at `afead51e6` |
 | Alone, `./scripts/qa.sh new-folder-with-selection-groups/columns` | 1 of 6 | `flaky-alone-{1..6}.log` |
-| Alone, as `slice`'s rerun | 0 of 3 | The two rehearsals below, and the run at `481392c68` |
+| Alone, as `slice`'s rerun under the first ruling | 0 of 3 | The two rehearsals of that rule, and the run at `481392c68` |
 | With its scenario's two other runs, `./scripts/qa.sh new-folder-with-selection-groups` | 1 of 8 | `flaky-with-its-scenario-{1..8}.log` |
 
 Every failure is the same one: the wait for the opened folder's column to take focus times
-out after 15 s. The application and the runner are the same at both commits. V3 saw the
-same shape at `65eb2da03`, 5 failures in 6 alone and "in a full run it usually passes"; V7
-saw 4 passes in 4 alone. The run is not flaky under load so much as broken without it.
+out after 15 s. The application and the runner are the same at all of these commits. V3
+saw the same shape at `65eb2da03`, 5 failures in 6 alone and "in a full run it usually
+passes"; V7 saw 4 passes in 4 alone. The run is not flaky under load so much as broken
+without it.
 
-**What follows for the exit command.** The whole suite fails for this run in something
-like two runs in five, going by these and the earlier packages' runs. With the rerun
-passing about one time in nine, `slice` still exits 1 for this run alone in roughly a
-third of its runs. It happened in the last run of the exit-check part: 792 passed, the
-flaky run failed, the rerun failed, `ALLOWANCE REFUSED`, exit 1, with every other part
-passing.
+**What followed for the exit command under the first ruling.** The whole suite fails for
+this run in something like two runs in five, going by these and the earlier packages'
+runs. With the rerun passing about one time in nine, `slice` still exited 1 for this run
+alone in roughly a third of its runs. It happened in the last run of that rule, at
+`481392c68`: 792 passed, the flaky run failed, the rerun failed, `ALLOWANCE REFUSED`, exit
+1, with every other part passing.
 
-The allowance is built as ruled and does what the ruling says. Whether it should say
-something else is the owner's:
-
-1. **Keep it.** V10 runs `slice` until it exits 0 and names every run. About two runs in
-   three exit 0.
-2. **Allow the named run outright in the whole-suite part:** print the failure, list it as
-   used, never fail on it. `slice` then cannot fail for this run. It also stops telling a
-   regression in this one run from the flake, though the rerun alone cannot tell them
-   apart either, since it fails nearly every time. The run is outside the parity set:
-   New Folder with Selection is no part of the slice.
-3. **Fix the run,** on `main`: either the scenario's wait or the focus race under it. It
-   is a GTK-side change with its own reason, and the allowance then goes.
-
-Changing the condition is one branch of `alone` in `scripts/qa-parity.sh`. A rerun of the
-whole suite instead was not built or measured: at two failures in five it would still
-fail twice running about one time in six.
+**What the owner was offered, and chose.** Keep the rule and have V10 run `slice` until it
+exits 0; allow the named run outright; or fix the run on `main`. The owner chose the
+second. `slice` now cannot fail for this run. It also no longer tells a regression in
+this one run from the flake, which the rerun could not do either, since it fails nearly
+every time. The run is outside the parity set: New Folder with Selection is no part of the
+slice. Fixing the run stays open, as a GTK-side change on `main`, and the allowance goes
+when it is fixed.
 
 ### The GTK mutation patches (the exit check's fourth item)
 
@@ -127,8 +125,10 @@ tested instead of asserted: `cut.patch` must still be stale, so the day it is re
 command says the entry has to go, and a second patch going stale cannot hide behind the
 first.
 
-`cut.patch` was not edited, and no GTK patch was. The `[[stale_patch]]` entry is this
-package's reading of "as before", not an owner ruling: it is for the owner to confirm.
+`cut.patch` was not edited, and no GTK patch was. The `[[stale_patch]]` entry began as
+this package's reading of "as before". The owner confirmed it on 2026-11-11: `slice` runs
+the 21 that apply and reports the allowance every time, and fixing the patch is a separate
+GTK-side change.
 
 ### What keeps the allowances from growing
 
@@ -294,6 +294,29 @@ By commit:
 | `7c3d69d3f`, the image | Runs. The key becomes `4fa6c8cf…`. It finds none of its four references, builds the `dependencies` stage, pushes it as the build image and as `base-4fa6c8cf…-linux-amd64-1001-1001`, exports the two caches, then checks both references anonymously | **If it is the head commit of its push:** the registry has no base for the new key, `git diff HEAD^ HEAD -- tests/container` is not empty, so the job builds the candidate itself with `image_base.py build` and goes on, from an empty cache. **If a later commit is the head:** it fails in half a minute with "The unchanged environment is unavailable" |
 | Anything after | Runs only for a watched path | Resolves `base-4fa6c8cf…` once the publisher has pushed it. Until then it fails as above |
 
+**What was pushed, and what the workflows did.** The orchestrator pushed in the order
+below on 2026-11-11, and reported the runs; none was observed from this package.
+
+1. The exit check's commits, to `c7aa6dac2`.
+2. On the owner's go-ahead ("push now, I watch CI"), `7c3d69d3f` as the head of its own
+   push.
+   - **`CI`, run 43117209550.** `Quality build and lint` built its own candidate and
+     passed in 13 min 55 s, from 23:06:40Z to 23:20:35Z, inside its 20 minutes. The
+     estimate above was about 13. `Dependency and spelling policy` passed.
+   - **`Publish the pinned test image`, run 43117209452.** Its first attempt failed after
+     52 s, in the environment's package-index step and before the dependency stage:
+     `archive.archlinux.org` was too slow ("Operation too slow. Less than 1 bytes/sec").
+     The orchestrator re-ran the failed job, and the re-run passed in 8 min 21 s, from
+     23:14:09Z to 23:22:30Z. The estimate above was 7 to 9. The base for key `4fa6c8cf…`
+     is published, and the publisher is green on this branch for the first time since
+     the import.
+3. Then `afead51e6`, which is where `upstream/strata-next` stood when this was written.
+   `033f8fb48` and this record's last commit were still local.
+
+The recovery below was not needed. The first attempt's failure is the distribution
+archive's and not this change's: the package-index step is the recipe's second, unchanged,
+and a re-run is its remedy.
+
 **The order that keeps the green jobs green.**
 
 1. Push the exit check's commits, to `c7aa6dac2`. Nothing about the image changes.
@@ -345,11 +368,18 @@ All by the owner on 2026-11-11, and all now in the decision table of the
 
 | # | Ruling |
 | --- | --- |
-| 12 | The test image: fix the dependency stage so the publisher passes, and have the scripts seed their caches from it. Ruled twice; the second, on V7's three ways forward, chose the largest |
+| 7 | The hand check of the windowed binary on Hyprland is the owner's to do. V10 leaves a slot for it, with the exact command and the things to try |
+| 12 | The test image: fix the dependency stage so the publisher passes, and have the scripts seed their caches from it. Ruled twice; the second, on V7's three ways forward, chose the largest. Then the go-ahead to push it |
+| 17 | V9's seventh Columns key change, C2e (`236f6c9f8`, Left in a column with no cursor), is kept, and so is the F5 binding |
 | 13, 18 | The `rune` CI job and the usage checks of `release.yml` and `ci.yml` wait until after the slice |
 | 21 | The Appearance popover is left for the next slice. Its five runs stay `scope` pending |
 | 22 | The Menu key and Shift+F10 wait until after the slice |
-| 27 | New: the flaky run gets a named allowance, as above |
+| 23 | Undo is left for the next slice. The seven runs stay `scope` pending |
+| 24 | The naming of a new folder or file is left for the next slice. The ten runs stay `scope` pending |
+| 25 | For a rename the browser fails, GTK's dialog is the target, in the next slice. The inline editor with the message stands in until dialogs (C15) are mounted, and is listed as a known difference, not ruled a `deviation` |
+| 27 | New: the flaky run gets a named allowance. Ruled twice: first held to a passing rerun alone, then, on this package's figures, allowed outright. With it, the `[[stale_patch]]` entry for `cut.patch` is confirmed as what "as before" means |
+
+Decision 26, request 98, stays open.
 
 ## Where the work departs from the plan
 
@@ -382,14 +412,14 @@ tests, 35 in all.
 | `the_ledger_allows_only_the_flaky_run_and_the_stale_patch_it_was_given` | The committed allowances stand on a real run and a real patch, a reason and a document that names them, and are those two |
 | `an_allowance_for_nothing_real_or_with_nothing_behind_it_is_refused` | Eight ways an allowance is refused, and three malformed entries that do not parse |
 
-In `scripts/`, 26 new tests, 269 in all. In `scripts/test_qa_parity.py`: six new tests and
-one reworded, 15 in all.
+In `scripts/`, 27 new tests, 270 in all. In `scripts/test_qa_parity.py`: seven new tests
+and one reworded, 16 in all.
 
 | Test | Shows |
 | --- | --- |
-| `FlakyAllowanceTests` (3) | The ledger's names; only a flaky run is run again, and any other failed test, a runner test included, stands; the command prints the runs or exits 1, and a failure that names no test is not excused |
+| `FlakyAllowanceTests` (4) | The ledger's names; the flaky run alone is passed over, and any other failed test, a runner test included, stands; a suite that failed some other way is not passed over: a build error, a runner that stopped before its result, a count of failures no line names; the command prints the flaky runs or exits 1 with `NO ALLOWANCE` |
 | `StalePatchTests` (1) | A stale patch is left out only while the ledger names it and it stays stale: three ways the selection refuses to start |
-| `RepositoryTests` (2 new) | The committed ledger's stale patches are the ones that do not apply; the script asks the ledger with the runner's own failure line |
+| `RepositoryTests` (2 new) | The committed ledger's stale patches are the ones that do not apply; the script asks the ledger with the runner's own failure line and closing count, and runs no flaky run again |
 
 In `scripts/test_dependency_seed.py`, 11 tests, on directories made for the test:
 
@@ -412,7 +442,11 @@ with a manifest below `crates/*`.
 
 ## Done when, and the evidence
 
-### The exit check
+### The exit check, under the first ruling
+
+These runs are of the rule that asked for a passing rerun alone, which `033f8fb48`
+replaced. They stand as the record of what that rule did, and of every part of `slice`
+the later change did not touch.
 
 All on 2026-11-11, in the pinned image keyed `9229afdf…`, which this part does not change,
 from the worktree at `~/dev/strata-next-verify`. Logs and kept files are in its
@@ -432,7 +466,7 @@ from the worktree at `~/dev/strata-next-verify`. Logs and kept files are in its
   suite and again alone.` The Rune patches (3 of 3) and the GTK patches (21 of 21, in 11.3
   minutes) are caught. Nothing else failed. The failed bundle is in
   `qa-parity/allowance/`.
-- **Each branch of the allowance, rehearsed.** A stand-in for `cargo` in the container
+- **Each branch of that rule, rehearsed.** A stand-in for `cargo` in the container
   (`rehearsal-cargo`) cuts the whole suite, and only it, down to one real run and then
   reports chosen tests as the runner reports a failure. Everything else is real: the
   ledger, `scripts/qa_parity.py`, the rerun. At `481392c68`, with the mutation parts not
@@ -472,8 +506,8 @@ Not run, and why:
 - `mise run test-rune` and the compositor tests: no file of the Rune side changed.
 - `./scripts/qa-mutation.sh` on its own: `slice` runs the same 21 patches through the
   same function.
-- CI: nothing was pushed. This part changes no file a workflow watches for the image, so
-  a push resolves the same base as before.
+- CI: nothing had been pushed when these ran. This part changes no file a workflow
+  watches for the image, so its push resolves the same base as before.
 
 ### The image
 
@@ -556,25 +590,68 @@ Not run, and why:
   binary was built and run in the image, by `g1` and by `slice`.
 - Podman: this host has Docker only. The seeding runs inside the container and does not
   know the engine; the two engines' options in `scripts/lib/qa-container.sh` did not change.
-- The publisher and the build job: nothing was pushed, and no workflow can be run from
-  here. What they will do is read from the workflows, [above](#what-a-push-does), and the
-  image build was timed from nothing on four cores.
+- The publisher and the build job: they could not be run from here. What they should do
+  is read from the workflows, [above](#what-a-push-does), and the image build was timed
+  from nothing on four cores. The commit has since been pushed, and what they did is
+  recorded there as the orchestrator reported it.
 - A base older than a month: the Cargo setting that keeps a seeded home from being cleaned
   was tested on a copy of the seed with its last-use times set back, not by waiting.
 - `cut.patch`: stale, as before.
 
+### Decision 27 as ruled
+
+All on 2026-11-11, at `033f8fb48`, from `~/dev/strata-next-verify`, in the base that commit
+resolves here: the one built locally, keyed `4fa6c8cf…`. Logs are in its
+`target/v9b-033f8fb48/`.
+
+- **Each branch, rehearsed** with the same stand-in for `cargo` as before
+  (`rehearsal-cargo`), which now ends the simulated suite with the runner's closing count:
+  - the flaky run alone fails, with every part of `slice` started
+    (`rehearsal-docker`): `ALLOWANCE USED: new-folder-with-selection-groups/columns failed
+    in the whole GTK suite; the ledger names it flaky before the slice.`, no rerun, 3 of 3
+    Rune patches and 21 of 21 GTK patches caught, and `== slice exits 0 ==`, in 12 min
+    35 s (`rehearsal-flaky-only.log`);
+  - the flaky run and another fail: `NO ALLOWANCE: escape-clears-selection/columns failed
+    in the whole GTK suite, and no allowance names them.`, and the flaky run is not noted
+    as allowed (`rehearsal-flaky-and-another.log`);
+  - the flaky run fails and the closing line counts two failures: `NO ALLOWANCE: the whole
+    GTK suite did not end with a count of the failures it named.`
+    (`rehearsal-count-does-not-match.log`).
+
+  The last two were run with the mutation parts not started (`rehearsal-docker-short`),
+  so their final `== slice exits 1 ==` would be 1 whatever came before; the `NO ALLOWANCE`
+  line in the closing list is what they show.
+- **The exit command itself.** `./scripts/qa-parity.sh slice` exits 0 in 13 min 33 s
+  (`qa-parity-slice.log`, `qa-parity/`, and the two summaries beside them). The flaky run
+  passed in this run, so its allowance was not used: 36 of 36 required runs on GTK and on
+  Rune, the whole suite with 793 passed, none failed and 2 ignored, 3 of 3 Rune patches
+  and 21 of 21 GTK patches caught, and one allowance listed, `cut.patch`'s. No real run
+  of the new rule has met the flake yet: the rehearsal above is what shows that path, and
+  it copies no bundle, since a simulated failure leaves none. The copy itself is the
+  first ruling's, which kept the bundle of the real failure at `481392c68`.
+- **Lint.** `./scripts/quality.sh fmt` and `clippy` are clean
+  (`quality-{fmt,clippy}.log`). The Rust change is one doc comment; `./scripts/quality.sh
+  test` was not run again.
+- **The runner's tests** pass in the whole-suite part of the run above, 35 of them, with
+  the ledger's reworded entries.
+- **Scripts.** 270 tests pass: 269 and one more for a suite that failed some other way.
+  CodeScene's check of the changed files finds no decline.
+
+Not run, and why: the image and everything that feeds its key were not touched, so no
+image was built and the cold-cache proofs stand as they are; `./scripts/qa-mutation.sh` on
+its own, since `slice` runs the same 21 patches.
+
 ## Open
 
-- **The push,** in [the order above](#what-a-push-does), on the owner's word.
+- **Pushing `033f8fb48` and this record's last commit.** Neither touches a path the
+  publisher watches, and the base they resolve is published.
+- **The base pulled from the registry was not run here.** Every run of this package used
+  the base built locally from the same recipe.
 - **Two workflow changes** this package did not make,
   [above](#workflow-changes-this-package-did-not-make).
 - **The quality cache compiles its own dependencies.** Holding them compiled in the image
   too means building them at `target/quality-container`'s paths as well: about as much
   again in size and build time.
-- **Decision 27's condition,** as [above](#what-the-allowance-is-worth): the allowance is
-  refused more often than it is used.
-- **The `[[stale_patch]]` entry** is this package's reading of "as before": for the owner
-  to confirm.
 - **`cut.patch` is still stale** and `new-folder-with-selection-groups/columns` still
   fails. Both need a change on `main`.
 - **`distant-archive-scrolled-into-view/icons`** has no allowance. It failed once, at V3,

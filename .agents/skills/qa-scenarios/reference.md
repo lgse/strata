@@ -473,7 +473,7 @@ scenario's required runs fail on Rune. They are separate from a scenario's
 `./scripts/qa-parity.sh gtk-mutations` runs those GTK patches for the slice's
 exit check, less the ones the ledger names under `[[stale_patch]]`, which must
 still fail to apply. The ledger's `[[flaky]]` entry lets one named run fail in
-`slice`'s whole-suite part if it then passes alone. Neither is a way to excuse
+`slice`'s whole-suite part, which says so each time. Neither is a way to excuse
 a scenario: the runner's tests hold both lists to what
 `docs/rune/slice/README.md` records, and `./scripts/qa.sh` reads neither.
 

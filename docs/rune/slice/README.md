@@ -23,8 +23,8 @@ The command exits 0 only when all four hold:
    harness refactor left the oracle intact.
 
 "As before" has two named exceptions, because the GTK suite was not whole before the
-slice. The ledger holds them as [allowances](#what-the-exit-command-lets-stand), and the
-command says each time it uses one.
+slice. The ledger holds them as [allowances](#what-the-exit-command-lets-stand), each an
+owner ruling, and the command says each time it uses one.
 
 ## Gates
 
@@ -57,7 +57,7 @@ G2 and 33 under G3.
 | V7 | [Rune QA backend](V7-rune-qa-backend.md) | V3, V6 | Done: `4de69a313` to `e97b84e0b`. The image's dependency stage was not changed (decision 12) | Gate G1 passes on both targets |
 | V8 | [Read-path parity](V8-read-path-parity.md) | V7 | Done: `dc1f7ed9c` to its record. Gate G2 passes with 23 of 42 runs `required`. One part stopped: the Appearance popover is not mounted | Gate G2: ledger complete, required runs pass three times running |
 | V9 | [Rename parity](V9-rename-parity.md) | V8 | Done: `3ba9a1f312ae2b9163c9dde892af88b866bf4bbe` to its record. Gate G3 passes with 13 of 33 runs `required`; 17 are `scope` pending, 2 `platform`, 1 `rune` | Gate G3: same bar, with fs checks |
-| V9b | [Test image and exit check](V9b-test-image-and-exit-check.md) | V9 | The exit check: done, `37b63862f` and `481392c68`, with decision 27's condition back with the owner. The image: done, `50124f6e2` and `7c3d69d3f`, validated in a base built here, and not pushed until the owner says: the push changes the base's key | The exit command passes or fails for the slice's reasons only, and checks all four items; a run fetches no crate on first use |
+| V9b | [Test image and exit check](V9b-test-image-and-exit-check.md) | V9 | Done. The exit check: `37b63862f`, `481392c68`, and `033f8fb48` for decision 27 as the owner ruled it. The image: `50124f6e2` and `7c3d69d3f`, validated in a base built here, pushed on 2026-11-11 and published: the build job and the publisher both passed | The exit command passes or fails for the slice's reasons only, and checks all four items; a run fetches no crate on first use |
 | V10 | [Slice report](V10-slice-report.md) | V9b | Not started | Report committed; the exit command passes |
 
 V3 can run beside V4b, V5 and V6. V4b is not in the slice plan: it is the import stage of
@@ -152,9 +152,13 @@ three phases (3,958 tests), the full GTK QA suite (793 passed, 2 ignored),
 `./scripts/qa-mutation.sh` with the 21 patches that apply, all caught, and
 `./scripts/qa-parity.sh slice`, which exits 0 with every part passing. The scripts' own
 tests: 269. The publisher's build was timed from nothing on four cores: 4 min 46 s. On the
-host nothing was run: no file of the Rune side changed. Nothing was pushed, so no workflow
-has run on any of it. [V9b](V9b-test-image-and-exit-check.md#done-when-and-the-evidence)
-has the figures and names the artifacts.
+host nothing was run: no file of the Rune side changed. Then, at `033f8fb48`, after the
+owner ruled the flaky run allowed outright: the allowance rehearsed again, and
+`./scripts/qa-parity.sh slice` once more in the same base. It exits 0 in 14 minutes with
+every part passing; the flaky run passed that time, and the rehearsal shows the command
+exits 0 when it does not. The scripts' own tests: 270.
+[V9b](V9b-test-image-and-exit-check.md#done-when-and-the-evidence) has the figures and
+names the artifacts.
 
 ### What the exit command lets stand
 
@@ -165,24 +169,22 @@ the first two are allowances of `./scripts/qa-parity.sh slice`, held as data in
 `tests/qa/parity/slice.toml`; the third has none, and fails the command if it fails.
 
 - **`new-folder-with-selection-groups/columns`** waits for the opened folder's column to
-  take focus, and focus sometimes stays on the row. In the whole suite it usually passes:
-  it failed in some whole-suite run of V3, V7 and V8, and in both of V7's runs of `slice`.
-  The owner ruled on 2026-11-11 (decision 27): the ledger names this one run as flaky
-  before the slice. When it fails in the whole-suite part, `slice` runs it again alone,
-  prints both results, and fails only if it fails alone too. No scenario is edited, and
-  any other failure there still fails the command. **The rerun is a weak test for this
-  run:** alone it fails more often than in the suite. At V9b's commits it passed alone once
-  in nine tries, and once in eight beside its scenario's two other runs; V3 saw it fail 5
-  of 6 alone, and V7 pass 4 of 4. So when the flake does hit the suite, expect `ALLOWANCE
-  REFUSED` and exit 1 more often than not, and run the command again.
-  [V9b](V9b-test-image-and-exit-check.md#what-the-allowance-is-worth) has the figures and
-  what the owner could rule instead.
+  take focus, and focus sometimes stays on the row. The owner ruled on 2026-11-11
+  (decision 27): the ledger names this one run as flaky before the slice, and when it
+  fails in the whole-suite part `slice` says so, keeps the failed bundle and does not fail
+  for it. No scenario is edited, and any other failure there still fails the command. The
+  ruling first asked for the run to pass again alone. V9b measured that it cannot: the run
+  passed in three whole-suite runs of five, alone in one of nine, and beside its
+  scenario's two other runs in one of eight; V3 saw it fail 5 of 6 alone. A rerun alone
+  refused the allowance nearly every time it was needed, so the owner dropped the
+  condition ([the figures](V9b-test-image-and-exit-check.md#what-the-allowance-is-worth)).
 - **`cut.patch`** has not applied since `src/ui/browser/clipboard.rs` moved under it on
   `main` (#2092). The exit check's fourth item says the 22 patches behave as before, and
   before the slice 21 were caught and this one did not apply. `slice` now checks exactly
   that: it runs the 21 that apply, and requires `cut.patch` to be stale still. If it is
   rebased, or another patch stops applying, the command refuses to go on until the ledger
-  is put right. Rebasing it is a GTK-side change of its own.
+  is put right. The owner confirmed this reading of "as before" on 2026-11-11. Rebasing
+  the patch is a GTK-side change of its own.
 
 An allowance cannot be added quietly. The runner's unit tests hold the committed list to
 these two, and refuse one that names no run of the suite or no patch a scenario names,
@@ -350,27 +352,27 @@ Work halts and is reported when any of these holds.
 | 4 | Which strata-components revision | V4b | Settled: `integration` at `e4f2df1a`. The old repository is frozen there |
 | 5 | GTK's accessible names and AT-SPI role names as the contract | V6 | Settled on 2026-11-11: the component changed. A host describes each row and the view names each column's group. [V6](V6-columns-adapter.md#decision-5-row-descriptions-and-the-pane-group) |
 | 6 | Non-US layout runs: required or pending | V8 | Settled on 2026-11-11: required, against the plan's assumption. V7 built the mechanism: the runner tells a Rune target the layout and the backend types under it. [V7](V7-rune-qa-backend.md#decision-6-a-layout-on-a-target-with-no-display). G2 has one such run, `arrow-keys-move-focus/columns-hjkl-tenxer-ru`: it is `scope` pending for 10xer mode, with the physical key Rune's input lacks named behind it and [the request](../upstream/rune/97-key-press-with-physical-key.md) filed as [anomalyco/rune#657](https://github.com/anomalyco/rune/issues/657). G3 has one step under `cn-altgr-pinyin`, whose dead keys V9 taught the backend to compose: the step passes, and the run is `rune` pending for the Escape after it ([the request](../upstream/rune/98-escape-after-a-dead-key.md), drafted) |
-| 7 | Hand check of the windowed binary on Hyprland | V10 | Open. V6 has landed; the owner moved the check to V10. The compositor tests see the window list its folder, and nothing looks at the picture |
+| 7 | Hand check of the windowed binary on Hyprland | V10 | Settled on 2026-11-11 as to who: the owner does the check. V10's report leaves a slot for it, with the exact command and the things to try. The check itself is open. The compositor tests see the window list its folder, and nothing looks at the picture |
 | 8 | The windowed wake: a tick, or a GLib embedding shim | V5 | Settled on 2026-11-11: the embedding, notified through `AppHandle::update_if`. A `Waker` call never runs `poll` under a covered Wayland window at Rune `2a44156` |
 | 9 | `gstreamer` in `strata-platform` against the `AGENTS.md` rule | V4b | Settled: the rule stands, and the `media-audio` shim was not imported |
 | 10 | Import history: squash or keep | V4b | Settled: squashed |
 | 11 | Who owns cursor and selection: `Browser` or the component | V6 | Settled on 2026-11-11 by the probe, as the owner ruled: the view interprets input and `Browser` holds the result. The key expectations of the ten G2 Columns runs V6 could drive in process are all met that way. [V6](V6-columns-adapter.md#decision-11-who-owns-the-cursor-and-the-selection) |
-| 12 | The test image's dependency stage, which no longer loads the workspace | Before the publisher is needed again | Settled on 2026-11-11, twice. The owner first ruled to add the Rune side to the stage. V7 found that no run reads the stage and that any edit to the Dockerfile changes the base's key, and put [three ways forward](V7-rune-qa-backend.md#the-image-nothing-changed-and-why) back. The owner chose the largest, knowing its risk to CI: fix the stage so the publisher passes, and have the scripts seed their caches from the image's dependencies. Built in [V9b](V9b-test-image-and-exit-check.md#the-test-image-decision-12), and not pushed: the push changes the base's key, and its order is in that record |
+| 12 | The test image's dependency stage, which no longer loads the workspace | Before the publisher is needed again | Settled on 2026-11-11, twice. The owner first ruled to add the Rune side to the stage. V7 found that no run reads the stage and that any edit to the Dockerfile changes the base's key, and put [three ways forward](V7-rune-qa-backend.md#the-image-nothing-changed-and-why) back. The owner chose the largest, knowing its risk to CI: fix the stage so the publisher passes, and have the scripts seed their caches from the image's dependencies. Built in [V9b](V9b-test-image-and-exit-check.md#the-test-image-decision-12). On the owner's go-ahead, `7c3d69d3f` was pushed on 2026-11-11 as the head of its own push, in [the order that record gives](V9b-test-image-and-exit-check.md#what-a-push-does). The build job built its own candidate and passed in 13 min 55 s of its 20 (run 43117209550). The publisher's first attempt failed in 52 s on a slow distribution archive, before the dependency stage; its re-run passed in 8 min 21 s (run 43117209452). The base keyed `4fa6c8cf…` is published, and the publisher is green on `strata-next` for the first time since the import |
 | 13 | A `rune` job in CI, with a Vulkan adapter for the goldens | After the slice | Open, and deferred: the owner ruled on 2026-11-11 that it waits until after the slice, with decision 18. New from V4b. V7 did without one: parity runs locally through `./scripts/qa-parity.sh`, and the Rune side is still checked locally |
 | 14 | `[profile.dev.package."*"] debug = false` for the workspace | Any time | Open. New from V4b |
 | 15 | A home for the `media-audio` shim | The component plan's phase 5 | Open. New from V4b |
 | 16 | Move the settings store, against the `AGENTS.md` rule on `src/ui` | V5 | Settled on 2026-11-11: moved. [V5b](V5b-settings-store.md) |
-| 17 | Six key behaviours where the Columns component differs from the GTK view: Return on a folder whose column is open, an arrow at the list's end, a key that leaves the cursor in place, Ctrl+A's cursor, a key that only changes the active column, and Right when the open child column is another folder's. Change the component, or accept each as a `deviation` | V8 | Settled on 2026-11-11 and done in V8 (C2d): the owner ruled that the component changes so all six behave as the GTK view does, whether or not a scenario checks them. Each was read in the GTK code first. [V8](V8-read-path-parity.md#decision-17-the-six-keys) has what GTK does for each and where the change is; two details of the GTK view are left out and named there. V9 found a seventh, Left in a column with no cursor, and changed it under the same ruling (C2e): for the owner to confirm |
+| 17 | Six key behaviours where the Columns component differs from the GTK view: Return on a folder whose column is open, an arrow at the list's end, a key that leaves the cursor in place, Ctrl+A's cursor, a key that only changes the active column, and Right when the open child column is another folder's. Change the component, or accept each as a `deviation` | V8 | Settled on 2026-11-11 and done in V8 (C2d): the owner ruled that the component changes so all six behave as the GTK view does, whether or not a scenario checks them. Each was read in the GTK code first. [V8](V8-read-path-parity.md#decision-17-the-six-keys) has what GTK does for each and where the change is; two details of the GTK view are left out and named there. V9 found a seventh, Left in a column with no cursor, and changed it under the same ruling (C2e, `236f6c9f8`). The owner confirmed on 2026-11-11: the seventh change is kept, and so is the F5 binding V9 added to the window's keys |
 | 18 | Point the usage checks of `release.yml` and `ci.yml` at `strata-rune` | After the slice, and before a release builds it | Deferred: the owner ruled on 2026-11-11 that it waits until after the slice, with decision 13. New from V7. The binary keeps the `usage: strata --qa` prefix in a `qa` build only; nothing in CI checks that yet |
 | 19 | G2's stop condition was hit by scope: 20 of its 42 runs need a part the slice marks Out. Go on, widen or stop; and how such a run is coded | V8 | Settled on 2026-11-11: go on, and widen the slice to menus, the context menu and the Appearance menu; code such a run `scope`. V8 mounted the context menus, which made the two right-click runs `required`. It stopped on the Appearance popover: that is no menu, its controls are other Out parts' and no work package composes it. [V8](V8-read-path-parity.md#the-appearance-popover-stopped) |
 | 20 | `leftover-click-honors-modifiers/columns` aims at a row's name label, which Rune's tree does not have | V8 | Settled on 2026-11-11: backend-only first. Found: the backend reads the box of the name the collection keys for its hosts from the drawn elements, with no change to the accessibility tree, and the run is `required`. [V8](V8-read-path-parity.md#the-rows-name-label-decision-20) |
 | 21 | The Appearance popover: plan it as a host composition (the view switch, the preview toggle, C20a's sliders, a radio row rune-kit's menu lacks), or leave its five runs `scope` pending until the location bar is in, which they need next anyway | The slice after this one | Settled on 2026-11-11: the popover is left for the next slice, and its five runs stay `scope` pending. New from V8 |
 | 22 | The Menu key and Shift+F10 open no menu yet: C2's columns install their own keyboard controller, and C21's `MenuKeys` has to wrap it there | After the slice | Settled on 2026-11-11: both keys wait until after the slice. New from V8; V9 did not need it |
-| 23 | Undo: seven of G3's runs pass every step before Ctrl+Z and stop there. `Browser` has the undo engine; `strata-app` would bind one key. Wire it in the slice, or leave the seven `scope` pending | V10, or the slice after | Open. New from V9 |
-| 24 | Naming a new folder or file: ten of G3's runs start from New File or Ctrl+Shift+N (two of them after the filter bar). It is `Browser::create_new_file` and `name_new_item` behind the editor V9 wired, with `Naming::NewItem` | The slice after this one | Open. New from V9 |
-| 25 | A rename the browser fails: the plan has the editor open again with the message, which V9 built. The GTK view shows a dialog. Keep the editor, or wait for the dialog (C15) | The slice after this one | Open. New from V9 |
+| 23 | Undo: seven of G3's runs pass every step before Ctrl+Z and stop there. `Browser` has the undo engine; `strata-app` would bind one key. Wire it in the slice, or leave the seven `scope` pending | The slice after this one | Settled on 2026-11-11: left for the next slice. The seven runs stay `scope` pending. New from V9 |
+| 24 | Naming a new folder or file: ten of G3's runs start from New File or Ctrl+Shift+N (two of them after the filter bar). It is `Browser::create_new_file` and `name_new_item` behind the editor V9 wired, with `Naming::NewItem` | The slice after this one | Settled on 2026-11-11: left for the next slice. The ten runs stay `scope` pending. New from V9 |
+| 25 | A rename the browser fails: the plan has the editor open again with the message, which V9 built. The GTK view shows a dialog. Keep the editor, or wait for the dialog (C15) | The slice after this one | Settled on 2026-11-11: GTK's dialog is the target, in the next slice. The inline editor with the message stands in until dialogs (C15) are mounted. It is listed as a known difference between the two interfaces, not ruled a `deviation`. New from V9 |
 | 26 | Request 98, the Escape after a dead key, was read from the sources and not run in a window, and has no headless repro. Check it in a window, then file it or drop it | Before it is filed | Open. New from V9 |
-| 27 | `./scripts/qa-parity.sh slice` exits 1 for one GTK run that was flaky before the slice, `new-folder-with-selection-groups/columns`: fix the scenario, drop the whole-suite part, or name the run | V10 | Settled on 2026-11-11: a named allowance. The ledger names the one run; `slice` runs it again alone when it fails in the whole suite, reports both results and fails only if the rerun fails. No scenario is edited. Done in V9b, with [what polices it](#what-the-exit-command-lets-stand). The condition is back with the owner: V9b found that the run fails alone more often than in the suite, so the rerun refuses the allowance about eight times in nine ([the figures and three ways on](V9b-test-image-and-exit-check.md#what-the-allowance-is-worth)) |
+| 27 | `./scripts/qa-parity.sh slice` exits 1 for one GTK run that was flaky before the slice, `new-folder-with-selection-groups/columns`: fix the scenario, drop the whole-suite part, or name the run | V10 | Settled on 2026-11-11, in two rulings. First: a named allowance, held if the run passes again alone. V9b built that and measured the run: it passed in three whole-suite runs of five, alone in one of nine, and beside its scenario's two other runs in one of eight, so the rerun refused the allowance about eight times in nine and `slice` still failed for the flake in a third of its runs. Then: the named run is allowed outright. When it fails in the whole-suite part, `slice` says so, keeps the bundle and goes on, with no rerun. Any other failure there fails `slice`, the entry must still be a real run outside the parity set with a reason and a document that names it, and the runner's test pins the list. No scenario is edited. With it the owner confirmed the `[[stale_patch]]` entry for `cut.patch` as what "as before" means. Done in V9b, with [what polices it](#what-the-exit-command-lets-stand) |
 
 ## Risks
 

@@ -902,17 +902,19 @@ them and fail as before.
 
 - `[[flaky]]` names one run, `new-folder-with-selection-groups/columns`, by an
   owner ruling of 2026-11-11. When it fails in the whole-suite part, `slice`
-  runs it again alone and prints `ALLOWANCE USED: … failed in the whole GTK
-  suite and passed alone.`, or `ALLOWANCE REFUSED: … and again alone.` and
-  fails. The failed run's artifacts are kept in
-  `target/qa-parity/allowance/<scenario>/<run>/`; the rerun's are in
-  `target/qa-artifacts/` as usual. Any other failure of the whole suite fails
-  `slice`, with or without the flaky run beside it: it prints `NO ALLOWANCE: …
-  failed in the whole GTK suite; nothing is run again.` That run fails alone
-  more often than in the suite, so expect the allowance to be refused about as
-  often as it is used (`docs/rune/slice/V9b-test-image-and-exit-check.md`).
+  prints `ALLOWANCE USED: … failed in the whole GTK suite; the ledger names it
+  flaky before the slice.`, keeps the failed run's artifacts in
+  `target/qa-parity/allowance/<scenario>/<run>/` and goes on: the failure does
+  not fail `slice`. The run is not run again. It fails alone more often than in
+  the suite, eight times in nine against two in five, so a rerun would say
+  nothing (`docs/rune/slice/V9b-test-image-and-exit-check.md`). Any other
+  failure of the whole suite fails `slice`, with or without the flaky run
+  beside it: it prints `NO ALLOWANCE: … failed in the whole GTK suite, and no
+  allowance names them.` So does a suite that did not run to its end: the
+  runner's closing count has to be the failures it named.
 - `[[stale_patch]]` names one GTK mutation patch, `cut`, which stopped applying
-  before the slice. `gtk-mutations` asks `git apply --check` of every patch a
+  before the slice; the owner confirmed on 2026-11-11 that this is what the
+  exit check's "as before" means for it. `gtk-mutations` asks `git apply --check` of every patch a
   scenario names, runs the ones that apply through `scripts/qa_mutation.py`,
   and prints `ALLOWANCE USED: cut.patch does not apply, as before the slice; …`.
   It refuses to start when a patch fails to apply without being named, or a

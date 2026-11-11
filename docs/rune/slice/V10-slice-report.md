@@ -49,14 +49,23 @@ The report has six parts. Each number in it names the command that produced it.
 Also record:
 
 - which owner decisions were made during the slice, and by what ruling, and which are
-  open: 23 to 26 are V9's, and undo (23) decides seven of G3's runs;
+  open. Of V9's, 23 to 25 were ruled on 2026-11-11, all for the next slice: undo and the
+  naming of a new item stay out, and their seventeen runs stay `scope` pending. 26 is open;
+- the known differences between the two interfaces that no ruling makes a `deviation`.
+  One so far: a rename the browser fails opens the inline editor again with the message,
+  where the GTK view shows a dialog. The dialog is the target; the editor stands in until
+  dialogs (C15) are mounted (decision 25);
 - where each package's evidence is: the verification worktree's `target/v3-…` to
   `target/v9-61a7d6224/` and V9b's three `target/v9b-…/`, each named in its package's
   record;
 - each stop condition and whether it was hit;
-- the hand check of the windowed binary on Hyprland (decision 7): what was tried, on which
-  compositor, and what was seen. It is the only evidence in the slice from a real
-  compositor;
+- a slot for the hand check of the windowed binary on Hyprland (decision 7). The owner
+  does the check, not the package: the report leaves the slot empty, and gives the exact
+  command that builds and opens the window on a directory, checked to work
+  (`cargo run --locked -p strata-rune -- <directory>` is the Rune lane's own cargo run),
+  and the things to try: the listing, the keys of gate G2, a rename, the context menus and
+  their inert rows, a covered and uncovered window. What the owner sees goes in the slot.
+  It will be the only evidence in the slice from a real compositor;
 - what the slice does not prove, in the report's first screen: input never crossed winit
   or a compositor.
 
@@ -83,17 +92,19 @@ order, and runs every part whatever the earlier ones did:
 "As before" has two named exceptions, the ledger's allowances
 ([README](README.md#what-the-exit-command-lets-stand)):
 
-- `new-folder-with-selection-groups/columns` may fail in the whole-suite part if it then
-  passes alone. The command prints `ALLOWANCE USED: … failed in the whole GTK suite and
-  passed alone.`, or `ALLOWANCE REFUSED: …` and exits 1.
+- `new-folder-with-selection-groups/columns` may fail in the whole-suite part. The command
+  then prints `ALLOWANCE USED: new-folder-with-selection-groups/columns failed in the whole
+  GTK suite; the ledger names it flaky before the slice.` and goes on. It does not run the
+  run again and does not fail for it (decision 27, as the owner ruled it on 2026-11-11).
 - `cut.patch` does not apply, as before the slice, and must not: the command prints
   `ALLOWANCE USED: cut.patch does not apply, as before the slice; the other 21 GTK mutation
   patches run.` every time.
 
 The command ends with the allowances it used or refused, under `== allowances, from
 tests/qa/parity/slice.toml ==`, and then `== slice exits <status> ==`. A failure of the
-whole suite that no allowance names is in that list too, as `NO ALLOWANCE: …`. The report
-quotes those lines from the run it names. A flaky run's failed bundle is in
+whole suite that no allowance names is in that list too, as `NO ALLOWANCE: …`, and the
+command exits 1. The report quotes those lines from the run it names, and says whether the
+flaky run failed in it. A flaky run's failed bundle is in
 `target/qa-parity/allowance/<scenario>/<run>/`.
 
 A run takes about 14 minutes with a warm cache: under two for the gates and the whole
@@ -102,11 +113,10 @@ suite, one for the Rune patches and 11 for the GTK ones. Its first line is the s
 The base it runs in depends on whether V9b's image commit is checked out: the key is
 `4fa6c8cf…` with it and `9229afdf…` without, and the environment is the same in both.
 
-**The command can still exit 1 for the flaky run.** The allowance holds only if the run
-passes alone, and at V9b's commits it passed alone once in nine tries. When
-`ALLOWANCE REFUSED` is the only failure, the slice has not failed: run the command again,
-and name every run in the report, the refused ones too. [V9b](V9b-test-image-and-exit-check.md#what-the-allowance-is-worth)
-has the figures, and what the owner could rule instead.
+The command exits 0 whether or not the flaky run fails. It fails in about two whole-suite
+runs in five, so expect `ALLOWANCE USED` for it in some runs and not in others.
+[V9b](V9b-test-image-and-exit-check.md#what-the-allowance-is-worth) has the figures the
+ruling rests on.
 
 ## Out of scope
 
