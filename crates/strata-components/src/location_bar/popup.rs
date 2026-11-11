@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The suggestion list: anchored under the entry at its width, taking no focus, on rune-kit's
 //! public popover parts. Not rune-kit's `PopupList`, whose rows can't draw matched ranges
 //! (Rune draft U-C6-4).

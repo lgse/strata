@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`PlacesSidebar`]: the builder that lays out the places, PINNED and DEVICES.
 
 use std::rc::Rc;

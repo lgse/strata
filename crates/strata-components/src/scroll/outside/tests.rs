@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`OutsideWheel`] on a Rune runtime: what a tick outside a panel closes and scrolls.
 
 use rune::{Cx, El, Env, Mods, Runtime, ScrollPos, WheelEvent, col};

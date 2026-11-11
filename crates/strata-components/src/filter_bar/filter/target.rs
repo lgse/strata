@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The Enter target's rules: Strata's `enter_target.rs` `Tracker` (`lgse/strata`
 //! `upstream/main`), over C1a's selection.
 //!

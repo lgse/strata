@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Headless tests of the bridge: GIO on the bridge thread, answers on a `rune::Runtime`'s loop.
 //!
 //! Each test re-runs itself in a child copy of this binary (see [`isolated`]) with GIO kept off

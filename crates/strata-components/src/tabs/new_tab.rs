@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The New tab button: the strip's trailing action, or, with one tab and no strip, a header
 //! action (`browser/tabs`: "With one tab the strip stays hidden during these drags; dropping
 //! on the header's New tab button opens the tab").

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The grid: C1e's collection element with C3's grid geometry, in cells sized for a picker.
 //!
 //! Not C3's `IconsGrid`: its tiles are file tiles (at least `MIN_CARD`, 116 pt, wide, with a

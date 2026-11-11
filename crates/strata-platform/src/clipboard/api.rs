@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The clipboard's public types.
 
 use std::fmt;

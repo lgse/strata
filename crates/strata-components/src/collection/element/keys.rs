@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The keys the element gives its parts, so hosts, scripts and motion effects (C23) can name a
 //! row, its icon and its label, and scroll requests can name the viewport.
 //!

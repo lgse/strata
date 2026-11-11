@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gallery page for C10b CodeView: its scenes, demo state, view and key and poll hooks. Scene
 //! names start with `c10-` and end in `-light` or `-dark`.
 //!

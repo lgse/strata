@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! DocumentView (C11): Strata's rendered document previews (Markdown, the HTML subset, RTF,
 //! DOCX, ODT and OTT) drawn natively from Strata's own laid-out model.
 //!

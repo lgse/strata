@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Settings controls (C20a–C20d).
 //!
 //! Work packages:

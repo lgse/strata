@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the dialog does with a key, as plain decisions the panel's key handler acts on.
 
 use rune::{Key, KeyEvent, Mods, TextEdit, Tx};

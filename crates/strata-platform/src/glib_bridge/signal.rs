@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! GObject signals: what the GLib side keeps connected, and the Rune side's handle to it.
 
 use std::any::Any;

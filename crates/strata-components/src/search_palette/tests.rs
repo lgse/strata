@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use std::cell::Cell;
 
 use rune::{Cx, El, Env, Runtime, Tx};

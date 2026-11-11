@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Moving from one look to the next with the colours animating.
 
 use rune::{Spring, Tx};

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! X3's session tests: the clipboard wiring demo (`examples/clipboard_wiring/`) against W3's
 //! peer in a private headless sway, on Wayland (data control, and the data device as on
 //! mutter) and X11 (`mise run test-platform x3::`).

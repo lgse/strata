@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What copying a selection takes, by Strata's rule (`selection_text` in
 //! `src/ui/virtual_preview/highlight.rs`): every unit between the selection's two ends copies
 //! its whole copy text (an image's `[Image: alt]`, a table's rows, a rule), and each end unit

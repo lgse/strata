@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The contract between the drawer and the view it hosts. C10b CodeView, C11 DocumentView,
 //! C12 PdfView, C13 MediaPlayer and C14b's viewers implement [`HostedPreview`]; Strata's own
 //! preview enum delegates to whichever one is showing.

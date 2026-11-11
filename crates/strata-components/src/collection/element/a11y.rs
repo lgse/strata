@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What assistive technology hears: the roles, and the live status line that reads out
 //! selection changes a row's own state doesn't say.
 //!

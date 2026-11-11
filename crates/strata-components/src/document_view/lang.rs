@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Strata's code-block language ids, as its document layout normalises them (sourceview's
 //! language ids: `python3`, `c-sharp`, `typescript-jsx`…), to the tokens C10a's grammar
 //! lookup takes (a file extension or a grammar name). Anything else passes through, so a

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The form's state: the chosen page and a keyboard being carried out of a hidden page.
 
 use std::time::Duration;

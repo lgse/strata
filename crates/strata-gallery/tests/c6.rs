@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C6's page in process: what scripts can't reach (an input method composing, a key repeat, the
 //! crumbs' scroll position and text colour, the overflow bar's fade, every frame of a reopen,
 //! the wakes of a window at rest), and window activation, on a host of the test's own whose

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! ColorPicker (C20b): a saturation and value plane, a hue strip, an optional alpha strip, a
 //! hex field and rows of swatches, inline or in a popover behind a button. It replaces GTK's
 //! `ColorDialogButton` (Strata's theme editor) and `ColorChooserWidget` (its custom folder and

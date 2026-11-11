@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The adapter between W1's drag-and-drop intents and P1's system drag and drop: written to be
 //! copied into an app as it is (Strata's), with nothing of this demo in it.
 //!

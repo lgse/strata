@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The settings as plain data: what the app keeps in its state and hands to its components.
 
 use std::time::Duration;

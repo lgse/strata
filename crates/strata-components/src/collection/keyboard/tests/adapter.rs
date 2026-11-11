@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The adapter on C1e's seam: what [`Keyboard`] reads from a `Ctx` and sends back to the
 //! element. Each test names the bullet whose path through the element it carries.
 

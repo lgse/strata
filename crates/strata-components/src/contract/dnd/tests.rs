@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use std::path::{Path, PathBuf};
 
 use rune::{Cx, DragOperation, El, Env, Runtime, col, el, row};

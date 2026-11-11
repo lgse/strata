@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The trace cases are Strata's (`src/ui/preview/route/position/tests.rs`), ported; the rest
 //! check playback and units on the state.
 

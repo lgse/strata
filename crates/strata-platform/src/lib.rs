@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Linux platform shims for [Rune](https://github.com/anomalyco/rune) apps.
 //!
 //! Each module fills one gap in Rune's Linux support, sits behind its own cargo feature, and

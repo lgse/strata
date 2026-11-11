@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The icons `build.rs` generates from `crates/strata-kit/icons/`: [`LUCIDE`], [`MOCHA`] and
 //! [`LATTE`], each sorted by `Icon::name`, and each icon's [`index`] in all three.
 

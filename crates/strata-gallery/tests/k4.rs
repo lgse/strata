@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! K4's page in process: what the goldens can't show. Each golden scene draws its theme with
 //! the page's file applied last, and turning the overrides off and on goes through
 //! `theme::switch`, as a reload of the file does, so the colours animate. K4 implements no

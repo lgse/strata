@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`Flash`]: a short footer message, such as "Unknown chord" or "No matches for “x”", that
 //! goes 2 s after it shows (Strata's `show_feedback`, `FEEDBACK_FLASH`).
 

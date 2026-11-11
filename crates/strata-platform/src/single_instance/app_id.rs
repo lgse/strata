@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The app id: the well-known bus name the primary owns, and the object path its interfaces
 //! sit at.
 

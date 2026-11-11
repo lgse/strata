@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The controller seam: where pointer, keyboard and marquee controllers (C1b, C1c, C1d) plug
 //! into the element.
 //!

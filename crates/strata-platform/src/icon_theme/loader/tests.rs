@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant};

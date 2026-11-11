@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The action dialog: a header, a body and a footer of buttons, in the shell.
 
 use std::rc::Rc;

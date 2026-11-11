@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! In a headless runtime, on C1e's element: thumbnails land, change size and go with no
 //! view run and no commit beyond the scroll's own, and the icon slot draws what it should.
 

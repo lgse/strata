@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A fake icons grid: `cols` tiles a row, as C3 lays them out, for moves by rows as laid out.
 
 use crate::contract::{CollectionGeometry, Direction, IndexRanges, Point, Rect};

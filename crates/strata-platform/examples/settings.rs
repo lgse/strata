@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Prints the desktop's settings and every change to them, as JSON lines on stdout (the
 //! `settings` feature).
 //!

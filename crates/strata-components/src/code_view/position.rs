@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The document-position scroll bar (`preview/preview-panel/documents/scrollbar`): a thumb
 //! that follows where the reader is in the rows, not Rune's estimate of the content's height,
 //! which moves as rows are measured. Strata's rule (`scrollbar/position.rs` in

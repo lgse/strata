@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The index page: its buttons open pages from the keyboard, and with markers on, assistive
 //! technology hears whether each page is built.
 

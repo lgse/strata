@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! P8's session tests: launches of one app id meeting on a private session bus.
 //!
 //! The bus tests run `single-instance-probe` (the shim without Rune) on a bus alone; the window

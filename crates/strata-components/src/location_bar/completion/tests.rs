@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use super::*;
 
 fn folders(names: &[&str]) -> Vec<Candidate> {

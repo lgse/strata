@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Scroll extras (C24): Strata's overlay scroll bar and middle-click autoscroll, on any Rune
 //! scroll viewport, and on C1e's collection through its `edge` and `on_scroll` hooks.
 //!

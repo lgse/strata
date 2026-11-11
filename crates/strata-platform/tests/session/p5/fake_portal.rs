@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A fake `org.freedesktop.portal.Settings`, served from the test process on the session's
 //! private bus only: it connects to the address it is given (`Session::bus().address()`), never
 //! to a bus from the environment. It answers `ReadAll`, `Read` and `ReadOne` from the values

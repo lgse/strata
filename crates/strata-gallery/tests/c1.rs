@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C1e's page in process: what the accessibility tree doesn't show (hover, where a row stays on
 //! screen), restores across a view switch and a slow load, and the scripted 100k scroll under
 //! `RUNE_COMMIT_BUDGET_MS=8`. Each test names the bullets it checks; the scripts in

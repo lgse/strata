@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The slow-click rename: armed by a click on the name of the only selected entry, it renames
 //! one double-click interval later unless anything happened in between.
 

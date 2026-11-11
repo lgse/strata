@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! P2's session tests: clipboard round-trips with the peer, on Wayland and X11, through the
 //! public `clipboard` API. The app side is `examples/clipboard.rs`.
 //!

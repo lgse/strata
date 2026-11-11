@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The process's clipboard, on the UI thread: P0's substrate, the bookkeeping, every
 //! [`super::Clipboard`]'s way in, and the hand-off at shutdown.
 //!

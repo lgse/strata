@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The parent handle an XDG portal passes: `wayland:<xdg-foreign handle>`, `x11:<xid>`, or
 //! nothing.
 

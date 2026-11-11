@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The store: one handle per thumbnail key, held under a byte budget, with each key's state.
 
 use std::cell::RefCell;

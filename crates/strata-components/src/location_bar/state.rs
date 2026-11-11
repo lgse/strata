@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`LocationBarState`]: the bar's state, held by the host and reached by accessor.
 
 use std::any::Any;

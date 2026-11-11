@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Middle-click autoscroll's speed curve and settings. Pure maths; speeds are in points a
 //! second.
 

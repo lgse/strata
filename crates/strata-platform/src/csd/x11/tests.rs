@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the window manager's properties say the app can do: the report the watcher sends.
 
 use super::{Atom, Atoms, report_from};

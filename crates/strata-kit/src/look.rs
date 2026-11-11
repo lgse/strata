@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! `Look`: the `rune_kit::Kit` plus Strata's extension tokens, the one surface components read
 //! their look from.
 //!

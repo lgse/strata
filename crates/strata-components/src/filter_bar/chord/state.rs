@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`ChordState`]: the armed 10xer chord and its key map, as data.
 
 use rune::{Chord, Key, KeyEvent, Tx};

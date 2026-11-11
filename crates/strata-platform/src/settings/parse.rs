@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The portal's replies, typed: a `ReadAll` answer and a `SettingChanged` body, applied to a
 //! [`DesktopSettings`]. Kept free of the connection, so it is tested without a bus.
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The bridge thread, its owner and its handle.
 
 use std::future::Future;

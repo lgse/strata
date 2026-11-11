@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The process's drag and drop, on the UI thread: P0's substrate, the app's windows, the
 //! drag this process started, and the routing of what the platform reports to the window it
 //! concerns.

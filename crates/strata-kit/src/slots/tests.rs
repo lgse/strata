@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use crate::look::Look;
 use crate::tokens::{self, Value};
 

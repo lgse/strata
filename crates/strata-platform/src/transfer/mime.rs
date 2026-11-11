@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The MIME formats file managers exchange for copied and dragged files: `text/uri-list`
 //! (RFC 2483), `x-special/gnome-copied-files` and `application/x-kde-cutselection`, plus the
 //! X11 target names that stand for UTF-8 text.

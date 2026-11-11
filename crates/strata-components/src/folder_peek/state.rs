@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The peek's state: whether peeking is on, which folder is peeked from where, and what the
 //! pointer rests on. Plain transitions, no Rune.
 

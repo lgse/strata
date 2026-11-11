@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Perf: 100,000 entries in five columns, held to rune-kit's Table with the same five columns,
 //! measured side by side in the same run.
 //!

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The closed-tabs stack: what Ctrl+Shift+T reopens, newest first (`browser/tabs`,
 //! Reopening). Plain data the host keeps per window; it is never saved.
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use super::wayland::{attach_failed, no_shared_conn};
 use super::x11::with_state;
 use super::*;

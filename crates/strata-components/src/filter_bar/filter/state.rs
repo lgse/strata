@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`FilterState`]: the filter bar's state, held by the host and reached by accessor.
 
 use rune::TextEdit;

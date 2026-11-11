@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Single instance and activation over D-Bus: one primary process per app id, and every later
 //! launch handed to it.
 //!

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Pointer intent and click modes (C1b).
 //!
 //! [`PointerMachine`] turns presses, moves and releases on a collection into selection

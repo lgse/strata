@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The search index: the settings window's pages and rows, as data.
 
 /// Every page and row a settings search can find. The host builds it (titles translated,

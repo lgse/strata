@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A GLib main context on its own thread, marshalled into Rune.
 //!
 //! Rune lacks: a GLib main loop. Rune runs winit's event loop and never iterates a

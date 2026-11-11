@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Client-side decorations on Linux: a borderless window that the app's own header moves,
 //! that resizes from its edges where the platform allows, and whose window buttons reach the
 //! window manager.

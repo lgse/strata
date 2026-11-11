@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime, TextEdit, col, text_input};
 use rune_kit::{Button, Kit};
 

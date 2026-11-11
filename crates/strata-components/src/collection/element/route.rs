@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Input routing: Rune's events on the collection, turned into controller inputs, and the
 //! controllers' changes and effects applied.
 //!

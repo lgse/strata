@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gallery page for W2 Look contract: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `w2-` and end in `-light` or `-dark`.
 //!

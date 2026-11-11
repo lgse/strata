@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The strip: one focus stop around a sideways scroll viewport of columns, with the strip's bar
 //! over it. Keys go to the active column, and assistive technology hears that column's cursor
 //! row as the strip's active descendant.

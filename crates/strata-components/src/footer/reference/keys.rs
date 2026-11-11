@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The keys inside the reference's panel.
 //!
 //! Rune hands a focused text field's keys to its `on_input_key`, then its editor, then the

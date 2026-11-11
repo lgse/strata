@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The strip's W1 drop zones: one per tab, the New tab button's, and the strip's own for the
 //! gaps between tabs. Each is attached through the host's `Dnd` binder, on an element keyed
 //! for X2's ([`super::tab_key`], [`super::new_tab_key`], the strip's key).

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`FooterPrompt`]: the prompt bar in the footer, and its candidate list above it.
 
 use std::rc::Rc;

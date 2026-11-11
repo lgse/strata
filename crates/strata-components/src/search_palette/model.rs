@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The results model: which generation is current, what shows, what is highlighted, and the
 //! state that follows. A port of Strata's `render_results` and `restore_selection`
 //! (`src/ui/search/results.rs`), without the search, which is the host's. It knows no Rune.

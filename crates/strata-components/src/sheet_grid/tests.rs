@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Unit tests for the sheet grid: sorting, what a cell shows and copies, the column
 //! arithmetic and widths, and on Rune's headless runtime (Inter, `Runtime::new`) the pointer,
 //! keys, copy, autoscroll, tabs and what assistive technology hears.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The tile size: stepping it along the look's ladder from keys and Ctrl+Shift+wheel, and the
 //! request the host hears.
 //!

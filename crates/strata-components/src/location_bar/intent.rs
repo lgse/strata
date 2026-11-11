@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the location bar reports. It owns no policy: parsing a typed path, listing folders,
 //! opening a location, transfers and the clipboard are the host's, through these intents.
 

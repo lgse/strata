@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The 10xer chord panel: the armed chord, its pill and its panel of next keys.
 
 mod state;

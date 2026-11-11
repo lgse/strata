@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Handing `CLIPBOARD` to a clipboard manager before the process exits (freedesktop's
 //! ClipboardManager spec, built on ICCCM). The owner converts `CLIPBOARD_MANAGER` to
 //! `SAVE_TARGETS`, naming the targets to save in a property of its window; the manager then

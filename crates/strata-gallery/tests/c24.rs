@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C24's scroll extras on the c24 page, in process: what scripts can't see (scroll offsets,
 //! cursors, opacities, wake-ups, a held Alt) and what no golden shows (motion over time). Each
 //! test names the feature-map bullets it checks; a partial check says which half. The scripts

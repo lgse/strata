@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Each golden scene rendered headless (`--snap --scale 1`) against
 //! `tests/golden/png/<id>/<scene>.png`.
 //!

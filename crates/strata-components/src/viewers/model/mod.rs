@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The 3D model view (`preview/preview-panel/model-views`): a software-rendered picture from
 //! Strata, four camera presets stepped by Previous and Next, the camera indicator between them,
 //! and the format and triangle badges. The same view shows a picture saved in the file (a 3MF's

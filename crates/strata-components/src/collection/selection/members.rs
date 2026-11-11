@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Which ids are selected: an id set plus an optional overlay of index ranges.
 //!
 //! A range operation over 100,000 entries can't afford to hash every id it covers (that alone

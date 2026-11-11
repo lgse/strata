@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What a picker offers, as data: choices, their names and keywords, and their categories.
 
 use std::borrow::Cow;

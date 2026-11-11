@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The bundled face's `wght` axis, measured through `rune::text`'s shared measure path.
 //!
 //! This test has a process of its own: the measure path's fonts can't be pinned while other

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C7's page in process: timers stepped from wake to wake, the wheel, the views kept mounted
 //! under a spring, the title, and, through a host with a binder of its own (as X2's will be),
 //! what Rune's binder can't send: drags from this process that open tabs, and content drops.

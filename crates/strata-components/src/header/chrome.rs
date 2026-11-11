@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the header knows about its window, as plain data: Strata's window-button preferences,
 //! the window manager's state and capabilities, and the actions the buttons ask for.
 

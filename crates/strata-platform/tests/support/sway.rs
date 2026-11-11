@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A nested headless sway, with Xwayland, and its IPC.
 //!
 //! Traps found by S1, S2 and S3 under headless sway (docs/testing.md):

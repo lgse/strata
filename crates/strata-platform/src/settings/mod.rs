@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The desktop's settings from the XDG Settings portal, with their changes delivered on
 //! Rune's loop: the text scale, the double-click interval, the drag threshold, the caret blink,
 //! the animations switches and whether to remember recent files.

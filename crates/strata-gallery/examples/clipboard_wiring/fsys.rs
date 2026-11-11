@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The demo's stand-in for Strata's file side: entry ids by path, listings read from disk, and
 //! pastes applied inside `--root` only.
 //!

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Scope-stack classes and their colours.
 //!
 //! Every token's colour is a function of its scope stack alone (syntect's

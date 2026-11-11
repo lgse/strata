@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A queue from the GLib thread to Rune's loop that wakes the app on every message.
 
 use std::collections::VecDeque;

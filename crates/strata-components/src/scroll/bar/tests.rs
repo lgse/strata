@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The scroll bar's thumb mapping and show state, with no Rune runtime. What the bar looks like
 //! (its widths, gaps and least thumb length) is the gallery's PNG goldens'; how it fades and
 //! drags is `strata-gallery/tests/c24.rs`'s.

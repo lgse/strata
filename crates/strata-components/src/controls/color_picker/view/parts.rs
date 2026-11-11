@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The picker's parts: the plane, a strip, the hex row and a swatch row.
 
 use std::f32::consts::FRAC_PI_2;

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What a launch carries to the primary: its arguments, its working directory and the
 //! desktop's activation token, in GApplication's platform data.
 

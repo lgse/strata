@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Swatches as data: the rows the host passes (theme colours, recent colours) and the helper
 //! that keeps a recent-colours list.
 

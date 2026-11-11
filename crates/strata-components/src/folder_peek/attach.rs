@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The folder rows: C1e's rest hook, and the anchor in the row a peek is open from.
 
 use std::hash::{Hash, Hasher};

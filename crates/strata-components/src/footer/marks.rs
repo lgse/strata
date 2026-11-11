@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The footer's marks: the pill the `10X` tag and the clipboard badge share, the `filter:` and
 //! `search:` marks, the search hit under the cursor, and the `VISUAL` and `UNSET` range marks.
 

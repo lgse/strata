@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the picker says: its names, its status and its empty state, as data.
 
 /// The picker's words. The defaults are English; a host passes its own translations.

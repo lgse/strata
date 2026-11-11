@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Group header lines: how lines map to entries, and the grouped geometry.
 
 use super::*;

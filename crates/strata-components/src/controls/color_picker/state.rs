@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The picker's model: the colour as HSV, the drag in progress, the parts' laid-out sizes, the
 //! hex field's text and the popover's opening colour. Pure logic; `view/` wires it to Rune.
 

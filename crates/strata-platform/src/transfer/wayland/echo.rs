@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Whether a data-device selection write took.
 //!
 //! wlroots ignores `wl_data_device.set_selection` with a serial older than the current

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The highlighter thread: its requests, and the loop that feeds them to the engine.
 //!
 //! One thread owns the [`Engine`], and so every `ParseState` (S4, B1 option (a)). Requests

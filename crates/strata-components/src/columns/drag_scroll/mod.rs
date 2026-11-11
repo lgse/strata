@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Column autoscroll during a file drag (`operations/drag-and-drop/column-autoscroll`), and the
 //! column a held drag would drop into.
 //!

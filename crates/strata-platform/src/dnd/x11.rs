@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! X11: XDND version 5 on P0's X11 actor, through its hook (one connection, one thread, and
 //! P0's selection code serving and reading `XdndSelection` with INCR).
 //!

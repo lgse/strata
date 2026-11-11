@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The camera indicator between the camera buttons: a map from above, with a hollow circle for
 //! the model in the middle and a dot on the outer ring for the camera (Strata's
 //! `camera_position` and `draw_camera_position`).

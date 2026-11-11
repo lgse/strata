@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`ProgressDialog`]: the blocking progress dialog, on C15's [`StrataDialog`], for operations
 //! that must hold the window (Strata's moves, extracts, restores, Empty Trash, undo).
 

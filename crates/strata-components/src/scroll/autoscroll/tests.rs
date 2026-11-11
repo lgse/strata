@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The autoscroll machine, its speed curve and the collection decorator, with no Rune runtime.
 //! Each test names the `browser/scrolling` bullet it checks.
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C26's prompts in process: what scripts can't drive. End process answers as the backend does
 //! (a shorter list, in place), a withdrawn request closes its prompt unanswered, and a fake
 //! `gio::MountOperation` round-trips through P9's GLib bridge into the real prompts.

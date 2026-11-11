@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The pointer machine on the collection element's seam (C1e): [`PointerIntent`] is the
 //! `PointerController` a host installs, and a `Ctx` is the machine's [`Surface`].
 

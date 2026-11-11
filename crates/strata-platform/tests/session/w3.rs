@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! W3's own checks of the harness: a Rune window under headless sway and Xwayland, virtual
 //! input reaching it, the peer's clipboard, drag and drop (with an `XdndProxy` too) and export
 //! on both backends, the private bus, and teardown, orderly and after a SIGKILL.

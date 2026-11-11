@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Wayland: `zxdg_importer_v2` on P0's queue on winit's display.
 //!
 //! `set_parent_of` needs winit's own `wl_surface`, so the import goes on winit's display,

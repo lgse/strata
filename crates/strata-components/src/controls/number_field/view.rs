@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The number field's element: a spin button holding a text box frame with −, the number,
 //! its unit and +.
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C3's page in process: what the accessibility tree doesn't show. Tooltips (a pointer resting
 //! for the page's 900 ms) and hover aren't in the tree; held thumbnails across a zoom need the
 //! store; the paths X2 finds tiles by need the element tree. Each test names the bullets it checks; the scripts in `tests/scripts/c3/`

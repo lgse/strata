@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The columns menu (Strata's `column_options.rs`): COLUMNS, a check item per column, a
 //! separator, then "Reset to default columns". It stays open while its checks change; Escape or
 //! a press outside closes it.

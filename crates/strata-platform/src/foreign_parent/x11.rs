@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! X11 (an X11 session, or Xwayland): `WM_TRANSIENT_FOR`, `_NET_WM_WINDOW_TYPE_DIALOG` and
 //! `_NET_WM_STATE_MODAL`, set on a connection of the shim's own.
 //!

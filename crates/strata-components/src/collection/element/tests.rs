@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The element in a headless runtime: input routing to the default click and to installed
 //! controllers, effects and intents, what the host hears, memoized rows, virtualization,
 //! position restore and what assistive technology reads.

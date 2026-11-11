@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use std::os::unix::net::UnixStream;
 
 use wayland_backend::client::Backend;

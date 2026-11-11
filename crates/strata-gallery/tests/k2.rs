@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! K2's page in process: what the accessibility tree doesn't show. The interface font
 //! reaches Rune's sans slot (`Runtime::font_families`), mono stays the app's (the bundled
 //! JetBrains Mono, K6), and Default and Escape put the app's families back. The scripts in

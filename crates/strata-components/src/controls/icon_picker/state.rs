@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The picker's state: its source, what it shows, the search field and the grid's collection.
 
 use std::rc::Rc;

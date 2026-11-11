@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What a sheet is, as Strata hands it over, and how one cell shows.
 
 use std::borrow::Cow;

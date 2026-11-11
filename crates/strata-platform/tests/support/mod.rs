@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The compositor and D-Bus harness (W3): each test gets a private session of its own.
 //!
 //! [`Session::start`] brings up, under a private `XDG_RUNTIME_DIR`:

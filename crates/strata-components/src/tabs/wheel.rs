@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A vertical wheel over the tabs scrolls the strip sideways (`browser/tabs`: "When the strip
 //! is wider than the window, the wheel scrolls it horizontally").
 //!

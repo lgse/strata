@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Unit tests for the highlighter.
 //!
 //! Colours are checked against syntect's own highlighter (`HighlightState` with

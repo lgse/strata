@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use super::Book;
 use crate::clipboard::api::{Change, CopyId, CopyState, Lost, Offered, Selection};
 

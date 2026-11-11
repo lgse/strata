@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Wayland: drags out through `wl_data_device.start_drag`, and drops in through P0's
 //! [`DragOffer`], all on P0's queue on winit's display.
 //!

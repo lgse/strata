@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The guard of a drag source against Rune's capture, headless at the pinned Rune rev: the
 //! workaround for U10 (draft, not filed) relies on Rune ending a held drag on Escape, and on
 //! `Tx::send_key` delivering one. If a Rune move changes either, these fail. The

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The sidebar's own state, held by the app and reached by accessor: the width step, the
 //! collapsed sections, the reorder drags, the drop hover and the host's pin check.
 

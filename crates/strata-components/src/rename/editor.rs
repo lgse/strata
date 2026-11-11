@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The editor's element: a field in the label's place, with the validator's message under it.
 
 use std::rc::Rc;

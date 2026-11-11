@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A GLib `GApplication`, for the `single-instance` shim's interop tests (P8): the shim speaks
 //! GApplication's wire protocol, so a launch of either reaches whichever is the primary.
 //!

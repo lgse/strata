@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Perf tests on the S4 fixtures (`tests/fixtures/code/`), against S4's budgets: a viewport
 //! within 8 ms at p95 (the reading N = 64 is sized for), and an edit's foreground within
 //! 2 ms. They time the engine on the test thread, which is the work the highlighter thread

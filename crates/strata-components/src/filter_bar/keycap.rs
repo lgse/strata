@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A keycap chip that draws its key as given, on Strata's keycap look (`.sidebar-keycap`:
 //! the text colour on the base fill, a 1 px border, small corners, bold small type).
 //!

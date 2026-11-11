@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The live spectrum: bar ballistics over the host's band levels, drawn through `Live`
 //! values with no view commit (Strata's `src/ui/preview/audio/spectrum.rs` and `analysis.rs`).
 //!

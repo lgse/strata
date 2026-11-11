@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! NumberField (C20a): a spin button, a text field between − and + with a minimum, a maximum,
 //! a step and an optional unit (plan §4 C20: thumbnail workers, text size, the corner
 //! roundness percent).

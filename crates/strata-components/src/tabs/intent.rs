@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the strip asks of its host.
 
 use rune_kit::shell::{TabTearMove, TabTearOut};

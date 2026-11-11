@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The zoom model as plain math: levels, steps, limits, the wheel and pinch factors, zooming
 //! about a point, pan clamps, the zoom report and the zoom keys.
 //!

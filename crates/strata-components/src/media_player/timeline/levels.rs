@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The waveform's levels and their grow-in (Strata's `src/ui/preview/waveform.rs`).
 
 /// Below this the loudest level counts as this, so a silent track doesn't blow up noise.

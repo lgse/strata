@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gallery page for K3 Icon catalogs: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `k3-` and end in `-light` or `-dark`.
 //!

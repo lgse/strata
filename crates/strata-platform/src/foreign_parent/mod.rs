@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Foreign parenting: a Rune window transient for another process's window, from the parent
 //! handle an XDG portal passes (`wayland:<xdg-foreign handle>` or `x11:<xid>`), for a portal
 //! backend's dialog such as a FileChooser.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The slider's model: its value, its range, the drag in progress and the track's laid-out
 //! width. Pure logic; the view in `view.rs` wires it to Rune.
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the shortcut reference lists, as data: sections of rows, each an action and its keys.
 
 /// The reference's contents: the active key map's rows by section, in order. Bump

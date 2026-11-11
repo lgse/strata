@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The peer on X11: one x11rb connection. A thread blocks on X events and the stdin thread
 //! reads commands; both feed one channel that the main thread works through, so all state
 //! lives on one thread.

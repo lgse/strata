@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The keys the editor gives its parts, so hosts and scripts can name them. The editor and its
 //! field sit under the row (`row-{id}`); the message sits in the host's overlay layer.
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C4's page in process: what the accessibility tree doesn't show or a script can't hold. The
 //! stuck group header is hidden from assistive technology, so this file is its check (with the
 //! `c4-grouped-stuck` PNG golden); modified presses can't be scripted at the pinned Rune; and

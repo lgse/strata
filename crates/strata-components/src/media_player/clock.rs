@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The playback clock the player follows, and a fake one that plays on the host's clock.
 
 use std::time::Duration;

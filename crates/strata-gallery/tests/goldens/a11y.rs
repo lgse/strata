@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Each golden scene's accessibility tree, without bounds, scroll offsets, text selection or
 //! shortcuts, against `tests/golden/a11y/<id>/<scene>.json`.
 

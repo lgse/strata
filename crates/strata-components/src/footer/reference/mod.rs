@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The shortcut reference (F1): a [`DialogShell`] panel listing the
 //! active key map, with a search and category filters. See the [footer module](super) docs.
 

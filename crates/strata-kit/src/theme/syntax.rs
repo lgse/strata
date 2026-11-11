@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Syntax colours: Strata's source palette, and the rune-kit [`SyntaxTheme`] it becomes.
 //!
 //! Strata colours code with a GtkSourceView scheme built from five theme colours plus the

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What reaches the app: one [`Event`] per launch, activation or call.
 
 use std::ffi::OsString;

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The archive preview (`operations/archives/preview`): an archive's member tree, browsed like
 //! a read-only folder, on C1e's collection element in read-only mode (no rename, no drops, no
 //! drag out). Crumbs from "Contents" over a count line and the rows; a password prompt

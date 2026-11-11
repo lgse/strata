@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The demo host, headless: its window keys and its springs. (What crosses processes is in
 //! `tests/x2.rs`, under W3.)
 

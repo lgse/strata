@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Tile metrics and the caption cut, measured in Rune's own fonts.
 
 mod perf;

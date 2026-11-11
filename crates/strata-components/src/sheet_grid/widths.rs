@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Column widths, by Strata's rules (`measure_columns` and the fit in `widget_with_height`):
 //! each column wants the widest of its first 64 rows' text, and while nobody has resized one,
 //! the columns share out the viewport's spare width by how much more than 160 points each

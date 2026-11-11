@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Strata's overlay scroll bar: a thin accent thumb on a faint rounded trough over a
 //! viewport's edge, hidden at rest and shown while the view scrolls or the pointer moves over
 //! it. See the [scroll module](super) for why it is C24's own and not rune-kit's.

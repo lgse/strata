@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Strata's clipboard rules on [`Board`], without P2: marks, the badge and the cut's
 //! remainder. (What crosses processes is in `tests/x3.rs`, under W3.)
 

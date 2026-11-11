@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Tabbed form (C20c): the custom-action editor's notebook. A tablist over pages, each page
 //! kept mounted or rebuilt by a flag, with a "has errors" mark per page.
 //!

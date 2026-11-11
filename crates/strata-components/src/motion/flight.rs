@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The trash flight: what flies, from where to where, with Strata's timings, and the flyers'
 //! elements on each side of the matched swap.
 

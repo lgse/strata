@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Frame and Content density, and the bar and row sizes they set with the text size.
 //!
 //! Work package: K2, `docs/work/phase-1-leaves/K2-shape-density-type.md`.

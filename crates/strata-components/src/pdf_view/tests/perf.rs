@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Perf on a 500-page PDF: 500 Letter pages, each with a 2,700-character text layer.
 //! `#[ignore]`d; run with the `perf` profile, and Rune's commit budget to hear slow commits:
 //!

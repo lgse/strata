@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The player layout the model and route views share, and the parts they put in it: a details
 //! header (an eyebrow over a title), a badge row and its badges.
 //!

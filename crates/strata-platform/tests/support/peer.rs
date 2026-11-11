@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The client for `strata-test-peer` (`tests/support/strata-test-peer/`): typed requests over
 //! its JSON-line protocol.
 

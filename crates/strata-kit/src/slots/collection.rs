@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The `collection.*` slot tokens (for example `collection.row`) that the collection element
 //! reads, and the views built on it through it.
 //!

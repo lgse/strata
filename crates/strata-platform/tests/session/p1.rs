@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! P1's session tests: drags out to the peer and drops in from it, on Wayland and X11, with
 //! the `dnd` example (`examples/dnd.rs`) as the app.
 //!

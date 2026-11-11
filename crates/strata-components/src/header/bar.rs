@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The bar: Strata's browser header, its action buttons and its window buttons.
 
 use std::rc::Rc;

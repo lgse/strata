@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! GTK 4's size matching (`theme_dir_size_difference` and `compare_dir_size_matches` in
 //! `gtkicontheme.c`), kept rule for rule so a lookup picks the file GTK picked.
 

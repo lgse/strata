@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The route's projected trace: the samples Strata's helper returns, where a distance falls on
 //! them, and which point on them a pointer is nearest. Ported from Strata's
 //! `src/ui/preview/route/position.rs` and the profile mapping in

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`ColumnSources`]: the host's listings, as data.
 
 use std::borrow::Cow;

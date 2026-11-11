@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What a unit's text element shows, when it isn't the model's text as it is: an inline
 //! equation's placeholder replaced by its source (D2), and the room the Copy code button
 //! keeps at the end of a code block's first line. Each change is an [`Insert`], which knows

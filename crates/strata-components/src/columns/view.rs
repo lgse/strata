@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`ColumnsView`]: the builder, the collection each column builds, and how keys, presses,
 //! intents and drags reach the strip.
 

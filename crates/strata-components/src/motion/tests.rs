@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The effects in a headless runtime: a list of keyed rows beside a target, the layer over
 //! both, and a host that removes rows at the events, as Strata will.
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Component slots: one file per component that reads named tokens (`list.row`,
 //! `sidebar.row`, `tabs.tab`, …). Slots are API (plan K4).
 //!

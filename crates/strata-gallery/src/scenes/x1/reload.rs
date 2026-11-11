@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The host's half of K4's live reload and P5's look parameters, shared by the gallery page and
 //! `examples/shell`: when a change to the overrides file is read, and how a look is rebuilt.
 //!

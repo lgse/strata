@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A drag's picture: an image, or a snapshot of a view rendered headless.
 //!
 //! Rune's live-frame element snapshot is `pub(crate)` (draft U1, not filed), so a snapshot

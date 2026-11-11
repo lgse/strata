@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`ViewportState`]: the mode, the level, the pan and what they're measured against.
 
 use rune::{Drag, Live, Phase};

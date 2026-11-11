@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gallery page for K2 Shape, density and type: its scenes, demo state, view and key and poll
 //! hooks. Scene names start with `k2-` and end in `-light` or `-dark`.
 //!

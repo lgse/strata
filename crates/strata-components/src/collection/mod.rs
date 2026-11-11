@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The entry collection (C1): selection, pointer intent, keyboard navigation, marquee and the
 //! virtual-row element.
 //!

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Classes to colour-only Rune spans.
 
 use std::ops::Range;

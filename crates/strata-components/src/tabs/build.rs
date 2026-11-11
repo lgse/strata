@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`BrowserTabs`]: rune-kit's `TabStrip`, with Strata's look and what a file manager adds,
 //! set over each built tab through `TabItem::decorate`.
 

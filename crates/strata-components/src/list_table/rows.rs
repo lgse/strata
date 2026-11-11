@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The rows' cells (C1e's content slot), the middle-truncated name, and the hit regions C1b
 //! reads.
 

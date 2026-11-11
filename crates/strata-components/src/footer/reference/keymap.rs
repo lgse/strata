@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Rows from a C1c [`KeyMap`], and chord labels as Strata writes them.
 
 use rune::{Chord, ChordKey, ChordMod, KeyPlatform};

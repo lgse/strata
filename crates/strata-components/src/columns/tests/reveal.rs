@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The strip's reveal with the look's animations off, in a host that leaves the system's
 //! reduced motion alone: Strata's own animations switch is not the desktop's reduced motion,
 //! and under Rune's reduced motion every glide lands at once anyway (`scroll_to_with` snaps), so

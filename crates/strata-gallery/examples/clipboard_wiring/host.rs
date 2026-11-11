@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The demo's window: a C1e list over one folder of `--root`, whose rows show the clipboard's
 //! marks, and C19's footer with the Files on clipboard badge. Ctrl+C, Ctrl+X and Ctrl+V go
 //! through [`FileClipboard`]; the paste is applied here (`fsys`), as Strata applies it.

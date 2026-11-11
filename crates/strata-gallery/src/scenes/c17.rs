@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gallery page for C17 SearchPalette: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `c17-` and end in `-light` or `-dark`.
 //!

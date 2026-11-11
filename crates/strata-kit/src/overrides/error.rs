@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What can be wrong with a row of the override file, and how it reads.
 
 use std::fmt;

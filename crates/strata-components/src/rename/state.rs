@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The rename editor's model: the open edit, how it ends, and what the host hears.
 
 use rune::{Key, KeyEvent, TextEdit};

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What to look up: names with their fallbacks, or a file, at a size and scale.
 
 #[cfg(test)]

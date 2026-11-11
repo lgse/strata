@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! `text/uri-list` (RFC 2483) and `file:` URIs (RFC 8089), as drags carry files.
 
 use std::path::{Path, PathBuf};

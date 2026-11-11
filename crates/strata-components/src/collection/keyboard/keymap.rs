@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The key map: which chords run which [`Command`]s, and which keys stand in for the arrows.
 
 use rune::{Chord, ChordKey, ChordMod, KeyPlatform};

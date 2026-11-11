@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Rows: one per unit, built by index inside Rune's virtual list.
 
 use std::ops::Range;

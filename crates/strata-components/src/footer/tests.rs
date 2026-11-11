@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Unit tests for the footer's count (`app/shortcut-reference`, Footer status).
 
 use super::count::*;

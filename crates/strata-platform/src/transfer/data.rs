@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What moves: lazy writers for sources, and the limits on reads.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};

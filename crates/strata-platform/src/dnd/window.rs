@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`Dnd`]: one window's drag and drop. Its targets, the drag over it, and the drags it
 //! starts.
 

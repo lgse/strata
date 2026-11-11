@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`FilterBar`]: the bar's element and the field's keys.
 
 use std::rc::Rc;

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Selection, anchor, cursor and restore memory, by entry id (C1a).
 //!
 //! [`Selection`] is the selection state of one collection (a list, a grid, one Miller

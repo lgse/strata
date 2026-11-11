@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The keys the view gives its parts, so hosts, scripts and scroll requests can name them.
 //! Every key starts with the view's key, so two strips (two windows' states in one process,
 //! the chooser) never collide.

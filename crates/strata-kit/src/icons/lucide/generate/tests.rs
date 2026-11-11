@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the generator accepts from a source, what it refuses (and so stops the build), and
 //! what it makes of an accepted one.
 

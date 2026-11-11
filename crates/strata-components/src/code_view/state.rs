@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`CodeState`]: what the host keeps per source preview, and what C9's header and find bar
 //! ask of it.
 

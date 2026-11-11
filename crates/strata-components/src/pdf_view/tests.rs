@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Unit tests for C12: the text layer's geometry, the selection, the request queue and find.
 //! The view's routing (presses, keys, wheels, focus, what assistive technology hears) is
 //! tested through the gallery (`crates/strata-gallery/tests/c12.rs` and the scripts).

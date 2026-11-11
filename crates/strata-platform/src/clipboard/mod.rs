@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Clipboard copies and pastes with any MIME types, for Rune apps on Wayland and X11.
 //!
 //! A [`Clipboard`] writes a [`Content`] of any types at once, each with its bytes or a lazy

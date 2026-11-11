@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The prompt the host keeps in its state: the request it shows, the host's ticket for it, and
 //! the password form.
 

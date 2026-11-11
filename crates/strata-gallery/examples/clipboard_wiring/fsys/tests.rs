@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A paste's names and guards: Strata's numbering, the own-folder rules, Keep Both, and
 //! nothing written outside the root or read in from outside it.
 

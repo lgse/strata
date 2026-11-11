@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Cells, the cursor and cell ranges, in display coordinates (rows in sort order), and the
 //! sideways arithmetic that turns a point into a column.
 

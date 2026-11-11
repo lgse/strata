@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The card: rune-kit's `HoverCard` holding the folder's name, its first rows, and the more,
 //! empty, loading or error line.
 

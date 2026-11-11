@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The reference's panel: the header with the search, the categories, the results and the note.
 
 use std::hash::{Hash, Hasher};

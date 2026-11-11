@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Converting a user stylesheet (`~/.config/strata/style.css`) into override rows.
 //!
 //! [`migrate_css`] is a pure function: Strata reads the stylesheet on first launch, writes

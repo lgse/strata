@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`DockView`]: the dock's region in the overlay layer, its cards and its notices, and the
 //! progress bar the dialog shares.
 

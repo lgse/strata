@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! How the grid draws: the header (corner, column letters and titles, dividers), the rows
 //! (a sticky row number, then the cells) and the look they take from the Kit.
 

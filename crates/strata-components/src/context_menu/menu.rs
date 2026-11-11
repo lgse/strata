@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The context menu's builder: the host's state by accessor, its model as data, its intents
 //! out.
 

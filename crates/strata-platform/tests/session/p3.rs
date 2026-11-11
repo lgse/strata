@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! P3's session tests: the `csd` example window under headless sway, borderless on X11
 //! (Xwayland) and on Wayland, moving from its header, resizing from its edges where it can,
 //! and its buttons reaching the window manager.

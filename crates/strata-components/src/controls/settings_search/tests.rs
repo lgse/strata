@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 #![expect(
     clippy::single_range_in_vec_init,
     reason = "matched text is a list of ranges: a one-range list is meant, not an array of its bounds"

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The header: the previewed item (icon, name, details, badges), then the controls the hosted
 //! view supports, in Strata's order: the Rendered/Source switch, Find, the busy spinner, Open,
 //! Wrap and Close. There is never a Print button.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The entry: a combobox around rune-kit's text input, with Navigate and Cancel, and the keys
 //! that drive the suggestions.
 

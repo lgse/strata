@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gallery page for X1 Shell demo: Strata's header component and the shell window
 //! `examples/shell` runs, on fake data. Scene names start with `x1-` and end in `-light` or
 //! `-dark`.

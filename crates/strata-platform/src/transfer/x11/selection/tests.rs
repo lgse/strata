@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use x11rb::protocol::xproto::SELECTION_REQUEST_EVENT;
 
 use super::super::super::data::SourceSpec;

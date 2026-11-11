@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! `--apply`'s guards: nothing written outside the root, nothing read in from outside it.
 
 use std::os::unix::fs::symlink;

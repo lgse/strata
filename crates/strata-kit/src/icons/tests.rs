@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Shared by W2 (the semantic set) and K3 (the catalogs): every catalog keeps these.
 
 use std::collections::BTreeSet;

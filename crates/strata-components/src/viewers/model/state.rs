@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The model view's state: the file, the camera, the load and render stages, and the picture's
 //! viewport. The host renders; this only holds what the view shows and decides which presses
 //! count.

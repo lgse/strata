@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Picking a grammar for a text, with no I/O.
 //!
 //! syntect's `find_syntax_for_file` opens the file to read its first line, so this follows its

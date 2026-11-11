@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The hooks X2 binds the system drag through: the container's drag phases
 //! ([`Collection::on_drag_phase`]) and the drop zones' action ([`Collection::drop_action`]).
 

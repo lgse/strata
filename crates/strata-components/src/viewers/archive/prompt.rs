@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The password prompt an encrypted archive shows instead of its tree (Strata's
 //! `render_archive_password_prompt`): a lock, "Password-protected archive", a line of detail,
 //! a password field with an Unlock button, and the last attempt's error.

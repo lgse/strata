@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! File-type groups from a sorted listing: C1f's [`Groups`], one per run of entries that share a
 //! group, in display order.
 

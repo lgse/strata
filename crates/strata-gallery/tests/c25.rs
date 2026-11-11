@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C25's page in process: thumbnails fill the list while it scrolls with no commit of their
 //! own, the on/off switch reaches every view at once, and a filtered list's rows draw their
 //! own entries' thumbnails.

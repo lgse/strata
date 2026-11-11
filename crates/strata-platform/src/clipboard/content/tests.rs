@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use super::{Content, TEXT_TYPES};
 use crate::clipboard::Data;
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The elevation profile, drawn with `canvas` shapes from the samples' heights, and the markers
 //! that ride both pictures.
 //!

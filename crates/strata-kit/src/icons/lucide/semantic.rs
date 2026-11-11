@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Which icon each semantic name draws, the same in every catalog: Strata's own choice where
 //! Strata has one (read at lgse/strata `upstream/main` 35ee677ab: its context menus, sidebar
 //! and `src/ui/browser/entry.rs`; W2d's names and the device and root rulings at fb7eb0c4e,

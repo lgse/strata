@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Drag and drop between a Rune window and other apps, and between two windows of one app:
 //! a demo of the `dnd` feature, and the app strata-platform's session tests drive
 //! (`tests/session/p1.rs`). Commands arrive as JSON lines on stdin; what happens goes to

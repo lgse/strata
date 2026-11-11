@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the marquee machine reads on every step: the host gives it to the collection
 //! (`Collection::settings`), and the machine reads it through its surface
 //! (`Ctx::settings::<MarqueeSettings>()`) on each input.

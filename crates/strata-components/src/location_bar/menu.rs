@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The hierarchy menu: the current folder and its ancestors, current first and checked,
 //! opened under the bar where a secondary press landed.
 

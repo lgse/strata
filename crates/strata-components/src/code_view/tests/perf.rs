@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Perf on the work package's fixtures: the 50,000-line Rust file (`tests/fixtures/code`)
 //! opened, jumped to its end and scrolled, with the real highlighter thread colouring it; and
 //! a 5,000-line script edited in the editor. `#[ignore]`d; run with the `perf` profile and

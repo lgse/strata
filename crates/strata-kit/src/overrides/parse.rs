@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The override file: TOML parsed line by line where it breaks, then each row read against
 //! the registry.
 //!

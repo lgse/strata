@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Folder peek (C22): resting the pointer on a folder in Icons or List shows its first rows in
 //! a hover card beside it.
 //!

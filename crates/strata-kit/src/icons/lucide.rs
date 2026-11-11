@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The Lucide catalog: Strata's Theme colors. Every icon is single-colour and takes the
 //! element's colour (a component tints it with Kit's icon roles, the accent by default),
 //! including Catppuccin's file-type icons, which also get Strata's 15 % fill. Licences: ISC

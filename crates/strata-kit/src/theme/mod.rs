@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Theme mapping: Strata's bundled themes, custom theme files and the Omarchy mapping onto
 //! `rune_kit::Kit` and strata-kit's extensions.
 //!

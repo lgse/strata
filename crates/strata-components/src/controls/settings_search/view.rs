@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The search field, and what a host's settings window asks of the search while it draws.
 
 use std::fmt;

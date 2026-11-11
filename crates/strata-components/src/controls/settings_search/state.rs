@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The search's state: the field, the cached matches, and the pending jump's highlight.
 
 use rune::{TextEdit, Tx};

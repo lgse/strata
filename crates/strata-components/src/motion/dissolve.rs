@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The permanent-delete dissolve: rows break into fragments that scatter and fade (Strata's
 //! `dissolve_delete.rs`, its budget, tiles, curves and seeded motion).
 //!

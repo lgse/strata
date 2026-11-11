@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! One window of the demo: Strata's chrome and views on a real folder, every drop target and
 //! drag source wired to P1 through the adapter, and Strata's policy stood in for (the
 //! transfers are logged, and done with `--apply`).

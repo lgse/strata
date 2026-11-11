@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The windows attached to the substrate, each with the [`Turn`] its app gave at attach.
 //!
 //! The Wayland reader asks the UI thread to dispatch through a window's app

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! W2's page: the gallery's look, which pages draw with and look pages change.
 
 mod w2 {

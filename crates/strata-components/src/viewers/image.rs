@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The image view: C14a's viewport (zoom and pan, the checkerboard behind transparent images)
 //! with the image's name and its dimensions under it.
 //!

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The Jobs dashboard: a footer button with the jobs' count that opens their list above it
 //! (Strata's `src/ui/jobs.rs`). It slots into C19's `Footer::jobs`. Jobs arrive as rows; what
 //! the buttons do (cancel, remove, dismiss, clear) is the host's, as intents.

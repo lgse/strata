@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Corner roundness, and [`LookParams`]: every K2 setting (roundness, density, text size and
 //! the interface font), plus the element glow and animations switches, applied to a [`Look`]
 //! in one step.

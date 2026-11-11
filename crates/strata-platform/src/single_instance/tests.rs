@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Unit tests: no bus. A test that claims or forwards needs a private session bus, so those
 //! are session tests (`tests/session/p8.rs`, `mise run test-platform p8::`); one here would
 //! reach the desktop's own bus through `$XDG_RUNTIME_DIR/bus`.

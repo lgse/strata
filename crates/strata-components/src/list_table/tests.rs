@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The table's rules as plain data: the layout and widths, the sizing rule, where a dragged
 //! heading drops, the sort a click asks for, hit regions and groups. `tests/runtime.rs` drives
 //! the table in a headless runtime.

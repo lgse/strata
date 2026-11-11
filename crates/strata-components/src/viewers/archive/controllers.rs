@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The archive tree's key map and pointer controller, on C1e's seam.
 //!
 //! One member is highlighted at a time, so the map has no Shift ranges, no Ctrl+A or Ctrl+Space

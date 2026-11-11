@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C9's page: what the drawer does in process, beside its goldens and scripts. Each test that
 //! checks a feature-map Behavior bullet names it, as a script would, where a script can't:
 //! states in the middle of a slide or a drag, and paint.

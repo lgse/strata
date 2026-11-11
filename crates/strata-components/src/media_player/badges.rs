@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A video's badges from its probe: Strata's `src/ui/preview/video/badges.rs`
 //! (lgse/strata `upstream/main` e9a8993), rule for rule. The words are the host's
 //! ([`Labels`]).

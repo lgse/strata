@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Unit tests for the document view: the model's conversions, what a unit shows and copies,
 //! find, and, on Rune's headless runtime, selection, copy, links, Copy code and code colours.
 

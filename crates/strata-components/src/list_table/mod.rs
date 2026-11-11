@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! ListTable (C4): the List view, built on the collection element (C1e).
 //!
 //! Work package: C4, `docs/work/phase-3-views/C4-list-table.md`.

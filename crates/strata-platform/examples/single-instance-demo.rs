@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! One instance of a Rune app, with a window per launch (P8).
 //!
 //! `cargo run -p strata-platform --features single-instance --example single-instance-demo a b`

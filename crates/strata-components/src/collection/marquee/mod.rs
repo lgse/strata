@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Marquee (rubber-band) selection (C1d).
 //!
 //! [`MarqueeMachine`] turns a held drag into a band over a collection's entries, mounted or

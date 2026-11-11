@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The `icons.*` slot tokens (for example `icons.frame.pad`) that IconsGrid reads.
 //!
 //! Work package: C3, `docs/work/phase-3-views/C3-icons-grid.md`. C3 owns this file. Slot names

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Collection geometry: where each entry sits, by index, so marquee hit-testing, keyboard moves
 //! and keyboard context-menu anchors work over rows that aren't mounted.
 //!

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The `single-instance` shim without Rune, for strata-platform's session tests (P8). It
 //! claims `org.example.SingleInstanceProbe` and reports as JSON lines on stdout:
 //!

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The width rules: where the drawer's slot ends up in the split, solved from the split's
 //! width, the view beside it and the manual width. `docs/preview-panel-layout.md` in Strata
 //! (at the plan's watermark) is the source of every number here.

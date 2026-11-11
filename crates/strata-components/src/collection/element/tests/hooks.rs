@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The hooks C3 builds on: bare items, a line's side inset, the viewport's wheel and the count
 //! a line, each held to what the element draws and routes.
 

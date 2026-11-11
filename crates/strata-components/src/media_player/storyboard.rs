@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Storyboard frames: small cells across the clip, shown over the timeline's pointer and
 //! over the frame while a seek runs.
 //!

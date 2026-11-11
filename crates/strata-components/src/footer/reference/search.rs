@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The reference's search, as Strata's: a row stays when its action, its keys with their
 //! context, or one of its search terms contains the query, compared in lower case with the −
 //! and – that labels show read as a typed `-` (`search_folded` and `Shortcut::matches` in

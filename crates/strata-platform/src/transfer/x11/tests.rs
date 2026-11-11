@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use std::sync::mpsc;
 use std::time::Duration;
 

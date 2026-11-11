@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C20a's page in process: what each control reports (live, commit, cancel), a press on the
 //! track, Home and End, assistive actions, and the field menu holding a field's commit. The
 //! scripts in `tests/scripts/c20a/` check the bullets' end states.

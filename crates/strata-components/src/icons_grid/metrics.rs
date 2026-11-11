@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A tile's sizes, from the look and the tile size: pure arithmetic over tokens.
 //!
 //! After Strata's `icons_cell.rs` and `.icons-card*` rules (lgse/strata `upstream/main`

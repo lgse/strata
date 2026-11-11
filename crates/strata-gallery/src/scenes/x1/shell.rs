@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! One shell window's state and view: the header, an empty themed window with a readout of
 //! what the platform layer said, and the mounted-volumes dialog. The gallery page draws it on
 //! fake data; `examples/shell` draws it on the real platform shims, so both run the same view.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What a drag carries, what a drop offers and delivers, and the source and target an app
 //! attaches to its elements.
 

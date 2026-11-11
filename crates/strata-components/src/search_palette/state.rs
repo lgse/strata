@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`PaletteState`]: the open palette, held by the host and reached by accessor.
 
 use std::any::Any;

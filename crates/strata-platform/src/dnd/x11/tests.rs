@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use super::*;
 
 /// Review round 1: raw events name the physical button, so a left-handed mapping (physical 3

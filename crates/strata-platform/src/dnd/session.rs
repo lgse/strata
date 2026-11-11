@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The two backend-neutral pieces of a drag: the press guard on a drag source, and which
 //! target a drag over a window lands on.
 //!

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The grid in a headless runtime: what lands (details, thumbnails) rebuilds only what shows
 //! it, two grids follow one size, a scroll offset comes back only at its grid's width, and a
 //! 4K screen at scale 2 settles its thumbnail queue (C25's B1, at the grid).

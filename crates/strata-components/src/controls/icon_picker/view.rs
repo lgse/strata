@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The picker's builder: the field, the grid, the name line and the tabs, inline or in a
 //! popover behind a button.
 

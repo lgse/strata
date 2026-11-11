@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Lookups on a worker thread, results in shared handles, decoding in Rune's `ImageCache`.
 
 #[cfg(test)]

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The crumb strip: ancestors as buttons, the current folder with its Copy path button, in a
 //! sideways scroll viewport with edge fades and an overflow bar in its own row underneath.
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The route view's state: the route as data, the marker's place on it, and playback.
 //!
 //! Playback runs on the poll's clock: the host calls [`RouteState::tick`] from its poll on every

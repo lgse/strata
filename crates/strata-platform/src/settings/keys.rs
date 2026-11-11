@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The keys the module reads, in one table: each key's namespace and name live here only.
 
 use std::time::Duration;

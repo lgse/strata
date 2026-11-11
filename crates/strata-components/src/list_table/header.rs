@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The heading strip: sortable headings with the sort arrow, a resize handle on each
 //! heading's right edge, reordering by dragging a heading, and the columns menu on a
 //! right-click.

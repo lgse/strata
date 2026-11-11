@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The table in a headless runtime: what the scripts can't hold or see. Modifier-free gestures
 //! the scripts check stay there; these check state the tree doesn't show (a width mid-drag, the
 //! cursor shape, base units), two tables over one layout, and assistive technology's press.

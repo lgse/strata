@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Custom theme files and the library they join.
 //!
 //! A custom theme is a TOML file in `~/.config/strata/themes/`, keyed by its file stem.

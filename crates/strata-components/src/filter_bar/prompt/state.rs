@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`PromptState`]: the open footer prompt, held by the host and reached by accessor.
 
 use std::ops::Range;

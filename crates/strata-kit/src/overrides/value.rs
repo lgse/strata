@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A row's value, read for its token's kind.
 //!
 //! A colour is a literal, or (ruling Q2) one taken from another colour token, so it follows

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Drawing a menu on rune-kit's `Menu`, then adjusting the surfaces it pushed into the layer:
 //! their name, Strata's look, and the keys rune-kit's menu leaves out (submenus, Ctrl+A).
 //!

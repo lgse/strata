@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the sidebar lists, as plain data the host rebuilds each view: places, pins and
 //! devices. Which places show, the pins' order, which devices exist and how they group by
 //! drive are Strata's: the sidebar draws what it is given, in the order given.

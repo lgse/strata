@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! SearchPalette (C17): one modal palette for Ctrl+K search and the Ctrl+Shift+K folder jump
 //! (`browser/search`, `browser/navigation/folder-jump`), its modes as data.
 //!

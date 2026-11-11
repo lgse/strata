@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C14a's page: what the viewport does in process, beside its goldens and its script.
 //!
 //! No feature-map bullet describes zooming or panning an image (Strata's image preview has

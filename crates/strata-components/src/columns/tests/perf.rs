@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Perf: a strip of four columns of 100,000 entries each, held to C1e's bar against four
 //! rune-kit Tables of 100,000 rows side by side (the same rows drawn), measured in the same run.
 //!

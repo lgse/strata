@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! X11: selections on a connection of our own, from one thread.
 //!
 //! Rune exposes no X connection (draft U9, not filed), and winit answers XDND for its window

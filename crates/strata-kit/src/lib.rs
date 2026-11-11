@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Strata's look on top of `rune_kit::Kit`: theme mapping, icon catalogs, density and text
 //! size. Components read these tokens, never a theme by name.
 //!

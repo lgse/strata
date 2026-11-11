@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Where the card goes: Strata's rule (`peek_horizontal_placement`, `src/ui/browser/peek.rs`),
 //! measured against the collection's viewport, with Rune's anchored margin taken at its edges.
 

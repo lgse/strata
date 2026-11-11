@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! BrowserTabs (C7): the browser window's tab strip (`browser/tabs`), on rune-kit's
 //! `TabStrip`, with what a file manager adds: tabs and New tab as drop targets, a drag that
 //! rests on a tab selecting it, the closed-tabs stack, and a window title that follows the

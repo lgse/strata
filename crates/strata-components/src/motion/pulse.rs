@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The target's pulses (Strata's `trash-receiving`, `trash-impact`, `trash-release` and
 //! `trash-rebel-shudder`): a scale on the target itself, through [`dress_target`], and an
 //! accent ring over it in the motion layer.

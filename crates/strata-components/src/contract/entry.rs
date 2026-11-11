@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Entries: the ids, kinds and display fields every collection view and its controllers read,
 //! through the index-based [`EntrySource`].
 //!

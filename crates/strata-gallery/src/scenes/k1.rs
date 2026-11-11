@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gallery page for K1 Theme mapping: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `k1-` and end in `-light` or `-dark`.
 //!

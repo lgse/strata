@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use strata_kit::overrides::Overrides;
 
 use super::reload::{Change, Debounce, SETTLE};

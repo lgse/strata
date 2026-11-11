@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The placement rule and the state's transitions.
 
 use std::rc::Rc;

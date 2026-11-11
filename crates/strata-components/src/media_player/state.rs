@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The player's state: what the host gave it, what the clock said last, where the pointer is,
 //! and the live values that move without a view commit.
 

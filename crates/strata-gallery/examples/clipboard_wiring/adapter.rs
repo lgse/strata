@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The file clipboard over strata-platform's clipboard (P2): copy and cut of entries in the
 //! file managers' formats, the copy and cut marks rows show, the Files on clipboard badge
 //! (C19), and the paste read. An app copies this file as it is; it holds no file-manager

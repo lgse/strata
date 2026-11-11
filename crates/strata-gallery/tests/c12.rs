@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C12's page in process: what scripts can't reach (the requests the view asks, their widths
 //! and order, stale and cancelled replies, the zoom's rest from wake to wake, the budgets, a
 //! pane wider than 1280 points, where a zoom lands far down a mixed document, the cursor, a

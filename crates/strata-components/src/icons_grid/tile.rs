@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A tile: the thumbnail frame (C1e's icon slot), the name (its label slot) and the card that
 //! stacks them with the details line (its content slot). The collection draws no chrome of
 //! its own around a tile (`Collection::bare_items`): the frame and the name light up for the

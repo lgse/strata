@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`Describe`]: what assistive technology reads after a row's name.
 
 use rune::{Cx, El, Env, Runtime};

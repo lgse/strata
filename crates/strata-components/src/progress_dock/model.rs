@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`Dock`]: the operations, notices and timers the dock and the progress dialog show. The
 //! host holds it and feeds it data; the views read it.
 

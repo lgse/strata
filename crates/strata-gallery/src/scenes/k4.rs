@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gallery page for K4 User overrides: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `k4-` and end in `-light` or `-dark`.
 //!

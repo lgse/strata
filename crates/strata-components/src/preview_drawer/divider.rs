@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The divider between the files and the preview: a 1 point line, and a 6 point grip inside
 //! the preview's leading edge that moves it. The line and grip are one hover group, so the
 //! pointer crossing between them keeps the caption. The files' own resize edges (C2's column

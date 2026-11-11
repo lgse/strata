@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Matched text: a label that draws the characters a query matched in a Kit accent.
 //!
 //! It takes the matched ranges as data. Callers match however they like: on the host (the

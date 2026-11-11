@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C11b's page: what the sheet grid does in process, beside its goldens and scripts, where a
 //! script can't look: a drag held while the preview closes, and a sheet arriving from the
 //! page's fake reader. Each test that checks a feature-map Behavior bullet names it.

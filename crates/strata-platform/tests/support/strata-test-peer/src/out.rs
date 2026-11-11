@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Everything the peer writes: one JSON line per reply or event, from any thread.
 
 use std::io::Write;

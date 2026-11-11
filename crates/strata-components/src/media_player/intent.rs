@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the player asks of its host.
 
 use std::time::Duration;

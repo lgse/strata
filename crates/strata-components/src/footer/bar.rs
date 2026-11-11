@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`Footer`]: the window footer's status row.
 
 use std::fmt;

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The shell demo (X1, M1): a themed window with Strata's header, on every strata-platform
 //! foundation at once.
 //!

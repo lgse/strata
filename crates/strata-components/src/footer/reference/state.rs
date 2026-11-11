@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`ReferenceState`]: whether the reference is open, its query and category, held by the host
 //! and reached by accessor; and [`ReferenceKeys`], the keys it answers.
 

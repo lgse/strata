@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Selections through `wl_data_device` and data control, and drag and drop.
 //!
 //! Data control binds `ext_data_control_v1` where the compositor has it (wlroots 0.19 and

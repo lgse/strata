@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gallery page for W1 Component contracts: matched-text labels, the one contract type
 //! that draws. Scene names start with `w1-` and end in `-light` or `-dark`.
 //!

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Semantic icons: the `IconName` set components draw, behind a catalog they never name.
 //!
 //! Work packages:

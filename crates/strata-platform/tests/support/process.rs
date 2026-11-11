@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Processes a session spawns: stdout kept line by line (and logged), stderr logged, killed when
 //! dropped.
 

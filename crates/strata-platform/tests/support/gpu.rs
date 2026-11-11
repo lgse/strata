@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The Vulkan driver clients use and the renderer sway composites with.
 //!
 //! The pairs that give a Rune window:

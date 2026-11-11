@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A later launch: hands its command line to the primary and waits for the answer.
 //!
 //! It calls `org.gtk.Application.CommandLine` with the path of its own

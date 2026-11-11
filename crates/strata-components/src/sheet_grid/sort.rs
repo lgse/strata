@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Sorting, as Strata's `TableState` does it (`src/ui/table_view.rs`, lgse/strata#1946): a
 //! stable sort of a row permutation, by every sort column most recent first, ties in source
 //! order. Keys are built per column on its first sort.

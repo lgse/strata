@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! ICCCM selections on the actor thread: owning one (with a server timestamp), answering
 //! `SelectionRequest`s (INCR above one chunk), converting another client's selection (INCR
 //! too), and following owners through XFixes.

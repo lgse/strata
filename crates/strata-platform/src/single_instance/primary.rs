@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Claiming the app id, and the primary that then serves it.
 
 use std::future::Future;

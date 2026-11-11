@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A private session bus: a `dbus-daemon` of the session's own, whose only service directory
 //! is the session's. Nothing from the desktop (portals, gvfsd, the accessibility bus) can be
 //! activated on it.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Where the strip scrolls to reveal a column: Strata's `ColumnSpan::reveal_target`
 //! (`src/ui/browser/columns/reveal.rs`, `upstream/main` 35ee677ab). Pure.
 

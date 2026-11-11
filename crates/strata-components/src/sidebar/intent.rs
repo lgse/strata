@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the sidebar reports. It owns no policy: opening a place, pinning, transfers, ejecting
 //! and saving preferences are the host's, through these intents.
 

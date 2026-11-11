@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`MotionLayer`]: the element the effects draw in, over the whole window.
 
 use std::rc::Rc;

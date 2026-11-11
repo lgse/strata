@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Which action a drag offers and a drop takes: GTK's modifier rule.
 //!
 //! - Ctrl copies, Shift moves, Ctrl+Shift links. A modifier asking for an action the source

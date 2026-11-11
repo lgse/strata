@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The elements: resize bands over the content, the header's drag region, and the link to
 //! the native window.
 

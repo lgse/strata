@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! MediaPlayer (C13): the media preview's interface, driven by a clock and frames it doesn't
 //! produce.
 //!

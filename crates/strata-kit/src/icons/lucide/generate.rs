@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The catalog generator `build.rs` runs (`#[path]`-included there): SVG sources in, the Rust
 //! source of [`super::catalog`]'s arrays out. It lives here so the crate's tests can check what
 //! it accepts and what it makes; the library itself never compiles it.

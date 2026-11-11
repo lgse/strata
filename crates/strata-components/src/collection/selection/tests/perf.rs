@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Perf: 100,000 entries, select all, then a Shift range across the list, each under a
 //! millisecond. Release builds only:
 //! `cargo test --release -p strata-components --lib selection::tests::perf -- --nocapture`.

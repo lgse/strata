@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The palette's modes, as data: Ctrl+K search and Ctrl+Shift+K folder jump are two values
 //! of one type, not two components.
 

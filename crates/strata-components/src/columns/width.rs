@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Column widths: Strata's standard column, the edge's reach, and the rules a width is drawn by
 //! (`src/ui/browser/columns/resize.rs`, `upstream/main` 35ee677ab). Pure.
 //!

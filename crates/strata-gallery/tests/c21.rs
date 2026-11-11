@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C21's page in process: what scripts can't reach. The scripts in `tests/scripts/c21/`
 //! check the rest. Each test names the bullets it covers.
 

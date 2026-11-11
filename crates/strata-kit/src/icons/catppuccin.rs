@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The Catppuccin catalogs: Strata's Brand colors. The same icons as [`super::lucide`], but
 //! each Catppuccin file-type icon draws in its own colours, in the Mocha or Latte flavour; Rune
 //! draws a body that names its colours in them, so the element's colour doesn't reach it. The

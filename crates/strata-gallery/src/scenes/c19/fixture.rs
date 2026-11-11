@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The page's fake data: a copy of part of Strata's shortcut catalog (the real one is Strata's,
 //! built from its key map per view, map and chooser request), and a small listing to count.
 

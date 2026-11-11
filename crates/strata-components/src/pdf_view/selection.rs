@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The text selection over pages: an anchor, a granularity (characters, words, lines) and the
 //! range selected on each page, as Strata's PDF view keeps them (`pdf_desired_ranges`,
 //! `pdf_selected_text` in `src/ui/preview/pdf/selection.rs`, upstream/main e9a8993b7).

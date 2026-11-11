@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C2's page: what the columns view does in process, beside its goldens and scripts. Each test
 //! names the feature-map Behavior bullets it checks, where a script can't see them: scroll
 //! offsets, widths, timing, modifiers held on a pointer, and paint.

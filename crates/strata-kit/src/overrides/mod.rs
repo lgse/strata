@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! User overrides: `overrides.toml`, applied after the theme, with live reload and errors by
 //! line.
 //!

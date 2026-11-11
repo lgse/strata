@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Search: GTK's emoji chooser rule (`gtk/gtkemojichooser.c`, `match_tokens`, GTK 4.18).
 //!
 //! The query and the name are split into words (runs of letters and digits) and folded

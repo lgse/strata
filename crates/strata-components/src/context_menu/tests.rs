@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C21's unit tests, in a headless runtime where they touch Rune: what opens, where the
 //! keyboard goes, what a choice reports, and what the field menu does to its field.
 

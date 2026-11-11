@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The peer process. See the library docs and [`strata_test_peer::protocol`].
 
 mod out;

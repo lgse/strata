@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`Dnd`]: how a component attaches its drop zones and drag sources to elements, as the host
 //! chooses.
 

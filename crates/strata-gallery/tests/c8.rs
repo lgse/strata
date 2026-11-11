@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C8's page in process: what the accessibility tree doesn't show (tooltips, motion, focus
 //! rings, the Trash target's key, and a drop target that holds while its gap opens). The
 //! scripts in `tests/scripts/c8/` check the rest. Each test names the bullets it covers.

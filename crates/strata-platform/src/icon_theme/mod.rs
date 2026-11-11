@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Freedesktop icon theme lookup, delivered as `rune::Pixels`: application and MIME icons by
 //! name, at a size and scale, the way GTK 4's `GtkIconTheme` finds them.
 //!

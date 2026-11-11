@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The bookkeeping behind [`Change`]s: this process's copies and where each stands, and what
 //! each selection offers. Pure: the hub feeds it what the platform reported, in order.
 //!

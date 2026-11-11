@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The number field's model: its value and range, the text being edited, and whether that
 //! text is a value it takes. Pure logic; the view in `view.rs` wires it to Rune.
 

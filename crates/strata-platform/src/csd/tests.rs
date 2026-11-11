@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Headless tests of the decorations on a `rune::Runtime`: where presses go, what the header
 //! keeps of Rune's drag region, and where each window button's request goes.
 //!

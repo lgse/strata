@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The column layout and widths: plain values the host keeps, shares and saves.
 //!
 //! [`ColumnLayout`] (order and visibility) is one value for every window and the chooser

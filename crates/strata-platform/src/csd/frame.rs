@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Which frame a window opens with, and which backend winit will pick.
 
 use rune::WindowOptions;

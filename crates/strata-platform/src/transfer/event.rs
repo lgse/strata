@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the substrate reports, and how subscribers hear it.
 
 use std::collections::VecDeque;

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! One row of the code view: its gutter (the line's number, or "↳" for a later part of a
 //! split line) and its text, with the line's colours once they land and find's matches.
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Settings search (C20c): a search field over an index of the settings window's rows (page,
 //! section, row key, title and keywords, all as data) that filters the window in place, as
 //! Strata's does, and on Enter jumps to the best row, scrolls it into view, moves the keyboard

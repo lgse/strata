@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What [`super::apply`] did, for the caller to log and to place the window by.
 
 use std::fmt;

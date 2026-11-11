@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The keyboard machine on C1e's seam: [`Keyboard`] is the collection's `KeyController`.
 
 use std::rc::Rc;

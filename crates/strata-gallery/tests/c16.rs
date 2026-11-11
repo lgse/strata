@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C16's page in process: the dock's and the dashboard's timers stepped from wake to wake (no
 //! frames between, animations on and off), the live fill and labels moving without commits,
 //! and how many commits twenty running cards cost. The scripts in `tests/scripts/c16/` check

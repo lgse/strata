@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the strip shows, as plain data the host rebuilds each view, and the pure rules on it:
 //! the label's length, the window title, and the order helpers the host's key map calls.
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Shows icons from the system's icon themes (the `icon-theme` feature), and prints what each
 //! lookup found.
 //!

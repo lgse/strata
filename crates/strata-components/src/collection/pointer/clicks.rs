@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Click runs: which click of a run a press is, timed by the settings' interval rather than
 //! Rune's fixed one.
 

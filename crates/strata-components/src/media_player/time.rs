@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Strata's media arithmetic and wording: the clock text, the last frame a seek may reach,
 //! the volume grid, the decode size and the captions.
 

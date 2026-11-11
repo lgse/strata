@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The marquee machine on a plain [`Surface`] and a virtual clock. Each test names the
 //! feature-map bullet (or the decision) it checks. Rows are 28 pt tall and ids are the rows'
 //! first indices, so `[4, 5]` reads as "the fifth and sixth rows as first listed".

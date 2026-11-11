@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Columns as data: each one's id, title, sizing, alignment, whether it sorts, and what its
 //! cells show.
 

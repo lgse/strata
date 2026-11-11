@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`Words`]: every phrase the dock, its cards and the progress dialog write, as data. The
 //! defaults are Strata's English; Strata passes its own translations.
 

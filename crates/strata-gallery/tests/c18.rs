@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C18's page in process: what scripts can't reach (an input method composing, the wakes of a
 //! window at rest, whether a row is scrolled into view). The scripts in `tests/scripts/c18/`
 //! check the rest. Each test names the bullets it covers.

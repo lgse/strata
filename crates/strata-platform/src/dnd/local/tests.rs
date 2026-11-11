@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use super::*;
 
 /// The owner's ruling (review round 3): the token names no process, only the drag: a counter

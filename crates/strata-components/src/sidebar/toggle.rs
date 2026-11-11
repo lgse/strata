@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`WidthToggle`]: the header's sidebar button, which steps full, rail and hidden.
 
 use std::rc::Rc;

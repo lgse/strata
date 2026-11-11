@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The window's 1 px frame.
 
 use rune::{El, col, el};

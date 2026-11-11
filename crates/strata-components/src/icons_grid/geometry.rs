@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Where tiles sit: the grid's [`Lines`] rule and its [`CollectionGeometry`], pure maths over
 //! every entry, mounted or not.
 //!

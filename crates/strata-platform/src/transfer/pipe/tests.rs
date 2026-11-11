@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use std::io::Write;
 use std::time::{Duration, Instant};
 

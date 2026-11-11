@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! ColumnsView (C2): Miller columns, a sideways strip of C1e collections, each its own virtual
 //! list and selection.
 //!

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The windowless controller: it owns the single-instance name, the desktop settings, the
 //! overrides file, the GLib bridge and the look, opens a window per launched path, and sends
 //! every window what changed.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use super::*;
 use crate::look::Look;
 use crate::shape::LookParams;

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The keyboard state machine: keys in, selection operations and [`Outcome`]s out. Plain data,
 //! no Rune elements.
 

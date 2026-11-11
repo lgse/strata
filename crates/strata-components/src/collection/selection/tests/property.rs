@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Random operations, re-sorts, deletes, inserts, renames, streamed reloads and restores,
 //! checked step by step against a plain model of the same rules: membership at every index,
 //! the count, the cursor, the anchor, the fill and every reported change. After every step

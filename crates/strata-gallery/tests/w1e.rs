@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! W1e: every drop zone C1e, C2, C6, C7 and C8 attach, and every drag source C9 and the viewers
 //! attach, reaches a keyed binder (as X2's is) with the key its element carries, unique in the
 //! window or inside the scope it names. Each test

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the pointer machine reads on every input: the click modes, the double-click interval
 //! and the drag threshold. The host passes them with `Collection::settings`.
 

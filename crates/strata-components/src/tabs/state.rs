@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`BrowserTabsState`]: what the strip keeps between views, and [`BrowserTabsState::tick`],
 //! which runs its timer and follows the active tab.
 

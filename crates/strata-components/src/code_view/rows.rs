@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The text's display rows: one per line, and a line over [`CHUNK`] bytes split into rows of at
 //! most that, as Strata's large source preview splits it (`push_source_line_chunks` in
 //! `src/ui/virtual_preview/source.rs`): on character boundaries, with the last two rows of a

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The size keys and the wheel's steps.
 
 use rune::{Chord, ChordKey, ChordMod, GesturePhase, Key, KeyEvent, Mods, WheelEvent};

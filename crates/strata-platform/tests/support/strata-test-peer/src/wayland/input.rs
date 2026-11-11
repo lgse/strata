@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A virtual pointer (`zwlr_virtual_pointer_v1`) and keyboard (`zwp_virtual_keyboard_v1`).
 //!
 //! A headless sway started with `WLR_LIBINPUT_NO_DEVICES=1` has a seat with no devices, so no

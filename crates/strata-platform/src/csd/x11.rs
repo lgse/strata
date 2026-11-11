@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The X11 backend: requests to the window manager on this module's own connection, and a
 //! thread that watches the window's state.
 //!

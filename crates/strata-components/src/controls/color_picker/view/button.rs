@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The picker behind a button, in a rune-kit Popover: what replaces GTK's `ColorDialogButton`.
 
 use rune::{El, Tx, row};

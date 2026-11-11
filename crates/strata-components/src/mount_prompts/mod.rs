@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! MountPrompts (C26): the dialogs a mount operation asks for, kept apart from GIO so they are
 //! testable without it. Strata's replacement for `gtk::MountOperation`'s dialogs.
 //!

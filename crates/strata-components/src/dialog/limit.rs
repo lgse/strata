@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Form fields limited in characters, bytes or UTF-16 units (`app/dialogs`, lgse/strata#1875).
 //!
 //! A filesystem label, say, is limited in bytes, which a character count can't express.

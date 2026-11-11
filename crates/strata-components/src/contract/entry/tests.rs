@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use super::*;
 
 fn entry(id: u64, name: &str, kind: EntryKind) -> ListEntry {

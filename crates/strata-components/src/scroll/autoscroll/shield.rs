@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`Shield`]: what a running autoscroll mounts over the window. A modal layer that takes every
 //! press and Escape (so the press that stops it does nothing else), follows the pointer, shows
 //! the scroll cursor over the listing and draws the anchor.

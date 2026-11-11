@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The formats Linux file managers exchange for copied and cut files, written and read
 //! together: `text/uri-list` (RFC 2483, which GTK readers and Dolphin take),
 //! `x-special/gnome-copied-files` (Nautilus, Nemo, Caja, Thunar and the GNOME desktop

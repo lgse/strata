@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! How entries pack into Rune's virtual lines, and the header lines of groups.
 //!
 //! Rune virtualizes vertical rows only, so a grid (C3) packs several entries into each virtual

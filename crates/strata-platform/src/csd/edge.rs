@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The window's edges and corners, and the bands that resize from them.
 
 use rune::Cursor;

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What a mount operation asks, and what the prompts answer: plain data, mapped one to one onto
 //! `GMountOperation`'s signals and properties by the binding (in Strata).
 

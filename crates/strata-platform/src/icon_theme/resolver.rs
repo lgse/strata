@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The lookup itself: a theme chain over a search path, each theme's directories listed once
 //! and checked for changes on demand.
 

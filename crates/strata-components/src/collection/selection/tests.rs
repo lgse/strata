@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! One test per feature-map Behavior bullet this layer decides. Each names its bullet. Ids are
 //! the entries' first indices, so `[2, 3]` reads as "the third and fourth entries as first
 //! listed".

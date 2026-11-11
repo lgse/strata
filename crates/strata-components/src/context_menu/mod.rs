@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Context menus (C21): where Strata's menus open, how the keyboard moves through them, and
 //! the text-field menu, on rune-kit's `Menu`.
 //!

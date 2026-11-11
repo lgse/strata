@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`Countdown`]: a finished card's time before it closes itself, paused while the pointer is
 //! over it or it is pinned, then a short fade (Strata's `progress_dock/completion.rs`).
 

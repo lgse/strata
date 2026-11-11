@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`PromptSpec`]: what one kind of footer prompt shows and which keys it keeps, as data, with
 //! presets for Strata's twelve 10xer prompts (`src/ui/tenxer_mode.rs`, `Prompt`).
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A Rune window with P0's transfer substrate attached, for strata-platform's session tests
 //! (`tests/session/p0.rs`). It takes commands as JSON lines on stdin and reports what it sees
 //! as JSON lines on stdout. P0's substrate is internal: this example reaches it through the

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The clipboard wiring demo (X3): a C1e list over a real folder, whose Ctrl+C, Ctrl+X and
 //! Ctrl+V go through strata-platform's clipboard (P2) in the file managers' formats, with
 //! C19's Files on clipboard badge following the clipboard. `adapter.rs` is the glue an app

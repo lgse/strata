@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C23's page in process: the demo's flight from a real C1e row into C8's real Trash, and the
 //! page's own part of the dissolve (survivors hold still until it ends). The scripts in
 //! `tests/scripts/c23/` check the bullets' end states.

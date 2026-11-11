@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C1d's marquee on the c1 page, in process: what scripts can't do (Ctrl and Shift held through
 //! a drag) and what no golden shows (an open band's moves and auto-scroll run no view). A test
 //! stand-in for C1b's pointer intent starts the band past the drag threshold, as C1b hands it

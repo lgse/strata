@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Where the strip's parts drew, read back from hidden markers, for what Rune can't do from
 //! the outside: read a viewport's scroll offset, or reveal with a margin (U-C7-2, U-C7-7).
 //!

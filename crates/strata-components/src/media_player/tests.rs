@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use std::time::Duration;
 
 use rune::{Chord, ChordKey, Key, KeyEvent, KeyPlatform, Mods};

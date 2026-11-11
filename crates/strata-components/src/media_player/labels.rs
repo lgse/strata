@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The player's words, in English by default. A host translates them.
 
 /// Names, tooltips and fixed text. Tooltips that name a key take it from the key map, so

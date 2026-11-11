@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! One shell window: its own Rune app with a `Csd`, drawing the gallery's shell view.
 
 use rune::{App, AppSpec, Cx, El, Tx, WindowHandle, WindowOptions, WindowSpec};

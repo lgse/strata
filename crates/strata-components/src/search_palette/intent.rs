@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the palette asks its host to do.
 
 use super::data::PaletteQuery;

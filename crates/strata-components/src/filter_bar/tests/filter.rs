@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use rune::TextEdit;
 
 use crate::collection::selection::{Position, Selection};

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Perf: 100,000 entries on C1e's element, with and without thumbnails landing.
 //!
 //! ```text

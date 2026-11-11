@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C19's page in process: what the accessibility tree a script ends on doesn't show (scroll
 //! offsets, the window losing focus, input-method text) and the large key map's cost. Each test
 //! names the bullets it covers; the scripts in `tests/scripts/c19/` check the rest.

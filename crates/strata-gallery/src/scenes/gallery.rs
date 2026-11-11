@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gallery's index page: the title, then one button per page, grouped by lane, which opens
 //! it. Escape on a page comes back here.
 //!

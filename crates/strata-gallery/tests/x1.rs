@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! X1's page in process: what the scripts and the accessibility goldens can't see. The
 //! header's drag region (Rune's titlebar actions), the window's focus, the look the desktop's
 //! settings rebuild, the colours a reload animates, and the volumes the fake bridge delivers.

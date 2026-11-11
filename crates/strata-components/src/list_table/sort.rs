@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The sort the headings show, and the sort a heading click asks for. The table never sorts:
 //! the host does, on [`SortIntent`], and gives the table its sort back as [`SortShown`].
 

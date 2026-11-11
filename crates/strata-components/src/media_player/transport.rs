@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Transport controls: play, previous and next, the elapsed and total times, mute and the
 //! volume slider (Strata's `components.rs` `navigation_row`, `media_controls.rs`).
 

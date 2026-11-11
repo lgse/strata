@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the strip tells C9's drawer about itself in Columns ([`ColumnsFit`]).
 
 use strata_kit::look::Look;

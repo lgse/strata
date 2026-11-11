@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use rune::{Cx, El, Env, Runtime, col};
 
 use super::*;

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The `columns.*` slot tokens that ColumnsView (C2) reads: its column headers, the line
 //! between columns, its width caption, the wash over the column a file drag would drop into,
 //! and the rows' size badge.

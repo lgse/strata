@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! One test per feature-map Behavior bullet the pointer machine decides. Each names its
 //! bullet. Entries 0–2 are folders and 3–9 files; ids are the entries' first indices.
 

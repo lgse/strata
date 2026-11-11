@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Where a scroll bar's thumb sits and which offset a thumb position means. Pure maths, along
 //! one axis, in points.
 

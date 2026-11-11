@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The `media.*` slot tokens (for example `media.waveform.played`) that MediaPlayer reads.
 //!
 //! Work package: C13, `docs/work/phase-2-composites/C13-media-player.md`. C13 owns this file.

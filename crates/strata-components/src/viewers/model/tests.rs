@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use std::f32::consts::{FRAC_PI_2, TAU};
 
 use super::{CameraView, Encoding, Mesh, ModelFile, ModelKind, ModelState, Stage};

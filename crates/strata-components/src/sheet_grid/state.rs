@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`SheetGridState`]: the sheets, and for each one its sort, widths, cursor, range and
 //! scroll position, kept by the host and reached by accessor.
 

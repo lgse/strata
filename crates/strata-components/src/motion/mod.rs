@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Motion effects (C23): the trash flight and the permanent-delete dissolve, built against
 //! keys, so they work with any row and any target.
 //!

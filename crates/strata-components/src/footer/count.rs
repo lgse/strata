@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The footer's item and selection count, by Strata's rules (`src/ui/shortcut_footer/status.rs`
 //! at lgse/strata `upstream/main`), with every word, plural and size as data.
 

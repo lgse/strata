@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! K1's page in process: what the goldens can't show. Each golden scene draws its theme in
 //! that theme's own appearance, the arrow keys step through the themes and Omarchy variants,
 //! and a theme switch animates its colours (WP done-when: "A theme switch in the gallery

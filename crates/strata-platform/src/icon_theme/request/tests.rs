@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use std::path::PathBuf;
 
 use super::{IconRequest, IconSource, themed_names};

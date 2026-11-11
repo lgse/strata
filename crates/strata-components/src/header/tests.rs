@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use strata_kit::icons::IconName;
 
 use super::{HeaderLabels, Shown, WindowButtons, WindowChrome};

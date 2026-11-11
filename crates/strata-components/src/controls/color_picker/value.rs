@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The picker's colour value: 8-bit sRGB with straight alpha ([`Srgba`]), its hex text, its
 //! conversions to and from `rune::Color` (linear sRGB, straight alpha), and HSV ([`Hsv`]).
 

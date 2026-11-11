@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The autoscroll state machine: idle, running from an anchor, or stopping. Plain data with no
 //! Rune runtime; what it asks of Rune goes through [`Out`].
 

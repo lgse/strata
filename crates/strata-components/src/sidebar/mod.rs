@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! PlacesSidebar (C8): the browser's sidebar of built-in places, PINNED and DEVICES, in three
 //! widths (full, icon rail, hidden), with pin insertion gaps, device rows and the Trash
 //! target.

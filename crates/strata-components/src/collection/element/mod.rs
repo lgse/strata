@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The virtual-row collection element with row slots (C1e): the Rune element under the list,
 //! the icons grid and each Columns column.
 //!

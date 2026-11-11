@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The adapter's mappings, headless: what a drag of files offers, byte for byte, and how W1's
 //! actions and hovers map onto P1's.
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C17's page in process: what scripts can't reach (an input method composing, every frame of
 //! a superseded query, a window at rest stepped from wake to wake, a tooltip, the new-tab
 //! chords and the middle click, the states with no feature-map bullet). The scripts in

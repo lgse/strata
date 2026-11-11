@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Strata's settings search index, as test and gallery data.
 //!
 //! The rows, their pages, titles and aliases are ported from Strata's

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The drag-and-drop wiring demo (X2): Strata's views and chrome on a real folder, with every
 //! drop target and drag source joined to the system's drag and drop (P1) through
 //! `adapter.rs`, which an app copies as it is.

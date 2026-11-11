@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Wayland offers: selection offers (data device and data control) and drag offers.
 //!
 //! P0 owns every offer proxy. A subscriber holds an offer handle that shares the proxy, so a

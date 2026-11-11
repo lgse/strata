@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The script runner: each `tests/scripts/<id>/<name>.json` runs headless through the gallery
 //! (`--scene <scene> --script <file> --tree <out>`). It fails when the script is malformed or
 //! names no feature-map bullets, when Rune rejects it or reports key warnings, when an

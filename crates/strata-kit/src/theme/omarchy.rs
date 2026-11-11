@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Omarchy Quattro: the current Omarchy theme as a Strata theme, in the variant the user
 //! picked.
 //!

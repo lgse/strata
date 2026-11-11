@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! CodeView's own logic, with no window: how a text splits into rows, where matches fall,
 //! which row a selected text is, the position bar's rule and the editor's indent edits. What
 //! the view does on screen is the gallery's (`strata-gallery/tests/c10.rs`, the c10 scripts).

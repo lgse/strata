@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use super::{IconResolver, SearchPath};
 use crate::icon_theme::test_support::{Scratch, fixtures};
 

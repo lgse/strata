@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! SheetGrid (C11b): Strata's spreadsheet preview, for CSV, TSV, XLS, XLSX and ODS, drawn
 //! natively with sheet tabs, row numbers and column letters.
 //!

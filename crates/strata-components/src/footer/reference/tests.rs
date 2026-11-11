@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Unit tests for the reference: the search, its lines, the state, the keys and the key map
 //! rows (`app/shortcut-reference`, `app/keyboard-shortcuts` Labels).
 

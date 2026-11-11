@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gallery's goldens and scripts, one test module per page: `<id>::a11y`, `<id>::png` and
 //! `<id>::scripts`. `mise run test c1::` runs one page's; `mise run bless c1` rewrites only
 //! its goldens. See `docs/testing.md`.

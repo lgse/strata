@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The token registry: `get` and `set` by dotted name over the `Kit` tokens, the extensions
 //! and the component slots.
 //!

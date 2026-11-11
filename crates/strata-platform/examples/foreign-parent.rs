@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Opens Rune windows transient for another process's window, through the `foreign-parent`
 //! shim: P4's session tests (`tests/session/p4.rs`) run it, and the owner's hand tests use it
 //! with `--parent`.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The view: the document root, the scroll viewport with its two overlay bars, and a virtual
 //! row per page.
 

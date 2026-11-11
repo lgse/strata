@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The `scroll.*` slot tokens that C24's overlay scroll bar and its autoscroll anchor read.
 //!
 //! Work package: C24, `docs/work/phase-1-leaves/C24-scroll-extras.md`. C24 owns this file:

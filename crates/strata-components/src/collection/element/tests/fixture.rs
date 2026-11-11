@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A source for the element's tests: entries with dense ids, so `index_of` is a lookup in a
 //! vector. (Review round 1 measured the perf test with `ListSource` too: its map made no
 //! difference to the figures, since a frame resolves only the mounted rows.)

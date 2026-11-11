@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! LocationBar (C6): breadcrumbs that switch to an entry with path completion, in the header's
 //! middle (`browser/navigation/location-bar` and `.../completion`).
 //!

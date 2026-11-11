@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Recently used choices: a list the host keeps and stores, newest first.
 
 use super::data::Choice;

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The handshake between a Wayland reader thread and the UI thread (S2's driver C).
 //!
 //! The reader asks the UI thread for a turn after each read that queued events, then waits

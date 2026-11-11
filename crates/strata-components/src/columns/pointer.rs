@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Presses in the strip: which column a press targets and activates, the second press of a
 //! click that opened a column, and plain clicks on a column's empty space.
 

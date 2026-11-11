@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The category tabs: a tablist of glyphs, one Tab stop, arrows moving and choosing.
 //!
 //! Its own tablist, as C19's and C20c's are their own: rune-kit's SegmentedControl is a

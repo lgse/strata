@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What copying a selection takes: the text between its two ends, from the model, so rows
 //! split from one long line join with no break and lines keep their own breaks. From Rune's
 //! report only the ends are taken: the lowest and highest selected bytes over every selected

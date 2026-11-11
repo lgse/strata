@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`AutoscrollPointer`]: autoscroll on C1e's collection, as a decorator over its pointer
 //! controller (C1b), so the collection element needs no change for it.
 

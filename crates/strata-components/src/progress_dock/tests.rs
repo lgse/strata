@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use rune::Tx;
 use strata_kit::icons::IconName;
 

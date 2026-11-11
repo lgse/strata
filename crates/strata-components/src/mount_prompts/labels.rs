@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The prompts' words, in the interface language. English by default: Strata's.
 
 use super::request::{PasswordRequest, PromptField, Secret};

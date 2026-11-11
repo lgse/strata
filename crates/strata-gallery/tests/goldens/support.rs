@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the golden checks share: repository paths, the bless decision, the stripped
 //! accessibility tree, a headless runtime per scene, and the gallery binary run headless.
 

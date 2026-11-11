@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The PINNED and DEVICES headings. In the full sidebar: the title, a rule filling the width,
 //! the count while collapsed, and a chevron at the right edge, which swaps between down and
 //! right rather than rotating. In the rail: the chevron alone, centred, with the section's

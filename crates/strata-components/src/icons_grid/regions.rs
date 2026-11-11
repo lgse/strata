@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Which part of a tile a point is on, for C1b's click, drag and band decision.
 //!
 //! After Strata's `hits_item_content` (`src/ui/pointer.rs`, lgse/strata `upstream/main`

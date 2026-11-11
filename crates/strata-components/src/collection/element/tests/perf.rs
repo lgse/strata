@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Perf: 100,000 entries, held to rune-kit's Table, measured side by side in the same run.
 //!
 //! `cargo test --profile perf -p strata-components --lib collection::element::tests::perf -- --ignored --nocapture`

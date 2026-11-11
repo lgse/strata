@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C2b on C2's page: the size badge, the width polish, the resize line's accent and the
 //! reveal of a cursor the view places. Each test names the feature-map Behavior bullets it
 //! checks, where a script can't see them: paint opacity over time, widths and scroll offsets.

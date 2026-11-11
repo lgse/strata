@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The single-line field the filter bar and the footer prompts share: Rune's core
 //! `text_input` inside a text box frame of our own, drawn with the Kit tokens rune-kit's
 //! `TextInput` draws its box with.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The interfaces the primary serves: GApplication's (`org.gtk.Application`,
 //! `org.freedesktop.Application`, `org.gtk.Actions`) at the app id's object path, and, opted
 //! into, `org.freedesktop.FileManager1`.

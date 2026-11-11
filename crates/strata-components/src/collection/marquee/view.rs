@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The band's drawing: one element, placed by a live rect so a move or a scroll moves it
 //! without a view commit. Look and Kit tokens only.
 

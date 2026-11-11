@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C20b's page in process: what the picker reports (live, commit, cancel), Escape on a drag and
 //! in the popover, focus as the popover opens and closes, a press outside, the hex field's
 //! blur, assistive actions, the disabled state and the cost of a hue drag. The scripts in

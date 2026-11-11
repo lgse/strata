@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Zoom, pan and fit over `Pixels` (C14a): the surface under C14b's image, model, route and
 //! G-code views and C13's video, with the zoom model C12's pages reuse.
 //!

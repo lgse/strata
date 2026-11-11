@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Key routing: the open page's `on_key` hears a key first, and only a key it leaves falls back
 //! to the gallery's Escape-to-index. A work package tests its own page's keys the same way:
 //! mount its scene with `strata_gallery::runtime`, send keys with `Runtime::key` and read the

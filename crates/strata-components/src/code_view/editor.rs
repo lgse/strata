@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`CodeEditor`]: the custom-action script editor (`integration/custom-actions`, Settings →
 //! Actions → Script), on core `text_input` with an editable [`CodeDoc`]'s colours.
 //!

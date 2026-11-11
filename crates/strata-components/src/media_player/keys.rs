@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The media key map, as data: which chords play, seek, change the volume, step and hand off.
 //! Quick preview and the drawer share it.
 

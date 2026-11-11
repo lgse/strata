@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! An ancestor crumb's drop zone, attached through the host's `Dnd`, and its spring.
 //!
 //! Spring-loading is the crumb's own model, so a host and X2's binder need nothing more than

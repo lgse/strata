@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Where the audio view puts its art and spectrum (Strata's
 //! `src/ui/preview/audio/layout.rs`, `NowPlayingLayout`).
 //!

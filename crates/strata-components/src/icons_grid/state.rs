@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`IconsGridState`]: what the grid keeps between frames, in the host's state.
 
 use std::cell::Cell;

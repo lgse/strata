@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use std::fmt;
 
 /// Why a route or the whole substrate is missing.

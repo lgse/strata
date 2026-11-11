@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Perf on the sheets Strata's budget lets through: 100,000 rows of four columns (more values
 //! than the budget's 100,000, as rune-kit's Table measures), 390 rows of 256 columns (the most
 //! columns at that budget) and an 18,000-row sheet arriving. `#[ignore]`d; run with the `perf`

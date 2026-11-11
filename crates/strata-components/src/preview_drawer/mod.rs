@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! PreviewDrawer (C9): the resizable drawer that hosts every preview, beside the file views in
 //! a browser window and in the chooser.
 //!

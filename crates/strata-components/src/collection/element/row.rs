@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Rows: what each one shows (its slots), the state it draws from, and the memo version that
 //! keeps it built while none of that changes.
 

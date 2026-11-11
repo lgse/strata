@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Strata's settings matcher (`src/ui/settings/search/matching.rs` at upstream `fb7eb0c4e`),
 //! rule for rule, over a [`SearchIndex`] instead of Strata's static targets, plus the best row
 //! and the matched text this component adds.

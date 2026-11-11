@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The drawer's state: a field of each window's state, so every browser window and the chooser
 //! has its own. Nothing here is saved; a manual width lives as long as the window's state does.
 

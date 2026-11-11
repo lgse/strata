@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C20c's page in process: what the accessibility tree a script ends on doesn't show (the jump's
 //! highlight and its timing in a window at rest, a reveal's scroll). The scripts in
 //! `tests/scripts/c20c/` check the rest, and strata-components' own tests the matcher and the

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! FilterBar and FooterPrompt (C18): the Ctrl+F filter and its Enter target
 //! (`browser/search/filter`, `.../filter/enter-target`), and the 10xer footer prompts, chord
 //! panel and flash (`integration/10xer-mode`).

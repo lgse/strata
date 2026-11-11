@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A window's drop targets, by element key, and how a hit test's path finds one.
 //!
 //! Rune lets a shim neither read an element's key nor add a second handler of a kind (draft

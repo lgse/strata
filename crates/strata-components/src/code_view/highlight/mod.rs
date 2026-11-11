@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The syntect highlighter on its own thread, with checkpoints and colour spans (C10a).
 //!
 //! Work package: C10a, `docs/work/phase-1-leaves/C10a-highlighter.md`. Backend and numbers:

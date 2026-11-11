@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Data control: the selection heard and written without focus or a serial.
 //! `ext_data_control_v1` (the standard) and `zwlr_data_control_v1` (wlroots before 0.19) carry
 //! the same events, so one macro writes the handlers for both.

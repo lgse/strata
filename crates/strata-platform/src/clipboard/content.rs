@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What a copy offers: any MIME types, each with its bytes or a lazy writer.
 
 use std::time::Duration;

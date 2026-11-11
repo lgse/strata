@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gallery page for C20b ColorPicker: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `c20b-` and end in `-light` or `-dark`.
 //!

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! One test per feature-map Behavior bullet the keyboard machine decides. Each names its
 //! bullet; tests of the work package's own scope (type-ahead, Ctrl+Space, layouts) say so.
 //! Ids are the entries' first indices. Page sizes are always the geometry's `page_step()`.

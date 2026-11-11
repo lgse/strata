@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use rune_kit::syntax::Syntax;
 
 use crate::theme::color::Rgba8;

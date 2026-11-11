@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C10b's page: what the code view and the script editor do in process, beside their goldens
 //! and scripts. Each test that checks a feature-map Behavior bullet names it, as a script
 //! would, where a script can't: positions in the middle of a drag or a scroll, values that

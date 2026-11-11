@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! One column as the strip draws it: its shell (width, entrance and exit), its header, its
 //! resize edge with the "Column width" caption, and the wash over it while a held file drag
 //! would drop into it.

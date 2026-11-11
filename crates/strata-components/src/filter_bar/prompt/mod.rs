@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The 10xer footer prompts: their specs, state and element.
 
 mod spec;

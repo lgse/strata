@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! PdfView (C12): PDF pages from Strata's sandboxed renderer as a scrolling, zoomable and
 //! selectable view. The renderer and its protocol are unchanged.
 //!

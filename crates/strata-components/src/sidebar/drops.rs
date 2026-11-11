@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The sidebar's drop zones: one per pin gap, one per row that takes files, and one over the
 //! whole sidebar that only notices a drag is there. All attach through the host's `Dnd`.
 

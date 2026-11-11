@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The drag autoscroll's state machine: where the held drag is, how long it has dwelt near an
 //! edge, and what each frame scrolls. Plain data with no Rune runtime; the view applies its
 //! [`Step`].

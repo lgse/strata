@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`PdfState`]: one PDF preview's pages, zoom, selection and find, and the requests it asks
 //! the host for.
 

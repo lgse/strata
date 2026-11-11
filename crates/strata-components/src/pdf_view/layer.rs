@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A page's text layer read into lines, and the geometry selection runs on: Strata's
 //! `src/ui/preview/pdf_text.rs` (upstream/main e9a8993b7), ported as it is. Offsets are
 //! character indices into the layer's text; points are in pixels of the layer's image.

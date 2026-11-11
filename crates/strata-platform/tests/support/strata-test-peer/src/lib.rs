@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The peer for strata-platform's compositor tests: a second process, written against raw
 //! `wayland-client` and `x11rb`, that sets and reads selections, drags and accepts drops,
 //! exports its window, and drives a virtual pointer and keyboard. Tests drive it with JSON

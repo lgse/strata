@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Why a value is a default, or the last good one: reported as data, each kind once.
 
 use std::collections::HashSet;

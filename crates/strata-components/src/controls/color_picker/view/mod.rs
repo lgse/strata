@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The picker's element: the plane, the strips, the hex row and the swatch rows
 //! (`parts.rs`), inline or in a popover behind a button (`button.rs`).
 

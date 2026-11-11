@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Review round 3: Rune drops a capture without an `Up` (a press replaces it; a modal
 //! mounting clears it), so nothing may end a capture "later" on a timer; the source is picked
 //! at the press point, not its centre; and a source that loses its `on_drag` is a known limit.

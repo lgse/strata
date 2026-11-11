@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A keystroke's search over a large index, in release builds only:
 //! `cargo test -p strata-components --release --lib settings_search::tests::perf -- --nocapture`.
 

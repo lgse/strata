@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Writes emoji.tsv, the IconPicker's bundled emoji (C20d), from Unicode's data.
 
 Sources (both under the Unicode License V3, LICENSE-Unicode.txt beside this file):

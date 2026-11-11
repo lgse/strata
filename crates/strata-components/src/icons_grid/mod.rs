@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! IconsGrid (C3): the Icons view, a grid of thumbnail tiles on the collection element (C1e).
 //!
 //! Work package: C3, `docs/work/phase-3-views/C3-icons-grid.md`.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The video view (Strata's `src/ui/preview/video.rs`): the frame, its details and badges,
 //! the waveform timeline with the storyboard bubble, and the transport, in C14b's shared
 //! player layout.

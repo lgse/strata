@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! IconPicker (C20d): a searchable grid of bundled icons and emoji, inline or in a popover
 //! behind a button. It replaces GTK's `EmojiChooser` in Strata's Customize dialog, and can lay
 //! out the dialog's 16 bundled icons too.

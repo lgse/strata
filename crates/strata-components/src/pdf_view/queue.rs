@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The pages the view holds (an image, a text layer, a request in flight) and the requests it
 //! asks the host for, under two byte budgets.
 //!

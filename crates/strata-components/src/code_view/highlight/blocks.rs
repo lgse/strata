@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Code blocks: the adapter for rune-kit's `Markdown` highlight hook, and for C11's own
 //! blocks.
 //!

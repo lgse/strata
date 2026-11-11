@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The document C11 draws: Strata's laid-out document (`DocumentLayout` in
 //! `src/services/document.rs`), as data. Strata parses Markdown, HTML, RTF, DOCX and ODT,
 //! lays the result out into units, and converts those into this model; nothing here parses.

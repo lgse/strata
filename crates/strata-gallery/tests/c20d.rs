@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C20d's page in process: what a choice sends and saves, the popover closing without a choice,
 //! and C21's text menu on the search field. The scripts in `tests/scripts/c20d/` check the end
 //! states AT hears.

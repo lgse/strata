@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! X2's session tests: the drag-and-drop wiring demo (`examples/dnd_wiring/`) against W3's
 //! peer in a private headless sway, on Wayland and X11 (`mise run test-platform x2::`).
 //!

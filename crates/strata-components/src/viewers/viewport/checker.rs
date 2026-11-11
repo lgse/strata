@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The checkerboard drawn behind content that may be transparent.
 //!
 //! Rune has no repeating pattern fill, so the board is a `canvas` shape: one square segment

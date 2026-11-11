@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Wayland: protocols bound on winit's own display (shared), or on a connection of our own.
 //!
 //! **Shared** binds a second `wl_seat` (with its own `wl_pointer` and `wl_keyboard`, for input

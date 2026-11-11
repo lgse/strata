@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The store and its queue: eviction order, the budget, what is protected, request order
 //! after scrolling each way, cancellation, failures, stops, the on/off switch, relocation,
 //! steps and pruning; and in a headless runtime, that thumbnails land with no view run.

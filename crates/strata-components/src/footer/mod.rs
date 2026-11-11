@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Footer and ShortcutReference (C19): the window footer, with its F1 Shortcuts button, count,
 //! Files on clipboard badge, 10X pill and marks, and the F1 key map panel
 //! (`app/shortcut-reference`).

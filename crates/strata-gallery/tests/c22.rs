@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C22's page in process: the peek's waits stepped from wake to wake in a resting window
 //! (animations on and off), what the host hears, and what assistive technology hears of a
 //! keyboard peek. The scripts in `tests/scripts/c22/` check the bullets' end states.

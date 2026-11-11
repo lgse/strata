@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gallery page for C8 PlacesSidebar: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `c8-` and end in `-light` or `-dark`.
 //!

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! P0's session tests: offers in and sources out, through the peer, on Wayland and X11, plus
 //! drags into a Wayland window and the substrate's lifecycle (a hidden window, hide and show,
 //! quit and close). The app side is `examples/transfer-probe.rs`.

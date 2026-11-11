@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C15's page in process: what the accessibility tree doesn't show (motion, the backdrop,
 //! keyboard focus rings), and focus after closing by every route. These tests, not the
 //! scripts, check the motion, blur and ring bullets; the scripts in `tests/scripts/c15/` check

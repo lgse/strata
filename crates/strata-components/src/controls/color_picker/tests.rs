@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Unit tests: hex text, `rune::Color` conversions, HSV, recent colours and the state model.
 
 use rune::Color;

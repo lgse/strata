@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Edge auto-scroll: how fast the view scrolls for a pointer near a viewport edge, and the
 //! glide targets that reach and hold that speed on a Rune spring. Pure maths; speeds are in
 //! points a second and times in [`Duration`]s.

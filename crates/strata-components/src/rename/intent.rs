@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the editor asks of its host.
 
 use crate::contract::{EntryId, Point};

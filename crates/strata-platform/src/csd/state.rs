@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`Csd`]: what the app keeps in its state, and where each window button's request goes.
 
 use rune::Tx;

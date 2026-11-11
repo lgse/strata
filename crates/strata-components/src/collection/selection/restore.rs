@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Position restore: the cursor, selection and scroll position remembered per folder, so
 //! returning to a folder (or refreshing it) puts them back.
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The timeline: a slider over the waveform, with chapter ticks and the playhead (Strata's
 //! `src/ui/preview/waveform.rs`), or the plain bar's seek slider (`media_controls.rs`).
 //!

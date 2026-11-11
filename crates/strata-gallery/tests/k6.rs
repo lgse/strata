@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! K6 in process: the gallery's runtime, which the accessibility goldens and page tests mount,
 //! shapes in the bundled JetBrains Mono, as the binary's `--snap` and `--script` runs do. The
 //! PNG goldens show the binary's text.

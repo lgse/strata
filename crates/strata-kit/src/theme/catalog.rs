@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Strata's bundled themes: `themes/catalog.toml`, compiled in and read once.
 //!
 //! As Strata's `builtins()` (`src/ui/theme/library.rs` at lgse/strata 35ee677ab): each

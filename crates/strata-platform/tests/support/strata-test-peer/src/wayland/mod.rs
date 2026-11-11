@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The peer on Wayland: one connection, one event queue on the main thread.
 //!
 //! Commands arrive from the stdin thread through a channel. That thread then sends a

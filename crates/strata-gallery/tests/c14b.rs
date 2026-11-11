@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C14b's page: what its viewers do in process, beside its goldens and scripts. These cover the
 //! bullets a script can't check: motion, a theme change, a press at a given point.
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The data the host hands the view and the requests it asks back: the document's pages and
 //! sizes, a page's text layer, a render's reply, and the renderer's limits.
 

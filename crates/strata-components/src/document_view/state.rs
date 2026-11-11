@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`DocumentState`]: what the host keeps per document preview, and what the drawer's header
 //! and find bar ask of it.
 

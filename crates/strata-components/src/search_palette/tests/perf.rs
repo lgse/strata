@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Perf: the palette at 100 (Strata's cap), 1,000 and 10,000 results.
 //!
 //! ```text

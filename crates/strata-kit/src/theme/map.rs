@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A theme onto a [`Look`]: step 1 of the look's build (`look.rs`).
 //!
 //! The base is `Kit::from_palette_focus` on the background, text and accent, with the focus

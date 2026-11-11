@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gallery's state, pages and view, shared by the binary and the golden tests.
 //!
 //! The gallery has one page per component (and per contract or look work package that shows

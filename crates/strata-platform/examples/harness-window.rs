@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A plain Rune window for the compositor test harness (W3): what strata-platform's session
 //! tests open under headless sway and Xwayland. It uses no shim. The whole window is one
 //! button, and it reports what it sees as JSON lines on stdout:

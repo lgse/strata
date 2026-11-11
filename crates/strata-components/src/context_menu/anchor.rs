@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Where a menu opened from the keyboard goes, and the collection controller that opens it.
 
 use rune::{Key, KeyEvent};

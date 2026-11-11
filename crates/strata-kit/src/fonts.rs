@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The bundled font: JetBrains Mono, Strata's interface font and its previews' monospace.
 //!
 //! Work package: K6, `docs/work/phase-1-leaves/K6-bundled-font.md`.

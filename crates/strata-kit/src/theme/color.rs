@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Theme colours as Strata stores them: 8-bit sRGB with alpha, parsed from the forms GTK
 //! accepts, and the blending and contrast arithmetic Strata's theme code does on them.
 //!

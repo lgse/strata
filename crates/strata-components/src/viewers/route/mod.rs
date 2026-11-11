@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The route view (`preview/preview-panel/routes`): the route picture Strata's helper draws, a
 //! marker that plays along it and along the elevation profile, the profile itself drawn with
 //! `canvas` shapes ([`plot`]), and the details, badges and controls of the shared player layout.

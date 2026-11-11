@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the host knows about the file, as data.
 
 use std::time::Duration;

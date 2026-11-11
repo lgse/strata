@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The audio view (Strata's `src/ui/preview/audio.rs`): art (or the record), the tags, the
 //! live spectrum, the waveform timeline and the transport.
 

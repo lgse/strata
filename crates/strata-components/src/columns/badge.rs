@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The size badge on each row: "12 items", "No items" or a file's size, as the host words it
 //! ([`ColumnSources::badge`](super::ColumnSources::badge)), and the row's accessible
 //! description that carries the same text (Strata's `.file-size`, `src/style.css`, and

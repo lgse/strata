@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The modal shell: backdrop, motion, dismissal, sizing and key routing around any panel.
 
 use std::rc::Rc;

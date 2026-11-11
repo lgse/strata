@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use rune::text::TextSystem;
 use rune::{Family, TextStyle};
 

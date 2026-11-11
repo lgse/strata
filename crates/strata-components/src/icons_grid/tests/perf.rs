@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Perf: 100,000 entries in the grid, held to C4's ListTable and C1e's plain list over the
 //! same entries, measured side by side in the same run.
 //!

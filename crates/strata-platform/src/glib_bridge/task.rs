@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A future's output, landed for `poll`.
 
 use std::sync::atomic::{AtomicBool, Ordering};

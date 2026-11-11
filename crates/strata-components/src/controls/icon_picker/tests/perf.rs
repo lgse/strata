@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Perf: the picker over K3's catalog and every bundled emoji (about 2,370 choices).
 //!
 //! `cargo test --profile perf -p strata-components --lib icon_picker::tests::perf -- --ignored --nocapture`

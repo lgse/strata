@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The typed theme: Strata's nine interface colours and five syntax colours, as its theme
 //! files and catalogue write them (`ThemeTokens` in `src/ui/theme.rs` at lgse/strata
 //! 35ee677ab), and the reader that turns a TOML table into one.

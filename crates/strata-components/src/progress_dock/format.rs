@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Byte sizes, rates, durations and percentages as Strata writes them in English
 //! (lgse/strata `src/i18n.rs`: `file_size`, `transfer_rate`, `duration`, `percent`, `integer`).
 //! Hosts pass their own through [`Words`](super::Words) to translate them.

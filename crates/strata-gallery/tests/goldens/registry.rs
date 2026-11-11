@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The page registry holds together: every page has golden tests, scene names follow the
 //! `<id>-…-light|dark` rule and open their own page, and every golden or script folder
 //! belongs to a page. These guard what parallel work packages add.

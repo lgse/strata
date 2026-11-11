@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use super::*;
 use crate::look::{Look, RowHeights};
 use crate::slots;

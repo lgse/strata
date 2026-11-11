@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The form's view: the tablist in Strata's underline look over the stacked panels.
 
 use std::rc::Rc;

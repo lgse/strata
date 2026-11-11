@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The menu model: what a menu shows, as plain data. Strata builds it (which actions apply to
 //! the target is its policy); C21 draws it.
 

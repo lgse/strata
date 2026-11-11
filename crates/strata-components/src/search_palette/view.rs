@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`SearchPalette`]: the builder that puts the palette in C15's modal shell: the search bar,
 //! the body (results or a status) and the footer.
 

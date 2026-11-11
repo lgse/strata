@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Type-ahead: finding an entry by the prefix typed so far. Time arrives as data.
 
 use std::time::Duration;

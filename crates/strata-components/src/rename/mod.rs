@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! InlineRenameEditor (C5): the in-place rename field that C1e's rename slot hosts, the same
 //! in List (C4), Icons (C3) and Columns (C2).
 //!

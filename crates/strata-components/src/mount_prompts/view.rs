@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The prompts, built on C15's [`StrataDialog`].
 
 use std::rc::Rc;

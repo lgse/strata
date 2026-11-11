@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What a key does, as data: the commands a [`KeyMap`](super::KeyMap) binds and
 //! [`KeyHandle::run`](super::KeyHandle::run) queues.
 

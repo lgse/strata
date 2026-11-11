@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`CollectionState`]: what the host keeps for one collection, behind the element's accessor.
 
 use std::cell::Cell;

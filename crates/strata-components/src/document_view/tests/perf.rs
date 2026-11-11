@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Perf on the largest document Strata renders: 1 MiB of mixed units (Strata's input limit),
 //! about 10,000 of them, with code blocks coloured by the real highlighter thread and tables.
 //! `#[ignore]`d; run with the `perf` profile, and Rune's commit budget to hear slow commits:

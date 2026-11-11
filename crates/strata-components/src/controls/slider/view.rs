@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The slider's element: a track with its fill and knob, a tick under each snap point, and a
 //! toggle under each labelled one.
 

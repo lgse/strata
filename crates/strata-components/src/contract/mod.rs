@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Shared component contracts: entry ids and sources, collection geometry, drag and drop
 //! intents and matched-text labels.
 //!

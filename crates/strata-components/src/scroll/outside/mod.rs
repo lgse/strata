@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`OutsideWheel`]: an open panel's (Sort by, Appearance, Thumbnail size) outside layer, which
 //! a wheel tick closes the panel through and then scrolls the listing under the pointer, as
 //! Strata's `ui::scrolling::popover::dismiss_on_outside_scroll` does.

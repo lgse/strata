@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Strata's window header: the bar at the top of a browser window, with its actions and its
 //! window buttons, and the window's 1 px frame (`app/window`).
 //!

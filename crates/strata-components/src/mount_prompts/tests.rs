@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime, col};
 use strata_kit::look::Look;
 

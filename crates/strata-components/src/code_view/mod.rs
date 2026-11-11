@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! CodeView (C10b): Strata's source and plain-text previews and its custom-action script
 //! editor, replacing `sourceview5`, with the shared highlighter in `highlight` (C10a).
 //!

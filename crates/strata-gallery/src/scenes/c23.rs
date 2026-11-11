@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gallery page for C23 Motion effects: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `c23-` and end in `-light` or `-dark`.
 //!

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The drawn part: a thumbnail over its placeholder icon, and the C1e icon slot that draws it.
 
 use std::hash::{Hash, Hasher};

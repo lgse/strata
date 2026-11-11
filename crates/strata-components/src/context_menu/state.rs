@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What is open: the menu's target, where it opened, its model and its open submenus.
 
 use std::any::Any;

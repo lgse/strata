@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The width rules and the state that outlives a close. `docs/preview-panel-layout.md` in
 //! Strata states each rule; the tests name the bullet they hold.
 

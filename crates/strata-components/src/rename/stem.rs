@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the editor selects when it opens.
 
 use crate::contract::EntryKind;

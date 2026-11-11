@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The page column's zoom: a level from 1 to 4 times the fitted width, as Strata's PDF zoom
 //! (`src/ui/preview/pdf/zoom.rs`, upstream/main e9a8993b7), on C14a's zoom math.
 //!

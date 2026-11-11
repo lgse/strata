@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Message text that wraps between Korean words, not between their syllables.
 //!
 //! Unicode line breaking allows a break between any two Hangul syllables, but Korean wraps

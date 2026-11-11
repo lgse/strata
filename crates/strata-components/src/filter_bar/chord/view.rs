@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The chord's footer pill, and its panel of next keys above it.
 
 use rune::{El, LiveRegion, col, row, text};

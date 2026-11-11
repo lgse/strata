@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`RateMeter`]: a transfer's speed, smoothed so the time left doesn't jump between samples
 //! (Strata's `FileProgressState::sample_transfer_rate`, `src/ui/browser/progress/transfer_updates.rs`).
 

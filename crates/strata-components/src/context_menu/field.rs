@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The text-field menu: Cut, Copy, Paste, Delete and Select All (GTK's text menu, which
 //! Strata styles as its file menus), with Undo and Redo above them when the host asks.
 //!

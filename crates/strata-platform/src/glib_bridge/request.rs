@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Questions from a GLib-side handler, answered on Rune's loop.
 
 use std::future::Future;

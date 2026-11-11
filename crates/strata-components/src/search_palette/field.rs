@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The search bar's field: Rune's core `text_input`, frameless as Strata's `.search-field` is,
 //! and the keys that drive the results.
 //!

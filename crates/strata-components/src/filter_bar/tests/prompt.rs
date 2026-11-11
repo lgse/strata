@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use rune::{Key, KeyEvent, Mods};
 
 use crate::filter_bar::prompt::{

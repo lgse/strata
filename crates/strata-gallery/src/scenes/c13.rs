@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gallery page for C13 MediaPlayer: its scenes, demo state, view and key and poll hooks. Scene
 //! names start with `c13-` and end in `-light` or `-dark`.
 //!

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The pointer state machine: presses, moves and releases in, selection operations and
 //! [`Outcome`]s out. Plain data, no Rune elements.
 

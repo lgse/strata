@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The marquee on the collection element's seam (C1e): [`Marquee`] is the
 //! [`MarqueeController`] a host installs, and C1e's [`Ctx`] is its machine's [`Surface`].
 

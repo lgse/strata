@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The speed curve and the machine, against Strata's `drag_scroll.rs` and its tests.
 
 use std::time::Duration;

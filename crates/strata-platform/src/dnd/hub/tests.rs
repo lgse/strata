@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A start that reaches no platform, for the headless tests of the source's guard, and the
 //! hub's own tests.
 

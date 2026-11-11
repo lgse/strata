@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Find over the text layers the view holds: literal, case-insensitive (C11's folding, so
 //! "éclair" finds "ÉCLAIR"), matches that don't overlap, each within one page. As layers
 //! arrive (find's text-only requests, or pages scrolled to), their matches join in page

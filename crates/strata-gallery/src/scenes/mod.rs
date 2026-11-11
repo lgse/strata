@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gallery's page registry: the index, then one page per component and per contract or
 //! look work package that shows something.
 //!

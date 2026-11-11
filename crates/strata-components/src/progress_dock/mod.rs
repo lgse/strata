@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! ProgressDock (C16): running operations as cards in the bottom-right dock, brief notices
 //! beside them, the blocking progress dialog, and the Jobs dashboard's footer element
 //! (`operations/progress`, `.../dock`, `.../jobs`). The component owns no operation:

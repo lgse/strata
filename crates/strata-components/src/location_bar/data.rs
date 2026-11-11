@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the host hands the location bar: the crumbs of the folder it shows, the suggestions it
 //! listed, and the labels it reads out. Plain data, rebuilt by the host: no I/O.
 

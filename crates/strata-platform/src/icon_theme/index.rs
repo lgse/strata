@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! `index.theme`: the theme's inherited themes and its directories' size parameters.
 
 use std::collections::HashMap;

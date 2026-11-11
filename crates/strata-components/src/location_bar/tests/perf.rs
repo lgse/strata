@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Perf: the suggestion list at 50 (Strata's cap), 1,000 and 10,000 candidates.
 //!
 //! ```text

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A numeric range with a step grid and a page: the model both of C20a's controls step through.
 
 /// A closed range `min..=max` with a step grid anchored at `min`, a page, and the decimals a

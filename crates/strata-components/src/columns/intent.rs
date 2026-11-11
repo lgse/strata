@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`ColumnsIntent`]: what the view tells the host, which applies Strata's policy.
 
 use crate::collection::element::Intent;

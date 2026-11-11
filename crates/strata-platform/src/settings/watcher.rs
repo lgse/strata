@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The watcher thread: a tokio current-thread runtime with one zbus session connection, as
 //! Rune's own `color-scheme` reader runs (`platform/portal_appearance.rs`).
 

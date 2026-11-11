@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The demo's command line: its own flags, then paths.
 
 use std::ffi::{OsStr, OsString};

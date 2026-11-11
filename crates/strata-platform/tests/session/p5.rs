@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! P5's session tests: the `settings` example against a fake Settings portal on the session's
 //! private bus (`p5/fake_portal.rs`), served from this test process. Most need only the bus;
 //! the last two open the example's window under headless sway, to check that changes reach

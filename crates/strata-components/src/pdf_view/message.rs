@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What shows instead of pages: "Preview unavailable" and a message, with an Open button for a
 //! password-protected PDF (Strata's preview message; `preview/preview-panel`, "Images and
 //! PDFs"), and its keys (`preview/quick-preview`, `integration/10xer-mode/preview-keys`).

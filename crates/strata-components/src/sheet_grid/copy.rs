@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What Ctrl+C copies: tab-separated text in the displayed sort order, each cell's whole text.
 //! Cells are copied as they are (no quoting), as Strata does.
 

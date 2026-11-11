@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The drag autoscroll's speed curve: Strata's `drag_scroll.rs` (`edge_direction`,
 //! `scroll_speed`), `upstream/main` 35ee677ab. Pure maths; speeds in points a second.
 

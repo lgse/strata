@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Fixtures shared by the module's tests.
 
 use std::fs::File;

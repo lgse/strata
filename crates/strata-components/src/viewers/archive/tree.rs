@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The archive's member tree as data, and the folder shown as an [`EntrySource`].
 
 use std::collections::HashMap;

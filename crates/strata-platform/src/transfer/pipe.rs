@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Pipes for moving one MIME type between processes: the reader's end of an offer and the
 //! writer's end of a source. Every pipe is `O_CLOEXEC`, every read has a size cap and an idle
 //! timeout, and a write to a reader that left reports it rather than raising `SIGPIPE` (Rust

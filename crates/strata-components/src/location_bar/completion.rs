@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The completion model: which suggestions show, which is highlighted, the listing in flight,
 //! and the keys that wait for it. A port of Strata's `PathCompletion`
 //! (`src/ui/browser/location/completion.rs`), without the listing, which is the host's.

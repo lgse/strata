@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Drag and drop intents: what a drag carries, what a drop offers and delivers, the drop
 //! zones components mark, and the rule that picks copy or move.
 //!

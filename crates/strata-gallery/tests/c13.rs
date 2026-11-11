@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! C13's page: what the player does in process, beside its goldens and scripts. These cover
 //! what a script can't see: commits, wakes, timers stepped from wake to wake with no frames
 //! between, intents the host gets, and the frame time of a playing video.

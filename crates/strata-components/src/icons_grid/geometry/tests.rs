@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use super::*;
 
 /// 10 tiles, 4 a row (rows 0–3, 4–7, 8–9), cells 100 × 50 after 10 of padding, in a viewport

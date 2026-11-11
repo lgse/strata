@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Where each shown column sits at a viewport width: the one sizing rule the headings, the
 //! cells and the hit regions all read, so what is drawn and what a press hits agree.
 

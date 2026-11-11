@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use serde_json::json;
 
 use crate::protocol::{

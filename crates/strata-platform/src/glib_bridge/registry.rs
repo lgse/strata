@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the GLib thread keeps alive: the tasks it runs and the [`Keep`]s it holds, so that
 //! cancelling and shutdown drop them on that thread.
 //!

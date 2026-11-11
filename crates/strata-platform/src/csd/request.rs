@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the app asks of the window, and what came of it.
 
 use super::Edge;

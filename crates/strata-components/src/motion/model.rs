@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`Effects`]: the host's state for the motion effects, their ids, timers and events.
 
 use std::time::Duration;

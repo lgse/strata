@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use x11rb::NONE;
 
 use super::{answered_pairs, parse_pairs};

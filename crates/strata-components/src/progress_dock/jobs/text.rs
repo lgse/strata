@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The Jobs dashboard's words and text helpers (Strata's `src/ui/jobs.rs`).
 
 use std::fmt;

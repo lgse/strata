@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`Clipboard`]: the app's way to the clipboard, one per state type.
 
 use std::any::Any;

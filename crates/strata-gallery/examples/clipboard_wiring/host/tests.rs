@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The demo host, headless: the clipboard keys reach it past the list, and where a paste
 //! goes. (What crosses processes is in `tests/x3.rs`, under W3.)
 

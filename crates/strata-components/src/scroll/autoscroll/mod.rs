@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Middle-click autoscroll: a middle press on a listing's background anchors it, and the
 //! listing then scrolls toward the pointer, faster the further it moves, until Escape or any
 //! press stops it. See the [scroll module](super) for the pieces and how a host wires them.

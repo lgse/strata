@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The mounted volumes, listed through the GLib bridge and kept current as mounts come and go.
 //!
 //!   cargo run -p strata-platform --features glib-bridge --example glib_volumes

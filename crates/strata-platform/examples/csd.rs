@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Client-side decorations (`csd`): a borderless Rune window, without rune-kit, that moves from
 //! its header, resizes from its edges where the platform allows, and has its own Minimise,
 //! Maximise and Close buttons.

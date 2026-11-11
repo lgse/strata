@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the host hands the palette: results, the queries it answers, and its answers.
 
 use std::ops::Range;

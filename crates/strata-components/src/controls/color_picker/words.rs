@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The words assistive technology hears for the picker's parts. Strata translates them.
 
 /// The parts' names and value texts. [`Default`] is English, after GTK's colour editor.

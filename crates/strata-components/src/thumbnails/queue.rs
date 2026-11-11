@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Priority: what each viewer shows and the margin around it, ranked into requests.
 
 use std::collections::HashSet;

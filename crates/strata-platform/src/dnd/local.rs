@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The in-process fast path: a drag from this process offers a private MIME type naming the
 //! drag, `application/x-local-drag;id=<counter>.<nonce>`, with no process id in it (the
 //! owner's ruling: other clients may see it). A drop in this process that sees the token of

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The portal's replies and changes, applied without a bus. The watcher's connection, its
 //! threading and the portal's absence are checked in `tests/session/p5.rs`.
 

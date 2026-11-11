@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! A module built on the X11 actor (P1's XDND) runs here, on the actor thread, through a
 //! [`Hook`]: it hears the events P0 doesn't handle itself (client messages, XI2), takes
 //! commands posted from other threads, and uses the actor's connection, window and

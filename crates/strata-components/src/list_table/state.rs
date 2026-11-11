@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`ListTableState`]: what the table keeps between frames, in the host's state.
 
 use std::cell::Cell;

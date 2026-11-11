@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Copy and paste with any MIME types between a Rune window and other apps: a demo of the
 //! `clipboard` feature, and the app strata-platform's session tests drive
 //! (`tests/session/p2.rs`). Commands arrive as JSON lines on stdin; what happens goes to

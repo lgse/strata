@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Slider (C20a): a horizontal track with snap points, labelled or not, that reports while
 //! dragging and on commit (plan §4 C20: the density sliders, text size and thumbnail size).
 //!

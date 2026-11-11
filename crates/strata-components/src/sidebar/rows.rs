@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Rows: built-in places, pins and devices, on rune-kit's `SidebarRow`, in the full sidebar
 //! and the rail. The rows are rune-kit's (their reorder drag, selection, focus and spacing);
 //! the sidebar sets the look Strata's rows have over the built row: the accent tint and

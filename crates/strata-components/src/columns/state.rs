@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`ColumnsState`]: what the host keeps for one window's column strip, and the lifecycle
 //! calls it makes as Strata opens, closes and returns to folders.
 

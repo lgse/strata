@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`LocationBar`]: the builder, and the context its parts share.
 
 use std::rc::Rc;

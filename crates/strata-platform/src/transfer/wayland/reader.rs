@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The thread that reads a Wayland connection for our queue.
 //!
 //! On winit's display this is S2's driver C: the thread takes part in libwayland's read

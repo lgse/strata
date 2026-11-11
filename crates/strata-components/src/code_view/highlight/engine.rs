@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The synchronous core: documents, checkpoints, per-line states, edits and block jobs.
 //!
 //! Every syntect `ParseState` lives here, and the engine runs only on the highlighter thread

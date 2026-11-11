@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! ThumbnailStore (C25): thumbnails as `rune::Pixels` handles under a byte budget, and the
 //! requests to load next. Loading and decoding stay in Strata.
 //!

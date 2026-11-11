@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Size steps: the pixel size a thumbnail is held at, one of the look's thumbnail classes.
 
 use strata_kit::look::Look;

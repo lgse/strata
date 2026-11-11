@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use rune::{Chord, Key, KeyEvent, Modifier, Mods, Tx};
 
 use crate::filter_bar::chord::{ChordMap, ChordOption, ChordOutcome, ChordState};

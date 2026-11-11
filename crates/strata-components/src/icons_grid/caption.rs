@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The name under a tile: wrapped over at most N lines (anywhere inside a word too long for
 //! the line, as Strata's `WordChar` wrap), centred, and cut in the middle with an ellipsis
 //! when it would take more, so the end that tells names apart (`…final-v3.tar.gz`) stays.

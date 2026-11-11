@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Drag and drop on Wayland and X11, with any MIME types, for Rune apps.
 //!
 //! The API mirrors Rune's: a [`DragSource`] is `drag_out` plus `on_drag_start` and

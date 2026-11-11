@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! ICCCM 2.6.2 `MULTIPLE`: one request for several targets at once, each into its own
 //! property. The requestor names the pairs (target, property) in an `ATOM_PAIR` property;
 //! the owner writes each target into its property, sets a pair's property to `None` where it

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! What the keyboard machine reads on every key ([`KeySettings`], which the host passes as a
 //! collection setting), and the [`KeyHandle`] it shares with the host: the 10xer range state
 //! and the commands the host queues.

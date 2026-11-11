@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gallery page for C19 Footer and ShortcutReference: its scenes, demo state, view and key and
 //! poll hooks. Scene names start with `c19-` and end in `-light` or `-dark`.
 //!

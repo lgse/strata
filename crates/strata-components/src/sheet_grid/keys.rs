@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The grid's keys, with focus on it.
 //!
 //! Strata's (`src/ui/table_view/selection.rs`): Ctrl+C copies the range, or every row without

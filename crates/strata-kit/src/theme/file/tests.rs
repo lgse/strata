@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use super::*;
 use crate::theme::color::Rgba8;
 use crate::theme::colors::{DEFAULT_DANGER, ErrorKind, Location};

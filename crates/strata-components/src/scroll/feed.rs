@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! [`ScrollFeed`]: a viewport's latest scroll position, shared by the scroll bar and autoscroll.
 
 use std::cell::Cell;

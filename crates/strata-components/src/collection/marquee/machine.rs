@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The marquee state machine: a band begun, moved, ticked and ended, turned into C1a band
 //! operations and [`Outcome`]s. Plain data, no Rune elements.
 

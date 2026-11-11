@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! StrataDialog: the modal shell every Strata dialog builds on, with its backdrop, motion,
 //! dismissal, initial focus, and Enter and Escape (C15, `app/dialogs`).
 //!

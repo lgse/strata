@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Reaching winit's `wl_display` from the `wl_surface` Rune hands out.
 //!
 //! Rune's `WindowHandle::with_raw_handle` gives the window handle only, never the display

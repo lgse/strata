@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The transfer substrate: protocols bound beside winit, multi-MIME offers and sources, and
 //! X11 selections. Internal to `dnd`, `clipboard` and `foreign-parent`, which build their own
 //! APIs on it; reachable (hidden) only for strata-platform's own session tests.

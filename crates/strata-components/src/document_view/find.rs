@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Find over a document's text, as Strata's rendered preview finds (`match_ranges` and
 //! `find_matches` in `src/ui/virtual_preview`): literal and case-insensitive by lowercase
 //! folding, so "éclair" finds "ÉCLAIR", matches that don't overlap ("aa" in "aaa" is one), and

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 mod perf;
 
 use std::borrow::Cow;

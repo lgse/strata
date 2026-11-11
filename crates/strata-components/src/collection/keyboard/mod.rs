@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Keyboard navigation over the collection (C1c).
 //!
 //! [`KeyMachine`] turns keys on a focused collection into selection operations on its

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The peer's wire protocol: one JSON object per line.
 //!
 //! Requests arrive on stdin as `{"id": 1, "cmd": "selection-read", …}` ([`Request`]). The peer

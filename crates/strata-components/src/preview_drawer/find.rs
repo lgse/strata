@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The find bar under the header: the query field, the status ("Match 1 of N", "No
 //! matches", hidden while the query is empty), Previous, Next and Close find. The hosted view
 //! answers the search through [`HostedPreview`](super::HostedPreview).
