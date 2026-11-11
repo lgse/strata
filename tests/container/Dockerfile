@@ -64,9 +64,10 @@ WORKDIR /build
 ENV CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
-# Only third-party dependencies are built here. The context carries each workspace crate's
-# manifest alone, so every crate gets an empty target.
-RUN for manifest in crates/*/Cargo.toml; do \
+# Only third-party dependencies are built here, so each workspace crate is reduced to its
+# manifest and an empty target: a crate's own build script or sources must not run.
+RUN find crates -type f ! -name Cargo.toml -delete \
+    && for manifest in crates/*/Cargo.toml; do \
         mkdir -p "$(dirname "$manifest")/src" && : > "$(dirname "$manifest")/src/lib.rs"; \
     done \
     && mkdir src && printf 'fn main() {}\n' > src/main.rs \
