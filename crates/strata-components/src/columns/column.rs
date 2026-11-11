@@ -32,7 +32,8 @@ const MOTION: Spring = Spring::new(0.22, 0.0);
 const SLIDE: f32 = -24.0;
 
 /// Column `depth`'s shell: its collection (with the header, bar and controllers), the line
-/// along its edge, the resize edge over that line, the caption and the drop wash.
+/// along its edge, the resize edge over that line, the caption and the drop wash. Assistive
+/// technology hears it as a group named by the column's folder.
 pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
     let p = (sh.parts)(s);
     let st = p.state;
@@ -82,8 +83,16 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
         ))
         .a11y_hidden()
         .inert();
+    let title = if depth < p.sources.len() {
+        p.sources.title(depth).to_owned()
+    } else {
+        String::new()
+    };
     let mut shell = col()
         .key(keys::slot(&st.key, c.slot))
+        .role("group")
+        .label(title)
+        .description(sh.labels.pane.clone())
         .w(w)
         .h_full()
         .min_h(0.0)

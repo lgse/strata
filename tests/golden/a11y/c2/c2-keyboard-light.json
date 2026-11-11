@@ -236,6 +236,7 @@
                                       ]
                                     }
                                   ],
+                                  "description": "Files",
                                   "key": "c2-col-1",
                                   "name": "Home",
                                   "role": "list-box"
@@ -245,7 +246,9 @@
                               "role": "group"
                             }
                           ],
+                          "description": "Columns view",
                           "key": "c2-slot-1",
+                          "name": "Home",
                           "role": "group"
                         },
                         {
@@ -941,6 +944,7 @@
                                       ]
                                     }
                                   ],
+                                  "description": "Files",
                                   "key": "c2-col-2",
                                   "name": "Pictures",
                                   "role": "list-box"
@@ -950,7 +954,9 @@
                               "role": "group"
                             }
                           ],
+                          "description": "Columns view",
                           "key": "c2-slot-2",
+                          "name": "Pictures",
                           "role": "group"
                         }
                       ],

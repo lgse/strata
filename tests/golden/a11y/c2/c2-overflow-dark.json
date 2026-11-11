@@ -226,6 +226,7 @@
                                       ]
                                     }
                                   ],
+                                  "description": "Files",
                                   "key": "c2-col-1",
                                   "name": "Home",
                                   "role": "list-box"
@@ -235,7 +236,9 @@
                               "role": "group"
                             }
                           ],
+                          "description": "Columns view",
                           "key": "c2-slot-1",
+                          "name": "Home",
                           "role": "group"
                         },
                         {
@@ -352,6 +355,7 @@
                                       ]
                                     }
                                   ],
+                                  "description": "Files",
                                   "key": "c2-col-2",
                                   "name": "deep",
                                   "role": "list-box"
@@ -361,7 +365,9 @@
                               "role": "group"
                             }
                           ],
+                          "description": "Columns view",
                           "key": "c2-slot-2",
+                          "name": "deep",
                           "role": "group"
                         },
                         {
@@ -478,6 +484,7 @@
                                       ]
                                     }
                                   ],
+                                  "description": "Files",
                                   "key": "c2-col-3",
                                   "name": "level-1",
                                   "role": "list-box"
@@ -487,7 +494,9 @@
                               "role": "group"
                             }
                           ],
+                          "description": "Columns view",
                           "key": "c2-slot-3",
+                          "name": "level-1",
                           "role": "group"
                         },
                         {
@@ -604,6 +613,7 @@
                                       ]
                                     }
                                   ],
+                                  "description": "Files",
                                   "key": "c2-col-4",
                                   "name": "level-2",
                                   "role": "list-box"
@@ -613,7 +623,9 @@
                               "role": "group"
                             }
                           ],
+                          "description": "Columns view",
                           "key": "c2-slot-4",
+                          "name": "level-2",
                           "role": "group"
                         },
                         {
@@ -730,6 +742,7 @@
                                       ]
                                     }
                                   ],
+                                  "description": "Files",
                                   "key": "c2-col-5",
                                   "name": "level-3",
                                   "role": "list-box"
@@ -739,7 +752,9 @@
                               "role": "group"
                             }
                           ],
+                          "description": "Columns view",
                           "key": "c2-slot-5",
+                          "name": "level-3",
                           "role": "group"
                         },
                         {
@@ -856,6 +871,7 @@
                                       ]
                                     }
                                   ],
+                                  "description": "Files",
                                   "key": "c2-col-6",
                                   "name": "level-4",
                                   "role": "list-box"
@@ -865,7 +881,9 @@
                               "role": "group"
                             }
                           ],
+                          "description": "Columns view",
                           "key": "c2-slot-6",
+                          "name": "level-4",
                           "role": "group"
                         },
                         {
@@ -999,6 +1017,7 @@
                                       ]
                                     }
                                   ],
+                                  "description": "Files",
                                   "key": "c2-col-7",
                                   "name": "level-5",
                                   "role": "list-box"
@@ -1008,7 +1027,9 @@
                               "role": "group"
                             }
                           ],
+                          "description": "Columns view",
                           "key": "c2-slot-7",
+                          "name": "level-5",
                           "role": "group"
                         }
                       ],

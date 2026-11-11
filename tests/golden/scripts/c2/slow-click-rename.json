@@ -235,6 +235,7 @@
                                       ]
                                     }
                                   ],
+                                  "description": "Files",
                                   "key": "c2-col-1",
                                   "name": "Home",
                                   "role": "list-box"
@@ -244,7 +245,9 @@
                               "role": "group"
                             }
                           ],
+                          "description": "Columns view",
                           "key": "c2-slot-1",
+                          "name": "Home",
                           "role": "group"
                         },
                         {
@@ -581,6 +584,7 @@
                                       ]
                                     }
                                   ],
+                                  "description": "Files",
                                   "key": "c2-col-2",
                                   "name": "Documents",
                                   "role": "list-box"
@@ -590,7 +594,9 @@
                               "role": "group"
                             }
                           ],
+                          "description": "Columns view",
                           "key": "c2-slot-2",
+                          "name": "Documents",
                           "role": "group"
                         },
                         {
@@ -734,6 +740,7 @@
                                       ]
                                     }
                                   ],
+                                  "description": "Files",
                                   "key": "c2-col-3",
                                   "name": "Reports",
                                   "role": "list-box"
@@ -743,7 +750,9 @@
                               "role": "group"
                             }
                           ],
+                          "description": "Columns view",
                           "key": "c2-slot-3",
+                          "name": "Reports",
                           "role": "group"
                         }
                       ],

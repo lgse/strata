@@ -342,6 +342,35 @@ mod c2b {
         assert_eq!(description(&rt, &cv), None);
     }
 
+    #[test]
+    fn a_hosts_description_stands_in_for_the_badges_words() {
+        // What assistive technology hears: a host that describes its entries is heard in
+        // place of the size, whatever the badge's setting says and while the row is renamed;
+        // the chip still shows the size.
+        let mut rt = scene("c2-kinds-light");
+        let taxes = row("Documents", "Taxes");
+        let cv = row("Documents", "cv.pdf");
+        let described = |rt: &Runtime<Gallery>| {
+            [&taxes, &cv].map(|r| description(rt, r).expect("a description"))
+        };
+        assert_eq!(described(&rt), ["Folder", "File"]);
+        assert_eq!(badge(&rt, &cv), Some(1.0), "the chip shows");
+        let id = id_in("Documents", "cv.pdf");
+        rt.update(|g, _| {
+            g.c2.show_sizes = false;
+            g.c2.renaming = Some((1, id));
+        });
+        settle(&mut rt, 2);
+        assert_eq!(described(&rt), ["Folder", "File"]);
+        rt.update(|g, _| {
+            g.c2.show_sizes = true;
+            g.c2.renaming = None;
+            g.c2.listings.describe_kinds(false);
+        });
+        settle(&mut rt, 2);
+        assert_eq!(description(&rt, &taxes).as_deref(), Some("5 items"));
+    }
+
     /// The chip of row `row`, as drawn.
     fn chip(rt: &Runtime<Gallery>, row: &str) -> ElementInfo {
         let tail = format!("/{row}/");

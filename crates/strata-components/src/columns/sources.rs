@@ -52,4 +52,15 @@ pub trait ColumnSources {
     fn badge(&self, _depth: usize, _index: usize) -> Option<Cow<'_, str>> {
         None
     }
+
+    /// What assistive technology reads after the name of column `depth`'s entry at `index`,
+    /// as the host words it: what the entry is ("Folder", "File link"). `None` (the default)
+    /// leaves the description to the size badge's words.
+    ///
+    /// A host's description stands alone: the badge's words are not added to it, and it reads
+    /// whatever [`ColumnsView::show_sizes`](super::ColumnsView::show_sizes) says and while the
+    /// row is renamed. A host that wants the size heard too puts it in these words.
+    fn description(&self, _depth: usize, _index: usize) -> Option<Cow<'_, str>> {
+        None
+    }
 }

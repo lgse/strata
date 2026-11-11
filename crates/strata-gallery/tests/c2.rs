@@ -1264,6 +1264,31 @@ mod c2 {
     }
 
     #[test]
+    fn each_column_is_a_group_named_by_its_folder_around_a_list_of_the_same_name() {
+        // What assistive technology hears: the column's group and its list are both named by
+        // the folder, and described in the host's words (`ColumnsLabels::pane` and `list`).
+        let rt = scene("c2-three-columns-light");
+        let heard = |key: &str| {
+            let node = node(&rt, key).unwrap_or_else(|| panic!("no node {key}"));
+            ["role", "name", "description"].map(|field| node[field].as_str().map(str::to_owned))
+        };
+        for (depth, folder) in ["Home", "Documents", "Reports"].into_iter().enumerate() {
+            let serial = depth + 1;
+            let named = |role: &str, description: &str| {
+                [role, folder, description].map(|text| Some(text.to_owned()))
+            };
+            assert_eq!(
+                heard(&format!("c2-slot-{serial}")),
+                named("group", "Columns view")
+            );
+            assert_eq!(
+                heard(&keys::column("c2", serial as u64)),
+                named("list-box", "Files")
+            );
+        }
+    }
+
+    #[test]
     fn a_press_in_another_column_cancels_a_pending_slow_click_rename() {
         // browser/view-modes/columns: A slow second click on the name of a selected, open
         // folder still starts a rename (and a press in another column before it comes cancels

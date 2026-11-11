@@ -2,8 +2,9 @@
 
 //! The size badge on each row: "12 items", "No items" or a file's size, as the host words it
 //! ([`ColumnSources::badge`](super::ColumnSources::badge)), and the row's accessible
-//! description that carries the same text (Strata's `.file-size`, `src/style.css`, and
-//! `src/ui/browser/columns/rows/`, `upstream/main` 35ee677ab).
+//! description, which carries the same text unless the host describes the entry itself
+//! (Strata's `.file-size`, `src/style.css`, and `src/ui/browser/columns/rows/`,
+//! `upstream/main` 35ee677ab).
 //!
 //! The badge is paint: an opaque chip pinned over the end of the row's name, as Strata's
 //! overlay is. Its visibility is Rune's hover-group paint, so the pointer crossing rows commits
@@ -158,16 +159,31 @@ fn chip(look: &Look, t: &str, rcx: &RowCx<'_>, hover_live: bool) -> El {
         .inert()
 }
 
-/// The row's accessible description: the badge's text, under the same setting, and none while
-/// the row is being renamed.
+/// The row's accessible description: the host's words for the entry
+/// ([`ColumnSources::description`](super::ColumnSources::description)), else the badge's text
+/// under its setting, and none of the badge's while the row is being renamed.
 pub(super) fn describe<S: 'static>(sh: &Rc<Shared<S>>, serial: u64) -> Describe<S> {
     let (v, b) = (sh.clone(), sh.clone());
     Describe::new(
         move |s: &S, rcx: &RowCx<'_>| {
             let mut h = std::hash::DefaultHasher::new();
-            shown_text(&v, s, serial, rcx).hash(&mut h);
+            described(&v, s, serial, rcx).hash(&mut h);
             h.finish()
         },
-        move |s: &S, rcx: &RowCx<'_>| shown_text(&b, s, serial, rcx).map(Cow::into_owned),
+        move |s: &S, rcx: &RowCx<'_>| described(&b, s, serial, rcx).map(Cow::into_owned),
     )
+}
+
+fn described<'s, S: 'static>(
+    sh: &Shared<S>,
+    s: &'s S,
+    serial: u64,
+    rcx: &RowCx<'_>,
+) -> Option<Cow<'s, str>> {
+    let p = (sh.parts)(s);
+    p.state
+        .depth_of(serial)
+        .filter(|d| *d < p.sources.len())
+        .and_then(|depth| p.sources.description(depth, rcx.index))
+        .or_else(|| shown_text(sh, s, serial, rcx))
 }

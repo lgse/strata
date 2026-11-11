@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! [`Describe`]: what assistive technology reads after a row's name.
+//! What assistive technology reads after a name: a row's [`Describe`], and the list's own
+//! description.
 
 use rune::{Cx, El, Env, Runtime};
 use strata_kit::look::Look;
@@ -26,6 +27,8 @@ fn view(s: &Host, _: &mut Cx<Host>) -> El {
         |s: &Host| &s.look,
         |_: &Host| 1,
     )
+    .name("Documents")
+    .description("Files")
     .describe(Describe::new(
         |s: &Host, _| s.size,
         |s: &Host, rcx| (!rcx.entry.kind.is_folder_like()).then(|| format!("{} kB", s.size)),
@@ -33,7 +36,7 @@ fn view(s: &Host, _: &mut Cx<Host>) -> El {
     .build(s)
 }
 
-/// The row's description, from its node's JSON text.
+/// The description of the row or list keyed `key`, from its node's JSON text.
 fn description(rt: &Runtime<Host>, key: &str) -> Option<String> {
     let node = a11y_node(rt, key).unwrap_or_else(|| panic!("{key}"));
     let (_, rest) = node.split_once(r#""description":""#)?;
@@ -41,7 +44,8 @@ fn description(rt: &Runtime<Host>, key: &str) -> Option<String> {
 }
 
 /// A file row is described after its name and a folder (entry 0) isn't; a new description
-/// reaches the tree when its version changes, though the entries stay the same.
+/// reaches the tree when its version changes, though the entries stay the same. The list
+/// keeps the description the host gave it.
 #[test]
 fn a_row_reads_its_description_and_follows_its_version() {
     let host = Host {
@@ -59,4 +63,5 @@ fn a_row_reads_its_description_and_follows_its_version() {
     rt.update(|s, _| s.size = 13);
     rt.frame(1.0 / 60.0);
     assert_eq!(description(&rt, "row-1").as_deref(), Some("13 kB"));
+    assert_eq!(description(&rt, "list").as_deref(), Some("Files"));
 }

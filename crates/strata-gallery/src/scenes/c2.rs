@@ -28,7 +28,8 @@
 //! listed, so it shows none till then) and
 //! a file's size made up from its name. `Demo::show_sizes` stands in for Strata's "Show sizes
 //! in Columns view". A rename (a slow second click) draws a stand-in editor, the row's name in
-//! an outline, until the selection or cursor moves.
+//! an outline, until the selection or cursor moves. With `Listings::describe_kinds` the page
+//! describes each row by what it is, as Strata does, in place of the badge's words.
 
 use std::borrow::Cow;
 
@@ -65,10 +66,18 @@ pub struct Listed {
     pub from: Option<EntryId>,
 }
 
-/// The open columns' listings, root first, and whether Slow's item count is known yet (once
-/// it has been listed: a count that fills in late).
+/// The open columns' listings, root first, whether Slow's item count is known yet (once it
+/// has been listed: a count that fills in late), and whether the page describes its rows.
 #[derive(Debug, Default)]
-pub struct Listings(pub Vec<Listed>, pub bool);
+pub struct Listings(pub Vec<Listed>, pub bool, pub bool);
+
+impl Listings {
+    /// Describes each row to assistive technology by what it is ("Folder", "File"), as
+    /// Strata does, in place of the badge's words.
+    pub fn describe_kinds(&mut self, on: bool) {
+        self.2 = on;
+    }
+}
 
 impl ColumnSources for Listings {
     fn len(&self) -> usize {
@@ -100,6 +109,19 @@ impl ColumnSources for Listings {
         } else {
             Some(Cow::Owned(size_text(size_of(entry.name))))
         }
+    }
+    fn description(&self, depth: usize, index: usize) -> Option<Cow<'_, str>> {
+        let source = &self.0.get(depth)?.source;
+        if !self.2 || index >= source.len() {
+            return None;
+        }
+        Some(Cow::Borrowed(
+            if source.entry(index).kind.is_folder_like() {
+                "Folder"
+            } else {
+                "File"
+            },
+        ))
     }
 }
 
@@ -746,6 +768,13 @@ fn sizes_off(g: &mut Gallery, dark: bool) {
     g.c2.show_sizes = false;
 }
 
+/// The badges' scene with each row described by what it is: the chips still show the sizes,
+/// and assistive technology hears "Folder" and "File".
+fn kinds(g: &mut Gallery, dark: bool) {
+    badges(g, dark);
+    g.c2.listings.describe_kinds(true);
+}
+
 pub const SCENES: &[Scene] = &[
     ("c2-three-columns-light", |g| three_columns(g, false)),
     ("c2-three-columns-dark", |g| three_columns(g, true)),
@@ -767,6 +796,8 @@ pub const SCENES: &[Scene] = &[
     ("c2-badges-dark", |g| badges(g, true)),
     ("c2-sizes-off-light", |g| sizes_off(g, false)),
     ("c2-sizes-off-dark", |g| sizes_off(g, true)),
+    ("c2-kinds-light", |g| kinds(g, false)),
+    ("c2-kinds-dark", |g| kinds(g, true)),
 ];
 
 /// Scenes for review with `--scene` only, kept out of the goldens.

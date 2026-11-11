@@ -265,6 +265,7 @@ pub(crate) struct Config<S> {
     version: ReadFn<S, u64>,
     settings: Rc<Settings>,
     name: Option<String>,
+    description: Option<String>,
     roles: Roles,
     row_height: RowHeightFn<S>,
     lines: Rc<dyn Lines>,
@@ -345,6 +346,7 @@ impl<S: 'static> Collection<S> {
                 version: Rc::new(listing_version),
                 settings: Rc::new(Settings::default()),
                 name: None,
+                description: None,
                 roles: Roles::LISTBOX,
                 row_height: Rc::new(|_, l| l.row.list),
                 lines: Rc::new(OnePerLine),
@@ -385,6 +387,13 @@ impl<S: 'static> Collection<S> {
     /// The name assistive technology reads for the collection ("Documents").
     pub fn name(mut self, name: impl Into<String>) -> Self {
         self.cfg.name = Some(name.into());
+        self
+    }
+
+    /// What assistive technology reads after the collection's name: what it holds ("Files"),
+    /// in the host's words. By default, nothing.
+    pub fn description(mut self, description: impl Into<String>) -> Self {
+        self.cfg.description = Some(description.into());
         self
     }
 
@@ -917,6 +926,9 @@ impl<S: 'static> Collection<S> {
         }
         if let Some(name) = &cfg.name {
             root = root.label(name.clone());
+        }
+        if let Some(description) = &cfg.description {
+            root = root.description(description.clone());
         }
         // A vanished row (`RowMarks::vanished`) has left the tree: point at nothing rather than
         // at it.

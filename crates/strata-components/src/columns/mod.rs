@@ -97,11 +97,15 @@
 //!   says when to light the drawer's line.
 //! - **What assistive technology hears.** The strip is a group named "Columns" whose active
 //!   descendant is the active column's cursor row, or that column's list while it has no cursor,
-//!   so a change of column is heard as the list it lands in. Each column is a list box named by
-//!   its folder; its header's buttons are named ("Close this pane", the host's), the spinner is a
-//!   progress indicator named "Loading", the resize edge is hidden. A row's size badge is its
-//!   description ("Documents, 27 items"), under the badge's setting and never while it is
-//!   renamed, whether or not the chip shows, as Strata's label is always there to read.
+//!   so a change of column is heard as the list it lands in. Each column is a group named by
+//!   its folder and described as the host says ("Columns view"), around a list box with the
+//!   same name, described "Files"; its header's buttons are named ("Close this pane", the
+//!   host's), the spinner is a progress indicator named "Loading", the resize edge is hidden.
+//!   A row's description is the host's words for the entry
+//!   ([`ColumnSources::description`]: "Folder", "File link"). Where the host gives none, the
+//!   row's size badge is its description ("Documents, 27 items"), under the badge's setting
+//!   and never while it is renamed, whether or not the chip shows, as Strata's label is always
+//!   there to read.
 //!
 //! # Decisions and deviations
 //!
@@ -130,7 +134,9 @@
 //! - **The header title is bold**, as Strata's (700): the kit's type scale stops at medium, so
 //!   the weight is a slot token (`columns.header.title_weight`).
 //! - **The badge's text is the row's accessible description** (C2b, owner ruling), where Strata
-//!   leaves a GTK label for the screen reader; the chip itself is hidden from it.
+//!   leaves a GTK label for the screen reader; the chip itself is hidden from it. A host that
+//!   describes its entries ([`ColumnSources::description`]) replaces it, as Strata's rows are
+//!   described by their kind (owner ruling of 2026-11-11, `docs/rune/slice/V6-columns-adapter.md`).
 //! - **Widths ease on a 0.22 s spring** (a spread, an autofit), as the lifecycle does, rather
 //!   than Strata's 220 ms emphasized deceleration; a narrowing to the area lands at once, as
 //!   Strata's clamp does.
@@ -295,6 +301,12 @@
 //! | A7 The column under the drag is washed, one autoscroll revealed too | page `the_column_under_a_held_drag…`; unit `the_column_under_the_drag_follows…`; PNG `c2-drop-column-*` |
 //! | A8 The wash stays at the limit and clears on leaving | page `the_column_under_a_held_drag…`, `the_wash_clears_when_the_drag_leaves_the_column…` |
 //! | A9 A drop on a partly shown column goes there; the strip stays | `drop-on-partly-shown-column`; page `a_drop_on_a_partly_shown_column…`, `a_drop_clears_the_wash_even…` |
+//!
+//! What assistive technology hears, which no bullet names: each column a group named by its
+//! folder around a list of the same name (page `each_column_is_a_group_named_by_its_folder…`,
+//! every `c2-*` accessibility golden), and a host's description of an entry in place of the
+//! badge's words (page (c2b) `a_hosts_description_stands_in_for_the_badges_words`, goldens
+//! `c2-kinds-*`).
 //!
 //! From other nodes, which C1c and C1d left to the views: `browser/selection`'s Ctrl+A in the
 //! focused column (`ctrl-a-active-column`), returning keeps a multi-selection

@@ -228,6 +228,7 @@
                                           ]
                                         }
                                       ],
+                                      "description": "Files",
                                       "key": "c22-columns-col-1",
                                       "name": "Home",
                                       "role": "list-box"
@@ -237,7 +238,9 @@
                                   "role": "group"
                                 }
                               ],
+                              "description": "Columns view",
                               "key": "c22-columns-slot-1",
+                              "name": "Home",
                               "role": "group"
                             }
                           ],

@@ -81,6 +81,10 @@ pub struct ColumnsLabels {
     pub loading: String,
     /// The caption over a column's edge.
     pub width: String,
+    /// What each column's group, named by its folder, is described as ("Columns view").
+    pub pane: String,
+    /// What each column's list, named by its folder, is described as ("Files").
+    pub list: String,
 }
 
 impl Default for ColumnsLabels {
@@ -90,6 +94,8 @@ impl Default for ColumnsLabels {
             close: "Close this pane".into(),
             loading: "Loading".into(),
             width: "Column width".into(),
+            pane: "Columns view".into(),
+            list: "Files".into(),
         }
     }
 }
@@ -172,9 +178,10 @@ static NO_ENTRIES: NoEntries = NoEntries;
 ///
 /// The view owns two of each column collection's slots: the rows' content
 /// (`Collection::content`: the icon, the label and the size badge) and their description
-/// (`Collection::describe`: the badge's text). A host sets neither in
-/// [`ColumnsView::collection`]; it gives the badge's words through [`ColumnSources::badge`] and
-/// its setting through [`ColumnsView::show_sizes`].
+/// (`Collection::describe`: the host's words for the entry, else the badge's text). A host
+/// sets neither in [`ColumnsView::collection`]; it gives the badge's words through
+/// [`ColumnSources::badge`], its setting through [`ColumnsView::show_sizes`], and what the
+/// entry is through [`ColumnSources::description`].
 ///
 /// Used by: hosts (Strata's browser and chooser, the gallery).
 pub struct ColumnsView<S> {
@@ -223,10 +230,11 @@ impl<S: 'static> ColumnsView<S> {
     /// The host's additions to column `depth`'s collection: its clock, its controllers'
     /// settings (except [`PointerSettings`], which go through
     /// [`ColumnsView::pointer_settings`]), a label or icon slot, a rename editor. The view sets
-    /// the rest after (the name, row height, header, marks, intents, drops and keys), so
-    /// don't set those here. The view owns the rows' content slot (`Collection::content`: the
-    /// icon, the label and the size badge) and their description (`Collection::describe`: the
-    /// badge's text), so don't set those either.
+    /// the rest after (the name and description, row height, header, marks, intents, drops and
+    /// keys), so don't set those here. The view owns the rows' content slot
+    /// (`Collection::content`: the icon, the label and the size badge) and their description
+    /// (`Collection::describe`: [`ColumnSources::description`], else the badge's text), so
+    /// don't set those either.
     pub fn collection(
         self,
         f: impl Fn(&S, usize, Collection<S>) -> Collection<S> + 'static,
@@ -442,6 +450,7 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
         });
     }
     c.name(title)
+        .description(sh.labels.list.clone())
         .row_height(|_: &S, l: &Look| l.row.columns)
         .keys_by_host()
         .settings(pointer)
