@@ -903,10 +903,7 @@ fn single_safe_file_name(entries: &[FileEntry]) -> Option<&OsStr> {
 }
 
 pub(super) fn select_name_stem(entry: &gtk::Entry) {
-    entry.select_region(
-        0,
-        crate::ui::collection_edit::rename_stem_end(&entry.text()),
-    );
+    entry.select_region(0, crate::services::rename_stem_end(&entry.text()));
 }
 
 pub(super) fn eligible_open_entries(entries: Vec<FileEntry>, directory: bool) -> Vec<FileEntry> {

@@ -188,7 +188,7 @@ impl Dispatcher {
         let end = if entry.is_directory() {
             -1
         } else {
-            crate::ui::collection_edit::rename_stem_end(&name)
+            crate::services::rename_stem_end(&name)
         };
         if self.shortcuts.open_prompt_with(Prompt::Rename, &name) {
             self.shortcuts.select_prompt_region(0, end);

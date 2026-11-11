@@ -5,9 +5,10 @@
 //! the owner or cancelling revokes the lease. Submission is consumer policy; filesystem work
 //! and its pending/error reconciliation remain in the browser's operation coordinator.
 
+pub(super) use crate::services::Naming;
 use crate::{
     model::{FileEntry, Location},
-    services::{TypedPath, validate_basename},
+    services::{TypedPath, name_field_error, rename_stem_end},
 };
 use gtk::{glib, prelude::*};
 use std::{cell::RefCell, rc::Rc};
@@ -89,17 +90,6 @@ pub(super) struct EditTarget {
     pub(super) finish: Option<Rc<dyn Fn()>>,
     pub(super) cancelled: Option<Rc<dyn Fn()>>,
     pub(super) naming: Naming,
-}
-
-/// How a name typed for a local entry may move it; elsewhere it is a single name.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(super) enum Naming {
-    /// A relative path moves the item below its folder.
-    #[default]
-    Path,
-    /// The entry was just created, so a file may also be named as a folder.
-    NewItem,
-    Single,
 }
 
 impl From<EditWidgets> for EditTarget {
@@ -318,28 +308,6 @@ fn kept_focus_in_inactive_window(field: &gtk::Entry) -> bool {
                     focus == *field.upcast_ref::<gtk::Widget>() || focus.is_ancestor(field)
                 })
         })
-}
-
-pub(super) fn rename_stem_end(name: &str) -> i32 {
-    let end = name
-        .rfind('.')
-        .filter(|position| *position > 0)
-        .unwrap_or(name.len());
-    name[..end].chars().count().min(i32::MAX as usize) as i32
-}
-
-/// Empty fields are an ordinary editing state, although they cannot be submitted.
-pub(super) fn name_field_error(
-    name: &str,
-    naming: Naming,
-    is_directory: bool,
-) -> Option<&'static str> {
-    match naming {
-        _ if name.is_empty() => None,
-        Naming::Single => validate_basename(name).err(),
-        Naming::Path => TypedPath::parse(name, is_directory, false).err(),
-        Naming::NewItem => TypedPath::parse(name, is_directory, true).err(),
-    }
 }
 
 pub(in crate::ui) fn update_basename_validation(field: &gtk::Entry) -> bool {
