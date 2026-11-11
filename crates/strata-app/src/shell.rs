@@ -13,7 +13,7 @@ use strata_components::header::{
     self, Header, HeaderLabels, WindowAction, WindowButtons, WindowChrome,
 };
 use strata_core::{i18n::tr, model::Location};
-use strata_desktop::settings::{Preferences, sort_preferences};
+use strata_desktop::settings::sort_preferences;
 use strata_fs::{
     adapters::{LocalFileSource, LocalOperationProvider},
     app::Browser,
@@ -24,6 +24,7 @@ use strata_platform::csd::{self, Csd};
 use crate::{
     columns::{self, Columns, Hands, Ids},
     events::{Change, Inbox},
+    settings::Saved,
     startup::UiThread,
 };
 
@@ -60,6 +61,7 @@ pub(crate) struct App {
     pub(crate) look: Look,
     pub(crate) browser: Rc<Browser>,
     pub(crate) columns: Columns,
+    settings: Saved,
     events: Inbox,
     /// The browser's active location as of the last `poll`: what the body and the title name.
     location: Option<Location>,
@@ -77,15 +79,16 @@ impl App {
     /// A browser over the local file source, as `src/ui/window/launch.rs` builds one, with
     /// the saved sort and hidden-files choice and with every event queued for
     /// [`apply_queued`].
-    pub(crate) fn new(_ui: &UiThread, csd: Csd, settings: &Preferences) -> Self {
-        let browser =
-            Browser::with_preferences(Rc::new(LocalFileSource), sort_preferences(settings));
+    pub(crate) fn new(_ui: &UiThread, csd: Csd, settings: Saved) -> Self {
+        let saved = settings.preferences();
+        let browser = Browser::with_preferences(Rc::new(LocalFileSource), sort_preferences(saved));
         browser.set_operation_provider(Rc::new(LocalOperationProvider));
         let ids = Ids::default();
         Self {
             look: Look::fallback(true),
             events: Inbox::observing(&browser, ids.clone()),
-            columns: Columns::new(settings, ids),
+            columns: Columns::new(saved, ids),
+            settings,
             browser,
             location: None,
             title: title_for(None),
@@ -110,6 +113,10 @@ impl App {
                 self.title = title_for(location.as_ref());
                 tx.set_title(self.title.clone());
                 self.location = location;
+            }
+            Change::View(view) => {
+                self.settings.store_view(view);
+                return false;
             }
             change => self.columns.apply(
                 change,

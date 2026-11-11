@@ -13,7 +13,7 @@
 use std::{cell::RefCell, collections::VecDeque, ops::Range, rc::Rc};
 
 use strata_components::contract::EntryId;
-use strata_core::model::{FileEntry, Location};
+use strata_core::model::{FileEntry, Location, ViewPreferences};
 use strata_fs::app::{Browser, BrowserEvent};
 
 use crate::columns::{Edit, Ids, Load, Row};
@@ -98,6 +98,8 @@ pub(crate) enum Change {
         reveal: bool,
         landed: Option<Landed>,
     },
+    /// The browser's sort or hidden-files choice changed: the saved settings follow it.
+    View(ViewPreferences),
 }
 
 #[derive(Default)]
@@ -143,6 +145,8 @@ impl Inbox {
                 queue.push(change);
             }
         });
+        let queue = inbox.0.clone();
+        browser.observe_preferences(move |view| queue.borrow_mut().push(Change::View(view)));
         inbox
     }
 

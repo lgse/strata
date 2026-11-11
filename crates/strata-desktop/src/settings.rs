@@ -6,8 +6,9 @@
 //!
 //! The GTK application's `PreferenceManager` (`src/ui/preferences.rs`) owns a [`Preferences`]
 //! and adds what needs its toolkit: the setters, change notifications, widget bindings and
-//! the notices about saving. The Rune interface reads one with [`Preferences::load_read_only`]
-//! and does not save. `docs/preferences.md` describes each setting.
+//! the notices about saving. The Rune interface holds one in `strata-app`'s `settings::Saved`,
+//! which saves the few values that interface changes. `docs/preferences.md` describes each
+//! setting.
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -295,14 +296,4 @@ pub struct Preferences {
     pub list_hidden_columns: Vec<ListColumnId>,
     #[serde(default, skip_serializing_if = "KeymapOverrides::is_empty")]
     pub keymap: KeymapOverrides,
-}
-
-impl Preferences {
-    /// The settings as an interface that never saves starts with them: read, salvaged entry
-    /// by entry, and brought within range. A file that cannot be read gives the defaults.
-    pub fn load_read_only() -> Self {
-        let (mut preferences, _failure, _salvaged) = read_loaded_preferences();
-        preferences.normalize_loaded();
-        preferences
-    }
 }

@@ -72,7 +72,7 @@ fn serve(directory: &OsStr) -> Result<(), String> {
     let location = launch::location(Some(directory)).ok_or("the argument is not a location")?;
     launch::leave_launch_folder();
     let log = InputLog::from_environment()?;
-    let host = Offscreen::sized(startup::UiThread::claim()?, &settings, SIZE).without_animations();
+    let host = Offscreen::sized(startup::UiThread::claim()?, settings, SIZE).without_animations();
     host.app().open(location);
     let backend = Rune::new(host, log);
     let commands = strata_qa::command_lines();

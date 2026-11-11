@@ -6,11 +6,11 @@
 use std::time::{Duration, Instant};
 
 use rune::{Env, Runtime, text::TextSystem};
-use strata_desktop::settings::Preferences;
 use strata_kit::fonts::{FAMILIES, FONTS};
 use strata_platform::csd::{Backend, Csd, Policy};
 
 use crate::{
+    settings::Saved,
     shell::{self, App},
     startup::UiThread,
 };
@@ -28,12 +28,12 @@ pub(crate) struct Offscreen {
 
 impl Offscreen {
     #[cfg(test)]
-    pub(crate) fn new(ui: UiThread, settings: &Preferences) -> Self {
+    pub(crate) fn new(ui: UiThread, settings: Saved) -> Self {
         Self::sized(ui, settings, SIZE)
     }
 
     /// A host that draws at `size`, in points.
-    pub(crate) fn sized(ui: UiThread, settings: &Preferences, size: (f32, f32)) -> Self {
+    pub(crate) fn sized(ui: UiThread, settings: Saved, size: (f32, f32)) -> Self {
         let app = App::new(
             &ui,
             Csd::new(Policy::Auto.frame(), Backend::Headless),

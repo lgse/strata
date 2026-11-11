@@ -74,7 +74,7 @@ is the same apart from visibility and paths.
 | `persistence` | `settings_path`, reading, `salvage_preferences`, `record_changes`, `merged_settings`, `lock_saves` |
 | `CornerRoundness`, `TextSize`, `ListColumnId`, `ListColumns`, `KeymapOverrides` | The stored types |
 | `MIN_ICONS_THUMBNAIL_SIZE`, `MAX_ICONS_THUMBNAIL_SIZE` | The range loading clamps to. `ui::icons_cell` re-exports them |
-| `Preferences::load_read_only` | New: read, salvage and normalize, for an interface that never saves |
+| `Preferences::load_read_only` | New: read, salvage and normalize, for an interface that never saves. Removed in V8, when `strata-app` began to save `show_hidden` and the sort: its `settings::Saved` reads with `read_loaded_preferences` so that it knows when the file could not be read |
 
 The fields of `Preferences` are `pub` now, because the manager's methods read them from
 another crate. Nothing else became reachable that was not: `strata-desktop` is used by the
@@ -107,7 +107,7 @@ it used to define.
 
 ## How the Rune interface reads it
 
-`strata-app` calls `Preferences::load_read_only()` before it claims the UI thread. It sets
+`strata-app` reads the file (`settings::Saved::load`) before it claims the UI thread. It sets
 the process language from `language`, and builds its `Browser` with `sort_preferences`:
 `show_hidden`, `folders_first`, `sort_key`, `sort_direction`, `natural_sort` and
 `case_sensitive_sort`.
@@ -118,8 +118,12 @@ The other keys V5 lists are parsed with the file and not used yet: `type_to_sear
 `columns_show_sizes`. V6 and V8 read them where the Columns view and the scenarios need
 them.
 
-The Rune interface never saves. A file it cannot read gives it the defaults and stays as it
-is.
+Since V8 the Rune interface saves two things, as the GTK application's
+`set_sort_preferences` does: the hidden-files choice and the sort, when its `Browser` says
+they changed. `strata-app`'s `settings::Saved` queues the save on the shared writer and
+merges only the keys it changed. It reads `type_to_search` and `tenxer_mode` for the
+Columns view's letters. A file it cannot read gives it the defaults and is never saved
+over.
 
 ## Merging from `main`
 

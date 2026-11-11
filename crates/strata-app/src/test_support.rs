@@ -30,7 +30,7 @@ pub(crate) fn hosted_after(
             prepare();
             let settings = startup::load_settings();
             let ui = UiThread::claim().expect("the UI thread");
-            run(Offscreen::new(ui, &settings));
+            run(Offscreen::new(ui, settings));
         },
     );
 }

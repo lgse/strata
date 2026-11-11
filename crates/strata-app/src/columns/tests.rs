@@ -21,6 +21,7 @@ use crate::{
 mod history;
 mod keys;
 mod letters;
+mod saved;
 
 const MODULE: &str = "columns::tests";
 

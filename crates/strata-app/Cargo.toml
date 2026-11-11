@@ -33,6 +33,7 @@ glib.workspace = true
 rust-i18n.workspace = true
 serde_json = { workspace = true, optional = true }
 strata-qa = { workspace = true, optional = true }
+toml.workspace = true
 tracing.workspace = true
 xkbcommon = { workspace = true, optional = true }
 

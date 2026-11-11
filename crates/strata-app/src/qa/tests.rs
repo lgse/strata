@@ -32,7 +32,7 @@ fn staged(name: &str, input_log: Option<PathBuf>, run: impl FnOnce(Rune)) {
         || {
             let settings = startup::load_settings();
             let ui = UiThread::claim().expect("the UI thread");
-            let host = Offscreen::sized(ui, &settings, SIZE).without_animations();
+            let host = Offscreen::sized(ui, settings, SIZE).without_animations();
             let log = InputLog::from_environment().expect("the input log");
             run(Rune::new(host, log));
         },

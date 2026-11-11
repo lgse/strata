@@ -12,7 +12,6 @@ use std::cell::OnceCell;
 
 use rune::{AppSpec, Tx, WindowHandle, WindowOptions};
 use strata_core::model::Location;
-use strata_desktop::settings::Preferences;
 use strata_kit::fonts::{FAMILIES, FONTS};
 use strata_platform::{
     csd::{self, Backend, Csd, Policy},
@@ -20,6 +19,7 @@ use strata_platform::{
 };
 
 use crate::{
+    settings::Saved,
     shell::{self, App},
     startup::{APPLICATION_ID, UiThread},
 };
@@ -56,7 +56,7 @@ fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
 }
 
 /// Opens the window on `location` and returns when it closes.
-pub(crate) fn run(ui: UiThread, settings: Preferences, location: Location) -> Result<(), String> {
+pub(crate) fn run(ui: UiThread, settings: Saved, location: Location) -> Result<(), String> {
     rune::set_app_id(APPLICATION_ID);
     let frame = Policy::Auto.frame();
     let app = rune::App::new(AppSpec {
@@ -67,7 +67,7 @@ pub(crate) fn run(ui: UiThread, settings: Preferences, location: Location) -> Re
         ..AppSpec::new("Strata", SIZE, unused, shell::view)
     })
     .init(move || {
-        let app = App::new(&ui, Csd::new(frame, Backend::from_env()), &settings);
+        let app = App::new(&ui, Csd::new(frame, Backend::from_env()), settings);
         app.open(location);
         app
     })
@@ -82,6 +82,10 @@ pub(crate) fn run(ui: UiThread, settings: Preferences, location: Location) -> Re
     .map_err(|error| format!("unable to start the GLib loop: {error}"))?;
     GLIB.with(|cell| cell.set(glib))
         .map_err(|_| "the GLib loop is already running on this thread".to_owned())?;
-    app.on_window(move |window: &WindowHandle| csd::attach(window, &handle, shell::csd_of))
-        .try_run()
+    let ran = app
+        .on_window(move |window: &WindowHandle| csd::attach(window, &handle, shell::csd_of))
+        .try_run();
+    // A setting changed just before the window closed is still on its way to the file.
+    strata_core::storage::writer::flush_at_exit();
+    ran
 }

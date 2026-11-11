@@ -18,6 +18,7 @@ mod host;
 mod launch;
 #[cfg(feature = "qa")]
 mod qa;
+mod settings;
 mod shell;
 mod startup;
 #[cfg(test)]
