@@ -14,8 +14,8 @@ mod listing;
 #[cfg(test)]
 pub(crate) use listing::ArchiveListing;
 pub(crate) use listing::{
-    ARCHIVE_UNSUPPORTED_MESSAGE, ArchiveListingStatus, MAX_ARCHIVE_PASSWORD_BYTES,
-    decode_archive_listing, encode_archive_result, list_archive_entries_direct,
+    ARCHIVE_UNSUPPORTED_MESSAGE, ArchiveListingStatus, decode_archive_listing,
+    list_archive_entries_direct,
 };
 
 #[cfg(test)]
@@ -427,9 +427,7 @@ impl Drop for CreatedFolder<'_> {
     }
 }
 
-pub(crate) const PASSWORD_REQUIRED: &str = "A password is required to extract this archive.";
-/// 7z/RAR and failed decryption checks cannot always distinguish damage from a bad password.
-pub(crate) const MAYBE_BAD_PASSWORD: &str = "The password may be incorrect.";
+pub(crate) use crate::sandbox::archive_listing::{MAYBE_BAD_PASSWORD, PASSWORD_REQUIRED};
 
 /// Byte size of the reusable read/write buffer used by [`copy_with_big_buf`].
 const COPY_BUF: usize = 1 << 20;

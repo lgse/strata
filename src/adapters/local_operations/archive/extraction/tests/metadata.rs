@@ -162,7 +162,7 @@ fn a_password_failure_that_cannot_discard_its_output_offers_no_retry() -> Result
 
     let outcome = session.finish(
         Err(ArchiveError::PasswordRequired(
-            crate::adapters::PASSWORD_REQUIRED.to_owned(),
+            crate::sandbox::archive_listing::PASSWORD_REQUIRED.to_owned(),
         )),
         Vec::new,
     );
@@ -174,7 +174,7 @@ fn a_password_failure_that_cannot_discard_its_output_offers_no_retry() -> Result
         matches!(&outcome, Err(ArchiveError::Failed(message))
             if message.starts_with(&format!(
                 "{} Could not remove the extraction staging folder: Permission denied",
-                crate::adapters::PASSWORD_REQUIRED
+                crate::sandbox::archive_listing::PASSWORD_REQUIRED
             )) && message.ends_with(" Extracted entries remain in “archive”.")),
         "{outcome:?}"
     );

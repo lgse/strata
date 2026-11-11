@@ -3,13 +3,14 @@
 use super::{
     ARCHIVE_TOO_LARGE_MESSAGE, ArchiveListingStatus, BudgetReader, MAX_ARCHIVE_ENTRIES,
     MAX_TAR_GZ_DECOMPRESSED_BYTES, collect_tar_seekable, decode_archive_listing,
-    encode_archive_result, ensure_entry_budget, list_archive_entries_direct,
+    ensure_entry_budget, list_archive_entries_direct,
 };
 use crate::{
     adapters::local_operations::archive::fixtures::{
         always_cancelled, never_cancelled, patch_zip_entry_count, write_7z, write_7z_entries,
         write_7z_stored, write_compression_fixture, write_tar, write_tar_entries, write_zip_stored,
     },
+    sandbox::archive_listing::encode_archive_result,
     services::ArchiveFormat,
 };
 

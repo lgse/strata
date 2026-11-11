@@ -5,9 +5,12 @@ use std::io;
 use std::{fs, io::Read, os::fd::RawFd, path::Path, process::Command, time::Duration};
 
 use crate::{
-    adapters::{encode_archive_result, list_archive_entries_direct},
-    sandbox::{MAX_OUTPUT_BYTES, MediaPreviewBackend},
-    services::{ArchiveFormat, MediaPreviewSize},
+    model::ArchiveFormat,
+    sandbox::{
+        MAX_OUTPUT_BYTES, MediaPreviewBackend,
+        archive_listing::{ArchiveListing, MAX_ARCHIVE_PASSWORD_BYTES, encode_archive_result},
+    },
+    services::MediaPreviewSize,
 };
 
 mod appimage;
@@ -40,6 +43,22 @@ use raster::{
     scale_embedded_thumbnail,
 };
 
+/// Lists an archive's members without extracting them.
+pub(crate) type ArchiveLister = fn(
+    &Path,
+    ArchiveFormat,
+    Option<&str>,
+    &std::sync::atomic::AtomicBool,
+) -> Result<ArchiveListing, String>;
+
+static ARCHIVE_LISTER: std::sync::OnceLock<ArchiveLister> = std::sync::OnceLock::new();
+
+/// The archive readers live with the file operations, above the helper, so the process that
+/// runs the helper installs them before its first `archive-list` request.
+pub(crate) fn install_archive_lister(lister: ArchiveLister) {
+    let _ = ARCHIVE_LISTER.set(lister);
+}
+
 fn parse_descriptor(descriptor: &str) -> Result<RawFd, String> {
     descriptor
         .parse::<RawFd>()
@@ -50,7 +69,7 @@ fn parse_descriptor(descriptor: &str) -> Result<RawFd, String> {
 
 fn read_password(descriptor: RawFd) -> Result<String, String> {
     let secret = read_secret_fd(descriptor)?;
-    if secret.len() > crate::adapters::MAX_ARCHIVE_PASSWORD_BYTES {
+    if secret.len() > MAX_ARCHIVE_PASSWORD_BYTES {
         return Err("Archive password is too long.".to_owned());
     }
     String::from_utf8(secret).map_err(|_| "Archive password is not valid text.".to_owned())
@@ -150,7 +169,10 @@ fn run_archive_list(
     let password = secret_fd.map(read_password).transpose()?;
     // The parent cancels the helper by terminating its process group.
     let cancelled = std::sync::atomic::AtomicBool::new(false);
-    let result = list_archive_entries_direct(input, format, password.as_deref(), &cancelled);
+    let list = ARCHIVE_LISTER
+        .get()
+        .ok_or_else(|| "Archive listing is unavailable in this helper.".to_owned())?;
+    let result = list(input, format, password.as_deref(), &cancelled);
     fs::write(output, encode_archive_result(&result)).map_err(|error| error.to_string())?;
     Ok(())
 }
@@ -160,7 +182,7 @@ fn read_secret_fd(descriptor: RawFd) -> Result<Vec<u8>, String> {
     let mut secret = Vec::new();
     fs::File::open(format!("/proc/self/fd/{descriptor}"))
         .and_then(|file| {
-            file.take(crate::adapters::MAX_ARCHIVE_PASSWORD_BYTES as u64 + 1)
+            file.take(MAX_ARCHIVE_PASSWORD_BYTES as u64 + 1)
                 .read_to_end(&mut secret)
         })
         .map_err(|error| format!("Unable to read the preview secret: {error}"))?;

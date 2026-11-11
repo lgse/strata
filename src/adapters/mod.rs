@@ -29,8 +29,7 @@ pub(crate) use local_files::{info_is_hidden, query_file_entry, watch};
 pub(crate) use local_jobs::LocalActionRunner;
 pub use local_operations::LocalOperationProvider;
 pub(crate) use local_operations::{
-    ARCHIVE_UNSUPPORTED_MESSAGE, ActiveOperation, MAX_ARCHIVE_PASSWORD_BYTES, MAYBE_BAD_PASSWORD,
-    PASSWORD_REQUIRED, TransferTargetCollision, encode_archive_result, flush_filesystem,
+    ARCHIVE_UNSUPPORTED_MESSAGE, ActiveOperation, TransferTargetCollision, flush_filesystem,
     list_archive_entries_direct, transfer_targets, typed_folder_blocked, typed_name_refusal,
     typed_rename_is_taken,
 };

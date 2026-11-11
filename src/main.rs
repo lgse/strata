@@ -569,6 +569,7 @@ fn run_preview_helper(arguments: &[OsString]) -> Result<(), String> {
                 .ok_or_else(|| "Invalid UTF-8 in preview helper arguments".to_owned())
         })
         .collect::<Result<Vec<_>, _>>()?;
+    sandbox_helper::install_archive_lister(adapters::list_archive_entries_direct);
     sandbox_helper::run(&arguments)
 }
 

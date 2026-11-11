@@ -20,6 +20,10 @@ pub(crate) const ARCHIVE_TOO_LARGE_MESSAGE: &str = "Archive too large to preview
 
 pub(crate) const MAX_ARCHIVE_PASSWORD_BYTES: usize = 4096;
 
+pub(crate) const PASSWORD_REQUIRED: &str = "A password is required to extract this archive.";
+/// 7z/RAR and failed decryption checks cannot always distinguish damage from a bad password.
+pub(crate) const MAYBE_BAD_PASSWORD: &str = "The password may be incorrect.";
+
 const WIRE_OPEN: &str = "open";
 const WIRE_NEEDS_PASSWORD: &str = "needs-password";
 const WIRE_WRONG_PASSWORD: &str = "wrong-password";

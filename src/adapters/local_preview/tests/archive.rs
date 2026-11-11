@@ -47,7 +47,7 @@ fn list_archive_directly(
         &cancelled,
     );
     Ok(parse_output(
-        crate::adapters::local_operations::encode_archive_result(&result),
+        crate::sandbox::archive_listing::encode_archive_result(&result),
         0,
         0,
     ))
@@ -68,7 +68,7 @@ fn report_unsupported_listing(
         entries: Vec::new(),
     };
     Ok(parse_output(
-        crate::adapters::local_operations::encode_archive_result(&Ok(listing)),
+        crate::sandbox::archive_listing::encode_archive_result(&Ok(listing)),
         0,
         0,
     ))

@@ -5,8 +5,7 @@
 
 pub(crate) use crate::sandbox::archive_listing::{
     ARCHIVE_TOO_LARGE_MESSAGE, ARCHIVE_UNSUPPORTED_MESSAGE, ArchiveListing, ArchiveListingStatus,
-    INVALID_ARCHIVE, MAX_ARCHIVE_ENTRIES, MAX_ARCHIVE_PASSWORD_BYTES, decode_archive_listing,
-    encode_archive_result,
+    INVALID_ARCHIVE, MAX_ARCHIVE_ENTRIES, decode_archive_listing,
 };
 use crate::sandbox::archive_listing::{MemberNameBudget, invalid_archive};
 use crate::services::{ArchiveFileEntry, ArchiveFormat};

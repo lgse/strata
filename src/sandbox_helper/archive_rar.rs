@@ -12,8 +12,8 @@ use std::{ffi::CString, io::Write, os::unix::ffi::OsStrExt, path::Path, ptr};
 use unrar_sys as native;
 
 use crate::{
-    adapters::{MAYBE_BAD_PASSWORD, PASSWORD_REQUIRED},
     rar_extraction::{self as wire, Failure, FailureKind},
+    sandbox::archive_listing::{MAYBE_BAD_PASSWORD, PASSWORD_REQUIRED},
 };
 
 #[cfg(test)]

@@ -167,8 +167,7 @@ mod work_queue;
 #[cfg(test)]
 pub(crate) use archive::ArchiveListing;
 pub(crate) use archive::{
-    ARCHIVE_UNSUPPORTED_MESSAGE, ArchiveListingStatus, MAX_ARCHIVE_PASSWORD_BYTES,
-    MAYBE_BAD_PASSWORD, PASSWORD_REQUIRED, decode_archive_listing, encode_archive_result,
+    ARCHIVE_UNSUPPORTED_MESSAGE, ArchiveListingStatus, decode_archive_listing,
     list_archive_entries_direct,
 };
 

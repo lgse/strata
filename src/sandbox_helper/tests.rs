@@ -692,6 +692,7 @@ fn archive_list_output(
         use std::os::fd::AsRawFd;
         arguments.push(secret.as_raw_fd().to_string());
     }
+    super::install_archive_lister(crate::adapters::list_archive_entries_direct);
     run(&arguments).expect("helper runs");
     std::fs::read(&output).expect("read listing output")
 }
@@ -834,7 +835,7 @@ fn archive_list_rejects_overlong_password() {
     let output = directory.path().join("result.archive.json");
     let secret = crate::sandbox::stage_secret_anon(&vec![
         b'x';
-        crate::adapters::MAX_ARCHIVE_PASSWORD_BYTES
+        crate::sandbox::archive_listing::MAX_ARCHIVE_PASSWORD_BYTES
             + 1
     ])
     .expect("stage password");
