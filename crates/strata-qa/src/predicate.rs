@@ -13,16 +13,16 @@ use super::{
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub(crate) struct Predicate {
+pub struct Predicate {
     #[serde(flatten)]
-    pub(crate) check: Check,
+    pub check: Check,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) dir: Option<String>,
+    pub dir: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Check {
+pub enum Check {
     Directory(Option<String>),
     Panes(Names),
     Pane(Option<String>),
@@ -110,7 +110,7 @@ impl Check {
         )
     }
 
-    pub(crate) fn is_live(&self) -> bool {
+    pub fn is_live(&self) -> bool {
         match self {
             Self::Present(_)
             | Self::Absent(_)

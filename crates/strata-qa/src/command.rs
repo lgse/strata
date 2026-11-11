@@ -12,10 +12,10 @@ use super::{
 
 mod parse;
 
-pub(crate) use parse::parse_command;
+pub use parse::parse_command;
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum Command {
+pub enum Command {
     Key {
         chord: Chord,
         repeat: u32,
@@ -183,7 +183,7 @@ pub(crate) enum Command {
     Query(Query),
 }
 
-pub(crate) const COMMANDS: [&str; 37] = [
+pub const COMMANDS: [&str; 37] = [
     "key",
     "adopt",
     "keep",
@@ -224,18 +224,18 @@ pub(crate) const COMMANDS: [&str; 37] = [
 ];
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Repeat {
-    pub(crate) predicate: Predicate,
-    pub(crate) tries: Option<u32>,
-    pub(crate) timeout: Duration,
-    pub(crate) message: Option<String>,
+pub struct Repeat {
+    pub predicate: Predicate,
+    pub tries: Option<u32>,
+    pub timeout: Duration,
+    pub message: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct PressCheck {
-    pub(crate) predicate: Predicate,
-    pub(crate) wait: Option<Duration>,
-    pub(crate) message: Option<String>,
+pub struct PressCheck {
+    pub predicate: Predicate,
+    pub wait: Option<Duration>,
+    pub message: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -452,15 +452,15 @@ struct ClickResultRowsFields {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct RowStates {
+pub struct RowStates {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) selected: Option<bool>,
+    pub selected: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) focused: Option<bool>,
+    pub focused: Option<bool>,
 }
 
 impl RowStates {
-    pub(crate) fn matches(&self, selected: bool, focused: bool) -> bool {
+    pub fn matches(&self, selected: bool, focused: bool) -> bool {
         self.selected.is_none_or(|wanted| wanted == selected)
             && self.focused.is_none_or(|wanted| wanted == focused)
     }
@@ -508,7 +508,7 @@ struct SleepFields {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Orientation {
+pub enum Orientation {
     Horizontal,
     Vertical,
 }
@@ -631,22 +631,22 @@ struct ClipboardSetFields {
 /// such as a file manager fills the clipboard.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(untagged)]
-pub(crate) enum ClipboardContent {
+pub enum ClipboardContent {
     Text(String),
     Offers(ClipboardOffers),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ClipboardOffers {
-    pub(crate) offers: Vec<ClipboardOffer>,
+pub struct ClipboardOffers {
+    pub offers: Vec<ClipboardOffer>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ClipboardOffer {
-    pub(crate) mime: String,
-    pub(crate) text: String,
+pub struct ClipboardOffer {
+    pub mime: String,
+    pub text: String,
 }
 
 #[derive(Deserialize)]
@@ -690,7 +690,7 @@ fn drag_steps() -> u32 {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Query {
+pub enum Query {
     State,
     Tree,
     Prefs,
@@ -698,7 +698,7 @@ pub(crate) enum Query {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Accessor {
+pub enum Accessor {
     Directory,
     Pane,
     Panes,
@@ -719,21 +719,21 @@ pub(crate) enum Accessor {
 }
 
 impl Accessor {
-    pub(crate) fn name(self) -> String {
+    pub fn name(self) -> String {
         serde_json::to_value(self)
             .ok()
             .and_then(|value| value.as_str().map(str::to_owned))
             .unwrap_or_default()
     }
 
-    pub(crate) fn takes_directory(self) -> bool {
+    pub fn takes_directory(self) -> bool {
         matches!(
             self,
             Self::Entries | Self::Selected | Self::Matches | Self::Visible | Self::ScrollTarget
         )
     }
 
-    pub(crate) fn is_list(self) -> bool {
+    pub fn is_list(self) -> bool {
         matches!(
             self,
             Self::Panes

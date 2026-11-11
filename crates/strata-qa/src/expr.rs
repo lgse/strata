@@ -7,21 +7,21 @@ use super::{StateName, Target, yes};
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Bound {
-    pub(crate) op: CompareOp,
-    pub(crate) than: Expr,
+pub struct Bound {
+    pub op: CompareOp,
+    pub than: Expr,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Comparison {
-    pub(crate) left: Expr,
-    pub(crate) op: CompareOp,
-    pub(crate) right: Expr,
+pub struct Comparison {
+    pub left: Expr,
+    pub op: CompareOp,
+    pub right: Expr,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub(crate) enum CompareOp {
+pub enum CompareOp {
     #[serde(rename = "<")]
     Less,
     #[serde(rename = "<=")]
@@ -37,7 +37,7 @@ pub(crate) enum CompareOp {
 }
 
 impl CompareOp {
-    pub(crate) fn holds(self, left: f64, right: f64) -> bool {
+    pub fn holds(self, left: f64, right: f64) -> bool {
         match self {
             Self::Less => left < right,
             Self::AtMost => left <= right,
@@ -52,7 +52,7 @@ impl CompareOp {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Expr {
+pub enum Expr {
     Number(serde_json::Number),
     Of {
         target: Box<Target>,
@@ -74,7 +74,7 @@ pub(crate) enum Expr {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Measure {
+pub enum Measure {
     X,
     Y,
     Width,
@@ -88,19 +88,19 @@ pub(crate) enum Measure {
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct CountSpec {
+pub struct CountSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) role: Option<String>,
+    pub role: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) name: Option<String>,
+    pub name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) description: Option<String>,
+    pub description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) within: Option<Target>,
+    pub within: Option<Target>,
     #[serde(default = "yes")]
-    pub(crate) rendered: bool,
+    pub rendered: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) states: Vec<StateName>,
+    pub states: Vec<StateName>,
 }
 
 impl Expr {
@@ -175,7 +175,7 @@ impl Expr {
         })
     }
 
-    pub(crate) fn to_json(&self) -> Value {
+    pub fn to_json(&self) -> Value {
         let pair = |items: &[Expr; 2]| json!([items[0].to_json(), items[1].to_json()]);
         match self {
             Self::Number(number) => Value::Number(number.clone()),

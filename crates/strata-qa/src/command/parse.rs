@@ -20,7 +20,7 @@ fn modifiers(names: &[String]) -> Result<Vec<Modifier>, String> {
     names.iter().map(|name| Modifier::parse(name)).collect()
 }
 
-pub(crate) fn parse_command(line: &str) -> Result<Command, String> {
+pub fn parse_command(line: &str) -> Result<Command, String> {
     let value: Value =
         serde_json::from_str(line).map_err(|error| format!("invalid JSON: {error}"))?;
     let Value::Object(object) = value else {

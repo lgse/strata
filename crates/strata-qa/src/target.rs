@@ -5,7 +5,7 @@ use serde_json::{Map, Value, json};
 
 use super::{At, Offset, yes};
 
-pub(crate) const TARGET_KINDS: [&str; 27] = [
+pub const TARGET_KINDS: [&str; 27] = [
     "entry",
     "row",
     "result",
@@ -36,7 +36,7 @@ pub(crate) const TARGET_KINDS: [&str; 27] = [
 ];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Target {
+pub enum Target {
     Entry(EntryTarget),
     Role {
         role: String,
@@ -100,7 +100,7 @@ pub(crate) enum Target {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Axis {
+pub enum Axis {
     Of {
         target: Box<Target>,
         at: Option<Offset>,
@@ -220,7 +220,7 @@ impl Axis {
 }
 
 impl Target {
-    pub(super) fn accepts(&self, at: Option<&At>) -> Result<(), String> {
+    pub fn accepts(&self, at: Option<&At>) -> Result<(), String> {
         if at.is_some() && matches!(self, Self::Background { .. }) {
             return Err("at does not apply to a background target, which is a point".to_owned());
         }
@@ -495,7 +495,7 @@ impl Target {
         }
     }
 
-    pub(crate) fn to_json(&self) -> Value {
+    pub fn to_json(&self) -> Value {
         match self {
             Self::Entry(entry) => json!(entry),
             Self::Role {
@@ -617,7 +617,7 @@ impl Serialize for Target {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum StateName {
+pub enum StateName {
     Selected,
     Focused,
     Checked,
@@ -632,17 +632,17 @@ pub(crate) enum StateName {
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct EntryTarget {
-    pub(crate) entry: String,
+pub struct EntryTarget {
+    pub entry: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) dir: Option<String>,
+    pub dir: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) part: Option<EntryPart>,
+    pub part: Option<EntryPart>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum EntryPart {
+pub enum EntryPart {
     Label,
     Icon,
     Metadata,

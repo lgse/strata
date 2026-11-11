@@ -3054,6 +3054,7 @@ dependencies = [
  "strata-desktop",
  "strata-fs",
  "strata-preview",
+ "strata-qa",
  "strata-test-support",
  "tar",
  "tempfile",
@@ -3193,6 +3194,15 @@ dependencies = [
  "unrar",
  "unrar_sys",
  "zip 9.1.3",
+]
+
+[[package]]
+name = "strata-qa"
+version = "0.0.0"
+dependencies = [
+ "regex",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Presence {
+pub enum Presence {
     Absent,
     Any,
     Named(String),
@@ -12,7 +12,7 @@ pub(crate) enum Presence {
 }
 
 impl Presence {
-    pub(crate) fn matches(&self, actual: Option<&str>) -> bool {
+    pub fn matches(&self, actual: Option<&str>) -> bool {
         match self {
             Self::Absent => actual.is_none(),
             Self::Any => actual.is_some(),
@@ -58,28 +58,28 @@ impl Serialize for Presence {
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
-pub(crate) enum TextMatch {
+pub enum TextMatch {
     Exactly(String),
     Like(TextPattern),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct TextPattern {
+pub struct TextPattern {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) starts_with: Option<String>,
+    pub starts_with: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) ends_with: Option<String>,
+    pub ends_with: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) contains: Option<String>,
+    pub contains: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) lowercase_contains: Option<String>,
+    pub lowercase_contains: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) longer_than: Option<usize>,
+    pub longer_than: Option<usize>,
 }
 
 impl TextMatch {
-    pub(crate) fn matches(&self, actual: &str) -> bool {
+    pub fn matches(&self, actual: &str) -> bool {
         match self {
             Self::Exactly(text) => text == actual,
             Self::Like(pattern) => {
@@ -109,13 +109,13 @@ impl TextMatch {
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
-pub(crate) enum CaretMatch {
+pub enum CaretMatch {
     Exactly(i32),
     Between { min: i32, max: i32 },
 }
 
 impl CaretMatch {
-    pub(crate) fn matches(&self, actual: i32) -> bool {
+    pub fn matches(&self, actual: i32) -> bool {
         match self {
             Self::Exactly(offset) => *offset == actual,
             Self::Between { min, max } => (*min..=*max).contains(&actual),
@@ -125,53 +125,53 @@ impl CaretMatch {
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
-pub(crate) enum Names {
+pub enum Names {
     Exactly(Vec<String>),
     Including(Box<NameFilter>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct NameFilter {
+pub struct NameFilter {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) contains: Vec<String>,
+    pub contains: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) excludes: Vec<String>,
+    pub excludes: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) count: Option<usize>,
+    pub count: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) at_least: Option<usize>,
+    pub at_least: Option<usize>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) ends_with: Vec<String>,
+    pub ends_with: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) starts_with: Vec<String>,
+    pub starts_with: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) first: Option<String>,
+    pub first: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) first_above: Option<String>,
+    pub first_above: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) any_from: Option<String>,
+    pub any_from: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) toggled: Option<Toggled>,
+    pub toggled: Option<Toggled>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) in_order: Vec<String>,
+    pub in_order: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) set: Option<Vec<String>>,
+    pub set: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
-    pub(crate) occurrences: std::collections::BTreeMap<String, usize>,
+    pub occurrences: std::collections::BTreeMap<String, usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) sorted_casefold_from: Option<usize>,
+    pub sorted_casefold_from: Option<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Toggled {
-    pub(crate) names: Vec<String>,
-    pub(crate) against: Vec<String>,
+pub struct Toggled {
+    pub names: Vec<String>,
+    pub against: Vec<String>,
 }
 
 impl Names {
-    pub(crate) fn matches(&self, actual: &[String]) -> bool {
+    pub fn matches(&self, actual: &[String]) -> bool {
         match self {
             Self::Exactly(expected) => expected == actual,
             Self::Including(filter) => {

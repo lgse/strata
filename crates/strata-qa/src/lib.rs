@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-//! `tests/qa.rs` compiles this file too, so the runner rejects a malformed
-//! step when it loads a scenario instead of the process rejecting it mid-run.
+//! The protocol of the scripted QA mode: what a step, a target and a predicate are, and how
+//! each is parsed. The application and the runner in `tests/qa.rs` both use it, so the runner
+//! rejects a malformed step when it loads a scenario instead of the process rejecting it mid-run.
 
 use std::time::Duration;
 
@@ -17,40 +18,40 @@ mod offset;
 mod predicate;
 mod target;
 
-pub(crate) use self::{
+pub use self::{
     checks::*, chord::*, command::*, expr::*, matchers::*, offset::*, predicate::*, target::*,
 };
 
-pub(crate) const DEFAULT_WAIT: Duration = Duration::from_millis(15_000);
+pub const DEFAULT_WAIT: Duration = Duration::from_millis(15_000);
 /// Motion events a drag sends between its press and release.
-pub(crate) const DRAG_STEPS: u32 = 16;
+pub const DRAG_STEPS: u32 = 16;
 /// Wheel clicks a `wheel` step sends when it names no count.
-pub(crate) const WHEEL_CLICKS: u32 = 3;
+pub const WHEEL_CLICKS: u32 = 3;
 
 fn yes() -> bool {
     true
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
-pub(crate) struct Failure {
-    pub(crate) predicate: Value,
-    pub(crate) actual: Value,
+pub struct Failure {
+    pub predicate: Value,
+    pub actual: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) message: Option<String>,
+    pub message: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct Reply {
-    pub(crate) ok: bool,
-    pub(crate) app: Value,
-    pub(crate) changed: Vec<String>,
-    pub(crate) criticals: Vec<String>,
-    pub(crate) result: Value,
-    pub(crate) failures: Vec<Failure>,
-    pub(crate) error: Option<String>,
+pub struct Reply {
+    pub ok: bool,
+    pub app: Value,
+    pub changed: Vec<String>,
+    pub criticals: Vec<String>,
+    pub result: Value,
+    pub failures: Vec<Failure>,
+    pub error: Option<String>,
 }
 
-pub(crate) fn changed_keys(previous: Option<&Value>, current: &Value) -> Vec<String> {
+pub fn changed_keys(previous: Option<&Value>, current: &Value) -> Vec<String> {
     let Value::Object(current) = current else {
         return Vec::new();
     };

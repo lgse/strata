@@ -4,13 +4,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct At {
-    pub(crate) x: Offset,
-    pub(crate) y: Offset,
+pub struct At {
+    pub x: Offset,
+    pub y: Offset,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Offset {
+pub enum Offset {
     Pixels(i32),
     Percent(u8),
     Fraction(u16, u16),
@@ -21,7 +21,7 @@ pub(crate) enum Offset {
 }
 
 impl Offset {
-    pub(crate) fn parse(value: &Value) -> Result<Self, String> {
+    pub fn parse(value: &Value) -> Result<Self, String> {
         if let Some(pixels) = value.as_i64() {
             return i32::try_from(pixels)
                 .map(Self::Pixels)
@@ -81,7 +81,7 @@ impl Offset {
             })
     }
 
-    pub(crate) fn resolve(self, start: f64, extent: f64) -> f64 {
+    pub fn resolve(self, start: f64, extent: f64) -> f64 {
         match self {
             Self::Pixels(pixels) if pixels < 0 => start + extent + f64::from(pixels),
             Self::Pixels(pixels) | Self::FromStart(pixels) => start + f64::from(pixels),
@@ -101,7 +101,7 @@ impl Offset {
 }
 
 impl Offset {
-    pub(super) fn to_json(self) -> Value {
+    pub fn to_json(self) -> Value {
         match self {
             Self::Pixels(pixels) => json!(pixels),
             Self::Percent(percent) => json!(format!("{percent}%")),

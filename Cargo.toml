@@ -38,13 +38,14 @@ pango = "0.22.9"
 poppler = { package = "poppler-rs", version = "0.26.0" }
 pulldown-cmark = { version = "0.13", default-features = false }
 quick-xml = "0.41.0"
+regex = "1.13.1"
 resvg = { version = "0.48.1", default-features = false, features = ["text", "system-fonts"] }
 ring = "0.17.14"
 rquickjs = "0.13.0"
 rust-i18n = "4.2.4"
 rust-i18n-support = { version = "4.2.4", features = ["codegen"] }
-rustls = { version = "0.23.46", default-features = false, features = ["std", "ring", "tls12"] }
 rustix = { version = "1.1.4", features = ["fs", "process", "event", "net", "mount", "thread", "stdio", "pipe", "time"] }
+rustls = { version = "0.23.46", default-features = false, features = ["std", "ring", "tls12"] }
 seccompiler = "0.5.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -67,6 +68,7 @@ strata-core = { path = "crates/strata-core", default-features = false }
 strata-desktop = { path = "crates/strata-desktop" }
 strata-fs = { path = "crates/strata-fs", default-features = false }
 strata-preview = { path = "crates/strata-preview", default-features = false }
+strata-qa = { path = "crates/strata-qa" }
 strata-test-support = { path = "crates/strata-test-support" }
 
 [package]
@@ -88,6 +90,7 @@ default = ["rar"]
 rar = ["strata-core/rar", "strata-fs/rar", "strata-preview/rar"]
 # The scripted `--qa` launch mode and its in-process X or Wayland input. Never in releases.
 qa = [
+    "dep:strata-qa",
     "dep:x11rb",
     "dep:regex",
     "dep:wayland-client",
@@ -112,6 +115,7 @@ strata-core.workspace = true
 strata-desktop.workspace = true
 strata-fs.workspace = true
 strata-preview.workspace = true
+strata-qa = { workspace = true, optional = true }
 ashpd = { version = "=0.13.13", default-features = false, features = ["backend", "file_chooser", "async-io", "tracing"] }
 async-io = "2.6.0"
 cairo-rs.workspace = true
@@ -147,7 +151,7 @@ tracing.workspace = true
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
 zip.workspace = true
 x11rb = { version = "0.14.0", default-features = false, features = ["xkb", "xtest"], optional = true }
-regex = { version = "1.13.1", optional = true }
+regex = { workspace = true, optional = true }
 wayland-client = { version = "0.31.15", optional = true }
 wayland-protocols-misc = { version = "0.3.12", features = ["client"], optional = true }
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"], optional = true }

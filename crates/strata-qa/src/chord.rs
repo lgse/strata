@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Modifier {
+pub enum Modifier {
     Ctrl,
     Shift,
     Alt,
@@ -9,7 +9,7 @@ pub(crate) enum Modifier {
 }
 
 impl Modifier {
-    pub(crate) fn parse(name: &str) -> Result<Self, String> {
+    pub fn parse(name: &str) -> Result<Self, String> {
         match name.to_ascii_lowercase().as_str() {
             "ctrl" => Ok(Self::Ctrl),
             "shift" => Ok(Self::Shift),
@@ -21,7 +21,7 @@ impl Modifier {
 
     /// The US keys a chord holds; `altgr` is the right Alt key,
     /// which AltGr layouts turn into AltGr.
-    pub(crate) fn keysym_name(self) -> &'static str {
+    pub fn keysym_name(self) -> &'static str {
         match self {
             Self::Ctrl => "Control_L",
             Self::Shift => "Shift_L",
@@ -33,13 +33,13 @@ impl Modifier {
 
 /// A trailing `+` is the plus key itself.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Chord {
-    pub(crate) modifiers: Vec<Modifier>,
-    pub(crate) key: String,
+pub struct Chord {
+    pub modifiers: Vec<Modifier>,
+    pub key: String,
 }
 
 impl Chord {
-    pub(crate) fn parse(spelling: &str) -> Result<Self, String> {
+    pub fn parse(spelling: &str) -> Result<Self, String> {
         if spelling.is_empty() {
             return Err("an empty key".to_owned());
         }
