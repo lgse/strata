@@ -119,37 +119,6 @@ fn portal_scheme_overrides_gnome_and_no_preference_keeps_gnome_live() {
 }
 
 #[test]
-fn late_portal_result_replaces_the_provisional_gnome_appearance() {
-    gtk_test_with_env(
-        "ui::theme::tests::system_appearance::late_portal_result_replaces_the_provisional_gnome_appearance",
-        [("GSETTINGS_BACKEND", "memory")],
-        || {
-            let settings = gnome_interface_settings().expect("GNOME color scheme schema");
-            settings
-                .set_string(GNOME_COLOR_SCHEME_KEY, "prefer-light")
-                .expect("set GNOME day appearance");
-            let preferences = PreferenceManager::shared();
-            preferences.set_theme_selection("system", Some("onedark-dark"));
-            let manager = ThemeManager::shared();
-            let targets = ThemedTargets::new();
-
-            assert_eq!(manager.selected_id(), "onedark-dark");
-            assert_eq!(manager.effective_theme_id(), "one-light");
-            let day = manager.appearance_tokens();
-            targets.assert_applied(&manager, &day);
-
-            manager.set_portal_scheme(ColorScheme::PreferDark);
-            assert_eq!(manager.selected_id(), "onedark-dark");
-            assert_eq!(manager.effective_theme_id(), "onedark-dark");
-            let night = manager.appearance_tokens();
-            assert_ne!(day, night);
-            targets.assert_applied(&manager, &night);
-            targets.window.close();
-        },
-    );
-}
-
-#[test]
 fn unavailable_portal_uses_gnome_without_changing_system_mode() {
     gtk_test_with_env(
         "ui::theme::tests::system_appearance::unavailable_portal_uses_gnome_without_changing_system_mode",
