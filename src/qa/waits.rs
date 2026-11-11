@@ -24,7 +24,7 @@ impl Controller {
         let deadline = Instant::now() + timeout;
         loop {
             if let Some(window) = targets::window_titled(title, None) {
-                self.main.set(Some(&window));
+                self.backend.main.set(Some(&window));
                 settle(Some(&window)).await;
                 return Outcome::default();
             }

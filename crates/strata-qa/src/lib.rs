@@ -12,6 +12,7 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::Value;
 
+mod backend;
 mod checks;
 mod chord;
 mod command;
@@ -26,10 +27,12 @@ mod scroll;
 mod shape;
 mod snapshot;
 mod target;
+mod tree;
 
 pub use self::{
-    checks::*, chord::*, command::*, expr::*, geometry::*, matchers::*, offset::*, outcome::*,
-    pixels::Capture, predicate::*, scroll::*, shape::*, snapshot::*, target::*,
+    backend::*, checks::*, chord::*, command::*, expr::*, geometry::*, matchers::*, offset::*,
+    outcome::*, pixels::Capture, predicate::*, scroll::*, shape::*, snapshot::*, target::*,
+    tree::*,
 };
 
 pub const DEFAULT_WAIT: Duration = Duration::from_millis(15_000);

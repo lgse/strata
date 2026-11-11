@@ -6,6 +6,7 @@ use std::{collections::HashMap, fmt::Write as _};
 
 use gtk::{graphene, prelude::*};
 
+use super::protocol::EntryRow;
 pub(crate) use super::protocol::{
     EntryObservation, FieldState, Observation, PaneObservation, collapse_whitespace, contains,
     empty_app_state, field_matches, inside, middle_visible, on_screen, within_viewport,
@@ -166,7 +167,7 @@ pub(crate) fn scan(window: &gtk::Window) -> Scene {
         let Some(bounds) = rendered_bounds(widget) else {
             continue;
         };
-        let (entries, widgets) = pane_entries(widget, &rows);
+        let (entries, widgets) = pane_entries(widget);
         let holds_focus = focus
             .as_ref()
             .is_some_and(|focus| focus == widget || focus.is_ancestor(widget));
@@ -263,10 +264,7 @@ fn search_results(presented: &[gtk::Widget]) -> Option<Vec<String>> {
     )
 }
 
-fn pane_entries(
-    pane: &gtk::Widget,
-    rows: &HashMap<usize, Row>,
-) -> (Vec<EntryObservation>, PaneWidgets) {
+fn pane_entries(pane: &gtk::Widget) -> (Vec<EntryObservation>, PaneWidgets) {
     let container = descendants(pane).into_iter().find(|widget| {
         names::naming(widget).is_some_and(|naming| naming.mark == Some(Mark::EntryContainer))
             && rendered_bounds(widget).is_some()
@@ -279,9 +277,51 @@ fn pane_entries(
     let Some(container) = container else {
         return (Vec::new(), widgets);
     };
-    let mut found: Vec<(graphene::Rect, EntryObservation, gtk::Widget)> = Vec::new();
+    let mut found: Vec<(graphene::Rect, EntryRow<gtk::Widget>)> = container_rows(&container)
+        .into_iter()
+        .filter_map(|row| Some((rendered_bounds(&row.node)?, row)))
+        .collect();
+    found.sort_by(|left, right| {
+        left.0
+            .y()
+            .total_cmp(&right.0.y())
+            .then(left.0.x().total_cmp(&right.0.x()))
+    });
+    let (entries, rows): (Vec<EntryObservation>, Vec<gtk::Widget>) = found
+        .into_iter()
+        .map(|(_, row)| {
+            let entry = EntryObservation {
+                name: row.name,
+                selected: row.selected,
+                focused: row.focused,
+            };
+            (entry, row.node)
+        })
+        .unzip();
+    widgets.entries = rows;
+    (entries, widgets)
+}
+
+/// The row a widget is, when a list item recorded as an entry is bound to it.
+pub(crate) fn row(widget: &gtk::Widget) -> Option<EntryRow<gtk::Widget>> {
+    names::entries().into_iter().find_map(|(item, naming)| {
+        let row = item.child()?.parent()?;
+        let name = naming.label.filter(|name| !name.is_empty())?;
+        (row == *widget).then(|| EntryRow {
+            node: row,
+            name,
+            selected: item.is_selected(),
+            focused: widget.has_focus(),
+        })
+    })
+}
+
+/// The rows an entry list shows, in the order the list keeps them.
+pub(crate) fn container_rows(container: &gtk::Widget) -> Vec<EntryRow<gtk::Widget>> {
+    let rows = rows();
+    let mut found = Vec::new();
     let mut occupied: HashMap<[i64; 4], String> = HashMap::new();
-    for widget in descendants(&container) {
+    for widget in descendants(container) {
         let Some(row) = rows.get(&address(&widget)) else {
             continue;
         };
@@ -297,30 +337,19 @@ fn pane_entries(
         let key = [bounds.x(), bounds.y(), bounds.width(), bounds.height()]
             .map(|value| f64::from(value).floor() as i64);
         match occupied.get(&key) {
-            Some(prior) if *prior != row.name => return (Vec::new(), widgets),
+            Some(prior) if *prior != row.name => return Vec::new(),
             _ => {
                 occupied.insert(key, row.name.clone());
             }
         }
-        let entry = EntryObservation {
+        found.push(EntryRow {
             name: row.name.clone(),
             selected: row.item.is_selected(),
             focused: widget.has_focus(),
-        };
-        found.push((bounds, entry, widget));
+            node: widget,
+        });
     }
-    found.sort_by(|left, right| {
-        left.0
-            .y()
-            .total_cmp(&right.0.y())
-            .then(left.0.x().total_cmp(&right.0.x()))
-    });
-    let (entries, rows): (Vec<EntryObservation>, Vec<gtk::Widget>) = found
-        .into_iter()
-        .map(|(_, entry, widget)| (entry, widget))
-        .unzip();
-    widgets.entries = rows;
-    (entries, widgets)
+    found
 }
 
 /// False while a recycled row's label still shows the previous name.

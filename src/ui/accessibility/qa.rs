@@ -6,16 +6,7 @@
 use std::{cell::RefCell, collections::HashMap};
 
 use gtk::{glib, prelude::*};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Mark {
-    Pane(&'static str),
-    EntryContainer,
-    PaneSurface,
-    Entry,
-    Dialog,
-    MenuItem,
-}
+pub(crate) use strata_qa::Mark;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Naming {

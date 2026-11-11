@@ -2,23 +2,11 @@
 
 use gtk::prelude::*;
 
-use super::{super::state, editable_focused};
+use super::{
+    super::{protocol::States, state},
+    editable_focused,
+};
 use crate::ui::accessibility_qa as names;
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct States {
-    pub(crate) selected: bool,
-    pub(crate) focused: bool,
-    pub(crate) checked: bool,
-    pub(crate) pressed: bool,
-    pub(crate) sensitive: bool,
-    pub(crate) selectable: bool,
-    pub(crate) editable: bool,
-    pub(crate) focusable: bool,
-    pub(crate) busy: bool,
-    /// Outlined as the result Enter in a filter field opens.
-    pub(crate) marked: bool,
-}
 
 pub(crate) fn states(widget: &gtk::Widget) -> States {
     // Native toggles report their own state, so a recorded one cannot go stale.

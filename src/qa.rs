@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod backend;
 mod check;
 mod clipboard;
 mod criticals;
@@ -34,6 +35,7 @@ use gtk::{gdk, glib, prelude::*};
 use serde_json::{Value, json};
 
 use self::{
+    backend::{Gtk, Host},
     input::Injector,
     protocol::{Boxes, Capture, Outcome, Reply},
     targets::Memory,
@@ -86,11 +88,6 @@ pub(crate) struct Session {
 
 const PORTAL_ARGUMENT: &str = "--portal";
 const STREAMS_VARIABLE: &str = "STRATA_QA_STREAMS";
-
-enum Host {
-    Application(gtk::Application),
-    Portal(glib::MainLoop),
-}
 
 impl Session {
     /// Takes over stdout for replies before anything can log there; app output goes to stderr.
@@ -152,10 +149,8 @@ impl Session {
         });
         let last_words = self.protocol.try_clone();
         let controller = Controller {
-            host,
+            backend: Gtk::new(host),
             protocol: self.protocol,
-            injector: None,
-            main: glib::WeakRef::new(),
             previous: None,
             settled: RefCell::default(),
             memory: RefCell::default(),
@@ -198,11 +193,8 @@ impl Session {
 }
 
 struct Controller {
-    host: Host,
+    backend: Gtk,
     protocol: File,
-    injector: Option<Injector>,
-    /// A floating chooser becomes the active window while open; state is read from the browser.
-    main: glib::WeakRef<gtk::Window>,
     previous: Option<Value>,
     settled: RefCell<Boxes>,
     memory: RefCell<Memory>,
@@ -221,17 +213,17 @@ enum Sample {
 
 impl Controller {
     async fn serve(mut self, mut commands: mpsc::UnboundedReceiver<String>) {
-        let _hold = match &self.host {
+        let _hold = match &self.backend.host {
             Host::Application(application) => Some(application.hold()),
             Host::Portal(_) => None,
         };
-        let ready = match self.host {
+        let ready = match self.backend.host {
             Host::Application(_) => self.await_ready().await,
             Host::Portal(_) => Ok(()),
         };
         let ready = match ready.and_then(|()| Injector::connect()) {
             Ok(injector) => {
-                self.injector = Some(injector);
+                let _ = self.backend.injector.set(injector);
                 Outcome {
                     result: json!({ "ready": true }),
                     ..Outcome::default()
@@ -250,33 +242,15 @@ impl Controller {
                 self.reply(outcome);
             }
         }
-        self.quit();
-    }
-
-    fn quit(&self) {
-        match &self.host {
-            Host::Application(application) => application.quit(),
-            Host::Portal(main_loop) => main_loop.quit(),
-        }
+        self.backend.quit();
     }
 
     fn window(&self) -> Option<gtk::Window> {
-        self.main.upgrade().or_else(|| match &self.host {
-            Host::Application(application) => application
-                .active_window()
-                .or_else(|| application.windows().into_iter().next()),
-            Host::Portal(_) => None,
-        })
+        self.backend.main_window()
     }
 
     fn windows(&self) -> Vec<gtk::Window> {
-        match &self.host {
-            Host::Application(application) => application.windows(),
-            Host::Portal(_) => gtk::Window::list_toplevels()
-                .into_iter()
-                .filter_map(|window| window.downcast::<gtk::Window>().ok())
-                .collect(),
-        }
+        self.backend.windows()
     }
 
     async fn await_ready(&self) -> Result<(), String> {
@@ -284,7 +258,7 @@ impl Controller {
         loop {
             let window = self.window();
             if let Some(window) = window.as_ref().filter(|window| state::is_ready(window)) {
-                self.main.set(Some(window));
+                self.backend.main.set(Some(window));
                 settle(Some(window)).await;
                 return Ok(());
             }
@@ -303,7 +277,7 @@ impl Controller {
             .window()
             .map(|window| state::scan(&window).observation.app_state())
             .and_then(|app| serde_json::to_value(app).ok())
-            .unwrap_or_else(|| match self.host {
+            .unwrap_or_else(|| match self.backend.host {
                 Host::Portal(_) => state::empty_app_state(),
                 Host::Application(_) => Value::Null,
             });
@@ -325,7 +299,7 @@ impl Controller {
             .and_then(|()| self.protocol.flush())
             .is_err()
         {
-            self.quit();
+            self.backend.quit();
         }
     }
 }

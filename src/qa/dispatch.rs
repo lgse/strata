@@ -33,7 +33,7 @@ impl Controller {
         let Some(window) = self.window() else {
             return Outcome::error("the Strata window is gone".to_owned());
         };
-        let Some(injector) = self.injector.as_ref() else {
+        let Some(injector) = self.backend.injector.get() else {
             return Outcome::error("no input connection".to_owned());
         };
         if injector.logging() {
