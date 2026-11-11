@@ -20,8 +20,8 @@ only (see [Pinning a release](#pinning-a-release)).
 
 ## Features
 
-None is on by default. `dnd`, `clipboard`, `foreign-parent`, `glib-bridge`, `csd`, `settings`, `icon-theme`
-and `single-instance` are implemented. "Issue" is the upstream ask, drafted in
+None is on by default. `dnd`, `clipboard`, `foreign-parent`, `glib-bridge`, `glib-loop`, `csd`, `settings`,
+`icon-theme` and `single-instance` are implemented. "Issue" is the upstream ask, drafted in
 [`docs/rune/decisions/S5-upstream.md`](../../docs/rune/decisions/S5-upstream.md#draft-index), with its link
 once filed.
 
@@ -35,6 +35,7 @@ once filed.
 | `icon-theme` | `icon_theme` | The user's icon theme: `ImageCache::app_icon` reads hicolor only (no theme, no `Inherits`, no `index.theme` sizes), takes no icon names, and fails a missing icon like a broken file. Implemented: icons by name, with fallback names, or by file, at a size and scale, as GTK 4's `GtkIconTheme` finds them (`Inherits` then hicolor, `index.theme` sizes, scale directories, unthemed icons and pixmaps), looked up on a thread and decoded by Rune's `ImageCache` into `rune::Pixels`, with "not found" apart from a broken file. Symbolic icons draw as their files paint them, not recoloured; no XPM and no `icon-theme.cache`. | Upstream [#21](https://github.com/anomalyco/rune/issues/21); [U-P6-1](../../docs/rune/decisions/S5-upstream.md#u-p6-1), [U-P6-2](../../docs/rune/decisions/S5-upstream.md#u-p6-2) |
 | `single-instance` | `single_instance` | Single instance on Linux: Rune starts every launch as a new process. Implemented: one primary per app id on the session bus, with a later launch's arguments, working directory and activation token forwarded over GApplication's wire protocol, `org.freedesktop.Application`, and an opt-in `org.freedesktop.FileManager1`. On X11, focusing a window already open ignores the startup id. | Upstream [#22](https://github.com/anomalyco/rune/issues/22); [U-P8-1](../../docs/rune/decisions/S5-upstream.md#u-p8-1) |
 | `glib-bridge` | `glib_bridge` | A GLib main loop: Rune never iterates a `GMainContext`, so GIO's async calls, signals and monitors never dispatch. Implemented: `GlibThread` runs one on its own thread, and answers land in app state for `poll`. Needs GLib and GIO (`libglib2.0-dev` to build). | None: outside Rune's scope |
+| `glib-loop` | `glib_loop` | The same gap, for state that cannot leave the interface thread. Implemented: `GlibLoop` waits for what a context waits for (its file descriptors and timeout) on a helper thread, and `pump` dispatches it on Rune's loop, so nothing polls. The app sends the pump through `AppHandle::update_if`: a `Waker` call never runs `poll` while a Wayland window is covered. Needs GLib (`libglib2.0-dev` to build). | Upstream [#139](https://github.com/anomalyco/rune/issues/139) |
 
 Each module's own docs say what Rune lacks in detail, and the limits of the shim.
 

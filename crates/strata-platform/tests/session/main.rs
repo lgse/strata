@@ -12,6 +12,8 @@ mod support;
 
 mod w3;
 
+mod wake;
+
 #[cfg(feature = "_transfer")]
 mod p0;
 

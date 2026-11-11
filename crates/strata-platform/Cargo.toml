@@ -66,6 +66,9 @@ single-instance = [
 # P9 GLib bridge: src/glib_bridge/
 glib-bridge = ["dep:futures-channel", "dep:gio", "dep:glib"]
 
+# V5 GLib loop on the interface thread: src/glib_loop/
+glib-loop = ["dep:glib"]
+
 # Internal, not public API: P0's transfer substrate (src/transfer/), enabled by dnd, clipboard
 # and foreign-parent.
 _transfer = ["dep:libc", "dep:wayland-backend", "dep:wayland-client", "dep:wayland-protocols", "dep:wayland-protocols-wlr", "dep:x11rb", "x11rb/xfixes"]
@@ -81,6 +84,8 @@ tokio = { workspace = true, optional = true }
 zbus = { workspace = true, optional = true }
 # x11rb: csd (P3) and _transfer (P0); each feature names the x11rb features it needs.
 x11rb = { workspace = true, optional = true }
+# glib: glib-bridge (P9) and glib-loop (V5).
+glib = { workspace = true, optional = true }
 
 # dnd (P1)
 
@@ -100,7 +105,8 @@ futures-util = { workspace = true, optional = true, features = ["std"] }
 # glib-bridge (P9)
 futures-channel = { workspace = true, optional = true }
 gio = { workspace = true, optional = true }
-glib = { workspace = true, optional = true }
+
+# glib-loop (V5)
 
 # _transfer (P0)
 libc = { workspace = true, optional = true }

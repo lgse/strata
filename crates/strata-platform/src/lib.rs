@@ -18,6 +18,8 @@ pub mod dnd;
 pub mod foreign_parent;
 #[cfg(feature = "glib-bridge")]
 pub mod glib_bridge;
+#[cfg(feature = "glib-loop")]
+pub mod glib_loop;
 #[cfg(feature = "icon-theme")]
 pub mod icon_theme;
 #[cfg(feature = "settings")]
