@@ -75,7 +75,8 @@ class LocalBaseTests(unittest.TestCase):
         self.assertIn("TEST_UID=1234", command)
         self.assertIn("TEST_GID=5678", command)
         self.assertIn("org.strata.test.inputs=" + image_key(), command)
-        self.assertIn("toolchain", command)
+        # The stage the publisher pushes as the base, so a local base seeds a cache as it does.
+        self.assertEqual(command[command.index("--target") + 1], "dependencies")
 
 
 if __name__ == "__main__":

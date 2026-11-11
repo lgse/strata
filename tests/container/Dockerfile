@@ -60,19 +60,36 @@ RUN rustup toolchain install 1.99.1 --no-self-update --profile minimal --compone
     && chmod -R a+rX /opt/rustup
 
 FROM toolchain AS dependencies
-WORKDIR /build
+# The crates Cargo.lock names, fetched, and the third-party crates of the two QA builds,
+# compiled: the application's, and strata-rune's in a cargo run of its own, as
+# scripts/qa-parity.sh builds them. A run copies them into an empty Cargo cache
+# (scripts/dependency_seed.py), so they are made where target/qa-container puts them: Cargo's
+# fingerprints hold the path of a crate's sources.
+WORKDIR /workspace
 ENV CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0
+COPY tests/container/stub-workspace.py /opt/strata-stub-workspace.py
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
-# Only third-party dependencies are built here, so each workspace crate is reduced to its
-# manifest and an empty target: a crate's own build script or sources must not run.
+# Each workspace crate is reduced to its manifest and empty targets: no source or build
+# script of Strata's runs here. What the stubs built is then removed, and the stage fails if
+# any of it is left, so that a run can only compile the real crates. The Cargo home tells
+# Cargo not to clean it: a base outlives the month after which Cargo deletes the crates a
+# command did not use, and the first run from an older base would delete most of them.
 RUN find crates -type f ! -name Cargo.toml -delete \
-    && for manifest in crates/*/Cargo.toml; do \
-        mkdir -p "$(dirname "$manifest")/src" && : > "$(dirname "$manifest")/src/lib.rs"; \
-    done \
-    && mkdir src && printf 'fn main() {}\n' > src/main.rs \
-    && printf 'fn main() {}\n' > build.rs \
-    && cargo build --locked --bin strata \
-    && rm -rf src build.rs crates target/debug/strata target/debug/deps/strata* \
-        target/debug/deps/libstrata* target/debug/.fingerprint/strata-* \
-        target/debug/build/strata-*
+    && python3 /opt/strata-stub-workspace.py stub . \
+    && export CARGO_HOME=/workspace/target/qa-container/cargo \
+        CARGO_TARGET_DIR=/workspace/target/qa-container/build \
+    && cargo fetch --locked \
+    && cargo test --locked --features qa,invariant-checks --test qa --no-run \
+    && cargo build --locked -p strata-rune --features qa \
+    && packages="$(python3 /opt/strata-stub-workspace.py packages .)" \
+    && cargo clean --locked --offline $(printf -- '-p %s ' $packages) \
+    && python3 /opt/strata-stub-workspace.py leftovers . "$CARGO_TARGET_DIR" \
+    && test -n "$(find "$CARGO_TARGET_DIR/debug/deps" -name '*.rlib' -print -quit)" \
+    && printf '[cache]\nauto-clean-frequency = "never"\n' > "$CARGO_HOME/config.toml" \
+    && mkdir /opt/strata-dependencies \
+    && mv "$CARGO_HOME" "$CARGO_TARGET_DIR" /opt/strata-dependencies/ \
+    && printf '%s\n' /workspace/target/qa-container > /opt/strata-dependencies/cache-path \
+    && sha256sum < Cargo.lock | cut -d ' ' -f 1 > /opt/strata-dependencies/lock.sha256 \
+    && chmod -R a+rX /opt/strata-dependencies \
+    && cd / && rm -rf /workspace && mkdir /workspace

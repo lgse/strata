@@ -18,6 +18,7 @@ def digest(path):
 IMAGE_INPUTS = (
     "tests/container/Dockerfile",
     "tests/container/install-packages.sh",
+    "tests/container/stub-workspace.py",
     "tests/container/gtk/coordinate-probe.py",
     "tests/container/gtk/gtk-4.22-accessible-bounds.patch",
 )
@@ -30,7 +31,8 @@ def image_key(repository=REPOSITORY):
 
 
 def crate_manifests(repository=REPOSITORY):
-    return sorted((repository / "crates").glob("*/Cargo.toml"))
+    """Every manifest under crates/, as .dockerignore lets them into the image's build."""
+    return sorted((repository / "crates").rglob("Cargo.toml"))
 
 
 def dependency_key(repository=REPOSITORY):
