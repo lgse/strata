@@ -3070,6 +3070,7 @@ dependencies = [
  "sevenz-rust2",
  "sha2",
  "sourceview5",
+ "strata-test-support",
  "tar",
  "tempfile",
  "toml 1.1.6+spec-1.1.0",
@@ -3088,6 +3089,18 @@ dependencies = [
  "zbus",
  "zip 9.1.3",
  "zstd",
+]
+
+[[package]]
+name = "strata-test-support"
+version = "0.0.0"
+dependencies = [
+ "gio",
+ "glib",
+ "rustix",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

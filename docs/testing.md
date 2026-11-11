@@ -44,7 +44,7 @@ checks. Renew consent if the authorized scope changes, or run the required tests
 
 For native Rust selection, `scripts/test-headless.py` starts the private display
 and session buses, then appends its arguments to the fixed
-`cargo test --all-targets --all-features` command. Use module/name filters:
+`cargo test --workspace --all-targets --all-features` command. Use module/name filters:
 
 ```bash
 ./scripts/test-headless.py services::operations::tests
@@ -196,7 +196,7 @@ the aggregate gate separately requires all test shards to pass. Cold quality
 compilation includes test-only and all-feature dependencies, so the published
 dependency layers are not a full quality hit.
 
-The Rust suite runs with `--all-targets --all-features --locked` inside private
+The Rust suite runs with `--workspace --all-targets --all-features --locked` inside private
 Xvfb, with `GTK_A11Y=none`, `NO_AT_BRIDGE=1`, and `STRATA_REQUIRE_GTK_TESTS=1`.
 Each Xvfb server uses `-noreset` so consecutive test processes do not
 race a server reset when the last display client exits. GTK initialization
@@ -213,7 +213,7 @@ their existing runners rather than downloading a large GUI image unnecessarily.
 ### Rust quality shards
 
 CI's **Quality build and lint** job runs formatting and Clippy, then compiles
-`cargo test --locked --all-targets --all-features --no-run` once. It exports only
+`cargo test --locked --workspace --all-targets --all-features --no-run` once. It exports only
 test executables and a plan, not Cargo caches. `scripts/quality_ci.py` collects
 each libtest inventory, including the explicitly ignored tests, and assigns every
 entry to one of four shards. Tests are balanced longest-first across the shards

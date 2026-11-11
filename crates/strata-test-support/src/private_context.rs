@@ -2,8 +2,6 @@
 
 use std::{marker::PhantomData, ops::Deref};
 
-use gtk::glib;
-
 use super::{next_source_id_in, source_at};
 
 /// A test's own main context, for driving async code off the process-wide default context.
@@ -16,7 +14,7 @@ use super::{next_source_id_in, source_at};
 ///
 /// Cloning the `glib::MainContext` this derefs to does not keep its sources alive: they are
 /// destroyed when this handle drops, whoever still holds a clone.
-pub(crate) struct PrivateContext {
+pub struct PrivateContext {
     context: glib::MainContext,
     _owning_thread: PhantomData<*const ()>,
 }
@@ -26,7 +24,7 @@ impl PrivateContext {
         clippy::disallowed_methods,
         reason = "the one place a test creates a private context"
     )]
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             context: glib::MainContext::new(),
             _owning_thread: PhantomData,

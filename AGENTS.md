@@ -80,8 +80,8 @@ pass before merge.
   the push. CI continues to run its existing lint and formatting checks.
 - Use `scripts/test-headless.py` for native targeted Rust tests, for example
   `./scripts/test-headless.py services::operations::tests`; its arguments are
-  forwarded after the fixed `cargo test --all-targets --all-features` arguments.
-  This filters test names across targets, not compilation to one target.
+  forwarded after the fixed `cargo test --workspace --all-targets --all-features`
+  arguments. This filters test names across targets, not compilation to one target.
   The selected filter must match at least one test, including relevant views,
   callers, or preferences coverage.
 - QA selections name scenarios, or `<scenario>/<run>` for one run, for

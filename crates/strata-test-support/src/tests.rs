@@ -5,7 +5,7 @@ use std::{
     thread::{self, ThreadId},
 };
 
-use gtk::{gio, glib, prelude::*};
+use gio::prelude::*;
 
 use super::{ASYNC_MAIN_CONTEXT_DEFAULT, PrivateContext};
 

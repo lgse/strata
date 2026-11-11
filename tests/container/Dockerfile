@@ -63,8 +63,15 @@ FROM toolchain AS dependencies
 WORKDIR /build
 ENV CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0
 COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && printf 'fn main() {}\n' > src/main.rs \
+COPY crates crates
+# Only third-party dependencies are built here. The context carries each workspace crate's
+# manifest alone, so every crate gets an empty target.
+RUN for manifest in crates/*/Cargo.toml; do \
+        mkdir -p "$(dirname "$manifest")/src" && : > "$(dirname "$manifest")/src/lib.rs"; \
+    done \
+    && mkdir src && printf 'fn main() {}\n' > src/main.rs \
     && printf 'fn main() {}\n' > build.rs \
     && cargo build --locked --bin strata \
-    && rm -rf src build.rs target/debug/strata target/debug/deps/strata* \
-        target/debug/.fingerprint/strata-* target/debug/build/strata-*
+    && rm -rf src build.rs crates target/debug/strata target/debug/deps/strata* \
+        target/debug/deps/libstrata* target/debug/.fingerprint/strata-* \
+        target/debug/build/strata-*
