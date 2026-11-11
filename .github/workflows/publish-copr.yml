@@ -1,0 +1,115 @@
+name: Publish COPR packages
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Published release version, without the leading v
+        required: true
+        type: string
+      release:
+        description: RPM release number
+        required: false
+        default: 1
+        type: number
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published release version to build, without the leading v (for example 1.2.1)
+        required: true
+        type: string
+      release:
+        description: RPM release number; raise it to rebuild an already published version
+        required: false
+        default: 1
+        type: number
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-copr
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build the source RPM and submit it to COPR
+    if: vars.COPR_PUBLISH_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    container:
+      image: registry.fedoraproject.org/fedora:latest
+    environment: copr-production
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install packaging tools
+        run: dnf install -y git rpm-build cargo-rpm-macros cargo-vendor-filterer copr-cli python3
+
+      # Packaging tools come from this workflow's revision; only the source archive
+      # comes from the release tag, so older tags can be rebuilt with current tooling.
+      - name: Check out the packaging tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select the COPR projects
+        id: projects
+        env:
+          VERSION: ${{ inputs.version }}
+          STABLE_PROJECT: ${{ vars.COPR_PROJECT }}
+          PREVIEW_PROJECT: ${{ vars.COPR_PREVIEW_PROJECT }}
+        run: |
+          # A stable release also goes to Preview so that channel never lags behind it.
+          case "$VERSION" in
+            *-nightly.*) projects="" ;;
+            *-*) projects="$PREVIEW_PROJECT" ;;
+            *) projects="$STABLE_PROJECT $PREVIEW_PROJECT" ;;
+          esac
+          projects=$(echo $projects)
+          if [[ -z "$projects" ]]; then
+            echo "No COPR project packages v$VERSION."
+          fi
+          echo "projects=$projects" >> "$GITHUB_OUTPUT"
+
+      - name: Build the source RPM
+        if: steps.projects.outputs.projects != ''
+        env:
+          RELEASE: ${{ inputs.release }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git rev-parse --verify "refs/tags/v$VERSION^{commit}" >/dev/null
+          python3 scripts/build_srpm.py --tag "v$VERSION" --release "$RELEASE" --outdir dist
+
+      - name: Upload the source RPM
+        if: steps.projects.outputs.projects != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: strata-srpm-${{ inputs.version }}
+          path: dist/*.src.rpm
+          if-no-files-found: error
+
+      - name: Submit the builds and wait for them
+        if: steps.projects.outputs.projects != ''
+        env:
+          COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+          PROJECTS: ${{ steps.projects.outputs.projects }}
+        run: |
+          install -d -m 700 ~/.config
+          printf '%s\n' "$COPR_CONFIG" > ~/.config/copr
+          chmod 600 ~/.config/copr
+
+          builds=()
+          for project in $PROJECTS; do
+            output=$(copr-cli build --nowait "$project" dist/*.src.rpm)
+            printf '%s\n' "$output"
+            builds+=($(printf '%s\n' "$output" | sed -n 's/^Created builds: //p'))
+          done
+          if (( ${#builds[@]} == 0 )); then
+            echo "COPR reported no created builds." >&2
+            exit 1
+          fi
+          copr-cli watch-build "${builds[@]}"
