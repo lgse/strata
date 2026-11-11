@@ -19,6 +19,12 @@ use tracing_subscriber::fmt::MakeWriter;
 
 pub struct TestMutex(Mutex<()>);
 
+impl Default for TestMutex {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TestMutex {
     pub const fn new() -> Self {
         Self(Mutex::new(()))

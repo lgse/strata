@@ -19,6 +19,12 @@ pub struct PrivateContext {
     _owning_thread: PhantomData<*const ()>,
 }
 
+impl Default for PrivateContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PrivateContext {
     #[expect(
         clippy::disallowed_methods,
