@@ -9,7 +9,11 @@ use crate::test_support::hosted_after;
 
 fn saved_show_hidden() -> Option<bool> {
     let saved = std::fs::read_to_string(settings_file()).ok()?;
-    saved.parse::<toml::Table>().ok()?.get("show_hidden")?.as_bool()
+    saved
+        .parse::<toml::Table>()
+        .ok()?
+        .get("show_hidden")?
+        .as_bool()
 }
 
 /// `hidden_files/hidden-files-persist-across-restart`: Ctrl+. saves `show_hidden`, and the
@@ -33,9 +37,14 @@ fn the_hidden_files_choice_is_saved_and_nothing_else_is_rewritten() {
             }
             let file = std::fs::read_to_string(settings_file()).expect("settings");
             let table: toml::Table = file.parse().expect("a table");
-            assert_eq!(table.get("group_by_type"), Some(&toml::Value::Boolean(true)));
             assert_eq!(
-                table.get("from_a_later_strata").and_then(toml::Value::as_str),
+                table.get("group_by_type"),
+                Some(&toml::Value::Boolean(true))
+            );
+            assert_eq!(
+                table
+                    .get("from_a_later_strata")
+                    .and_then(toml::Value::as_str),
                 Some("kept")
             );
             // Only what this process changed: a default it never touched is not written.

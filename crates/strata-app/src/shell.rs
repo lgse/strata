@@ -229,9 +229,11 @@ fn bar(app: &App, chrome: &WindowChrome) -> El {
 
 /// The context menu's element, with its surfaces in `layer` while it is open.
 fn menu(app: &App, layer: &mut Vec<El>) -> El {
-    ContextMenu::new("menu", |app: &App| &app.menu.state, |app: &mut App| {
-        &mut app.menu.state
-    })
+    ContextMenu::new(
+        "menu",
+        |app: &App| &app.menu.state,
+        |app: &mut App| &mut app.menu.state,
+    )
     .name(app.menu.name())
     .on_intent(columns::chosen)
     .build(app, &app.look, layer)
@@ -313,9 +315,12 @@ fn apply_queued(app: &mut App, tx: &mut Tx) -> bool {
     changed
 }
 
+/// Chords, as Rune spells them, and what they ask of the browser.
+type WindowKey = (&'static str, fn(&Rc<Browser>));
+
 /// The window's own keys and what each asks of the browser. Shift may be held with a
 /// history key, as `history_jump` in `src/ui/window/keyboard/items.rs` lets it.
-const WINDOW_KEYS: [(&str, fn(&Rc<Browser>)); 5] = [
+const WINDOW_KEYS: [WindowKey; 5] = [
     // `HIDDEN_FILES` in `src/ui/keys/bindings/window.rs`.
     ("ctrl+h, ctrl+.", |browser| browser.toggle_hidden()),
     // `HISTORY_BACK`, `HISTORY_FORWARD`, `PARENT_FOLDER` and `HOME_FOLDER` in

@@ -133,7 +133,9 @@ fn texts(node: &Value, field: &str) -> Vec<String> {
 /// keyboard shortcut and the GTK menu as its description, where scenarios read it.
 fn description(node: &Value) -> String {
     let described = text(node, "description");
-    let menu_row = node["role"].as_str().is_some_and(|role| role.starts_with("menu-item"));
+    let menu_row = node["role"]
+        .as_str()
+        .is_some_and(|role| role.starts_with("menu-item"));
     if described.is_empty() && menu_row {
         return text(node, "shortcut");
     }
@@ -175,8 +177,13 @@ impl Snapshot {
 
     fn push(&mut self, parent: usize, segment: &str, seen: Seen) -> usize {
         let index = self.nodes.len();
-        let path = self.nodes[parent].node.as_ref().map(|node| node.0.to_string());
-        let node = Node(Rc::from(format!("{}/{segment}", path.unwrap_or_default()).as_str()));
+        let path = self.nodes[parent]
+            .node
+            .as_ref()
+            .map(|node| node.0.to_string());
+        let node = Node(Rc::from(
+            format!("{}/{segment}", path.unwrap_or_default()).as_str(),
+        ));
         self.index.insert(node.clone(), index);
         self.nodes.push(Seen {
             node: Some(node),
@@ -199,14 +206,22 @@ impl Snapshot {
             bounds: Some(bounds),
             ..Seen::default()
         };
-        let pane = self.push(0, &format!("@pane-{}", column.list), named("group", column.pane));
+        let pane = self.push(
+            0,
+            &format!("@pane-{}", column.list),
+            named("group", column.pane),
+        );
         let list = Seen {
             key: Some(column.list.clone()),
             ..named("list-box", column.bounds)
         };
         let list = self.push(pane, &column.list, list);
         for row in &column.rows {
-            let state = if row.selected { "selected" } else { "unselected" };
+            let state = if row.selected {
+                "selected"
+            } else {
+                "unselected"
+            };
             let seen = Seen {
                 role: "list-box-option".to_owned(),
                 key: Some(row.key.clone()),

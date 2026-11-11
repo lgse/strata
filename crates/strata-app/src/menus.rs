@@ -165,9 +165,7 @@ pub(crate) const PASTE: Row = row("paste", "Paste").hint(&["ctrl+v"]);
 pub(crate) const SELECT_ALL: Row = row("select-all", "Select All")
     .hint(&["ctrl+a"])
     .does(Wired::SelectAll);
-pub(crate) const REFRESH: Row = row("refresh", "Refresh")
-    .hint(&["f5"])
-    .does(Wired::Refresh);
+pub(crate) const REFRESH: Row = row("refresh", "Refresh").hint(&["f5"]).does(Wired::Refresh);
 pub(crate) const SHOW_HIDDEN: Row = row("hidden", "Show Hidden Files")
     .hint(&["ctrl+h"])
     .does(Wired::ToggleHidden);

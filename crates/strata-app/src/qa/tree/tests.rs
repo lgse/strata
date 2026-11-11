@@ -33,7 +33,11 @@ fn a_drawn_name_is_a_label_under_its_entry_and_under_nothing_else() {
         ],
     });
     let labels = [
-        label(&["content", "row-2", "rows", "columns-col-1"], "pictures", 30.0),
+        label(
+            &["content", "row-2", "rows", "columns-col-1"],
+            "pictures",
+            30.0,
+        ),
         // A label keyed like a row's under something that is no entry, and one under no row.
         label(&["row-9"], "not an entry", 0.0),
         label(&["columns-col-1-title"], "folder", 0.0),
@@ -55,8 +59,15 @@ fn a_drawn_name_is_a_label_under_its_entry_and_under_nothing_else() {
     assert_eq!((name.role(), name.name.as_str()), ("label", "pictures"));
     assert_eq!(name.bounds, Some(labels[0].bounds));
     let row = snapshot.at(name.parent.expect("a row")).expect("the row");
-    assert_eq!((row.mark, row.name.as_str()), (Some(Mark::Entry), "pictures"));
-    let children: Vec<_> = row.children.iter().map(|child| snapshot.at(*child)).collect();
+    assert_eq!(
+        (row.mark, row.name.as_str()),
+        (Some(Mark::Entry), "pictures")
+    );
+    let children: Vec<_> = row
+        .children
+        .iter()
+        .map(|child| snapshot.at(*child))
+        .collect();
     assert_eq!(children.len(), 1);
     assert_eq!(children[0].and_then(|seen| seen.node.clone()), name.node);
 }
@@ -95,7 +106,10 @@ fn a_column_behind_an_open_menu_is_presented_from_what_is_drawn() {
         name: "folder".to_owned(),
         bounds: bounds(0.0),
         pane: bounds(0.0),
-        rows: vec![row("row-1", "readme.md", false), row("row-2", "todo.txt", true)],
+        rows: vec![
+            row("row-1", "readme.md", false),
+            row("row-2", "todo.txt", true),
+        ],
     };
     let drawn = Drawn {
         lists: vec![column.list.clone()],
@@ -112,13 +126,19 @@ fn a_column_behind_an_open_menu_is_presented_from_what_is_drawn() {
     let list = marked(Mark::EntryContainer).next().expect("the list");
     let around = list.parent.and_then(|index| snapshot.at(index));
     assert_eq!(list.role(), "list");
-    assert_eq!(around.map(|around| around.node.clone()), Some(pane.node.clone()));
+    assert_eq!(
+        around.map(|around| around.node.clone()),
+        Some(pane.node.clone())
+    );
     let rows: Vec<_> = marked(Mark::Entry)
         .map(|row| (row.role(), row.name.as_str(), row.has_state("selected")))
         .collect();
     assert_eq!(
         rows,
-        [("list item", "readme.md", false), ("list item", "todo.txt", true)]
+        [
+            ("list item", "readme.md", false),
+            ("list item", "todo.txt", true)
+        ]
     );
     // A menu row's shortcut reads as its description, unless it has one of its own.
     let described: Vec<_> = seen
@@ -128,7 +148,10 @@ fn a_column_behind_an_open_menu_is_presented_from_what_is_drawn() {
         .collect();
     assert_eq!(
         described,
-        [("Copy", "Ctrl+C"), ("Open With…", "Looking for compatible applications…")]
+        [
+            ("Copy", "Ctrl+C"),
+            ("Open With…", "Looking for compatible applications…")
+        ]
     );
 
     // A column the tree does hold is not presented twice.

@@ -592,13 +592,7 @@ fn reopens<S>(sh: &Shared<S>, s: &S, depth: usize, id: EntryId) -> bool {
 /// does (Strata's `activate_focused` ends in `focus_child`): the cursor goes on the column's
 /// first entry if it has none. A click gives the column the keyboard and no cursor
 /// (`Browser::activate`: "reopening lands where opening did").
-fn reopen<S: 'static>(
-    sh: &Rc<Shared<S>>,
-    s: &mut S,
-    depth: usize,
-    how: Activation,
-    tx: &mut Tx,
-) {
+fn reopen<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, depth: usize, how: Activation, tx: &mut Tx) {
     if how == Activation::Key {
         enter_child(sh, s, depth + 1, tx);
         return;

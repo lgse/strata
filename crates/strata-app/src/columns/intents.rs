@@ -79,7 +79,11 @@ impl App {
         let within = selected
             .iter()
             .any(|other| other.location == entry.location);
-        let entries = if within { selected } else { vec![entry.clone()] };
+        let entries = if within {
+            selected
+        } else {
+            vec![entry.clone()]
+        };
         let model = menus::entry(&EntryTarget {
             entry: &entry,
             entries: &entries,
@@ -87,7 +91,8 @@ impl App {
             can_delete: self.browser.can_delete_at(depth),
             typing: self.columns.typing(),
         });
-        self.menu.show(depth, entry.display_name, MenuTarget::Entry(id), at, model);
+        self.menu
+            .show(depth, entry.display_name, MenuTarget::Entry(id), at, model);
     }
 
     /// The menu of column `depth`'s folder: a press on its empty space or its header.
@@ -100,7 +105,8 @@ impl App {
             hidden_shown: self.browser.preferences().show_hidden,
             typing: self.columns.typing(),
         });
-        self.menu.show(depth, title, MenuTarget::Background, at, model);
+        self.menu
+            .show(depth, title, MenuTarget::Background, at, model);
     }
 
     fn context_menu(&mut self, depth: usize, target: Option<EntryId>, anchor: Rect) {

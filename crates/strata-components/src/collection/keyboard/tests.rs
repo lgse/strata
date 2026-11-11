@@ -1382,10 +1382,11 @@ fn unbinding_a_tolerated_chord_takes_it_off_its_binding() {
 }
 
 fn columns_keys() -> KeySettings {
-    let mut keys = KeySettings::default();
-    keys.reselects_in_place = true;
-    keys.select_all_to_last = true;
-    keys
+    KeySettings {
+        reselects_in_place: true,
+        select_all_to_last: true,
+        ..KeySettings::default()
+    }
 }
 
 #[test]
@@ -1398,7 +1399,13 @@ fn a_select_key_that_cannot_move_the_cursor_reselects_its_entry_only_where_asked
         ("Up on the first entry", 0, Key::Down, Key::Up, true),
         ("End on the last entry", 5, Key::Up, Key::End, false),
         ("Home on the first entry", 0, Key::Down, Key::Home, false),
-        ("Page Down on the last entry", 5, Key::Up, Key::PageDown, false),
+        (
+            "Page Down on the last entry",
+            5,
+            Key::Up,
+            Key::PageDown,
+            false,
+        ),
     ] {
         for reselects in [true, false] {
             let settings = match reselects {
@@ -1410,7 +1417,8 @@ fn a_select_key_that_cannot_move_the_cursor_reselects_its_entry_only_where_asked
             r.click(at);
             r.shift(extend.clone());
             let neighbour = r.cursor().expect("a cursor");
-            r.f.sel.move_cursor(&r.f.src, at, crate::collection::selection::AnchorRule::Keep);
+            r.f.sel
+                .move_cursor(&r.f.src, at, crate::collection::selection::AnchorRule::Keep);
             assert_eq!(r.selected().len(), 2, "{case}");
             r.take();
 
@@ -1424,8 +1432,16 @@ fn a_select_key_that_cannot_move_the_cursor_reselects_its_entry_only_where_asked
             let alone = reselects || !edge;
             let mut both = vec![at as u64, neighbour as u64];
             both.sort_unstable();
-            assert_eq!(r.selected(), if alone { vec![at as u64] } else { both }, "{case}");
-            assert_eq!(out.iter().any(|o| matches!(o, Outcome::Edge(_))), edge, "{case}");
+            assert_eq!(
+                r.selected(),
+                if alone { vec![at as u64] } else { both },
+                "{case}"
+            );
+            assert_eq!(
+                out.iter().any(|o| matches!(o, Outcome::Edge(_))),
+                edge,
+                "{case}"
+            );
         }
     }
 }

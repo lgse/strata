@@ -121,9 +121,7 @@ impl Stage {
     pub(super) fn snapshot(&mut self) -> Rc<Snapshot> {
         let host = &self.host;
         self.seen
-            .get_or_insert_with(|| {
-                Rc::new(Snapshot::read(&host.tree(), &drawn(host)))
-            })
+            .get_or_insert_with(|| Rc::new(Snapshot::read(&host.tree(), &drawn(host))))
             .clone()
     }
 

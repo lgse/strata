@@ -44,8 +44,15 @@ fn of(entry: &FileEntry, entries: &[FileEntry], typing: bool) -> EntryTarget<'st
     }
 }
 
+fn one(entry: &FileEntry, typing: bool) -> EntryTarget<'static> {
+    of(entry, std::slice::from_ref(entry), typing)
+}
+
 fn items(model: &MenuModel) -> impl Iterator<Item = &Item> {
-    model.sections.iter().flat_map(|section| section.items.iter())
+    model
+        .sections
+        .iter()
+        .flat_map(|section| section.items.iter())
 }
 
 fn labels(model: &MenuModel) -> Vec<&str> {
@@ -59,9 +66,18 @@ fn hint<'a>(model: &'a MenuModel, label: &str) -> Option<&'a str> {
 
 /// The rows of each section, by label: sections are what the separators divide.
 fn sections(model: &MenuModel) -> Vec<Vec<&str>> {
-    let shown = model.sections.iter().filter(|section| !section.items.is_empty());
+    let shown = model
+        .sections
+        .iter()
+        .filter(|section| !section.items.is_empty());
     shown
-        .map(|section| section.items.iter().map(|item| item.label.as_str()).collect())
+        .map(|section| {
+            section
+                .items
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect()
+        })
         .collect()
 }
 
@@ -71,7 +87,7 @@ fn sections(model: &MenuModel) -> Vec<Vec<&str>> {
 fn a_files_menu_lists_the_gtk_menus_rows_in_its_order_under_the_name_and_path() {
     let todo = file("todo.txt");
 
-    let menu = entry(&of(&todo, &[todo.clone()], true));
+    let menu = entry(&one(&todo, true));
 
     assert_eq!(menu.header, ["todo.txt", "/tmp/menus/todo.txt"]);
     assert_eq!(
@@ -96,7 +112,7 @@ fn a_files_menu_lists_the_gtk_menus_rows_in_its_order_under_the_name_and_path() 
 fn a_folders_menu_swaps_the_preview_for_the_terminal_the_open_in_rows_and_the_pin() {
     let documents = directory("documents");
 
-    let menu = entry(&of(&documents, &[documents.clone()], true));
+    let menu = entry(&one(&documents, true));
 
     let all = labels(&menu);
     assert_eq!(
@@ -108,7 +124,9 @@ fn a_folders_menu_swaps_the_preview_for_the_terminal_the_open_in_rows_and_the_pi
     let customize = all.iter().position(|label| *label == "Customize…");
     assert_eq!(pin.map(|pin| pin + 1), customize);
     let open_in = items(&menu).find(|item| item.label == "Open in…");
-    let children = open_in.and_then(|item| item.submenu.as_ref()).expect("a submenu");
+    let children = open_in
+        .and_then(|item| item.submenu.as_ref())
+        .expect("a submenu");
     let children: Vec<(&str, Option<&str>)> = children[0]
         .items
         .iter()
@@ -131,12 +149,18 @@ fn an_archive_and_a_program_get_their_rows_after_the_open_rows() {
         ..file("run.sh")
     };
 
-    let unpack = entry(&of(&archive, &[archive.clone()], true));
-    let run = entry(&of(&program, &[program.clone()], true));
+    let unpack = entry(&one(&archive, true));
+    let run = entry(&one(&program, true));
 
     assert_eq!(
         sections(&unpack)[2],
-        ["Open", "Open With…", "Quick preview", "Extract here", "Extract to…"]
+        [
+            "Open",
+            "Open With…",
+            "Quick preview",
+            "Extract here",
+            "Extract to…"
+        ]
     );
     assert_eq!(
         sections(&run)[2],
@@ -172,7 +196,7 @@ fn a_folder_that_cannot_trash_or_delete_loses_those_rows() {
     let target = EntryTarget {
         can_trash: Some(false),
         can_delete: Some(false),
-        ..of(&todo, &[todo.clone()], true)
+        ..one(&todo, true)
     };
 
     let menu = entry(&target);
@@ -185,8 +209,8 @@ fn a_folder_that_cannot_trash_or_delete_loses_those_rows() {
 #[test]
 fn hints_are_the_bindings_and_a_typed_one_shows_only_with_type_to_search_off() {
     let documents = directory("documents");
-    let typing = entry(&of(&documents, &[documents.clone()], true));
-    let keys = entry(&of(&documents, &[documents.clone()], false));
+    let typing = entry(&one(&documents, true));
+    let keys = entry(&one(&documents, false));
 
     for (label, expected) in [
         ("New Folder", Some("Ctrl+Shift+N")),
@@ -209,7 +233,7 @@ fn hints_are_the_bindings_and_a_typed_one_shows_only_with_type_to_search_off() {
     assert_eq!(hint(&keys, "Copy path"), Some("Y"));
     assert_eq!(hint(&keys, "Pin to sidebar"), Some("P"));
     let todo = file("todo.txt");
-    let preview = entry(&of(&todo, &[todo.clone()], true));
+    let preview = entry(&one(&todo, true));
     assert_eq!(hint(&preview, "Quick preview"), Some("Space"));
 }
 

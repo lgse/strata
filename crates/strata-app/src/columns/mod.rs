@@ -38,8 +38,8 @@ mod selection;
 mod view;
 
 pub(crate) use ids::Ids;
-pub(crate) use listing::{Edit, Load, Row};
 pub(crate) use intents::chosen;
+pub(crate) use listing::{Edit, Load, Row};
 pub(crate) use selection::Input;
 pub(crate) use view::view;
 

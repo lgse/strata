@@ -302,7 +302,11 @@ fn a_right_click_opens_the_entrys_menu_and_escape_gives_the_keyboard_back() {
                 }
             }
 
-            passes(&backend, &kept, &json!({ "click": { "entry": "todo.txt" }, "button": 3 }));
+            passes(
+                &backend,
+                &kept,
+                &json!({ "click": { "entry": "todo.txt" }, "button": 3 }),
+            );
             let file = json!({ "wait": { "menu_items": { "in_order": [
                 "Open", "Open With…", "Quick preview", "Cut", "Copy", "Duplicate", "Rename",
                 "Move to…", "Copy to…", "Compress…", "Customize…", "Copy path", "Copy name",
@@ -312,16 +316,28 @@ fn a_right_click_opens_the_entrys_menu_and_escape_gives_the_keyboard_back() {
             passes(&backend, &kept, &json!({ "key": "Escape" }));
             passes(&backend, &kept, &wait(json!({ "menu_items": null })));
 
-            passes(&backend, &kept, &json!({ "click": { "background": true }, "button": 3 }));
+            passes(
+                &backend,
+                &kept,
+                &json!({ "click": { "background": true }, "button": 3 }),
+            );
             let pane = json!({ "wait": { "menu_items": { "in_order": [
                 "New Folder", "New File", "Paste", "Open With…", "Open in Terminal",
                 "Select All", "Refresh", "Customize…", "Properties"
             ] } } });
             passes(&backend, &kept, &pane);
             // A row that is wired runs: Show Hidden Files, by its name.
-            passes(&backend, &kept, &json!({ "click": { "menu_item": "Show Hidden Files" } }));
+            passes(
+                &backend,
+                &kept,
+                &json!({ "click": { "menu_item": "Show Hidden Files" } }),
+            );
             passes(&backend, &kept, &wait(json!({ "menu_items": null })));
-            passes(&backend, &kept, &wait(json!({ "entry": ".hidden.txt", "dir": root })));
+            passes(
+                &backend,
+                &kept,
+                &wait(json!({ "entry": ".hidden.txt", "dir": root })),
+            );
         },
     );
 }

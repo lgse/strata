@@ -86,7 +86,13 @@ mod c2d {
     }
 
     fn cursor(rt: &Runtime<Gallery>, depth: usize) -> Option<u64> {
-        let c = &rt.state.c2.columns.column(depth).expect("column").collection;
+        let c = &rt
+            .state
+            .c2
+            .columns
+            .column(depth)
+            .expect("column")
+            .collection;
         c.selection.cursor().map(|id| id.get())
     }
 
@@ -113,9 +119,16 @@ mod c2d {
 
         assert_eq!(rt.state.c2.columns.active(), 2);
         let first = id("Reports", "report-q0001.pdf");
-        assert_eq!((cursor(&rt, 2), selected(&rt, 2)), (Some(first), vec![first]));
+        assert_eq!(
+            (cursor(&rt, 2), selected(&rt, 2)),
+            (Some(first), vec![first])
+        );
         assert_eq!(rt.state.c2.intent, "Keyboard in column 2");
-        assert_eq!(path(&rt), "Home/Documents/Reports", "nothing opened or closed");
+        assert_eq!(
+            path(&rt),
+            "Home/Documents/Reports",
+            "nothing opened or closed"
+        );
         // The column keeps a cursor it already has.
         key(&mut rt, Key::Down);
         let second = cursor(&rt, 2);
@@ -151,7 +164,10 @@ mod c2d {
         key(&mut rt, Key::Escape);
         assert!(selected(&rt, 0).is_empty());
         key(&mut rt, Key::Up);
-        assert_eq!((selected(&rt, 0), cursor(&rt, 0)), (vec![first], Some(first)));
+        assert_eq!(
+            (selected(&rt, 0), cursor(&rt, 0)),
+            (vec![first], Some(first))
+        );
     }
 
     #[test]
