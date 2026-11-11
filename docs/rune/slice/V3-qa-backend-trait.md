@@ -2,11 +2,11 @@
 
 | | |
 | --- | --- |
-| Status | Not started. The reply baseline is captured |
+| Status | Done: eight commits, `60f661490` to `5c2cc9b47`, and this record |
 | Depends on | V2 (done) |
 | Unblocks | V7 |
 | Owns | `crates/strata-qa`, `src/qa`, `src/ui/accessibility_qa*` |
-| Lands as | Several refactor commits on `strata-next`, one per step below |
+| Landed as | One refactor commit for each step below on `strata-next`, and one tidy commit |
 
 ## Goal
 
@@ -16,156 +16,203 @@ any scenario may change.
 
 ## Why
 
-V2 gave the runner and the application one parser. They still do not share one meaning of
-`selected`, `visible` or "the entry named X": that logic is GTK code today. A second
-backend written beside it would drift. After V3 the Rune backend (V7) implements only what
-is specific to a toolkit: reading its tree, sending input, and knowing when it is idle.
+V2 gave the runner and the application one parser. They still did not share one meaning of
+`selected`, `visible` or "the entry named X": that logic was GTK code. A second backend
+written beside it would have drifted. Now the Rune backend (V7) implements only what is
+specific to a toolkit: reading its tree, sending input, and knowing when it is idle.
 
-## What exists
+## What it became
 
-`crates/strata-qa` (3,359 lines) holds the protocol only: `Command`, `Target`, `Predicate`
-and `Check`, their parsers, `Reply`, `Failure` and `changed_keys`. It depends on `regex`,
-`serde` and `serde_json`.
+| | Before | After |
+| --- | --- | --- |
+| `crates/strata-qa` | 3,359 lines: the protocol only | 11,282 lines: the protocol, the engine in `src/engine/`, and 51 unit tests |
+| `src/qa` | 9,479 lines with tests | 3,543 lines, 938 of them the X and Wayland input in `input.rs` |
+| `strata-qa`'s dependencies | `regex`, `serde`, `serde_json` | those and `toml`, `futures-channel`, `futures-lite`, `rustix`. No toolkit and no GLib |
 
-`src/qa` (9,479 lines with tests) is the in-process half. Every module but `pixels.rs` and
-three test files imports GTK, GDK or GLib.
+`strata-qa` holds every decision: which node a target means, what the snapshot lists and in
+what order, what each predicate holds, how each step waits and retries, the pointer
+sequences with their gaps, the session loop and the reply.
 
-| Module | Lines | Holds | Toolkit-neutral part |
-| --- | --- | --- | --- |
-| `qa.rs` | 419 | `Session` (stdin reader thread, stdout kept for replies), `Controller`, the serve loop, reply assembly, `settle`, timing constants | The serve loop, reply assembly, the constants, stream handling |
-| `dispatch.rs` | 778 | `Controller::execute`: one match over about 40 commands, with the `wait`, `expect`, `during`, `keys_until` and `note` loops inline | All the loops and the bookkeeping for `remember` and `keep` |
-| `check.rs` | 783 | `Controller::check`: about 50 live predicates | Most arms, once they read nodes instead of widgets |
-| `state.rs` | 898 | `Observation`, `AppState`, `FieldState`, `Observation::evaluate`, geometry tests; and `scan`, `dump`, the row table | Everything above the semicolon: about 480 lines of plain data and logic |
-| `driver.rs` | 277 | `Input`: `find` (locate, settle, locate again), `aim`, `activate`, `resolve`, `focused_widget` | The retry and deadline logic |
-| `targets.rs`, `targets/*` | 1,307 | `Rect`, `Located`, `LookupError`, `Aim`, `Memory`, `Boxes`; `locate`; `Wanted`, the role, name and state matcher; `role_name` (the AT-SPI names); `accessible_name` and `accessible_description`; `States`; fields | `Rect`, `Aim`, `LookupError`, `Boxes`, `Wanted`'s matching rules, target-to-node resolution |
-| `pointer.rs`, `keyboard.rs` | 636 | Click, double click, drag, wheel, `select` with its retry, chords, typing, `select_with_keyboard` | The sequences and their gaps; the X keycode work is not |
-| `onscreen.rs`, `reveal.rs` | 451 | Scrolling a clipped target into view, scrollbar values | `travel`, `wheel_clicks`, the attempt loop |
-| `waits.rs` | 171 | `adopt`, `open_menu`, `settle_target`, `wheel_until` | The loops |
-| `note.rs` | 130 | `Shape` and the `note` accessors | `Shape` |
-| `observe.rs` | 480 | Number expressions, visible rows, scroll values, footer fill, hit paths, theme accent, child processes, saved preferences | `number_json`, expression arithmetic, `child_processes`, the file reads |
-| `samples.rs`, `pixels.rs` | 297 | Pixel captures and text measurement | `pixels.rs` whole |
-| `clipboard.rs`, `criticals.rs` | 117 | A private display's clipboard; GLib log capture | None; `criticals` needs GLib, not GTK |
-| `input.rs`, `input/wayland.rs` | 949 | `Injector`: XTEST or Wayland virtual input, keysyms, the input log | None. This is the GTK backend's input |
-| `tests/*` | 1,786 | Unit tests | `predicates.rs`, `snapshot.rs`, `pixels.rs` and `commands.rs` use no toolkit |
+`src/qa` holds what names a GTK type:
 
-The harness does not read AT-SPI. Runs set `GTK_A11Y=none`, and names come from a registry
-in `src/ui/accessibility_qa`, where `src/ui/accessibility.rs` records each widget's label,
-description and a `Mark`: `Entry`, `Pane(view)`, `EntryContainer`, `PaneSurface` or
-`Dialog`. `state::scan` finds panes and entries by mark, not by role.
+| Module | Holds |
+| --- | --- |
+| `qa.rs` | The launch arguments and the usage text, `settle` and the frame-clock wait, the start of the session on the GLib main context |
+| `backend.rs` | `Gtk`, the `Backend` implementation, and the wait for the first entry list |
+| `state.rs` | The row table that ties a `GtkListItem` to its row widget, the rules for a recycled row, field reading, the `tree` dump |
+| `targets/` | AT-SPI role names, accessible names and descriptions, states, text content, unmapped extents |
+| `keyboard.rs` | X keycodes for a chord, the Shift a keysym needs, the borrowed keycode for a character the layout lacks |
+| `check.rs`, `observe.rs` | The seven predicates only GTK answers |
+| `dispatch.rs`, `reveal.rs`, `samples.rs`, `clipboard.rs` | The eight steps only GTK runs |
+| `input.rs`, `criticals.rs` | Unchanged, apart from the release time the engine now keeps |
 
 ## The trait
 
-A sketch to start from, not a settled signature. It follows the slice plan's list: the
-tree, input, settling, draining, window resize and an optional pixel capture.
+`crates/strata-qa/src/backend.rs` is the reference. The engine is generic over
+`B: Backend`, with `async fn` in the trait and no `dyn`; GTK runs it on the GLib main
+context. The sketch this package started from had 29 methods. The trait has 50, because
+keeping GTK's replies exact needed questions the sketch did not ask.
 
-```rust
-/// One toolkit's side of the QA mode. `Node` is a live element: a `gtk::Widget`, or a
-/// Rune accessibility node.
-pub trait Backend {
-    type Node: Clone + PartialEq;
-    /// A handle that does not keep its node alive: `remember` holds these.
-    type Kept: Clone;
+| Part | Methods | Note |
+| --- | --- | --- |
+| Session | `ready`, `quit`, `windowless`, `criticals` | `windowless` is the portal host: it takes steps before it has a window, and `app` is then the empty state |
+| Windows | `window`, `toplevels`, `title`, `window_width`, `focus`, `adopt` | These replace the sketch's `roots`. `toplevel`, `other_window`, `some_window`, `windows` and `adopt` need titles |
+| Tree | `parent`, `children`, `visible`, `attached` | `children` returns hidden nodes too. The engine leaves out a hidden subtree itself, so "presented" means one thing |
+| A node | `role`, `name`, `description`, `mark`, `states`, `orientation`, `text`, `field`, `value` | `orientation` is not part of `States`: see below |
+| Geometry | `frame`, `origin`, `layout`, `scroll`, `scroll_position` | These replace the sketch's `bounds`. `frame` is the cheap box inside a surface that the snapshot asks of every node; `origin` is the one X round trip that puts it on the screen; `layout` is the box of a node that is not drawn |
+| Entries | `entry`, `entries` | Defaulted over `mark`. GTK overrides both |
+| The application | `labels`, `settings_file` | The localized names of the preview, the peek and the search results, and where the preferences are saved |
+| Memory | `keep`, `recall` | `Memory` holds `Backend::Kept` |
+| Time | `settle`, `sleep`, `begin` | `settle` takes the window whose frame it waits for |
+| Keys | `chord`, `text_input`, `hold`, `release`, `key` | The first four keep their own gaps: GTK's depend on X keycodes and a release the server times. `key` sends one event |
+| Pointer | `pointer_move`, `pointer_position`, `button`, `activate`, `resize` | Each sends one event and the engine pauses. A wheel click is a press and release of button 4 or 5, so there is no `wheel` |
+| The rest | `dump`, `command`, `check` | A step or predicate only the toolkit can answer. `None` gives "<step> is not supported on this target" |
 
-    // The tree.
-    fn roots(&self) -> Vec<Self::Node>;                    // the main window first
-    fn parent(&self, node: &Self::Node) -> Option<Self::Node>;
-    fn children(&self, node: &Self::Node) -> Vec<Self::Node>;
-    fn role(&self, node: &Self::Node) -> &'static str;     // AT-SPI names
-    fn name(&self, node: &Self::Node) -> String;
-    fn description(&self, node: &Self::Node) -> String;
-    fn mark(&self, node: &Self::Node) -> Option<Mark>;
-    fn states(&self, node: &Self::Node) -> States;
-    fn bounds(&self, node: &Self::Node) -> Option<Rect>;   // rendered, in screen points
-    fn text(&self, node: &Self::Node) -> Option<String>;
-    fn field(&self, node: &Self::Node) -> Option<FieldState>;
-    fn focus(&self) -> Option<Self::Node>;
-    fn keep(&self, node: &Self::Node) -> Self::Kept;
-    fn recall(&self, kept: &Self::Kept) -> Option<Self::Node>;
+What the sketch had and the trait does not: `capture`. Nothing in the engine reads pixels,
+so V7 adds it when a step needs it.
 
-    // Input.
-    async fn chord(&self, chord: &Chord) -> Result<(), String>;
-    async fn key(&self, name: &str, pressed: bool) -> Result<(), String>;
-    async fn text_input(&self, character: char) -> Result<(), String>;
-    async fn pointer_move(&self, point: (f64, f64)) -> Result<(), String>;
-    async fn button(&self, number: u8, pressed: bool) -> Result<(), String>;
-    async fn wheel(&self, clicks: u32, down: bool) -> Result<(), String>;
-    async fn activate(&self, node: &Self::Node) -> Result<(), String>;
+How the points the design had to settle came out:
 
-    // Time and the window.
-    async fn settle(&self);                 // one painted frame, as `settle` is today
-    async fn sleep(&self, time: Duration);  // lets the application run meanwhile
-    async fn resize(&self, width: u16, height: Option<u16>) -> Result<(), String>;
-    fn criticals(&self) -> Vec<String>;
-    fn dump(&self) -> String;               // the `tree` query
-
-    /// Everything else: a command or a predicate only this toolkit can answer.
-    async fn command(&self, command: &Command) -> Option<Outcome> { None }
-    fn check(&self, predicate: &Predicate) -> Option<Result<Result<(), Failure>, String>> {
-        None
-    }
-    fn capture(&self, rect: [i64; 4]) -> Option<Result<Capture, String>> { None }
-}
-```
-
-Points the design has to settle:
-
-- **Async without `dyn`.** The engine's loops wait, and GTK's waiting is a GLib future. The
-  engine is generic over `B: Backend` and the trait uses `async fn`, which needs an
-  `#[expect(async_fn_in_trait, reason = …)]` on a public trait. The GTK backend runs the
-  engine on the GLib main context, as `Controller::serve` runs today. The Rune backend
-  drives it with a small executor whose sleep steps frames.
-- **Semantic marks stay.** `Mark` moves to `strata-qa`. The engine finds panes, entry
-  containers and entries by mark, as `scan` does, so the Rune backend only has to classify
-  its nodes.
+- **Semantic marks stay.** `Mark` lives in `strata-qa`. The engine finds panes and entry
+  containers by mark. An entry's mark is recorded on its `GtkListItem`, which is no widget,
+  so GTK answers `entry` and `entries` from its row table; a backend whose rows are nodes
+  marks them and uses the defaults.
 - **GTK quirks stay in the GTK backend.** A recycled row whose label still shows the old
-  name, the row widget against its `ListItem`, focus on an unmapped row, and `GtkMenuButton`
-  describing its inner toggle are all answered inside `name`, `states` and `children`.
-- **An unsupported command says so.** When `command` and `check` return `None` for
-  something the engine does not handle itself, the reply's `error` is
-  `"<step> is not supported on this target"`. The GTK backend supports everything it
-  supports today.
-- **`strata-qa` stays free of GLib.** Its dependency rule in `deny.toml` does not change.
+  name is left out of `entries`, and two names sharing one box list nothing. Focus on an
+  unmapped row is no focus, in `focus`. `GtkMenuButton` naming its inner toggle is in `name`.
+- **An unsupported step or predicate says so,** and a test over an in-memory backend checks
+  the text.
+- **`strata-qa` stays free of GLib.** `deny.toml` is unchanged and `cargo deny check` passes.
 
-## Scope
+## Steps
 
-Each step is one commit, a pure refactor, with the GTK suite green before the next.
+| Step | Commit | What moved |
+| --- | --- | --- |
+| 1. Baseline | none | Captured at `65eb2da03` |
+| 2. Plain snapshot code | `60f661490` | The snapshot types and `Observation::evaluate`, geometry, `Outcome`, `Capture` and the pixel measurements, `Shape`, the scroll arithmetic, and the tests that use no toolkit |
+| 3. `Backend`, `Mark`, `States` | `bc9f343de` | The trait's tree half and its GTK implementation |
+| 4. Snapshot assembly | `2403f2dc9` | `scan` |
+| 5. Target lookup | `7a688e26d` | `Wanted`, `locate`, `presented_target`, the field lookups, `find`, `resolve`, and `Scope` |
+| 6. Predicates | `9ae9682ea` | `check`, and the reads predicates share |
+| 7. Step loops | `d68264458` | `execute`, every loop, the pointer sequences, `aim` |
+| 8. Serve loop | `a90d5c082` | The session, the reply, the panic reply, the stream handling |
+| Tidy | `5c2cc9b47` | `reveal.rs` and `samples.rs` kept their code-health scores |
+| 9. Compare replies | this file | See Results |
 
-1. **Baseline.** Done: see Tests.
-2. **Move the plain snapshot code.** `Observation`, `PaneObservation`, `EntryObservation`,
-   `AppState`, `PaneState`, `FieldState` as data, `field_matches`, the geometry tests
-   (`within_viewport`, `within_window`, `inside`, `on_screen`, `contains`,
-   `middle_visible`, `collapse_whitespace`), `Observation::evaluate`, `empty_app_state`,
-   `Rect`, `Boxes`, `Aim`, `LookupError`, `Outcome`, `Capture` and `pixels.rs`, `Shape`,
-   `travel`, `wheel_clicks`, `step_towards`, `coordinate` and `number_json` go to
-   `strata-qa`. Their unit tests go with them.
-3. **Define `Backend`, `Mark` and `States` in `strata-qa`,** and implement the tree half
-   for GTK over `gtk::Widget`, delegating to the functions in `targets/naming.rs`,
-   `targets/states.rs` and `state.rs`.
-4. **Move snapshot assembly.** `scan` becomes engine code over `Backend`: panes by mark,
-   left to right; entries by mark inside the entry container, top to bottom then left to
-   right; the focused entry and pane; dialog, menu, preview, peek, search results and the
-   focused field.
-5. **Move target lookup.** `Wanted`'s matching, `locate`, `presented_target`, `field`,
-   `find` with its settle-and-compare, `aim` and `resolve` become engine code. `Memory`
-   holds `B::Kept`.
-6. **Move the predicates.** Each arm of `Controller::check` that reads only names, roles,
-   states, bounds, text and kept boxes moves. What stays GTK's goes through
-   `Backend::check`: `Pixel`, `AccentPixels`, `Repainted`, `ContrastBelow`, `HitPath`,
-   `FooterFill`, `ScrollValue`, `ListSections`, `SomeWindow` and `Windows`.
-7. **Move the command loops.** `wait`, `expect`, `during`, `holds`, `keys_until`, `note`,
-   `remember`, `keep`, `settle`, `query`, `open_menu`, `wheel_until`, `select` and
-   `select_with_keyboard`, plus the pointer and keyboard sequences with their gaps, become
-   engine code over the input half of the trait. `clipboard`, `capture`, `measure_text`,
-   `drop_samples`, `set_scrollbar`, `adopt` and the reveal steps stay behind
-   `Backend::command`.
-8. **Move the serve loop.** Reading commands, the ready reply, reply assembly with
-   `changed_keys`, the panic reply and exit code 70, and the stream handling of
-   `Session::prepare` become engine code a backend calls. The usage text keeps its
-   `usage: strata --qa` prefix, which the release workflow greps for.
-9. **Compare replies** against the baseline, and record the result.
+Where the steps departed from the plan, and why:
 
-If a step cannot be made reply-identical, it stops there and is reported: that is the slice
-plan's stop condition for V3.
+- **`aim` moved in step 7, not 5.** Scrolling a clipped target into view turns the wheel,
+  which needs the input half of the trait.
+- **More predicates are engine code than planned.** `hit_path`, `scroll_value`,
+  `list_sections`, `some_window` and `windows` read only what the trait exposes. GTK keeps
+  `pixel`, `accent_pixels`, `repainted`, `contrast_below`, `footer_fill`, and two the plan
+  did not list: `elapsed`, which reads an instant only `drop_samples` writes, and
+  `diagnostics_mention`, which reads the recorded descriptions and not the accessible ones.
+- **`adopt` is engine code.** It runs before a window exists, so the engine waits for the
+  window and the backend only takes it. The other steps the plan left with GTK stay behind
+  `Backend::command`: `reveal`, `reveal_control`, `set_scrollbar`, `capture`,
+  `measure_text`, `drop_samples`, `clipboard_set` and `clipboard`.
+- **`input.rs` lost the time of the last button release.** The engine keeps it, because
+  the pointer sequences read it. Nothing else in `input.rs` changed.
+
+## Results
+
+Every run named here is in the verify worktree, `~/dev/strata-next-verify/target/`.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Engine unit tests | `cargo test -p strata-qa --all-features --locked` | 51 pass. The crate had none before step 2 |
+| GTK backend unit tests | `./scripts/test-headless.py qa::` | 5 pass |
+| The oracle | `STRATA_QA_KEEP_ARTIFACTS=1 ./scripts/qa.sh` at `5c2cc9b47`, three times | 787 passed twice. Once 786: `new-folder-with-selection-groups/columns`, which is flaky. `qa-final-{1,2,3}.log`, `qa-final-{1,2,3}-artifacts/` |
+| Its teeth | `./scripts/qa-mutation.sh` with 21 of the 22 patches | 21 of 21 caught, in 12.2 minutes. `qa-mutation-final-summary.md`. The 22nd, `cut.patch`, does not apply |
+| Lint | `./scripts/quality.sh fmt`, `./scripts/quality.sh clippy` | Both clean in the pinned image |
+| Rust tests | `./scripts/quality.sh test` | 3,948 passed, 771 ignored by libtest. `quality-final-test.log` |
+| Layering | `cargo deny check` | advisories, bans, licenses and sources ok |
+| Code health | CodeScene, each file against `65eb2da03` | No file scores lower. See below |
+
+Each step's commit also had a full `qa.sh` run before the next began: 787 passed for steps
+2, 3, 6 and 7, and 786 for steps 4, 5 and 8, each time with one of the two flaky runs
+below failing.
+
+**`cut.patch` does not apply,** at `65eb2da03` either: `src/ui/browser/clipboard.rs` moved
+under it on `main` (#2092). It is out of this package's scope, so the mutation run leaves
+it out and "all 22 patches" is not shown. It needs a rebased patch.
+
+**Two runs are flaky, and were before V3.**
+
+- `new-folder-with-selection-groups/columns` waits for the opened folder's column to take
+  focus, and focus stays on the row. Run alone it failed 5 of 6 times at `65eb2da03`, 5 of
+  8 at step 3 and 3 of 6 at step 4. In a full run it usually passes.
+- `distant-archive-scrolled-into-view/icons` failed once in a full run, at step 8: the new
+  archive was never selected. Its input log is byte for byte the baseline's, and it passed
+  8 of 8 alone at the same commit.
+
+### Replies
+
+The comparison reads every run's `transcript.jsonl`. It masks the random fixture and home
+names and a fixture server's port, and drops measured time: an `elapsed` actual, "held for
+N of M polls", "held for N ms" and timeout texts.
+
+Two runs of one binary do not write the same transcripts. A reply reads `app` at the
+moment it is written, and the application keeps working after a step returns: a pane is
+listed before or after its entries arrive, a preview before or after its details. So the
+comparison is in two parts.
+
+- **The verdict of every line**: the command, `ok`, `error`, `failures`, `result` and
+  `criticals`. These do not depend on when the reply was written.
+- **`app` and `changed`**, held against several baseline runs: a line passes when some
+  baseline run wrote the same reply at that line.
+
+Three full runs at `65eb2da03` and three at `5c2cc9b47`, 758 scenario runs each:
+
+| A run held against | Runs whose verdict differs | Runs with a reply no reference run wrote | Gate runs among them |
+| --- | --- | --- | --- |
+| Baseline against the other two baseline runs | 0, 0, 0 | 34, 36, 38 | 1, 4, 2 |
+| Final against two baseline runs | 0, 0, 1 | 32 to 41 | 2 to 5 |
+
+The one verdict that differs is the flaky `new-folder-with-selection-groups/columns`. No
+verdict differs in the 73 Columns runs of gates G1 to G3 in any final run.
+
+Whole transcripts differ in 54 to 59 runs between two baseline runs, in 52 to 64 between a
+baseline and a final run, and in 58 to 59 between two final runs. The refactored harness
+differs from the baseline as much as the baseline differs from itself, and only in when
+`app` was read. The stop condition "V3 changes a reply" is not hit.
+
+Artifacts: `qa-baseline-65eb2da03/`, `qa-baseline-{2,3}-artifacts/` and
+`qa-final-{1,2,3}-artifacts/`, with each step's own run in `qa-step{2..8}-artifacts/`. The
+two scripts that made the comparison, and the one that ran the final checks, are kept
+beside them in `v3-tools/`, outside the tree.
+
+### Code health
+
+| File at `65eb2da03` | Score | Where the code is now | Score |
+| --- | --- | --- | --- |
+| `src/qa/check.rs` | 5.91 | `engine/check.rs`; `src/qa/check.rs` | 6.39; 9.4 |
+| `src/qa/dispatch.rs` | 5.59 | `engine/dispatch.rs`; `src/qa/dispatch.rs` | 6.21; 9.22 |
+| `src/qa/state.rs` | 7.13 | `snapshot.rs`, `engine/scan.rs`; `src/qa/state.rs` | 9, 10; 9.68 |
+| `src/qa/observe.rs` | 7.04 | `engine/observe.rs`; `src/qa/observe.rs` | 7.04; 10 |
+| `src/qa/targets/locate.rs` | 7.94 | `engine/locate.rs` | 8.43 |
+| `src/qa/pointer.rs` | 8.67 | `engine/pointer.rs` | 8.81 |
+| `src/qa/driver.rs` | 8.85 | `engine/scope.rs`, `engine/activate.rs` | 9.38, 9.42 |
+| `src/qa/waits.rs` | 8.81 | `engine/waits.rs` | 8.81 |
+| `src/qa/keyboard.rs` | 9.15 | `engine/keyboard.rs`; `src/qa/keyboard.rs` | 9.59; 9.53 |
+| `src/qa/reveal.rs` | 8.38 | `src/qa/reveal.rs` | 8.39 |
+| `src/qa/samples.rs` | 8.64 | `src/qa/samples.rs` | 9.38 |
+| `src/qa.rs` | 10 | `engine/serve.rs`; `src/qa.rs`, `src/qa/backend.rs` | 10; 10, 10 |
+
+`engine/check.rs` and `engine/dispatch.rs` are still one long match each. They were moved
+arm for arm so the replies could be compared; splitting them is a change of its own.
+
+## What V3 found
+
+- **`has_state` reads a widget's orientation for every state it tests,** and GTK logs
+  `gtk_orientable_get_orientation: assertion 'GTK_IS_ORIENTABLE (orientable)' failed` for
+  some widget when asked. Reading it for every widget, as a first version of step 3 did,
+  failed 13 runs. The engine keeps the old reads exactly, so no reply changes; which widget
+  it is, and whether a step that tests a state on it should fail, is open.
+- **The transcripts are not reproducible line for line,** as described under Replies. A
+  parity ledger that compares GTK with Rune has to compare verdicts, not `app`.
+- **`cut.patch` is stale** and the two runs above are flaky.
 
 ## Out of scope
 
@@ -175,60 +222,13 @@ plan's stop condition for V3.
   session host; they stay where they are.
 - New steps, targets or predicates.
 
-## Tests
-
-The harness decides pass and fail for everything else, so this package escalates to full
-runs, as `AGENTS.md` asks for harness code. Run them from the verify worktree, one script at
-a time.
-
-| Check | Command | Expect |
-| --- | --- | --- |
-| Engine unit tests | `cargo test -p strata-qa --all-features --locked` (no toolkit, so no display) | Pass, and more tests than before step 2 |
-| GTK backend unit tests | `./scripts/test-headless.py qa::` | Pass |
-| The oracle | `STRATA_QA_KEEP_ARTIFACTS=1 ./scripts/qa.sh` | 758 runs pass, as at the baseline |
-| Its teeth | `./scripts/qa-mutation.sh` | All 22 patches still fail their scenarios |
-| Replies | A diff of every run's `transcript.jsonl` against the baseline | No difference but timing |
-| Lint, before the push | `./scripts/quality.sh fmt`, `./scripts/quality.sh clippy` | Clean |
-| Layering | `cargo deny check` | `strata-qa` still has no toolkit and no GLib |
-| Code health | `scripts/code-health.sh --changed` | No file scores lower |
-
-**The baseline.** `STRATA_QA_KEEP_ARTIFACTS=1 ./scripts/qa.sh` at `65eb2da03` wrote one
-folder per run with `transcript.jsonl`, `tree.txt`, `state.json`, `input.log` and
-`result.json`: 787 tests passed, 2 ignored, in 80 s. A copy is kept outside the tree, in
-the verify worktree's `target/qa-baseline-65eb2da03/`. Capture it again if `strata-next`
-has moved before step 2 starts.
-
-**Comparing replies.** A transcript line is `{"command":…,"reply":…}`. Before comparing:
-
-- replace each run's fixture and home names, which are random
-  (`strata-qa-fixture-XXXXXX`);
-- drop values that are measured time: an `elapsed` result, "held for N of M polls", and
-  timeout texts;
-- keep everything else, including `ok`, `app`, `changed`, `failures`, `error` and the
-  order of lines.
-
-The comparison script is a throwaway and stays out of the tree. The slice plan asks for the
-G1 to G3 runs to match; compare all 758 and report any run outside those gates that
-differs.
-
 ## Done when
 
 - `src/qa` implements `Backend` and holds no predicate, target or loop logic that does not
-  name a GTK type.
-- The GTK suite and all 22 mutation patches behave as before.
-- The reply logs of the G1 to G3 Columns runs match the baseline apart from timing.
+  name a GTK type. Done.
+- The GTK suite and all 22 mutation patches behave as before. The suite does; 21 patches
+  do, and `cut.patch` did not apply before either.
+- The reply logs of the G1 to G3 Columns runs match the baseline apart from timing. See
+  Replies.
 - The commit messages say no behaviour changed, and the handoff names the runs and the
-  artifact directories.
-
-## Risks
-
-- **A subtle change in timing.** Several sequences depend on when `settle` runs between
-  events, such as the 100 ms button hold and the 90 ms double-click gap. Moving a loop must
-  keep every await where it is.
-- **Generic code hides a GTK assumption.** `scan` returns no entries when two names share
-  one box, because a recycled `GtkListView` row can show that for a frame. Rules like this
-  must stay with GTK, or the engine would hide a real defect on Rune.
-- **Size.** About 4,000 lines move or change shape. Steps 5 to 7 are the bulk; split them
-  further along module lines if a commit grows past what can be reviewed.
-- **`main` merges.** Fixes to `src/qa` on `main` will conflict with every step. Merge
-  `main` just before starting, and again before step 5.
+  artifact directories. Done.

@@ -24,13 +24,16 @@ are part of the suite.
 
 - **The app side.** A build with the `qa` cargo feature (never released)
   accepts `strata --qa <directory>`: the normal window opens on the directory,
-  then `src/qa.rs` reads one JSON command per line on stdin, runs it on the GTK
-  main loop (`src/qa/dispatch.rs`), and writes one reply per line on stdout once the main context
+  then the session reads one JSON command per line on stdin, runs it on the GTK
+  main loop, and writes one reply per line on stdout once the main context
   drains. Input is XTEST sent from inside the process; state is read from the
   widget tree by the accessible names `src/ui/accessibility.rs` sets.
   `strata --qa --portal` runs the FileChooser portal backend instead.
-  `crates/strata-qa/` parses commands; `src/qa/targets.rs` and its
-  `targets/` submodules resolve targets; `state.rs` builds the snapshot.
+  `crates/strata-qa/` parses commands and, in `src/engine/`, runs the session:
+  it resolves targets, builds the snapshot, decides predicates and runs each
+  step's loop, all through its `Backend` trait. `src/qa/` is GTK's `Backend`
+  (`backend.rs`): it reads widgets, sends input, and keeps the few steps and
+  predicates only GTK can answer (`dispatch.rs`, `check.rs`).
 - **The reply.** `{"ok","app","changed","criticals","result","failures","error"}`.
   `app` is the state snapshot (view mode, directory, panes with selection and
   focus, focused entry, dialog, menu, preview, field, matches). Any GLib

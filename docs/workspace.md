@@ -9,9 +9,9 @@ that does not need GTK lives in crates under `crates/`, so a second interface ca
 | `strata-preview` | Sandbox launcher, the preview helper it runs, document parsers, preview types | `strata-core` |
 | `strata-fs` | Listing, file operations, trash, volumes, search, jobs, actions, the browser's state (`app`) | `strata-core`, `strata-preview` |
 | `strata-desktop` | Portal and D-Bus setup, the updater, integrations, build information | `strata-core`, `strata-fs` |
-| `strata-qa` | The `--qa` protocol: steps, targets, predicates and their parsers | none |
+| `strata-qa` | The `--qa` protocol (steps, targets, predicates and their parsers) and the engine that runs a session through its `Backend` trait | none |
 | `strata-test-support` | Test helpers that need no toolkit. A dev-dependency | none |
-| `strata` (root) | The GTK interface, assets, the QA backend, diagnostics | all of the above |
+| `strata` (root) | The GTK interface, assets, GTK's QA backend, diagnostics | all of the above |
 
 None of the crates may depend on `gtk4`, `gdk4`, `sourceview5` or `gstreamer`.
 `cargo deny check` enforces this and the layering: `deny.toml` lists, for each toolkit and

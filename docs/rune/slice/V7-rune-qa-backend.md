@@ -27,21 +27,25 @@ which are `strata-app`'s, and `strata-rune` may depend on nothing else.
 
 | Part of `Backend` | On Rune |
 | --- | --- |
-| The tree | `Runtime::accessibility_tree`. A node is a key path. `Kept` is the path with the node's id, so a recycled row is not taken for the one remembered |
+| The tree: `window`, `toplevels`, `parent`, `children`, `visible`, `attached` | `Runtime::accessibility_tree`. A node is a key path. `Kept` is the path with the node's id, so a recycled row is not taken for the one remembered. The one window is the only toplevel; `adopt` has nothing to do |
 | `role` | The role map below |
-| `name`, `description`, `states`, `bounds` | The node's own. Bounds are window points; the window's origin is zero |
-| `mark` | A pane, its entry container and its entries, classified by where the adapter put them: the column's group, its list, its rows |
+| `name`, `description`, `states`, `orientation`, `text`, `value` | The node's own |
+| `frame`, `origin`, `layout` | The node's box in window points. The offscreen host has one surface at the origin, so `origin` is zero and `layout` is `frame` |
+| `scroll`, `scroll_position` | The scroll node's offset and page. Needed to bring a clipped target into view and for `scroll_value`; return `None` until a gate run needs them |
+| `mark` | A pane, its entry container and its entries, classified by where the adapter put them: the column's group, its list, its rows. The default `entry` and `entries` then list them; GTK overrides both for its recycled rows and Rune should not have to |
 | `focus` | The focused node's `activeDescendant` when it has one, else the focused node. V0 found focus stays on the strip and the row is its active descendant |
 | `field` | The focused text field's text, caret and selection. Needed by V9; return `None` until then |
-| `chord`, `key` | `Runtime::key` with the key map below, and `Runtime::physical_input` for held modifiers |
-| `text_input` | Rune's text entry point. Find it in `runtime/input/` |
-| `pointer_move`, `button`, `wheel` | `Runtime::pointer_move`, `pointer_down`, `pointer_up`, `wheel` |
+| `labels`, `settings_file` | The same strings and path as the GTK application: both come from the shared crates |
+| `chord`, `text_input`, `hold`, `release`, `key` | `Runtime::key` with the key map below, Rune's text entry point in `runtime/input/`, and `Runtime::physical_input` for held modifiers |
+| `pointer_move`, `pointer_position`, `button` | `Runtime::pointer_move`, `pointer_down` and `pointer_up`. The engine sends a wheel click as a press and release of button 4 or 5, as X numbers them: scroll with `Runtime::wheel` on the press and ignore the release |
+| `activate` | The node's default action |
+| `ready`, `quit`, `begin` | The host is ready once the first listing is in the tree; `quit` ends the host loop |
 | `settle` | Turn the host until GLib has nothing ready, the event queue is empty, and the runtime is not animating, after `Runtime::settle_all` |
 | `sleep` | Turn the host until the time has passed |
 | `resize` | `Runtime::set_viewport` |
 | `criticals` | GLib's log handler, as `src/qa/criticals.rs` installs it. It uses GLib only: move it to a shared crate rather than copy it |
 | `dump` | The same text shape as GTK's tree: one line per node with type, role, name, description, states and box |
-| `command`, `check`, `capture` | `None`. The engine then replies that the step is not supported on this target |
+| `command`, `check` | `None`. The engine then replies that the step or predicate is not supported on this target |
 
 Details V0 settled:
 

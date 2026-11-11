@@ -43,7 +43,7 @@ this table.
 | V0 | Assumption checks | None | Done, `f1970421a`. [Findings](V0-findings.md) | Findings written; no stop condition hit |
 | V1 | Workspace and toolchain | V0 | Done: the three commits ending at `2a6054141` | Strata builds as a workspace; GTK suite passes |
 | V2 | Extract the QA protocol crate | V1 | Done, `60cc86aed` | Runner and binary parse through one crate; GTK suite and mutations pass |
-| V3 | [QA engine behind a `Backend` trait](V3-qa-backend-trait.md) | V2 | Not started; baseline captured | GTK is one backend; replies unchanged; GTK suite and mutations pass |
+| V3 | [QA engine behind a `Backend` trait](V3-qa-backend-trait.md) | V2 | Done, `60f661490` to `5c2cc9b47` | GTK is one backend; replies unchanged; GTK suite and mutations pass |
 | V4 | [Extract the shared crates](V4-shared-crates.md) | V1 | Done, `7f389c536` to `ffb6490eb` | No `gtk4` under the shared crates; GTK suite passes |
 | V4b | [Import the component crates](V4b-import-components.md) | V4 | Not started | The Rune side builds and tests in the workspace; GTK suite passes |
 | V5 | [`strata-rune` shell and loop](V5-shell-and-loop.md) | V4b | Not started | A themed window opens on a directory; GLib work reaches the UI thread |
@@ -56,10 +56,15 @@ this table.
 V3 can run beside V4b, V5 and V6. V4b is not in the slice plan: it is the import stage of
 the [workspace migration](../workspace-migration.md), which the slice needs before V5.
 
-**What was validated for the done packages.** The full GTK QA suite passed at `65eb2da03`
-on 2026-11-10: 787 tests, 758 scenario runs, 2 ignored, in 80 s. `./scripts/quality.sh` and
-`./scripts/qa-mutation.sh` were not rerun at that commit in the session that wrote these
-files. `strata-next` is ahead of `lgse/strata` and has not been pushed.
+**What was validated for the done packages.** At `5c2cc9b47`, on 2026-11-10: the full GTK
+QA suite three times (787 tests, 758 scenario runs, 2 ignored, in 80 s), `./scripts/quality.sh`
+in all three phases, and `./scripts/qa-mutation.sh` with 21 of the 22 patches. All pass,
+apart from one flaky run in one of the three QA runs. [V3](V3-qa-backend-trait.md) has the
+figures and names the artifacts.
+
+Three things are open and were so before V3: `cut.patch` no longer applies,
+`new-folder-with-selection-groups/columns` fails more often than not when run alone, and
+`distant-archive-scrolled-into-view/icons` failed once under load.
 
 ## Scope
 
@@ -192,7 +197,7 @@ Work halts and is reported when any of these holds.
 | V0 host probe fails: an offscreen `Runtime` cannot host the app or give the tree | Not hit |
 | V0 core probe finds widget types under `Browser` or rename | Not hit |
 | V0 loop probe shows a stall | Not hit offscreen. The windowed wake is untested; V5 settles it |
-| V3 changes a reply: the refactored GTK harness cannot reproduce the earlier reply logs | Open |
+| V3 changes a reply: the refactored GTK harness cannot reproduce the earlier reply logs | Not hit. Every verdict matches; `app` differs between two runs of the baseline itself, so V7's ledger compares verdicts |
 | G2 is mostly blocked: more than a third of its runs land as `component` or `rune` pending | Open |
 
 ## Owner decisions
