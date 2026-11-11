@@ -60,6 +60,15 @@ mod step_tests;
 #[path = "qa/steps.rs"]
 mod steps;
 
+#[path = "qa/target.rs"]
+mod target;
+
+#[path = "qa/parity.rs"]
+mod parity;
+
+#[path = "qa/parity_tests.rs"]
+mod parity_tests;
+
 #[path = "qa/unit_tests.rs"]
 mod unit_tests;
 
@@ -99,6 +108,7 @@ use process::{Bus, SPAWN, spawn, tail, terminate, wait_for_exit};
 use run::{Outcome, pretty, run_result, settled_state};
 use scenario::{Scenario, planned_tests};
 use steps::run_steps;
+use target::{RUNE_BINARY_VARIABLE, Target};
 use variables::{Places, Run, substitute, substitute_text, unescape, variables};
 
 // scripts/test_qa_drive.py checks qa-drive.sh against the launch values in this file.
@@ -541,6 +551,16 @@ impl Launch<'_> {
         variables
     }
 
+    /// The binary of the target this run drives.
+    fn binary(&self) -> Result<String, String> {
+        let binary = Target::from_environment()?
+            .binary(std::env::var_os(RUNE_BINARY_VARIABLE).as_deref())?;
+        binary
+            .into_os_string()
+            .into_string()
+            .map_err(|binary| format!("{} is not UTF-8", Path::new(&binary).display()))
+    }
+
     /// `program`, under `strace` when the run is part of a main-thread I/O audit.
     fn command(&self, program: &str) -> Result<(Command, Option<main_io::Capture>), String> {
         match self.audit {
@@ -575,7 +595,8 @@ impl Application {
     fn start(launch: &Launch, relaunch: &Relaunch) -> Result<Self, String> {
         let log = launch.log.clone();
         let output = File::create(&log).map_err(|error| error.to_string())?;
-        let (mut command, capture) = launch.command(BINARY)?;
+        let binary = launch.binary()?;
+        let (mut command, capture) = launch.command(&binary)?;
         // Its own process group, so a restart can signal the application and whatever it started.
         std::os::unix::process::CommandExt::process_group(&mut command, 0);
         command.arg("--qa");
@@ -619,7 +640,7 @@ impl Application {
             command.env("STRATA_QA_STREAMS", streams);
         }
         let mut child =
-            spawn(&mut command).map_err(|error| format!("cannot start {BINARY}: {error}"))?;
+            spawn(&mut command).map_err(|error| format!("cannot start {binary}: {error}"))?;
         let stdout = child.stdout.take().ok_or("no stdout")?;
         let (sender, replies) = mpsc::channel();
         std::thread::spawn(move || {
@@ -759,7 +780,7 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
         }
     };
     let artifacts = Path::new(REPOSITORY)
-        .join("target/qa-artifacts")
+        .join(target::artifacts())
         .join(&scenario.header.scenario)
         .join(&run.label);
     let _ = fs::remove_dir_all(&artifacts);

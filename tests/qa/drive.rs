@@ -21,6 +21,7 @@ use crate::{
     run::Outcome,
     runner_steps::{EachStep, Kept, LogStep, ProcStep},
     steps::{flag_names, increment, parent, slice, stem, substitute_notes},
+    target::Target,
     variables::unescape,
 };
 
@@ -60,7 +61,7 @@ pub(crate) fn drive(
     // Only now: the process read the US keymap at startup, and key names
     // keep meaning US key positions under any layout.
     if context.initial_layout != DEFAULT_LAYOUT {
-        match switch(context.manifest, context.display, context.initial_layout) {
+        match launch_layout(application, context, &mut outcome) {
             Ok(()) => context.initial_layout.clone_into(layout),
             Err(error) => {
                 outcome.errors.push(format!("layout: {error}"));
@@ -112,7 +113,7 @@ pub(crate) fn drive(
         let step = &Value::Object(object.clone());
         if let Some(name) = object.get("layout") {
             let name = name.as_str().unwrap_or_default().to_owned();
-            match switch(context.manifest, context.display, &name) {
+            match change_layout(application, context, (&name, Some(*line)), &mut outcome) {
                 Ok(()) => *layout = name,
                 Err(error) => {
                     outcome.errors.push(format!("{label}: {error}"));
@@ -442,6 +443,42 @@ pub(crate) fn file_failure(outcome: &mut Outcome, line: usize, label: &str, erro
     } else {
         outcome.failures.push((Some(line), failure));
     }
+}
+
+/// Switches the display's keyboard layout to `name`, then tells a target that has no
+/// display server which one it is now: it types under it itself. Its reply is recorded as a
+/// `keymap` step of the scenario line that asked, if one did.
+fn change_layout(
+    application: &mut Application,
+    context: &Context,
+    (name, line): (&str, Option<usize>),
+    outcome: &mut Outcome,
+) -> Result<(), String> {
+    switch(context.manifest, context.display, name)?;
+    let layout = context
+        .manifest
+        .layouts
+        .get(name)
+        .ok_or_else(|| format!("no layout {name:?} in the manifest"))?;
+    let Some(step) = Target::from_environment()?.keymap_step(layout) else {
+        return Ok(());
+    };
+    let reply = application.send(&step, COMMAND_TIMEOUT)?;
+    record(outcome, line, "layout", &step, reply)
+}
+
+/// The layout a run starts under, when it is not the US one the application launched with.
+fn launch_layout(
+    application: &mut Application,
+    context: &Context,
+    outcome: &mut Outcome,
+) -> Result<(), String> {
+    change_layout(
+        application,
+        context,
+        (context.initial_layout, None),
+        outcome,
+    )
 }
 
 fn record(

@@ -84,6 +84,7 @@ pub(crate) fn a_run_keeps_its_own_mode_steps_and_rejects_a_malformed_one() {
         json!({ "key": "Escape", "when": { "modal": true } }),
         json!({ "holds": { "dialog": true } }),
         json!({ "layout": "klingon" }),
+        json!({ "keymap": { "layouts": "ru" } }),
         json!({ "expect": { "dialog": true }, "as": "open", "when": { "dialog": true } }),
         json!({ "wait": { "all": [] } }),
         json!({ "fs": { "path": "a", "volume": "/dev/shm", "with": { "../b": "c" } } }),

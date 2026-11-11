@@ -12,7 +12,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use crate::{
-    Application, BINARY, COMMAND_TIMEOUT, DEFAULT_WAIT, FFMPEG_TIMEOUT, Launch, POLL_INTERVAL,
+    Application, COMMAND_TIMEOUT, DEFAULT_WAIT, FFMPEG_TIMEOUT, Launch, POLL_INTERVAL,
     QA_ENVIRONMENT, REPOSITORY, RUNNER_OWNED_ENVIRONMENT, XDG_DIRECTORIES,
     drive::Context,
     fs_check::{PngCheck, TarText, contained},
@@ -372,7 +372,8 @@ fn launch_instance(launch: &Launch, step: &LaunchStep) -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     let errors = output.try_clone().map_err(|error| error.to_string())?;
     // A second instance hands its arguments over and exits; its trace is all startup.
-    let (mut command, _capture) = launch.command(BINARY)?;
+    let binary = launch.binary()?;
+    let (mut command, _capture) = launch.command(&binary)?;
     let mut child = spawn(
         command
             .args(&arguments)
@@ -383,7 +384,7 @@ fn launch_instance(launch: &Launch, step: &LaunchStep) -> Result<(), String> {
             .stdout(output)
             .stderr(errors),
     )
-    .map_err(|error| format!("cannot start {BINARY}: {error}"))?;
+    .map_err(|error| format!("cannot start {binary}: {error}"))?;
     let deadline = Instant::now() + LAUNCH_TIMEOUT_ARGUMENTS;
     loop {
         match child.try_wait().map_err(|error| error.to_string())? {

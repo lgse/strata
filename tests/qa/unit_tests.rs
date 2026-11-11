@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MIT
 
 use crate::{
+    parity_tests::{
+        a_ledger_entry_with_an_unknown_gate_status_reason_or_field_does_not_parse,
+        a_ledger_that_misses_repeats_or_leaves_a_run_unexplained_is_refused,
+        the_parity_ledger_accounts_for_every_columns_run_of_the_slices_set,
+        the_target_picks_the_binary_and_only_rune_is_told_the_layout,
+    },
     scenario_tests::{
         a_cost_gives_each_run_label_a_positive_number,
         a_known_bug_must_name_a_step_line_that_can_fail,
@@ -73,4 +79,8 @@ unit_tests! {
     waiting_for_exit_wakes_on_the_exit_and_gives_up_at_the_timeout,
     prefs_write_nested_tables_into_settings_toml,
     no_test_attribute_hides_a_runner_test,
+    the_parity_ledger_accounts_for_every_columns_run_of_the_slices_set,
+    a_ledger_that_misses_repeats_or_leaves_a_run_unexplained_is_refused,
+    a_ledger_entry_with_an_unknown_gate_status_reason_or_field_does_not_parse,
+    the_target_picks_the_binary_and_only_rune_is_told_the_layout,
 }
