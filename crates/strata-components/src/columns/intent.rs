@@ -28,7 +28,10 @@ pub enum ColumnsIntent {
         intent: Intent,
     },
     /// Column `depth`'s cursor moved, after an input moved it: the preview and mirroring
-    /// follow it (Strata's policy, with its 75 ms wait).
+    /// follow it (Strata's policy, with its 75 ms wait). Also sent when a move key left the
+    /// cursor where it was (Home on the first entry, an arrow at the list's end): Strata's
+    /// `Browser` raises `FocusChanged` again there, so the folder under the cursor is mirrored
+    /// if its column was not open.
     Cursor {
         /// The column.
         depth: usize,

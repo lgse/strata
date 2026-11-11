@@ -70,12 +70,17 @@
 //!   Keep arrows in file list. An empty collection reports an edge for every step, so Up from
 //!   an empty folder can still reach the header. A held key reports an edge once, when it
 //!   arrives there; a new press reports it again. Ctrl+Left and Ctrl+Right report none: Strata
-//!   sends only a plain Left to the sidebar.
+//!   sends only a plain Left to the sidebar. With [`KeySettings::reselects_in_place`] (Columns)
+//!   a Select key that cannot move the cursor selects its entry alone and emits
+//!   [`Outcome::Rested`]: an arrow at the top or the bottom, before its edge, and Home, End
+//!   and the page keys where the cursor already is.
 //! - **Pages** move by [`CollectionGeometry::page_step`] entries, half a page by half that
 //!   (at least one), clamped to the first and last entry. The page size is the geometry's: the
 //!   rows that fit minus one, times the tiles per row in Icons.
 //! - **Escape** clears the selection and keeps the cursor. With nothing selected it isn't
 //!   taken, so the view can use it (Columns closes its deepest column).
+//! - **Ctrl+A** keeps the cursor, or with [`KeySettings::select_all_to_last`] (Columns) takes
+//!   it to the last entry, revealing nothing and leaving the anchor.
 //! - **Ctrl+A and Escape** turn keyboard mode on ([`Outcome::Keyboard`]), as Strata's
 //!   `keyboard_navigation` does; a move turns it on through the element.
 //! - Every move emits [`Outcome::Reveal`] for the cursor's entry.
@@ -190,7 +195,7 @@ mod type_ahead;
 #[cfg(test)]
 mod tests;
 
-pub use adapter::{Keyboard, NothingToSelect};
+pub use adapter::{Keyboard, NothingToSelect, Rested};
 pub use command::{Command, RangeKind, Target, Vertical};
 pub use keymap::{Binding, KeyMap};
 pub use machine::{KeyMachine, Outcome, Surface};

@@ -433,6 +433,13 @@ impl<S: 'static> Collection<S> {
         self
     }
 
+    /// The settings value of type `T` added so far, for a view that builds on what its host
+    /// passed (C2 turns two of [`KeySettings`](crate::collection::keyboard::KeySettings)'
+    /// rules on over the host's map).
+    pub fn setting<T: Any>(&self) -> Option<&T> {
+        self.cfg.settings.get::<T>()
+    }
+
     /// The drag-and-drop binder: Rune's own by default.
     pub fn dnd(mut self, dnd: Dnd<S>) -> Self {
         self.cfg.dnd = dnd;

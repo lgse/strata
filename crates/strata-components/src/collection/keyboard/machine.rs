@@ -38,6 +38,11 @@ pub enum Outcome {
     Keyboard,
     /// A 10xer selection key in an empty folder: the host flashes `Nothing to select` (C18).
     NothingToSelect,
+    /// A Select key ran and the cursor is where it was: Home on the first entry, End on the
+    /// last, a page key or an arrow at the list's end. Its entry is selected alone. Only with
+    /// [`KeySettings::reselects_in_place`]; Strata's `Browser` raises `FocusChanged` again
+    /// there, and the Columns view mirrors again.
+    Rested,
 }
 
 /// What the machine reads and changes: the source, its geometry, its settings, the selection,
@@ -215,6 +220,36 @@ impl KeyMachine {
         s.emit(Outcome::Reveal(i));
     }
 
+    /// A Select key: the entry `target` lands on, alone. Where the cursor cannot move, nothing
+    /// changes, unless [`KeySettings::reselects_in_place`] has its entry selected alone again.
+    fn select(
+        &mut self,
+        target: Target,
+        edge_before: Option<(Direction, Option<EntryId>)>,
+        s: &mut dyn Surface,
+    ) {
+        let reselects = s.settings().reselects_in_place;
+        let cursor = s.selection().cursor_index(s.source());
+        match self.land(target, s) {
+            Landing::At(i) => {
+                op(s, |sel, src| sel.select_only(src, i));
+                s.emit(Outcome::Reveal(i));
+                if reselects && cursor == Some(i) {
+                    s.emit(Outcome::Rested);
+                }
+            }
+            Landing::Edge(d) => {
+                let vertical = matches!(d, Direction::Up | Direction::Down);
+                if let Some(i) = cursor.filter(|_| reselects && vertical) {
+                    op(s, |sel, src| sel.select_only(src, i));
+                    s.emit(Outcome::Rested);
+                }
+                self.edge(d, edge_before, s);
+            }
+            Landing::Nowhere => {}
+        }
+    }
+
     fn dispatch(
         &mut self,
         command: Command,
@@ -224,14 +259,7 @@ impl KeyMachine {
         let len = s.source().len();
         match command {
             Command::Select(target) => {
-                match self.land(target, s) {
-                    Landing::At(i) => {
-                        op(s, |sel, src| sel.select_only(src, i));
-                        s.emit(Outcome::Reveal(i));
-                    }
-                    Landing::Edge(d) => self.edge(d, edge_before, s),
-                    Landing::Nowhere => {}
-                }
+                self.select(target, edge_before, s);
                 true
             }
             Command::Extend(target) => self.extend(target, s),
@@ -279,9 +307,7 @@ impl KeyMachine {
                 if len == 0 {
                     s.emit(Outcome::NothingToSelect);
                 } else {
-                    if op(s, |sel, src| sel.select_all(src)).cursor {
-                        s.emit(Outcome::Reveal(0));
-                    }
+                    select_all(s, len - 1);
                     s.emit(Outcome::Keyboard);
                 }
                 true
@@ -423,6 +449,25 @@ impl KeyMachine {
             _ => Landing::Edge(d),
         }
     }
+}
+
+/// Ctrl+A in a collection whose last entry is `last`. The cursor stays, or goes to the first
+/// entry when there was none, and that entry is revealed. With
+/// [`KeySettings::select_all_to_last`] it goes to the last entry and nothing scrolls; the
+/// anchor stays where it was, or goes with the cursor when there was none.
+fn select_all(s: &mut dyn Surface, last: usize) {
+    if !s.settings().select_all_to_last {
+        if op(s, |sel, src| sel.select_all(src)).cursor {
+            s.emit(Outcome::Reveal(0));
+        }
+        return;
+    }
+    let anchor = match s.selection().anchor() {
+        Some(_) => AnchorRule::Keep,
+        None => AnchorRule::Move,
+    };
+    op(s, |sel, src| sel.select_all(src));
+    op(s, |sel, src| sel.move_cursor(src, last, anchor));
 }
 
 /// Runs one selection operation on the surface.

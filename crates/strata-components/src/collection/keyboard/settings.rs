@@ -52,6 +52,17 @@ pub struct KeySettings {
     /// (lgse/strata#2044); W1's geometries never wrap themselves. Off for lists and columns,
     /// where Left and Right then reach the view's edge.
     pub wrap_rows: bool,
+    /// Whether a Select key that cannot move the cursor still selects the cursor's entry
+    /// alone, and says so with `Outcome::Rested`: Home on the first entry, End on the last, a
+    /// page key or an arrow at the list's end. On for Columns (C2 sets it whatever the host
+    /// passes), where Strata's `Browser` re-places the cursor on such a key
+    /// (`move_selection`, `page_along`), so a multi-selection collapses and the child column
+    /// follows the cursor again. Off elsewhere: nothing changes and an arrow reports its edge.
+    pub reselects_in_place: bool,
+    /// Whether Ctrl+A moves the cursor to the last entry, with the anchor left where it was.
+    /// On for Columns (C2 sets it), where the GTK view's selection model reports its newest
+    /// selected row to `Browser` as the cursor. Off elsewhere: the cursor stays.
+    pub select_all_to_last: bool,
 }
 
 impl Default for KeySettings {
@@ -62,6 +73,8 @@ impl Default for KeySettings {
             letters: Letters::Pass,
             type_ahead_timeout: Duration::from_secs(1),
             wrap_rows: false,
+            reselects_in_place: false,
+            select_all_to_last: false,
         }
     }
 }

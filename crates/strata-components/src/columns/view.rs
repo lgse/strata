@@ -17,6 +17,7 @@ use super::pointer::BackgroundClick;
 use super::sources::ColumnSources;
 use super::state::ColumnsState;
 use crate::collection::element::{Collection, Intent, PointerInput, RowMarks, viewport_path};
+use crate::collection::keyboard::{KeySettings, Rested};
 use crate::collection::pointer::PointerSettings;
 use crate::contract::{
     Direction, Dnd, DropAction, DropHover, DropOffer, DropZone, Entry, EntryId, EntrySource, Point,
@@ -412,6 +413,8 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
     if let Some(f) = &sh.collection {
         c = f(s, depth, c);
     }
+    let keys = columns_keys(c.setting::<KeySettings>());
+    c = c.settings(keys);
     let look = p.look;
     let column = &p.state.columns[depth.min(p.state.columns.len().saturating_sub(1))];
     let title = if depth < p.sources.len() {
@@ -501,6 +504,16 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
         })
 }
 
+/// The host's key settings with the two rules that are Columns' own in Strata, whatever map
+/// the host binds: a Select key that cannot move the cursor re-selects its entry, and Ctrl+A
+/// takes the cursor to the last entry.
+fn columns_keys(host: Option<&KeySettings>) -> KeySettings {
+    let mut keys = host.cloned().unwrap_or_default();
+    keys.reselects_in_place = true;
+    keys.select_all_to_last = true;
+    keys
+}
+
 /// The depth of column `serial`, while it is open and listed.
 pub(super) fn depth_of<S>(sh: &Shared<S>, s: &S, serial: u64) -> Option<usize> {
     let p = (sh.parts)(s);
@@ -526,8 +539,8 @@ fn row_marks<S>(sh: &Shared<S>, s: &S, serial: u64, id: EntryId) -> RowMarks {
 }
 
 /// A column's intent: Left and Right move between columns, activating the folder whose column
-/// is open goes to that column, a click on empty space closes deeper columns; everything else
-/// goes to the host.
+/// is open goes to that column, a move key that left the cursor in place is reported as the
+/// cursor, a click on empty space closes deeper columns; everything else goes to the host.
 fn column_intent<S: 'static>(
     sh: &Rc<Shared<S>>,
     s: &mut S,
@@ -544,6 +557,11 @@ fn column_intent<S: 'static>(
         Intent::Activate { id, .. } if reopens(sh, s, depth, id) => {
             let p = (sh.parts_mut)(s);
             p.state.set_active(depth + 1, p.look, tx);
+        }
+        Intent::Other(any) if any.downcast_ref::<Rested>().is_some() => {
+            let p = (sh.parts)(s);
+            let id = p.state.columns[depth].collection.selection.cursor();
+            sh.emit(s, ColumnsIntent::Cursor { depth, id }, tx);
         }
         Intent::Other(any) if any.downcast_ref::<BackgroundClick>().is_some() => {
             background_click(sh, s, depth, tx);

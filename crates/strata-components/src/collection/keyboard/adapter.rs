@@ -21,6 +21,13 @@ use crate::contract::{CollectionGeometry, EntrySource};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct NothingToSelect;
 
+/// What `Intent::Other` holds when a Select key left the cursor where it was, with
+/// [`KeySettings::reselects_in_place`]: test for it with `downcast_ref::<Rested>()`.
+///
+/// Used by: C2.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Rested;
+
 /// Keyboard navigation as the collection's keyboard controller: install it in
 /// `CollectionState::controllers.keyboard`, pass [`KeySettings`] with `Collection::settings`,
 /// and keep a clone of its [`KeyHandle`] for the 10xer range and queued commands.
@@ -38,6 +45,7 @@ pub struct NothingToSelect;
 /// | [`Outcome::Activate`] | `Intent::Activate` with `Activation::Key` |
 /// | [`Outcome::Edge`] | `Intent::Edge` |
 /// | [`Outcome::NothingToSelect`] | `Intent::Other` holding [`NothingToSelect`] |
+/// | [`Outcome::Rested`] | `Intent::Other` holding [`Rested`] |
 /// | [`Outcome::Keyboard`] | `Effect::KeyboardMode(true)` |
 ///
 /// A key that moves the cursor turns keyboard mode on in the element itself. Ctrl+A and
@@ -165,6 +173,7 @@ impl Surface for CtxSurface<'_, '_> {
             }),
             Outcome::Edge(d) => Effect::Intent(Intent::Edge(d)),
             Outcome::NothingToSelect => Effect::Intent(Intent::Other(Rc::new(NothingToSelect))),
+            Outcome::Rested => Effect::Intent(Intent::Other(Rc::new(Rested))),
             Outcome::Keyboard => return self.keyboard_mode(),
         };
         self.cx.emit(effect);

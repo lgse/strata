@@ -69,7 +69,9 @@
 //!
 //! - [`Selection::select_all`] keeps the cursor and the anchor where they are, as GTK's
 //!   visible cursor does in Strata's Icons and List views; Strata's model moves them to the
-//!   last entry. With no cursor yet, the cursor (and the anchor) go to the first entry.
+//!   last entry. With no cursor yet, the cursor (and the anchor) go to the first entry. In
+//!   Columns the keyboard machine then moves the cursor to the last entry, as Strata's model
+//!   does there (C1c's `KeySettings::select_all_to_last`, which C2 turns on).
 //! - [`Selection::clear`] (Escape, or a plain press on empty space) moves the anchor to the
 //!   cursor, for pointer and keyboard alike, so the next Shift range starts at the cursor.
 //! - Ctrl+Shift+click: both [`Extend::Replace`] (what Strata's pointer code does) and

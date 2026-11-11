@@ -1380,3 +1380,84 @@ fn unbinding_a_tolerated_chord_takes_it_off_its_binding() {
     assert!(r.press(Key::PageDown, sup));
     assert_eq!(r.cursor(), Some(39));
 }
+
+fn columns_keys() -> KeySettings {
+    let mut keys = KeySettings::default();
+    keys.reselects_in_place = true;
+    keys.select_all_to_last = true;
+    keys
+}
+
+#[test]
+fn a_select_key_that_cannot_move_the_cursor_reselects_its_entry_only_where_asked() {
+    // C2's rule in Strata's Columns (slice decision 17): `Browser::move_selection` and
+    // `page_along` re-place the cursor on a key that leaves it where it is, so a
+    // multi-selection collapses to the cursor's entry and `FocusChanged` is raised again.
+    for (case, at, extend, key, edge) in [
+        ("Down on the last entry", 5, Key::Up, Key::Down, true),
+        ("Up on the first entry", 0, Key::Down, Key::Up, true),
+        ("End on the last entry", 5, Key::Up, Key::End, false),
+        ("Home on the first entry", 0, Key::Down, Key::Home, false),
+        ("Page Down on the last entry", 5, Key::Up, Key::PageDown, false),
+    ] {
+        for reselects in [true, false] {
+            let settings = match reselects {
+                true => columns_keys(),
+                false => KeySettings::default(),
+            };
+            let mut r = Rig::list_with(6, settings);
+            // A range of two, walked back so the cursor is at the end again.
+            r.click(at);
+            r.shift(extend.clone());
+            let neighbour = r.cursor().expect("a cursor");
+            r.f.sel.move_cursor(&r.f.src, at, crate::collection::selection::AnchorRule::Keep);
+            assert_eq!(r.selected().len(), 2, "{case}");
+            r.take();
+
+            assert!(r.key(key.clone()), "{case}");
+
+            let out = r.take();
+            assert_eq!(r.cursor(), Some(at), "{case}");
+            assert_eq!(out.contains(&Outcome::Rested), reselects, "{case}: {out:?}");
+            // Home, End and the page keys select their entry alone in any collection; an
+            // arrow at the edge does only where the setting asks.
+            let alone = reselects || !edge;
+            let mut both = vec![at as u64, neighbour as u64];
+            both.sort_unstable();
+            assert_eq!(r.selected(), if alone { vec![at as u64] } else { both }, "{case}");
+            assert_eq!(out.iter().any(|o| matches!(o, Outcome::Edge(_))), edge, "{case}");
+        }
+    }
+}
+
+#[test]
+fn a_select_key_that_moves_the_cursor_does_not_report_a_rest() {
+    let mut r = Rig::list_with(6, columns_keys());
+    r.click(2);
+    for key in [Key::Down, Key::End, Key::Home] {
+        r.key(key.clone());
+        assert!(!r.take().contains(&Outcome::Rested), "{key:?}");
+    }
+}
+
+#[test]
+fn ctrl_a_takes_the_cursor_to_the_last_entry_where_asked_and_keeps_the_anchor() {
+    // C2's rule in Strata's Columns (slice decision 17): the GTK view's selection model
+    // reports its newest selected row as the cursor, and `set_selection` keeps the anchor.
+    let mut r = Rig::list_with(5, columns_keys());
+    r.click(2);
+
+    assert!(r.ctrl_letter('a'));
+
+    assert_eq!(r.selected(), range(0, 4));
+    assert_eq!((r.cursor(), r.anchor()), (Some(4), Some(2)));
+    assert_eq!(r.take(), [Outcome::Keyboard], "nothing is revealed");
+    // The next Shift+Up shrinks the range from the old anchor to the entry before the last.
+    r.shift(Key::Up);
+    assert_eq!(r.selected(), range(2, 3));
+
+    // With no cursor and no anchor yet, both go to the last entry.
+    let mut r = Rig::list_with(5, columns_keys());
+    assert!(r.ctrl_letter('a'));
+    assert_eq!((r.cursor(), r.anchor()), (Some(4), Some(4)));
+}
