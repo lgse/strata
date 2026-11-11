@@ -124,7 +124,7 @@ STRATA_CONTAINER_ENGINE=podman python3 scripts/image_base.py build
 
 The recipe is `tests/container/Dockerfile`: a digest-pinned Arch Linux base, the
 dated 2026-09-11 Arch package snapshot, GTK 4.22.5, GLib 2.88.3, GStreamer
-1.28.7, and Rust 1.98.1. Pacman verifies the snapshot's signed packages. The
+1.28.7, and Rust 1.99.1. Pacman verifies the snapshot's signed packages. The
 image replaces only GTK's versioned shared library with a matching-source build
 carrying the accessibility-coordinate patch documented in
 [`tests/container/gtk/README.md`](../tests/container/gtk/README.md); an
@@ -173,7 +173,7 @@ environment change and requires reviewing the visual baselines.
 `./scripts/quality.sh` runs all three quality phases in the same verified build
 base. Use `./scripts/quality.sh fmt`, `clippy`, or `test` for an individual phase.
 No separate quality image is necessary: the published environment already has
-Rust 1.98.1, rustfmt, Clippy, native development libraries, and Xvfb. Quality now
+Rust 1.99.1, rustfmt, Clippy, native development libraries, and Xvfb. Quality now
 uses that pinned compiler rather than moving `stable`.
 
 CI resolves the public environment to a manifest digest, checks its input labels

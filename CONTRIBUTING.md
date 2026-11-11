@@ -5,7 +5,7 @@ Thanks for helping build Strata. The project is early, so discuss large changes 
 ## Development setup
 
 Install [mise](https://mise.jdx.dev), then install the pinned toolchain (Rust
-1.98.1, Python, `cargo-deny`, `typos`, `cargo-watch`):
+1.99.1, Python, `cargo-deny`, `typos`, `cargo-watch`):
 
 ```bash
 mise install

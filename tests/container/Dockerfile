@@ -55,8 +55,8 @@ RUN (getent group "$TEST_GID" || groupadd --gid "$TEST_GID" strata-test) \
 FROM runtime AS toolchain
 RUN sh /opt/strata-install-packages.sh install base-devel glib2-devel pkgconf rustup \
     && rm -rf /var/cache/pacman/pkg/* /var/lib/pacman/sync/*
-ENV RUSTUP_HOME=/opt/rustup RUSTUP_TOOLCHAIN=1.98.1
-RUN rustup toolchain install 1.98.1 --no-self-update --profile minimal --component clippy,rustfmt \
+ENV RUSTUP_HOME=/opt/rustup RUSTUP_TOOLCHAIN=1.99.1
+RUN rustup toolchain install 1.99.1 --no-self-update --profile minimal --component clippy,rustfmt \
     && chmod -R a+rX /opt/rustup
 
 FROM toolchain AS dependencies
