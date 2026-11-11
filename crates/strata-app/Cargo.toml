@@ -15,7 +15,13 @@ workspace = true
 [features]
 # The scripted `--qa` mode on the offscreen host (docs/rune/slice/V7-rune-qa-backend.md).
 # Never in a release build.
-qa = ["dep:serde_json", "dep:strata-qa", "dep:xkbcommon", "strata-core/qa"]
+qa = [
+    "dep:serde_json",
+    "dep:strata-qa",
+    "dep:unicode-segmentation",
+    "dep:xkbcommon",
+    "strata-core/qa",
+]
 
 # The one crate that knows both sides: Strata's shared crates and the Rune side
 # (docs/workspace.md). It never depends on gtk4, gdk4, sourceview5 or the `strata` package.
@@ -35,6 +41,7 @@ serde_json = { workspace = true, optional = true }
 strata-qa = { workspace = true, optional = true }
 toml.workspace = true
 tracing.workspace = true
+unicode-segmentation = { workspace = true, optional = true }
 xkbcommon = { workspace = true, optional = true }
 
 [dev-dependencies]

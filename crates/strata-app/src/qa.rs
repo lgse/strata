@@ -9,6 +9,7 @@
 //! `docs/rune/slice/V7-rune-qa-backend.md` describes it.
 
 mod backend;
+mod field;
 mod input_log;
 mod keyboard;
 mod keymap;

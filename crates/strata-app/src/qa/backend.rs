@@ -18,6 +18,7 @@ use strata_qa::{
 };
 
 use super::{
+    field,
     input_log::InputLog,
     keyboard::Keyboard,
     stage::Stage,
@@ -35,14 +36,6 @@ const WHEEL_CLICK: f32 = 40.0;
 const PREVIEW: &str = "Preview";
 const PEEK: &str = "Folder peek";
 const SEARCH_RESULTS: &str = "Search results";
-/// The roles of Rune's text fields.
-const FIELDS: [&str; 4] = [
-    "text-input",
-    "multiline-text-input",
-    "search-input",
-    "password-input",
-];
-
 pub(super) struct Rune {
     stage: RefCell<Stage>,
     keyboard: RefCell<Keyboard>,
@@ -248,7 +241,7 @@ impl Backend for Rune {
             pressed: false,
             sensitive: !seen.has_state("disabled"),
             selectable: seen.has_state("selected") || seen.has_state("unselected"),
-            editable: FIELDS.contains(&seen.role.as_str()) && !seen.has_state("read-only"),
+            editable: field::is_one(&seen.role) && !seen.has_state("read-only"),
             focusable: seen.has_action("focus"),
             busy: false,
             marked: false,
@@ -263,15 +256,17 @@ impl Backend for Rune {
     fn text(&self, node: &Node) -> Option<String> {
         self.read(node, |_, seen| match seen.role.as_str() {
             "label" => Some(seen.name.clone()),
-            role if FIELDS.contains(&role) => seen.value.clone(),
+            role if field::is_one(role) => seen.value.clone(),
             _ => None,
         })
         .flatten()
     }
 
-    /// Inline rename brings the first field (V9).
-    fn field(&self, _node: &Node) -> Option<FieldState> {
-        None
+    fn field(&self, node: &Node) -> Option<FieldState> {
+        self.read(node, |snapshot, seen| {
+            field::state(seen, snapshot.is_focus(seen))
+        })
+        .flatten()
     }
 
     fn value(&self, node: &Node) -> Option<f64> {

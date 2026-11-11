@@ -21,6 +21,8 @@ use crate::{
     test_support::fixture,
 };
 
+mod rename;
+
 const INPUT_LOG: &str = "STRATA_INPUT_LOG";
 
 /// Runs the test `name` of this module on the QA mode's own host, in a process of its own.

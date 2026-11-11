@@ -90,6 +90,9 @@ pub(super) struct Seen {
     /// In window points.
     pub(super) bounds: Option<Rect>,
     pub(super) active_descendant: Option<String>,
+    /// A text field's selection as Rune reports it: the line and the place in it of the end
+    /// that stays, then of the end that moves, which is the caret.
+    pub(super) selection: Option<[u64; 4]>,
     pub(super) mark: Option<Mark>,
 }
 
@@ -140,6 +143,12 @@ fn description(node: &Value) -> String {
         return text(node, "shortcut");
     }
     described
+}
+
+fn selection(node: &Value) -> Option<[u64; 4]> {
+    let ends = node["selection"].as_array()?;
+    let end = |at: usize| ends.get(at)?.as_u64();
+    Some([end(0)?, end(1)?, end(2)?, end(3)?])
 }
 
 fn bounds(node: &Value) -> Option<Rect> {
@@ -271,6 +280,7 @@ impl Snapshot {
             actions: texts(value, "actions"),
             bounds: bounds(value),
             active_descendant: value["activeDescendant"].as_str().map(str::to_owned),
+            selection: selection(value),
             mark: None,
         });
         let children = value["children"].as_array().map_or(&[][..], Vec::as_slice);
