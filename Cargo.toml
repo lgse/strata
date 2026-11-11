@@ -60,6 +60,8 @@ tracing-subscriber = "0.3.20"
 unicode-normalization = "0.1.25"
 unrar = "0.5.8"
 unrar_sys = "0.5.8"
+# The update downloader implements `ureq::unversioned` transport traits, which
+# may change in a minor release.
 ureq = { version = "~3.4", features = ["json"] }
 zip = "9.0.4"
 zstd = "0.14.3"
