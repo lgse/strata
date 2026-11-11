@@ -10,7 +10,7 @@ and no pull requests; each entry below is one issue or one comment.
 | Written against | `5d421fd` (the earlier pin) and `dev` `04b38ae` (2026-11-10), in a read-only clone |
 | Re-verified | Every entry at `2a44156`, 2026-11-10 (see [Re-verification](#re-verification-at-2a44156)) |
 | Upstream issues | All 222 issues (open and closed), with bodies and comments, read-only with `gh issue list` on 2026-11-10, plus targeted searches that day; none past #507. Re-check before filing: upstream moves daily. |
-| Entries | 96 files: 80 new issues and 16 comments on open issues. 12 drafts dropped, and 3 drafts dropped in part. At `2a44156`, 94 are ready to file (6 of them trimmed) and 2 are dropped (65, 80), leaving 79 new issues and 15 comments. |
+| Entries | 97 files: 81 new issues and 16 comments on open issues. 12 drafts dropped, and 3 drafts dropped in part. At `2a44156`, 95 are ready to file (6 of them trimmed) and 2 are dropped (65, 80), leaving 80 new issues and 15 comments. Entry 97 was added on 2026-11-11 by the vertical slice's V8, after the packet's count of sources below. |
 | Sources | 174 drafts: 161 with ids (S5's U1–U17, C8's U18–U23, the work packages' `U-*` and `R-*`, C11's R1–R7) and 13 without (comment drafts for #102, #149 and #173, C15's five gaps, C14a's two, C9's, C20a's NumberField proposal and wheel follow-up). The [mapping](#draft-to-entry-mapping) places every one. |
 
 ## How it was built
@@ -190,6 +190,7 @@ Follow-ups in this repository, found on the way (not filings):
 | 94 | [The single-colour icon rasterizer ignores dashes, miter limits and clip paths](94-icon-rasterizer-attributes.md) | New issue | K3 (icon catalogs drawn under Theme colors) | The three Catppuccin icons listed as drawn differently under Theme colors | Ready |
 | 95 | [Whether a `Pixels` is drawn](95-pixels-last-drawn.md) | New issue | C25 (thumbnail store's recency) | C25's recency approximated from builds and visible ranges | Ready |
 | 96 | [Comment on #354: a text-field menu's Undo and Redo](96-comment-354-undo-state.md) | Comment on #354 | C21 (field menu) | C21's undo of a cloned `TextEdit` when the menu opens, to learn whether Undo would do anything | Ready |
+| 97 | [A host that owns a `Runtime` cannot send a key press with its physical key](97-key-press-with-physical-key.md) | New issue | `strata-app`'s QA backend (the vertical slice's offscreen host) | The parity ledger's `rune` blocker on a plain-letter binding under a non-Latin layout | Ready |
 
 ## Owner decisions (2026-11-10)
 
@@ -395,6 +396,7 @@ Every draft found, where it was written, and its packet entry. Module paths are 
 | U-K3-3 | `strata-kit/icons/README.md` | [94] |
 | U-X1-1 | `header/mod.rs` | drop: doesn't apply |
 | U-X1-2 | `header/mod.rs` | [44] |
+| V8: a key press with its physical key (no draft id; the slice's V7 and V8) | `docs/rune/slice/V7-rune-qa-backend.md` | [97] |
 | C14a: Ctrl+wheel turned into a pinch zooms the wrong way | `viewers/viewport/mod.rs` | [86] |
 | C14a: no notification on a scale-only change | `viewers/viewport/mod.rs` | [87] |
 | C15: `Tx::focus(key, visible)` | `preview_drawer/mod.rs`, `dialog/mod.rs` | drop: fixed in `22aa8cde` |
@@ -500,3 +502,4 @@ Every draft found, where it was written, and its packet entry. Module paths are 
 [94]: 94-icon-rasterizer-attributes.md
 [95]: 95-pixels-last-drawn.md
 [96]: 96-comment-354-undo-state.md
+[97]: 97-key-press-with-physical-key.md
