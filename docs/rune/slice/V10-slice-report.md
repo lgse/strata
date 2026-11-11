@@ -21,7 +21,8 @@ slice files instead.
 The report has six parts. Each number in it names the command that produced it.
 
 1. **The parity matrix.** Each run of the parity set, its result on each target, and the
-   pending runs grouped by reason code. Generate it from `tests/qa/parity/slice.toml` and
+   pending runs grouped by reason code. There are seven codes since V8: `scope` is a run
+   that needs a part the slice marks Out, and is most of G2's pending runs. Generate it from `tests/qa/parity/slice.toml` and
    the last three runs' results, not by hand.
 2. **Harness reach.** The share of step kinds, targets and predicates the Rune backend
    implements, counted against the protocol in `crates/strata-qa`. And how many of the 351
@@ -62,8 +63,8 @@ Run `./scripts/qa-parity.sh slice` in the pinned container. It exits 0 only when
 The fourth means `./scripts/qa.sh` and `./scripts/qa-mutation.sh` in full, after the last
 change to the runner or the engine.
 
-As V7 left it, `slice` checks the first two and runs the whole GTK suite. The Rune mutation
-patches join it in V8. It does not run `./scripts/qa-mutation.sh`, which is run beside it:
+Since V8, `slice` checks the first three: it runs the two Rune mutation patches after the
+whole GTK suite. It does not run `./scripts/qa-mutation.sh`, which is run beside it:
 `cut.patch` does not apply, so a bare run of that script cannot pass until the patch is
 rebased.
 

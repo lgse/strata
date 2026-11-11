@@ -767,15 +767,31 @@ pinned image and runs the runs of a gate on each target:
 
 ```bash
 ./scripts/qa-parity.sh g1                 # gate G1's required runs, on GTK and then on Rune
-./scripts/qa-parity.sh slice              # every gate's, then the runner's tests and the whole GTK suite
+./scripts/qa-parity.sh slice              # every gate's, then the runner's tests, the whole GTK suite and the Rune mutations
 ./scripts/qa-parity.sh g2 --target rune   # one target only
 ./scripts/qa-parity.sh g2 --pending       # a survey: gate G2's pending runs, on Rune
+./scripts/qa-parity.sh g2 --scenario shift-click-range   # only that scenario's runs of the selection
+./scripts/qa-parity.sh mutations          # the Rune target's mutation patches
 ```
 
 It exits 0 only when every required run passes on every target it ran. A
 survey lists which pending runs pass and fails only when nothing ran. Artifacts
 are kept for passing runs too (`STRATA_QA_KEEP_ARTIFACTS=0` keeps a failed
-run's only). It does not run `scripts/qa-mutation.sh`.
+run's only). It does not run `scripts/qa-mutation.sh`. With `--target` or
+`--scenario`, `slice` runs its required runs and nothing after them; a
+`--scenario` that names no run of the selection is an error.
+
+`mutations` proves the Rune target's runs can fail, as `scripts/qa-mutation.sh`
+does for the GTK application. Each patch under `tests/qa/parity/mutations/`
+breaks one behaviour of `crates/strata-app` and is named for the scenario that
+must catch it, `<scenario>.patch`. For each, the scenario's required runs must
+pass on the Rune target unpatched, and with the patch applied at least one must
+fail a step and none fail to run. The patch is applied to the checkout and
+reverted, so its files must have no uncommitted changes; logs and
+`summary.md` land in `target/qa-parity-mutation/`. A patch whose scenario has
+no required run in the ledger is refused. Add a patch when a gate area gains
+its first required runs, and check it when its scenario or `strata-app`'s
+adapter changes.
 
 The runs come from the parity ledger, `tests/qa/parity/slice.toml`. It lists
 every Columns run of the scenario folders the Rune vertical slice is measured

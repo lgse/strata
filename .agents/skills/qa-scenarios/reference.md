@@ -463,6 +463,10 @@ this target". `./scripts/qa-parity.sh` runs a gate of
 `tests/qa/parity/slice.toml` on both targets; see "The Rune target and the
 parity ledger" in `docs/testing.md`. Never write a scenario for one target:
 a run that cannot pass on Rune is `pending` in the ledger, with its reason.
+`./scripts/qa-parity.sh mutations` checks the Rune target's own mutation
+patches, `tests/qa/parity/mutations/<scenario>.patch`: each must make its
+scenario's required runs fail on Rune. They are separate from a scenario's
+`mutation` header, which names a GTK patch under `tests/qa/mutations/`.
 
 `{"keymap":{"layouts":"us,ru","variants":"","group":1,"caps_lock":false}}` is
 a request the runner sends the Rune target after a `layout` step, since that

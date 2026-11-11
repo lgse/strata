@@ -30,6 +30,35 @@ The set leans on three things the read path barely used:
 - `fs` steps, which the runner performs and checks on disk for either target;
 - `editor_within_viewport` and `editable_fields`.
 
+## What V8 left
+
+- **Where the editor opens.** `Intent::BeginRename` in
+  `crates/strata-app/src/columns/intents.rs`, and since V8 the context menu's Rename row
+  (`Wired::Rename` in `chosen`). Both log today. This plan left rename from a context
+  menu out of scope; the row is there and waits.
+- **The field is one more thing the tree may hide.** The backend now presents two things
+  from `Runtime::elements()` that Rune's accessibility tree leaves out: a row's name as its
+  `label`, and the panes behind an open menu (`crates/strata-app/src/qa/tree.rs`,
+  `stage.rs`). If the editor is modal, or a field's caret is not in the tree, the same
+  route is there: `ElementInfo` carries `caret` and the selected text.
+- **Ids.** A row's key is `row-<EntryId>`, and an entry's id follows its `Location`, so a
+  rename gives the row a new key. `remember` keeps a node by its key path and role, so a
+  kept row is gone after a rename, as a GTK row object is not. The snapshot's label node
+  is `<row path>/@label`.
+- **The layout step.** G3 has one non-US step, `cn-altgr-pinyin` in
+  `tone-mark-escape-before-rename`. V7's keymap tests cover `ru`, `fr`, `de` and
+  `caps-lock`, not that one, and the scenario composes with a dead key: check what Rune's
+  `Runtime::key` can carry of a composition before sorting it.
+- **Mutations.** `./scripts/qa-parity.sh mutations` exists. Add
+  `tests/qa/parity/mutations/<scenario>.patch`; the script refuses a patch whose scenario
+  has no `required` run.
+- **Reason codes.** There are seven: a run that needs a part the slice marks Out is
+  `scope`, with the part's work package and the first step that needs it.
+- **Settings are written now.** `strata-app`'s `settings::Saved` saves what the browser
+  says changed. A rename saves nothing, but a test that reads `settings.toml` should know.
+- **Rune tests share one process's language.** `rust_i18n::set_locale` in a test races
+  every other test of the binary; ask a catalog by name with `t!(…, locale = "de")`.
+
 ## The three parts
 
 **Strata's operation.** `Browser::rename(entry, new_name)` validates the name with
