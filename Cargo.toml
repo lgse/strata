@@ -64,12 +64,12 @@ ureq = { version = "~3.4", features = ["json"] }
 zip = "9.0.4"
 zstd = "0.14.3"
 
-strata-core = { path = "crates/strata-core", default-features = false }
-strata-desktop = { path = "crates/strata-desktop" }
-strata-fs = { path = "crates/strata-fs", default-features = false }
-strata-preview = { path = "crates/strata-preview", default-features = false }
-strata-qa = { path = "crates/strata-qa" }
-strata-test-support = { path = "crates/strata-test-support" }
+strata-core = { version = "0.0.0", path = "crates/strata-core", default-features = false }
+strata-desktop = { version = "0.0.0", path = "crates/strata-desktop" }
+strata-fs = { version = "0.0.0", path = "crates/strata-fs", default-features = false }
+strata-preview = { version = "0.0.0", path = "crates/strata-preview", default-features = false }
+strata-qa = { version = "0.0.0", path = "crates/strata-qa" }
+strata-test-support = { version = "0.0.0", path = "crates/strata-test-support" }
 
 [package]
 name = "strata"
