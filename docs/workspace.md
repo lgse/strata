@@ -33,7 +33,7 @@ them.
 | `strata-components` | The file-manager components: collections, views, chrome, previews and controls | `rune`, `rune-kit`, `strata-kit` |
 | `strata-gallery` | One headless scene per component state, the golden tests and the integration demos | The three crates above |
 | `strata-test-peer` | The second process of the compositor tests. It lives at `crates/strata-platform/tests/support/strata-test-peer` | none |
-| `strata-app` | The Rune interface: its state and view, the queue `Browser`'s events wait in, start-up, and the offscreen and windowed hosts. Written here, not imported | The four crates above it but the gallery, and `strata-core`, `strata-fs`, `strata-desktop` |
+| `strata-app` | The Rune interface: its state and view, the queue `Browser`'s events wait in, the Columns adapter between `Browser` and the Columns component, start-up, and the offscreen and windowed hosts. Written here, not imported | The four crates above it but the gallery, and `strata-core`, `strata-fs`, `strata-desktop` |
 | `strata-rune` | The `strata-rune` binary: `main`, and the window tests | `strata-app` |
 
 - **Rune is pinned once.** `rune` and `rune-kit` name one git rev in the root manifest. Move

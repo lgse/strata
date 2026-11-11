@@ -9,7 +9,7 @@ and a new Rune binary, and both pass.
   `Browser`: keyboard navigation, selection, and inline rename with filesystem checks.
 - **Command:** `./scripts/qa-parity.sh slice`, run in the pinned QA container.
 
-Source: the slice plan of 2026-11-09. Status below is as of 2026-11-11, after V5.
+Source: the slice plan of 2026-11-09. Status below is as of 2026-11-11, after V6.
 
 ## Exit check
 
@@ -48,7 +48,7 @@ this table.
 | V4b | [Import the component crates](V4b-import-components.md) | V4 | Done: `ad88c18a8` to `7f7a11c26` | The Rune side builds and tests in the workspace; GTK suite passes |
 | V5 | [`strata-rune` shell and loop](V5-shell-and-loop.md) | V4b | Done: `651ea8bfb` to `679fb74c9` | A themed window opens on a directory; GLib work reaches the UI thread |
 | V5b | [The settings store without GTK](V5b-settings-store.md) | V4 | Done, `ce3b5b83d` | Both interfaces read `settings.toml` through one schema; GTK suite passes |
-| V6 | [Columns adapter](V6-columns-adapter.md) | V5 | Not started | Columns shows a real directory with Strata's accessible names |
+| V6 | [Columns adapter](V6-columns-adapter.md) | V5 | Done: `90fdcb2f7` to `25d40091f`. The owner's look at the window moved to V10 | Columns shows a real directory with Strata's accessible names |
 | V7 | [Rune QA backend](V7-rune-qa-backend.md) | V3, V6 | Not started | Gate G1 passes on both targets |
 | V8 | [Read-path parity](V8-read-path-parity.md) | V7 | Not started | Gate G2: ledger complete, required runs pass three times running |
 | V9 | [Rename parity](V9-rename-parity.md) | V8 | Not started | Gate G3: same bar, with fs checks |
@@ -78,6 +78,15 @@ scenario runs, 2 ignored). On the host: `mise run test-rune` with 2,298 Rune-sid
 passing and 252 ignored, and the compositor tests `wake::` and `window::` in a private
 headless sway. The mutation patches were not rerun. [V5](V5-shell-and-loop.md) and
 [V5b](V5b-settings-store.md) have the figures.
+
+**After V6.** At `24a04ec0b`, on 2026-11-11, on the host: `mise run test-rune` with
+2,312 Rune-side tests passing and 253 ignored, Clippy on the Rune lane with
+warnings denied, and the compositor tests `window::` in a private headless sway, where the
+windowed binary's Columns view lists its folder and a file created in it, and a key sent
+through the compositor opens the folder under the cursor. Nothing was run
+in the pinned image: V6 changed no shared crate, no file under `src/` and no QA scenario, so
+the GTK lane builds from the same sources as after V5. The goldens of the `c2` and `c22`
+gallery pages changed on purpose. [V6](V6-columns-adapter.md) has the figures.
 
 Three things are open and were so before V3: `cut.patch` no longer applies,
 `new-folder-with-selection-groups/columns` fails more often than not when run alone, and
@@ -230,18 +239,19 @@ Work halts and is reported when any of these holds.
 | 2 | Raise the toolchain to the one Rune needs | V1 | Done: Rust 1.99.1 |
 | 3 | A software Vulkan driver in the pinned image | V7 | Not needed for the offscreen host |
 | 4 | Which strata-components revision | V4b | Settled: `integration` at `e4f2df1a`. The old repository is frozen there |
-| 5 | GTK's accessible names and AT-SPI role names as the contract | V6 | Open on two points: row descriptions and the pane group |
+| 5 | GTK's accessible names and AT-SPI role names as the contract | V6 | Settled on 2026-11-11: the component changed. A host describes each row and the view names each column's group. [V6](V6-columns-adapter.md#decision-5-row-descriptions-and-the-pane-group) |
 | 6 | Non-US layout runs: required or pending | V8 | Open. The plan assumes `harness` pending |
-| 7 | Hand check of the windowed binary on Hyprland | V10 | Open. Do it once V6 lands |
+| 7 | Hand check of the windowed binary on Hyprland | V10 | Open. V6 has landed; the owner moved the check to V10. The compositor tests see the window list its folder, and nothing looks at the picture |
 | 8 | The windowed wake: a tick, or a GLib embedding shim | V5 | Settled on 2026-11-11: the embedding, notified through `AppHandle::update_if`. A `Waker` call never runs `poll` under a covered Wayland window at Rune `2a44156` |
 | 9 | `gstreamer` in `strata-platform` against the `AGENTS.md` rule | V4b | Settled: the rule stands, and the `media-audio` shim was not imported |
 | 10 | Import history: squash or keep | V4b | Settled: squashed |
-| 11 | Who owns cursor and selection: `Browser` or the component | V6 | Open. New from V0 |
+| 11 | Who owns cursor and selection: `Browser` or the component | V6 | Settled on 2026-11-11 by the probe, as the owner ruled: the view interprets input and `Browser` holds the result. The key expectations of the ten G2 Columns runs V6 could drive in process are all met that way. [V6](V6-columns-adapter.md#decision-11-who-owns-the-cursor-and-the-selection) |
 | 12 | The test image's dependency stage, which no longer loads the workspace | Before the publisher is needed again | Open. New from V4b; an image change |
 | 13 | A `rune` job in CI, with a Vulkan adapter for the goldens | V7 | Open. New from V4b. Until then the Rune side is checked locally |
 | 14 | `[profile.dev.package."*"] debug = false` for the workspace | Any time | Open. New from V4b |
 | 15 | A home for the `media-audio` shim | The component plan's phase 5 | Open. New from V4b |
 | 16 | Move the settings store, against the `AGENTS.md` rule on `src/ui` | V5 | Settled on 2026-11-11: moved. [V5b](V5b-settings-store.md) |
+| 17 | Six key behaviours where the Columns component differs from the GTK view: Return on a folder whose column is open, an arrow at the list's end, a key that leaves the cursor in place, Ctrl+A's cursor, a key that only changes the active column, and Right when the open child column is another folder's. Change the component, or accept each as a `deviation` | V8 | Open. New from V6's probe. No expectation of the ten G2 runs V6 drove checks any of them |
 
 ## Risks
 
@@ -256,4 +266,6 @@ Work halts and is reported when any of these holds.
   under a covered window, which Rune does not promise. The offscreen harness cannot see a
   regression there; the compositor tests `wake::` and `window::` can, and they are local.
 - **Two models of selection.** `Browser` and the Columns component each keep a cursor and a
-  selection. V0 saw them disagree at launch.
+  selection. V6 keeps them in step, with the view interpreting input; its tests check that
+  they agree after every key. The component's key rules are its own port of Strata's, and
+  differ from `Browser`'s in six places (decision 17).
