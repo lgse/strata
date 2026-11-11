@@ -8,7 +8,9 @@ import tomllib
 import unittest
 from pathlib import Path
 
+import qa_mutation
 import qa_parity
+import qa_parity_mutation
 from qa_parity import selected
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -70,7 +72,45 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(printed.getvalue(), "context-menu-keeps-selection/columns\n")
 
 
+class ScenarioFilterTests(unittest.TestCase):
+    def test_a_scenario_narrows_a_selection_to_its_own_runs(self):
+        ledger = tomllib.loads(LEDGER)
+        self.assertEqual(selected(ledger, "slice", "required", "escape-clears-selection"),
+                         ["escape-clears-selection/columns"])
+        self.assertEqual(selected(ledger, "g1", "required", "escape-clears-selection"), [])
+        self.assertEqual(selected(ledger, "slice", "required", "rename-with-f2"), [])
+
+
+class MutationTests(unittest.TestCase):
+    def test_a_patch_is_named_for_its_scenario_and_needs_a_required_run_to_catch_it(self):
+        ledger = tomllib.loads(LEDGER)
+        with tempfile.TemporaryDirectory() as directory:
+            for name in ("escape-clears-selection", "rename-with-f2"):
+                (Path(directory) / f"{name}.patch").write_text("", encoding="utf-8")
+            (Path(directory) / "notes.txt").write_text("", encoding="utf-8")
+            found = qa_parity_mutation.patches(Path(directory))
+        self.assertEqual(found, ["escape-clears-selection", "rename-with-f2"])
+        # A pending run is not run, so it cannot catch anything.
+        self.assertEqual(qa_parity_mutation.unguarded(found, ledger), ["rename-with-f2"])
+
+
 class RepositoryTests(unittest.TestCase):
+    def test_every_committed_patch_applies_to_strata_app_and_has_a_required_run(self):
+        ledger = qa_parity.load()
+        scenarios = qa_parity_mutation.patches()
+        self.assertGreaterEqual(len(scenarios), 2)
+        self.assertEqual(qa_parity_mutation.unguarded(scenarios, ledger), [])
+        for scenario in scenarios:
+            patch = qa_parity_mutation.MUTATIONS / f"{scenario}.patch"
+            files = qa_mutation.patched_files(patch)
+            self.assertTrue(files, patch)
+            for file in files:
+                self.assertTrue(file.startswith("crates/strata-app/"), file)
+
+    def test_the_script_runs_the_mutations_alone_and_with_the_slice(self):
+        script = (REPOSITORY / "scripts/qa-parity.sh").read_text(encoding="utf-8")
+        self.assertEqual(script.count("qa_parity_mutation.py"), 3)
+
     def test_the_committed_ledger_has_gate_g1_required(self):
         with qa_parity.LEDGER.open("rb") as stream:
             ledger = tomllib.load(stream)

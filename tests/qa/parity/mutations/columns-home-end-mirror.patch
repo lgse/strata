@@ -1,0 +1,14 @@
+diff --git a/crates/strata-app/src/columns/mirror.rs b/crates/strata-app/src/columns/mirror.rs
+index e082870c9..61076873e 100644
+--- a/crates/strata-app/src/columns/mirror.rs
++++ b/crates/strata-app/src/columns/mirror.rs
+@@ -100,6 +100,9 @@ impl Mirror {
+ /// Nothing happens once the cursor has moved on, or while the browser is still checking a
+ /// folder it was asked to open, which takes the focus itself.
+ fn mirror(browser: &Rc<Browser>, depth: usize, position: usize) {
++    if true {
++        return;
++    }
+     if browser.pending_navigation_generation().is_some() {
+         return;
+     }
