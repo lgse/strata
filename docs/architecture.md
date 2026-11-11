@@ -119,8 +119,9 @@ padding, and metadata columns remain marquee origins. Both List drag sources and
 ownership reuse `hits_list_item_content`; reordered columns retain the same policy.
 Columns and Icons keep their existing content hits and reserve an already-selected row/card's
 allocation for dragging when it hosts a file drag source. Row drag/drop controllers stay on
-the application-owned row so they can coexist with GTK's native list-item selection gesture. Marquee ownership mirrors these policies: Columns
-uses content hits on unselected rows; List applies its Name-column policy in each mapped row's coordinates;
+the application-owned row so they can coexist with GTK's native list-item selection gesture.
+Marquee ownership mirrors these policies: Columns uses content hits on unselected rows; List
+applies its Name-column policy in each mapped row's coordinates;
 Icons keeps `hits_item_content` and treats card gutters as marquee origins. Pane background
 and surrounding chrome remain marquee origins, and Alt-drag can force a marquee from an item
 in any mode. Both paths use GTK's configured drag threshold. Within collection viewports,
@@ -129,7 +130,8 @@ still reach the row's selection, preview, and single-click activation. A repeate
 non-item space keeps the pending marquee in the surface gesture group, which cancels the row's
 release activation; when that press is released within the threshold on the same item, the
 surface activates it through GTK's `list.activate-item`, as the row's own double-click would.
-Modifier-clicks still reach the row selection handlers. Chrome-origin drags transfer focus to a visible item in the target
+Modifier-clicks still reach the row selection handlers. Chrome-origin drags transfer focus
+to a visible item in the target
 collection after crossing the threshold, giving active selection feedback without scrolling
 to an old cursor. Sidebar origins also switch browser input ownership to the pointer, so
 keyboard actions use the selected pane rather than stale hover state. A plain press on pane

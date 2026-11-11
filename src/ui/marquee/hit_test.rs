@@ -41,7 +41,6 @@ fn hits_item_allocation(target: &MarqueeTarget, surface: &gtk::Widget, point: (f
     hits_item(target, surface, point, |_, _| true)
 }
 
-/// The item row under a surface point.
 pub(super) struct ItemHit {
     position: u32,
     widget: gtk::Widget,
@@ -53,7 +52,7 @@ impl ItemHit {
     pub(super) fn is_same(&self, other: &Self) -> bool {
         self.position == other.position
             && self.widget == other.widget
-            && self.object == other.object
+            && same_model_item(self.object.as_ref(), other.object.as_ref())
     }
 
     /// Activates like GTK's own double-click on a list or grid item.
@@ -64,6 +63,17 @@ impl ItemHit {
         {
             tracing::warn!(%error, "item activation from selection space failed");
         }
+    }
+}
+
+fn same_model_item(a: Option<&glib::Object>, b: Option<&glib::Object>) -> bool {
+    // Columns' lazy entry model returns a fresh string object on every lookup.
+    match (
+        a.and_then(|a| a.downcast_ref::<gtk::StringObject>()),
+        b.and_then(|b| b.downcast_ref::<gtk::StringObject>()),
+    ) {
+        (Some(a), Some(b)) => a.string() == b.string(),
+        _ => a == b,
     }
 }
 
