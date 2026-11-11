@@ -3,6 +3,7 @@
 //! What the QA mode decides without knowing the toolkit: which nodes a snapshot reports, in
 //! what order, and what each of them is.
 
+mod activate;
 mod check;
 mod dispatch;
 mod fields;

@@ -68,10 +68,6 @@ fn value(result: Value) -> Outcome {
 }
 
 impl<B: Backend> Scope<'_, B> {
-    #[expect(
-        clippy::too_many_lines,
-        reason = "one arm for each step; the longer ones are methods of their own"
-    )]
     async fn run(&self, command: Command) -> Outcome {
         let backend = self.backend;
         match command {

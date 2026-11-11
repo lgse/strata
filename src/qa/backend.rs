@@ -16,8 +16,8 @@ use super::{
     input::{Event, Injector},
     next_paint,
     protocol::{
-        Backend, Chord, Command, EntryRow, FieldState, Labels, Mark, Modifier, Orientation,
-        Outcome, Predicate, Rect, Scope, Scroll, States, Verdict,
+        Backend, Chord, Command, EntryRow, FieldState, Labels, LookupError, Mark, Modifier,
+        Orientation, Outcome, Predicate, Rect, Scope, Scroll, States, Verdict,
     },
     settle, state, targets,
 };
@@ -55,6 +55,11 @@ impl Gtk {
         self.injector
             .get()
             .ok_or_else(|| "no input connection".to_owned())
+    }
+
+    /// A widget's box on the screen whether or not it is mapped.
+    pub(super) fn extents(&self, widget: &gtk::Widget) -> Result<Rect, LookupError> {
+        targets::extents(widget, self.injector().map_err(LookupError::Broken)?)
     }
 
     /// Keeps the application running while it has no window yet.

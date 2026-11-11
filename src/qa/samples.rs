@@ -52,26 +52,10 @@ impl Gtk {
         self.samples
             .borrow_mut()
             .insert(drop.name.to_owned(), Sample::Instant(released));
-        let mut events = Vec::new();
-        if drop.escape {
-            match input::keysym("Escape").and_then(|keysym| injector.keycode(keysym)) {
-                Ok((keycode, _)) => {
-                    events.push(Event::Key {
-                        keycode,
-                        pressed: true,
-                    });
-                    events.push(Event::Key {
-                        keycode,
-                        pressed: false,
-                    });
-                }
-                Err(error) => return Outcome::error(error),
-            }
-        }
-        events.push(Event::Button {
-            number: 1,
-            pressed: false,
-        });
+        let events = match release_events(injector, drop.escape) {
+            Ok(events) => events,
+            Err(error) => return Outcome::error(error),
+        };
         for event in events {
             if let Err(error) = injector.send(event) {
                 return Outcome::error(error);
@@ -87,37 +71,68 @@ impl Gtk {
                 Err(error) => return Outcome::error(error),
             }
         }
-        let mut samples = Vec::new();
-        for (elapsed, capture) in &grabs {
-            match pixels::text_position(capture) {
-                (Some(position), contrast) => samples.push((*elapsed, position, contrast)),
-                (None, _) => return drop_failure("the source label disappeared", &samples),
-            }
-        }
-        if samples
-            .iter()
-            .any(|(elapsed, _, _)| *elapsed >= DROP_SAMPLE_LIMIT)
-        {
-            return drop_failure(&python_samples(&samples), &samples);
-        }
-        if samples
-            .iter()
-            .any(|(_, position, _)| (position - resting_position).abs() >= DROP_SAMPLE_DRIFT)
-        {
-            return drop_failure("source label slid out after drag completion", &samples);
-        }
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "pixel sums stay far below 2^52, as Python's float arithmetic assumes"
-        )]
-        let recovered = samples.last().is_some_and(|(_, _, contrast)| {
-            *contrast as f64 > dragging_contrast as f64 * DROP_SAMPLE_RECOVERY
-        });
-        if !recovered {
-            return drop_failure("dragging opacity must recover", &samples);
-        }
-        Outcome::default()
+        judge_drop(&grabs, resting_position, dragging_contrast)
     }
+}
+
+/// What ends a drag: the button release, after an Escape press and release when asked.
+fn release_events(injector: &Injector, escape: bool) -> Result<Vec<Event>, String> {
+    let mut events = Vec::new();
+    if escape {
+        let (keycode, _) = input::keysym("Escape").and_then(|keysym| injector.keycode(keysym))?;
+        events.push(Event::Key {
+            keycode,
+            pressed: true,
+        });
+        events.push(Event::Key {
+            keycode,
+            pressed: false,
+        });
+    }
+    events.push(Event::Button {
+        number: 1,
+        pressed: false,
+    });
+    Ok(events)
+}
+
+/// The source label has to stay where it rested and regain its contrast, with every grab
+/// taken in time.
+fn judge_drop(
+    grabs: &[(Duration, Capture)],
+    resting_position: f64,
+    dragging_contrast: u64,
+) -> Outcome {
+    let mut samples = Vec::new();
+    for (elapsed, capture) in grabs {
+        match pixels::text_position(capture) {
+            (Some(position), contrast) => samples.push((*elapsed, position, contrast)),
+            (None, _) => return drop_failure("the source label disappeared", &samples),
+        }
+    }
+    if samples
+        .iter()
+        .any(|(elapsed, _, _)| *elapsed >= DROP_SAMPLE_LIMIT)
+    {
+        return drop_failure(&python_samples(&samples), &samples);
+    }
+    if samples
+        .iter()
+        .any(|(_, position, _)| (position - resting_position).abs() >= DROP_SAMPLE_DRIFT)
+    {
+        return drop_failure("source label slid out after drag completion", &samples);
+    }
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "pixel sums stay far below 2^52, as Python's float arithmetic assumes"
+    )]
+    let recovered = samples.last().is_some_and(|(_, _, contrast)| {
+        *contrast as f64 > dragging_contrast as f64 * DROP_SAMPLE_RECOVERY
+    });
+    if !recovered {
+        return drop_failure("dragging opacity must recover", &samples);
+    }
+    Outcome::default()
 }
 
 /// The fields of a `drop_samples` step.

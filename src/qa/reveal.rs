@@ -20,7 +20,6 @@ impl Gtk {
         target: &Target,
         message: String,
     ) -> Result<(gtk::Widget, gtk::Widget), Outcome> {
-        let injector = self.injector().map_err(Outcome::error)?;
         let wanted = protocol::Wanted::of(target)
             .map_err(|error| Outcome::error(error.message().to_owned()))?;
         let deadline = Instant::now() + protocol::DEFAULT_WAIT;
@@ -44,9 +43,9 @@ impl Gtk {
         // A page just shown can report a box before its layout lands, which the
         // slower AT-SPI reads never see; aim only at one a painted frame keeps.
         loop {
-            let before = targets::extents(&node, injector).map(|rect| rect.pixels());
+            let before = self.extents(&node).map(|rect| rect.pixels());
             self.settle(&scope.window).await;
-            let after = targets::extents(&node, injector).map(|rect| rect.pixels());
+            let after = self.extents(&node).map(|rect| rect.pixels());
             match (before, after) {
                 (Ok(before), Ok(after)) if before == after && after[2] > 0 && after[3] > 0 => break,
                 (_, Err(LookupError::Broken(error))) => return Err(Outcome::error(error)),
@@ -62,10 +61,6 @@ impl Gtk {
     }
 
     pub(super) async fn reveal_control(&self, scope: &Scope<'_, Self>, target: &Target) -> Outcome {
-        let injector = match self.injector() {
-            Ok(injector) => injector,
-            Err(error) => return Outcome::error(error),
-        };
         let name = control_name(target);
         let (node, scroll) = match self
             .presented_control(scope, target, format!("{name} control"))
@@ -76,10 +71,7 @@ impl Gtk {
         };
         let deadline = Instant::now() + protocol::DEFAULT_WAIT;
         loop {
-            let (bounds, viewport) = match (
-                targets::extents(&node, injector),
-                targets::extents(&scroll, injector),
-            ) {
+            let (bounds, viewport) = match (self.extents(&node), self.extents(&scroll)) {
                 (Ok(bounds), Ok(viewport)) => (bounds.pixels(), viewport.pixels()),
                 (Err(LookupError::Broken(error)), _) | (_, Err(LookupError::Broken(error))) => {
                     return Outcome::error(error);
@@ -129,10 +121,6 @@ impl Gtk {
 
     /// `Strata.reveal`, whose `scroll_into_view` GTK's bridge declines.
     pub(super) async fn reveal(&self, scope: &Scope<'_, Self>, target: &Target) -> Outcome {
-        let injector = match self.injector() {
-            Ok(injector) => injector,
-            Err(error) => return Outcome::error(error),
-        };
         let criteria = match target {
             Target::Role {
                 role,
@@ -153,8 +141,7 @@ impl Gtk {
             Err(outcome) => return outcome,
         };
         let visible = || -> Result<bool, String> {
-            let rect =
-                |widget: &gtk::Widget| targets::extents(widget, injector).map(|rect| rect.pixels());
+            let rect = |widget: &gtk::Widget| self.extents(widget).map(|rect| rect.pixels());
             match (rect(&node), rect(&scroll), rect(&scope.window)) {
                 (Ok(bounds), Ok(pane), Ok(window)) => Ok(state::on_screen(bounds, window)
                     && bounds[1] >= pane[1]
@@ -188,7 +175,7 @@ impl Gtk {
                 }
                 Ok(false) => {}
             }
-            let below = match targets::extents(&node, injector) {
+            let below = match self.extents(&node) {
                 Ok(rect) => rect.pixels()[1] > centre.1,
                 Err(error) => return Outcome::error(error.message().to_owned()),
             };
