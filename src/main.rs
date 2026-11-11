@@ -390,6 +390,7 @@ fn main() -> gtk::glib::ExitCode {
             .contains(gio::ApplicationFlags::IS_SERVICE)
         {
             leave_launch_folder();
+            ui::prepare_portal_ui();
         }
     });
     application.connect_startup(|_| install_x11_program_class());
