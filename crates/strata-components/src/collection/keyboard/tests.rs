@@ -1385,6 +1385,7 @@ fn columns_keys() -> KeySettings {
     KeySettings {
         reselects_in_place: true,
         select_all_to_last: true,
+        left_leaves_without_cursor: true,
         ..KeySettings::default()
     }
 }
@@ -1443,6 +1444,29 @@ fn a_select_key_that_cannot_move_the_cursor_reselects_its_entry_only_where_asked
                 "{case}"
             );
         }
+    }
+}
+
+#[test]
+fn left_with_no_cursor_reports_its_edge_only_where_asked() {
+    // C2's rule in Strata's Columns: Left is `Browser::focus_parent` whether or not the
+    // column has a cursor, and a click on a folder leaves its column without one.
+    for (leaves, settings) in [(true, columns_keys()), (false, KeySettings::default())] {
+        let mut r = Rig::list_with(4, settings);
+        assert_eq!(r.cursor(), None);
+
+        assert!(r.key(Key::Left));
+
+        let edge = r.take().contains(&Outcome::Edge(Direction::Left));
+        assert_eq!(edge, leaves);
+        assert_eq!(r.cursor(), if leaves { None } else { Some(3) });
+        assert_eq!(r.selected().is_empty(), leaves);
+    }
+    // The other steps still take the cursor to the list's near end.
+    for (key, lands) in [(Key::Right, 0), (Key::Down, 0), (Key::Up, 3)] {
+        let mut r = Rig::list_with(4, columns_keys());
+        assert!(r.key(key.clone()));
+        assert_eq!(r.cursor(), Some(lands), "{key:?}");
     }
 }
 

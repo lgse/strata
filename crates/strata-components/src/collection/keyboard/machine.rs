@@ -423,15 +423,10 @@ impl KeyMachine {
             Target::Last => Landing::At(last),
             Target::Page(v) => Landing::At(step(v, page)),
             Target::HalfPage(v) => Landing::At(step(v, (page / 2).max(1))),
-            Target::Step(d) => {
-                let Some(i) = cursor else {
-                    return Landing::At(match d {
-                        Direction::Down | Direction::Right => 0,
-                        Direction::Up | Direction::Left => last,
-                    });
-                };
-                self.step(i, d, s)
-            }
+            Target::Step(d) => match cursor {
+                Some(i) => self.step(i, d, s),
+                None => first_step(d, last, s.settings().left_leaves_without_cursor),
+            },
         }
     }
 
@@ -448,6 +443,17 @@ impl KeyMachine {
             Direction::Right if wrap && i < last => Landing::At(i + 1),
             _ => Landing::Edge(d),
         }
+    }
+}
+
+/// Where a step in direction `d` lands with no cursor: on the first entry going down or
+/// right, on the last going up or left, unless Left leaves the collection there
+/// ([`KeySettings::left_leaves_without_cursor`]).
+fn first_step(d: Direction, last: usize, left_leaves: bool) -> Landing {
+    match d {
+        Direction::Left if left_leaves => Landing::Edge(d),
+        Direction::Down | Direction::Right => Landing::At(0),
+        Direction::Up | Direction::Left => Landing::At(last),
     }
 }
 

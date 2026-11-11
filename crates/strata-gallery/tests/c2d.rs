@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 //! C2d on C2's page: the six key behaviours where the Columns view now does what Strata's
-//! GTK view does (slice decision 17, `docs/rune/slice/V8-read-path-parity.md`). Each test
-//! names the GTK code it follows, where a script can't see the result: the cursor, the
-//! anchor and what the view tells its host.
+//! GTK view does (slice decision 17, `docs/rune/slice/V8-read-path-parity.md`), and a
+//! seventh the slice's V9 found, Left in a column with no cursor. Each test names the GTK
+//! code it follows, where a script can't see the result: the cursor, the anchor and what the
+//! view tells its host.
 
 mod c2d {
     use rune::{ElementInfo, Env, Key, KeyEvent, Mods, Runtime};
@@ -136,6 +137,24 @@ mod c2d {
         assert_eq!(rt.state.c2.intent, "Keyboard in column 1");
         key(&mut rt, Key::Enter);
         assert_eq!((rt.state.c2.columns.active(), cursor(&rt, 2)), (2, second));
+    }
+
+    #[test]
+    fn left_in_a_column_with_no_cursor_goes_back_to_its_folder() {
+        // browser/view-modes/columns. Left is `Browser::focus_parent` in Columns
+        // (`navigate_left` in `src/ui/browser/view_navigation.rs`), whether or not the active
+        // column has a cursor: a click on a folder gives its column the keyboard and none.
+        let mut rt = three_columns();
+        focus_column(&mut rt, 2);
+        assert_eq!(cursor(&rt, 2), None);
+
+        key(&mut rt, Key::Left);
+
+        assert_eq!(rt.state.c2.columns.active(), 1);
+        assert_eq!(rt.state.c2.intent, "Keyboard in column 1");
+        assert_eq!(cursor(&rt, 1), Some(id("Documents", "Reports")));
+        assert_eq!((cursor(&rt, 2), selected(&rt, 2)), (None, Vec::new()));
+        assert_eq!(path(&rt), "Home/Documents/Reports", "nothing closed");
     }
 
     #[test]

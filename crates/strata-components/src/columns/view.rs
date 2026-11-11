@@ -503,9 +503,9 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
 }
 
 /// Column `depth`'s collection with the host's extras ([`ColumnsView::collection`]), and its
-/// key settings with the two rules that are Columns' own in Strata, whatever map the host
-/// binds: a Select key that cannot move the cursor re-selects its entry, and Ctrl+A takes the
-/// cursor to the last entry.
+/// key settings with the three rules that are Columns' own in Strata, whatever map the host
+/// binds: a Select key that cannot move the cursor re-selects its entry, Ctrl+A takes the
+/// cursor to the last entry, and Left leaves a column that has no cursor.
 fn hosted<S: 'static>(sh: &Shared<S>, s: &S, depth: usize, c: Collection<S>) -> Collection<S> {
     let c = match &sh.collection {
         Some(f) => f(s, depth, c),
@@ -514,6 +514,7 @@ fn hosted<S: 'static>(sh: &Shared<S>, s: &S, depth: usize, c: Collection<S>) -> 
     let mut keys = c.setting::<KeySettings>().cloned().unwrap_or_default();
     keys.reselects_in_place = true;
     keys.select_all_to_last = true;
+    keys.left_leaves_without_cursor = true;
     c.settings(keys)
 }
 

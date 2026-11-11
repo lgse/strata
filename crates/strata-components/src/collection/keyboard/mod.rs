@@ -73,7 +73,10 @@
 //!   sends only a plain Left to the sidebar. With [`KeySettings::reselects_in_place`] (Columns)
 //!   a Select key that cannot move the cursor selects its entry alone and emits
 //!   [`Outcome::Rested`]: an arrow at the top or the bottom, before its edge, and Home, End
-//!   and the page keys where the cursor already is.
+//!   and the page keys where the cursor already is. With no cursor a step lands on the first
+//!   entry (Down, Right) or the last (Up, Left); with
+//!   [`KeySettings::left_leaves_without_cursor`] (Columns) Left reports its edge there
+//!   instead.
 //! - **Pages** move by [`CollectionGeometry::page_step`] entries, half a page by half that
 //!   (at least one), clamped to the first and last entry. The page size is the geometry's: the
 //!   rows that fit minus one, times the tiles per row in Icons.

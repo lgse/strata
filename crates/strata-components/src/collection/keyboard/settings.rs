@@ -63,6 +63,11 @@ pub struct KeySettings {
     /// On for Columns (C2 sets it), where the GTK view's selection model reports its newest
     /// selected row to `Browser` as the cursor. Off elsewhere: the cursor stays.
     pub select_all_to_last: bool,
+    /// Whether Left with no cursor reports its edge, where it otherwise lands on the last
+    /// entry. On for Columns (C2 sets it), where Strata's Left is `Browser::focus_parent`
+    /// whether or not the column has a cursor: a click on a folder gives its column the
+    /// keyboard and no cursor, and Left then goes back to the folder. Off elsewhere.
+    pub left_leaves_without_cursor: bool,
 }
 
 impl Default for KeySettings {
@@ -75,6 +80,7 @@ impl Default for KeySettings {
             wrap_rows: false,
             reselects_in_place: false,
             select_all_to_last: false,
+            left_leaves_without_cursor: false,
         }
     }
 }

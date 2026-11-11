@@ -52,11 +52,13 @@
 //!   ([`ColumnsIntent::Active`]). Escape
 //!   that C1c doesn't take (nothing selected) closes the deepest column, unless the host says
 //!   not to (10xer, [`ColumnsView::escape_closes`]). Ctrl+A, the page keys, Home, End and
-//!   type-ahead act in the active column only, as C1c does in any collection, with two rules
-//!   the view turns on over the host's key settings because they are Columns' own in Strata:
-//!   a Select key that cannot move the cursor selects its entry alone and is reported as the
-//!   cursor, and Ctrl+A takes the cursor to the last entry (C1c's
-//!   `KeySettings::reselects_in_place` and `select_all_to_last`).
+//!   type-ahead act in the active column only, as C1c does in any collection, with three
+//!   rules the view turns on over the host's key settings because they are Columns' own in
+//!   Strata: a Select key that cannot move the cursor selects its entry alone and is reported
+//!   as the cursor, Ctrl+A takes the cursor to the last entry, and Left goes to the parent
+//!   column from a column with no cursor too, which a click on a folder leaves its column
+//!   with (C1c's `KeySettings::reselects_in_place`, `select_all_to_last` and
+//!   `left_leaves_without_cursor`).
 //! - **Presses.** A press targets its column (its header shows the actions) and makes it active,
 //!   without a reveal; it cancels a slow-click rename pending in another column. The second press
 //!   of a click that opened a column leaves that column active (a double click on a closed
